@@ -5,6 +5,7 @@ set -e # Exit immediately if a command exits with a non-zero status.
 
 # Variables
 MINIKUBE=~/.local/bin/minikube
+OPERATOR=~/.local/bin/operator-sdk
 
 # pre-install some basic components.
 #
@@ -19,6 +20,10 @@ pre_install() {
         minikube)
 	        wget "https://github.com/kubernetes/minikube/releases/download/$VERSION/minikube-linux-amd64" -O "$MINIKUBE"
             chmod +x "$MINIKUBE"
+        ;;
+        operator-sdk)
+            wget "https://github.com/operator-framework/operator-sdk/releases/download/$VERSION/operator-sdk-$VERSION-x86_64-linux-gnu" -O "$OPERATOR"
+            chmod +x "$OPERATOR"
         ;;
     esac
 }
@@ -113,6 +118,15 @@ manage_cluster_pluggins() {
 }
 
 
+# creates a tunnel to registry.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: tunnel-registry
+tunnel_registry() {
+	kubectl port-forward $(kubectl get pod -l actual-registry=true -o jsonpath='{.items[0].metadata.name}' -n kube-system) 5000:5000 -n kube-system &
+}
+
 main() {
   local ARG0="$1"
   local ARG1="$2"
@@ -122,13 +136,16 @@ main() {
   local ARG5="$6"
   case "$ARG0" in
     pre-install)
-		pre_install "$ARG1" "$ARG2" # [minikube] [version]
+		pre_install "$ARG1" "$ARG2" # [tool] [version]
 	;;
     bootstrap-cluster)
         bootstrap_cluster "$ARG1" "$ARG2" "$ARG3" "$ARG4" "$ARG5"
     ;;
     start-cluster)
         start_cluster "$ARG1" "$ARG2" "$ARG3" "$ARG4" "$ARG5"
+    ;;
+    tunnel-registry)
+        tunnel_registry
     ;;
   esac
 }
