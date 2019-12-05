@@ -8,3 +8,21 @@
 4. Perform simple CRUD operations
 5. Load-test your application.
 6. Setup basic monitoring and logging for the application with tools of your choice.
+
+### TD;DR
+
+**How to Test**
+
+```sh
+make pre-install
+make bootstrap
+```
+
+**Make Commands**
+
+```sh
+bootstrap-cluster              Bootstraps cluster (E.g. make bootstrap).
+clean-cluster                  Cleans Minikube (E.g. make clean-cluster).
+help                           Help. 
+pre-install                    Pre-Installs tools (E.g: $ make pre-install).
+```
