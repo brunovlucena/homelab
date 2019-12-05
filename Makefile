@@ -22,3 +22,12 @@ bootstrap-cluster: ## Bootstraps cluster (E.g. make bootstrap).
 
 clean-cluster: ## Cleans Minikube (E.g. make clean-cluster).
 	@./helper.sh clean-cluster ${CLUSTER_NAME}
+
+operator-build: ## Builds operator (E.g. make operator-build).
+	 @./apps/my-k8s-operator/helper.sh operator-build
+
+operator-deploy: ## Deploys operator (E.g. make operator-deploy).
+	 @./apps/my-k8s-operator/helper.sh operator-deploy
+
+test-operator: ## Tests operator (E.g. make test-operator).
+	 @./apps/my-k8s-operator/helper.sh test-operator

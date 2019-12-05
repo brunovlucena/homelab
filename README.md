@@ -2,7 +2,7 @@
 
 **Tasks**
 
-1. create a local running Kubernetes cluster with the tooling of your choice
+1. create a local running Kubernetes cluster with the tooling of your choice [DONE]
 2. Install Postgres on the cluster.
 3. Create and deploy a basic application in Go and connect to Postgres
 4. Perform simple CRUD operations
