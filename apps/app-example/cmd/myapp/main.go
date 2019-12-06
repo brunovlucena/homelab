@@ -16,7 +16,7 @@ func main() {
 
 	// add routes
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("welcome"))
+		w.Write([]byte("welcome!"))
 	})
 	listAddr := ":" + os.Getenv("API_CONTAINER_PORT")
 	http.ListenAndServe(listAddr, r)

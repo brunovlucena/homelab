@@ -40,26 +40,48 @@ helm-install: ## Installs components via helm charts.
 
 # MyAppOperator
 bootstrap-operator: ## Builds operator (E.g. make bootstrap-operator).
-	 @./apps/app-example/helper.sh bootstrap-operator
+	 @./apps/helper.sh bootstrap-operator
 
 build-deploy-operator: ## Deploys operator (E.g. make build-deploy-operator).
-	 @./apps/app-example/helper.sh build-deploy-operator stable
+	 @./apps/helper.sh build-deploy-operator stable
 
 build-deploy-operator-test: ## Tests MyAppOperator (E.g. make build-deploy-test). 
-	 @./apps/app-example/helper.sh build-deploy-operator dev
-	 @./apps/app-example/helper.sh deploy-operator-test
+	 @./apps/helper.sh build-deploy-operator dev
+	 @./apps/helper.sh deploy-operator-test
 
 # MyApp
 run-myapp: ## Runs app example (E.g. make run-myapp).
-	 @./apps/app-example/helper.sh run-myapp
+	 @./apps/helper.sh run-myapp
 
 build-myapp: ## Builds binary app example (E.g. make build-myapp).
-	 @./apps/app-example/helper.sh build-myapp
+	 @./apps/helper.sh build-myapp
 
-build-deploy-myapp: ## Builds image for app example (E.g. make build-push-myapp).
-	 @./apps/app-example/helper.sh build-deploy-myapp stable
+build-deploy-myapp: ## Builds image for app example (E.g. make build-push-myapp latest).
+	 @./apps/helper.sh build-deploy-myapp stable
 
 # Dev
-build-deploy-test: ## Tests MyApp. (E.g. make build-deploy-test).
-	@./apps/app-example/helper.sh build-deploy-myapp dev
-	@./apps/app-example/helper.sh deploy-test
+skaffold: ## Uses skaffold during the development
+	@./apps/helper.sh skaffold
+
+checks:
+	@shellcheck helper.sh || true
+	@shellcheck apps/helper.sh || true
+
+# Security
+sniff: ## Sniffs comunication (E.g. make sniff)
+	@./security.sh sniff
+
+check-pod-security: ## outputs infomation about the cluster
+	@./security.sh check-pod-security
+
+kube-bench: ##
+	@./debugger.sh kube-bench
+
+kube-diff: ##
+	@./debugger.sh kube-diff
+
+cluster-rights: ##
+	@./debugger.sh cluster-rights
+
+cluster-roles: ##
+	@./debugger.sh cluster-roles

@@ -24,6 +24,12 @@ pre_install() {
             local PATH="https://github.com/operator-framework/operator-sdk/releases/download/$VERSION/operator-sdk-$VERSION-x86_64-linux-gnu"
             [[ ! -f $OPERATOR ]] && /usr/bin/wget "$PATH" -O "$OPERATOR" ; /bin/chmod +x "$OPERATOR"
         ;;
+        kubediff)
+            [[ ! -f $OPERATOR  ]] &&
+            git clone https://github.com/weaveworks/kubediff.git /tmp/kubediff
+            cp /temp/kubediff/kubediff ~./local/bin/kubediff
+            cp -R kubedifflib ~/.local/usr/local/bin
+    ;;
     esac
 }
 
@@ -68,7 +74,7 @@ clean_cluster() {
     # Stop
     vboxmanage controlvm mobimeo poweroff || true
     # Remove from virtualbox
-    vboxmanage unregistervm --delete $CLUSTER_NAME || true
+    vboxmanage unregistervm --delete "$CLUSTER_NAME" || true
     # Remove volume because We need a new disk without partitions and filesystem.
     vboxmanage closemedium disk /home/bvl/.minikube/disks/rook-ceph-1.vdi --delete || true
     rm -r ~/.minikube/machines/"$CLUSTER_NAME" || true
@@ -145,7 +151,7 @@ manage_cluster_pluggins() {
 #  $ ./helper.sh param1
 # * param1: tunnel-registry
 tunnel_registry() {
-	kubectl port-forward $(kubectl get pod -l actual-registry=true -o jsonpath='{.items[0].metadata.name}' -n kube-system) 5000:5000 -n kube-system &
+	kubectl port-forward "$(kubectl get pod -l actual-registry=true -o jsonpath='{.items[0].metadata.name}' -n kube-system)" 5000:5000 -n kube-system &
 }
 
 # installs prometheus-operator.
@@ -194,6 +200,7 @@ helm_install_velero() {
     helm upgrade --install --wait \
         velero infra/charts/velero -n "$NAMESPACE"
 }
+
 
 # installs postgres.
 #

@@ -4,8 +4,9 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 
 # Variables
-ROOT=apps/app-example
 OPERATOR_SDK=~/.local/bin/operator-sdk
+MYAPP=apps/app-example
+MYAPP_OPERATOR=apps/myapp-operator
 
 # x.
 #
@@ -13,9 +14,10 @@ OPERATOR_SDK=~/.local/bin/operator-sdk
 #  $ ./helper.sh param1
 # * param1: build-myapp
 build_myapp() {
-    cd "$ROOT"/cmd/myapp
+    cd "$MYAPP"
     go mod tidy
-    go build -o ../../build/myapp
+    cd cmd/myapp
+    go build -o ../../build/_output/bin/myapp
 }
 
 # x.
@@ -24,24 +26,14 @@ build_myapp() {
 #  $ ./helper.sh param1
 # * param1: build-deploy-myapp
 build_deploy_myapp() {
-    cd "$ROOT"/cmd/myapp
+    cd "$MYAPP"
     local REPOSITORY=localhost:5000
     local BUILD_NAME=myapp
     local RELEASE="$1"
-	docker rmi $REPOSITORY/$BUILD_NAME:$RELEASE || true
-	docker build . -t $REPOSITORY/$BUILD_NAME:$RELEASE
-    docker push $REPOSITORY/$BUILD_NAME:$RELEASE
-}
-
-# x.
-#
-# Usage:
-#  $ ./helper.sh param1
-# * param1: run-myapp
-run_myapp() {
-    cd "$ROOT"/cmd/myapp
-    go mod tidy
-    go run main.go
+    local IMAGE="$REPOSITORY/$BUILD_NAME:$RELEASE"
+	docker rmi "$IMAGE" || true
+	docker build build -t "$IMAGE"
+    docker push "$IMAGE"
 }
 
 # x.
@@ -52,7 +44,8 @@ run_myapp() {
 deploy_test() {
     local NAMESPACE=dev
     kubectl create ns $NAMESPACE || true
-    kubectl apply -f apps/app-example/deployments/deployment.yaml -n "$NAMESPACE"
+    cd "$MYAPP"
+    kubectl apply -f "$MYAPP"/deploy/deployment.yaml -n "$NAMESPACE"
 }
 
 # x.
@@ -63,8 +56,7 @@ deploy_test() {
 deploy_operator_test() {
     local NAMESPACE=dev
     kubectl create ns $NAMESPACE || true
-    cd "$ROOT"/cmd/myapp-operator
-    kubectl apply -f deploy/crds/app.example.com_v1alpha1_myappexample_cr.yaml -n "$NAMESPACE"
+    kubectl apply -f "$MYAPP_OPERATOR"/deploy/crds/app.example.com_v1alpha1_myappexample_cr.yaml -n "$NAMESPACE"
 }
 
 # x.
@@ -74,7 +66,7 @@ deploy_operator_test() {
 # * param1: bootstrap-operator
 bootstrap_operator(){
     cd "$ROOT"/cmd/
-    rm -r myapp-operator
+    rm -r "$MYAPP_OPERATOR"
     $OPERATOR_SDK new myapp-operator --repo github.com/brunovlucena/mobimeo
     cd myapp-operator
     # Add a new API for the custom resource
@@ -94,7 +86,8 @@ build_deploy_operator() {
     local BUILD_NAME=myapp-operator
     local RELEASE="$1"
     local IMAGE=$REPOSITORY/$BUILD_NAME:$RELEASE
-    cd "$ROOT"/cmd/myapp-operator
+    cd "$MYAPP_OPERATOR"
+    pwd
     $OPERATOR_SDK build "$IMAGE"
     docker push "$IMAGE"
     local IMAGE=$REPOSITORY\/$BUILD_NAME\:$RELEASE
@@ -108,6 +101,11 @@ build_deploy_operator() {
     kubectl apply -f deploy/crds/app.example.com_myappexamples_crd.yaml -n "$NAMESPACE"
     # Deploy the app-operator
     kubectl apply -f deploy/operator.yaml -n "$NAMESPACE"
+}
+
+run_skaffold(){
+    cd apps
+    ENV=dev skaffold dev
 }
 
 main() {
@@ -129,11 +127,11 @@ main() {
     run-myapp)
         run_myapp
     ;;
-    deploy-test)
-        deploy_test
-    ;;
     deploy-operator-test)
         deploy_operator_test
+    ;;
+    skaffold)
+        run_skaffold
     ;;
   esac
 }

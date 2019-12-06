@@ -1,4 +1,4 @@
-module myapp
+module github.com/brunovlucena/myapp
 
 go 1.13
 

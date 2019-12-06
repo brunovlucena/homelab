@@ -1,0 +1,16 @@
+apiVersion: skaffold/v1
+kind: Config
+build:
+  # See: https://skaffold.dev/docs/pipeline-stages/filesync/
+  artifacts:
+    - image: localhost:5000/myapp
+      context: ./app-example/
+      docker: 
+        dockerfile: ./build/Dockerfile
+  tagPolicy:
+    envTemplate:
+      template: "{{.IMAGE_NAME}}:{{.ENV}}"
+deploy:
+  kubectl:
+    manifests:
+      - ./app-example/deploy/deployment.yaml
