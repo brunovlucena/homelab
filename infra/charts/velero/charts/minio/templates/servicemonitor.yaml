@@ -1,0 +1,14 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: minio
+  labels:
+    component: {{ .Values.serviceMonitor.componentName }}
+spec:
+  selector:
+    matchLabels:
+      component: infra
+  endpoints:
+  - port: minio
+    path: /minio/prometheus/metrics

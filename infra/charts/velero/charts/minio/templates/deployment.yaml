@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "minio.fullname" . }}
+  labels:
+    {{- include "minio.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "minio.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "minio.selectorLabels" . | nindent 8 }}
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ include "minio.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: {{ include "minio.fullname" . }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
+          args:
+          - server
+          - /storage
+          env:
+          # MinIO access key and secret key
+          - name: MINIO_PROMETHEUS_AUTH_TYPE
+            value: "public"
+          - name: MINIO_ACCESS_KEY
+            value: "OSY6A34KEVVJWXU36WL8"
+          - name: MINIO_SECRET_KEY
+            value: "IkVBhxIgdd6sf7zLjdoRMJ1Vdm4OEjMP7pwNNVUh"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: minio
+              containerPort: {{ .Values.image.containerPort }}
+              protocol: TCP
+          volumeMounts:
+          - name: storage
+            mountPath: "/storage"
+          #livenessProbe:
+            #httpGet:
+              #path: /minio/login
+              #port: minio
+          #readinessProbe:
+            #httpGet:
+              #path: /minio/prometheus/metrics
+              #port: minio
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+---

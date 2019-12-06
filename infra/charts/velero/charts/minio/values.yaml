@@ -1,0 +1,64 @@
+# Default values for minio.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+persistentVolumeClaim:
+  storage: 4Gi
+
+serviceMonitor:
+  componentName: infra
+
+replicaCount: 1
+
+image:
+  repository: minio/minio
+  pullPolicy: IfNotPresent
+  containerPort: 9000
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: minio
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: NodePort
+  port: 443
+  nodePort: 30008
+
+ingress:
+  enabled: false
+  hosts:
+    - host: chart-example.local
+      paths: []
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

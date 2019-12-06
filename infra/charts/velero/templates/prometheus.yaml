@@ -1,0 +1,12 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: velero
+spec:
+  serviceAccountName: prometheus-operator
+  serviceMonitorSelector:
+    matchLabels:
+      component: {{ .Values.serviceMonitor.componentName }}
+  resources:
+    {{- toYaml .Values.resources.prometheus | nindent 4 }}
+  enableAdminAPI: false
