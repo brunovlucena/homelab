@@ -23,6 +23,6 @@ echo -e "$icon Intalling Components via Helm Charts..."
 #echo -e "😁  cleaning local images..."
 #clean
 echo -e "🚛 Deploying myapp-operator..."
-make build-deploy-operator
+make build-deploy-operator-test
 echo -e "🚀 Deploying myapp..."
 make build-deploy-test
