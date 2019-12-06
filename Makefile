@@ -38,30 +38,28 @@ tunnel-registry: ## Creates a tunnel to minikube's registry (E.g. make tunnel-re
 helm-install: ## Installs components via helm charts.
 	@./helper.sh helm-install
 
-# Operator
-operator-build: ## Builds operator (E.g. make operator-build).
-	 @./apps/my-k8s-operator/helper.sh operator-build
+# MyAppOperator
+bootstrap-operator: ## Builds operator (E.g. make bootstrap-operator).
+	 @./apps/app-example/helper.sh bootstrap-operator
 
-operator-deploy: ## Deploys operator (E.g. make operator-deploy).
-	 @./apps/my-k8s-operator/helper.sh operator-deploy
+build-deploy-operator: ## Deploys operator (E.g. make build-deploy-operator).
+	 @./apps/app-example/helper.sh build-deploy-operator stable
 
-test-operator: ## Tests operator (E.g. make test-operator).
-	 @./apps/my-k8s-operator/helper.sh test-operator
+build-deploy-operator-test: ## Tests MyAppOperator (E.g. make build-deploy-test). 
+	 @./apps/app-example/helper.sh build-deploy-operator dev
+	 @./apps/app-example/helper.sh deploy-operator-test
 
-# App
+# MyApp
 run-myapp: ## Runs app example (E.g. make run-myapp).
 	 @./apps/app-example/helper.sh run-myapp
 
-mod-tidy-myapp: ## Runs app example (E.g. make mod-tidy-myapp).
-	 @./apps/app-example/helper.sh mod-tidy-myapp
-
-build-myapp: ## Builds app example (E.g. make build-myapp).
+build-myapp: ## Builds binary app example (E.g. make build-myapp).
 	 @./apps/app-example/helper.sh build-myapp
 
-image-build-myapp: ## Builds image for app example (E.g. make image-build-push-myapp).
-	 @./apps/app-example/helper.sh image-build-push-myapp stable
+build-deploy-myapp: ## Builds image for app example (E.g. make build-push-myapp).
+	 @./apps/app-example/helper.sh build-deploy-myapp stable
 
 # Dev
-update: ## updates everything. 
-	@./apps/app-example/helper.sh image-build-push-myapp dev
-	@./apps/app-example/helper.sh run-test-deployment
+build-deploy-test: ## Tests MyApp. (E.g. make build-deploy-test).
+	@./apps/app-example/helper.sh build-deploy-myapp dev
+	@./apps/app-example/helper.sh deploy-test

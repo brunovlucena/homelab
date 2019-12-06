@@ -24,9 +24,8 @@ make pre-install
 make bootstrap-cluster
 make helm-install
 make tunnel-registry
-make operator-build
-make operator-deploy
-make image-build-myapp
+make build-deploy-operator
+make build-deploy-test
 ```
 
 **Make Commands**
@@ -48,4 +47,3 @@ stop-cluster                   Stops cluster.
 test-operator                  Tests operator (E.g. make test-operator).
 tunnel-registry                Creates a tunnel to minikube's registry (E.g. make tunnel-registry).
 ```
-

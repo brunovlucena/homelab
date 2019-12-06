@@ -22,10 +22,7 @@ echo -e "$icon Intalling Components via Helm Charts..."
 #make tunnel-registry
 #echo -e "😁  cleaning local images..."
 #clean
-echo -e "🚛 Building operator..."
-make operator-build
-echo -e "🚀 Deploying deploy..."
-make operator-deploy
-echo -e "🚛 Building App Example image..."
-make image-build-myapp
-docker images | grep local
+echo -e "🚛 Deploying myapp-operator..."
+make build-deploy-operator
+echo -e "🚀 Deploying myapp..."
+make build-deploy-test

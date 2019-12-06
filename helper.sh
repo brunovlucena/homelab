@@ -5,7 +5,6 @@ set -e # Exit immediately if a command exits with a non-zero status.
 
 # Variables
 MINIKUBE=~/.local/bin/minikube
-OPERATOR=~/.local/bin/operator-sdk
 
 # pre-install some basic components.
 #
