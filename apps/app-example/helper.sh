@@ -29,10 +29,6 @@ mod_tidy_myapp() {
     cd "$ROOT"/cmd/myapp && go mod tidy
 }
 
-create_helm_operator(){
-    operator-sdk new myapp-helm-operator --api-version=example.com/v1alpha1 --kind=AppServiceHelm --helm-chart=deployments/chart --type=helm
-}
-
 run_test_deployment() {
     local NAMESPACE=dev
     kubectl create ns $NAMESPACE || true
@@ -54,9 +50,6 @@ main() {
     ;;
     mod-tidy-myapp)
         mod_tidy_myapp
-    ;;
-    create-helm-operator)
-        create_helm_operator
     ;;
     run-test-deployment)
         run_test_deployment

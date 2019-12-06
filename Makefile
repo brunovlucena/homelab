@@ -60,7 +60,8 @@ build-myapp: ## Builds app example (E.g. make build-myapp).
 
 image-build-myapp: ## Builds image for app example (E.g. make image-build-push-myapp).
 	 @./apps/app-example/helper.sh image-build-push-myapp stable
-	
+
+# Dev
 update: ## updates everything. 
 	@./apps/app-example/helper.sh image-build-push-myapp dev
 	@./apps/app-example/helper.sh run-test-deployment

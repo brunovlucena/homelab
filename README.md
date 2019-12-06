@@ -48,3 +48,4 @@ stop-cluster                   Stops cluster.
 test-operator                  Tests operator (E.g. make test-operator).
 tunnel-registry                Creates a tunnel to minikube's registry (E.g. make tunnel-registry).
 ```
+
