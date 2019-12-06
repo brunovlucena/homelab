@@ -44,7 +44,7 @@ bootstrap_cluster() {
     local CLUSTER_VERSION="$4"
     local CLUSTER_NAME="$5"
     # clean before start for the first time
-    clean_cluster "$CLUSTER_NAME"
+    [[ -d ~/.minikube/profiles/mobimeo/ ]] && clean_cluster "$CLUSTER_NAME"
     # start cluster
     start_cluster "$CLUSTER_CPUS" "$CLUSTER_MEMORY" "$CLUSTER_DISK" "$CLUSTER_VERSION" "$CLUSTER_NAME"
     # add a second disk for ceph
@@ -64,8 +64,14 @@ bootstrap_cluster() {
 # * param2: [cluster_name]
 clean_cluster() {
     local CLUSTER_NAME="$1"
-    $MINIKUBE stop "$CLUSTER_NAME" || true
+    # just in case of a new bootstrap with the same name
     rm -r ~/.minikube/profiles/"$CLUSTER_NAME" || true
+    # Stop
+    vboxmanage controlvm mobimeo poweroff || true
+    # Remove from virtualbox
+    vboxmanage unregistervm --delete $CLUSTER_NAME || true
+    # Remove volume because We need a new disk without partitions and filesystem.
+    vboxmanage closemedium disk /home/bvl/.minikube/disks/rook-ceph-1.vdi --delete || true
     rm -r ~/.minikube/machines/"$CLUSTER_NAME" || true
 }
 
@@ -77,7 +83,7 @@ clean_cluster() {
 # * param2: [cluster_name]
 stop_cluster() {
     local CLUSTER_NAME="$1"
-	$MINIKUBE stop -p "$CLUSTER_NAME"
+	$MINIKUBE stop -p "$CLUSTER_NAME" || true
 }
 
 # starts a kubernetes cluster using minikube.
@@ -109,8 +115,10 @@ start_cluster() {
 add_disk(){
     local CLUSTER_NAME="$1"
     local DISK_SIZE"$2"
+    # create new volume
 	local VOLUME_PATH=~/.minikube/disks/rook-ceph-1.vdi
-	VBoxManage createhd --filename "$VOLUME_PATH" --size "$DISK_SIZE" || true
+	VBoxManage createhd --filename "$VOLUME_PATH" --size "$DISK_SIZE"
+    # attach to the vm
 	VBoxManage storageattach "$CLUSTER_NAME" \
                          --storagectl "SATA" \
                          --device 0 \
@@ -184,7 +192,7 @@ helm_install_rook_ceph() {
 helm_install_velero() {
     NAMESPACE=backup
     kubectl create ns "$NAMESPACE" || true
-    helm upgrade --install \
+    helm upgrade --install --wait \
         velero infra/charts/velero -n "$NAMESPACE"
 }
 
@@ -240,8 +248,10 @@ main() {
         helm_install_prometheus_operator
         helm_install_kube_state_metrics
         helm_install_rook_ceph
-        echo "waiting for OSD before continuing..."
-        wait 3 # min
+        if [ -n $(helm ls -n rook-ceph) ]; then
+            echo -e "🙏 waiting for OSD before continuing..."
+            wait 2 # minutes moreless in my environment
+        fi
         helm_install_velero
         helm_install_postgres
 	;;

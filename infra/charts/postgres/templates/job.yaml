@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "chart-postgres.fullname" . }}
+  name: job-{{ include "chart-postgres.fullname" . }}
   annotations:
     "helm.sh/hook-delete-policy": hook-succeeded
 spec:

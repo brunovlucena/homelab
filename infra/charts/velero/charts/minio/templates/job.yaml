@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-{{ include "minio.fullname" . }}
+  annotations:
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    metadata:
+      name: "{{ .Release.Name }}"
+      labels:
+        {{- include "minio.selectorLabels" . | nindent 8 }}
+    spec:
+      volumes:
+      - name: restore
+        configMap:
+          name: restore
+      restartPolicy: Never
+      containers:
+      - name: create-bucket
+        image: minio/mc
+        command: ["/bin/sh","-c"]
+        args: 
+          - "sleep 60"
+          - "mc config host add minio http://velero-minio.backup:443 OSY6A34KEVVJWXU36WL8 IkVBhxIgdd6sf7zLjdoRMJ1Vdm4OEjMP7pwNNVUh --api S3v4"
+          - "mc mb minio/minikube --region=minio"

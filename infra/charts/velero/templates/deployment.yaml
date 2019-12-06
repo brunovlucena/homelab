@@ -4,6 +4,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "velero.fullname" . }}
+  annotations:
+    "helm.sh/hook-weight": "4"
   labels:
     {{- include "velero.labels" . | nindent 6 }}
 spec:
