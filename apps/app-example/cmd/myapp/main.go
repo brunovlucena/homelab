@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -17,5 +18,6 @@ func main() {
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("welcome"))
 	})
-	http.ListenAndServe(":3000", r)
+	listAddr := ":" + os.Getenv("API_CONTAINER_PORT")
+	http.ListenAndServe(listAddr, r)
 }

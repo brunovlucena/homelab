@@ -4,16 +4,28 @@ set encoding=utf-8
 
 set -e # Exit immediately if a command exits with a non-zero status.
 
+clean(){
+    docker rmi -f $(docker images -f "dangling=true" -q)
+    docker images | grep local | awk '{print $1}' | xargs -I {} docker rmi {}
+}
+
 # cluster
 icon=🚀
 echo -e "$icon Pre-install..."
-make pre-install
+#make pre-install
 echo -e "$icon Bootstrapping..."
-make bootstrap-cluster
+#make bootstrap-cluster
 echo -e "$icon Intalling Components via Helm Charts..."
-make helm-install
+#make helm-install
 # app
-make tunnel-registry
+#echo -e "🌉 Creating tunnel..."
+#make tunnel-registry
+#echo -e "😁  cleaning local images..."
+#clean
+echo -e "🚛 Building operator..."
 make operator-build
+echo -e "🚀 Deploying deploy..."
 make operator-deploy
+echo -e "🚛 Building App Example image..."
 make image-build-myapp
+docker images | grep local

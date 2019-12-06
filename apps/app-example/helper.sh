@@ -11,11 +11,11 @@ build_myapp() {
     go build -o ../../build/myapp
 }
 
-image_build_myapp() {
+image_build_push_myapp() {
     cd "$ROOT"/cmd/myapp
     local REPOSITORY=localhost:5000
     local BUILD_NAME=myapp
-    local RELEASE=stable #$(git rev-parse --short HEAD)
+    local RELEASE="$1"
 	docker rmi $REPOSITORY/$BUILD_NAME:$RELEASE || true
 	docker build . -t $REPOSITORY/$BUILD_NAME:$RELEASE
     docker push $REPOSITORY/$BUILD_NAME:$RELEASE
@@ -29,11 +29,22 @@ mod_tidy_myapp() {
     cd "$ROOT"/cmd/myapp && go mod tidy
 }
 
+create_helm_operator(){
+    operator-sdk new myapp-helm-operator --api-version=example.com/v1alpha1 --kind=AppServiceHelm --helm-chart=deployments/chart --type=helm
+}
+
+run_test_deployment() {
+    local NAMESPACE=dev
+    kubectl create ns $NAMESPACE || true
+    kubectl apply -f apps/app-example/deployments/deployment.yaml -n "$NAMESPACE"
+}
+
 main() {
   local ARG0="$1"
+  local ARG1="$2"
   case "$ARG0" in
-    image-build-myapp)
-        image_build_myapp
+    image-build-push-myapp)
+        image_build_push_myapp "$ARG1"
     ;;
     build-myapp)
         build_myapp
@@ -43,6 +54,12 @@ main() {
     ;;
     mod-tidy-myapp)
         mod_tidy_myapp
+    ;;
+    create-helm-operator)
+        create_helm_operator
+    ;;
+    run-test-deployment)
+        run_test_deployment
     ;;
   esac
 }
