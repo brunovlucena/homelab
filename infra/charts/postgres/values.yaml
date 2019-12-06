@@ -1,0 +1,65 @@
+# Default values for chart-postgres.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+serviceMonitor:
+  componentName: infra
+
+persistentVolumeClaim:
+  storage: 3Gi
+
+serviceMonitor:
+  componentName: infra
+
+replicaCount: 1
+
+image: 
+  repository: postgres
+  pullPolicy: IfNotPresent
+  containerPort: 5432
+
+exporter:
+  enabled: true
+  repository: wrouesnel/postgres_exporter:v0.8.0
+  containerPort: 9187
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: postgres
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+
+service:
+  type: NodePort
+  port: 5432
+  nodePort: 32000
+  exporter:
+    type: ClusterIP
+    port: 9187
+
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

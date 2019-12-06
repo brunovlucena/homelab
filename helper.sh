@@ -18,12 +18,12 @@ pre_install() {
     local VERSION="$2"
     case "$ARG" in
         minikube)
-	        wget "https://github.com/kubernetes/minikube/releases/download/$VERSION/minikube-linux-amd64" -O "$MINIKUBE"
-            chmod +x "$MINIKUBE"
+            local PATH="https://github.com/kubernetes/minikube/releases/download/$VERSION/minikube-linux-amd64"
+            [[ ! -f $MINIKUBE ]] && /usr/bin/wget "$PATH" -O "$MINIKUBE" ; /bin/chmod +x "$MINIKUBE"
         ;;
         operator-sdk)
-            wget "https://github.com/operator-framework/operator-sdk/releases/download/$VERSION/operator-sdk-$VERSION-x86_64-linux-gnu" -O "$OPERATOR"
-            chmod +x "$OPERATOR"
+            local PATH="https://github.com/operator-framework/operator-sdk/releases/download/$VERSION/operator-sdk-$VERSION-x86_64-linux-gnu"
+            [[ ! -f $OPERATOR ]] && /usr/bin/wget "$PATH" -O "$OPERATOR" ; /bin/chmod +x "$OPERATOR"
         ;;
     esac
 }
@@ -45,13 +45,15 @@ bootstrap_cluster() {
     local CLUSTER_NAME="$5"
     # clean before start for the first time
     clean_cluster "$CLUSTER_NAME"
-	# start cluster
-	start_cluster "$CLUSTER_CPUS" "$CLUSTER_MEMORY" "$CLUSTER_DISK" "$CLUSTER_VERSION" "$CLUSTER_NAME"
+    # start cluster
+    start_cluster "$CLUSTER_CPUS" "$CLUSTER_MEMORY" "$CLUSTER_DISK" "$CLUSTER_VERSION" "$CLUSTER_NAME"
     # add a second disk for ceph
     local DISK_SIZE=20000
     add_disk "$CLUSTER_NAME" "$DISK_SIZE"
     # manage pluggins
-	manage_cluster_pluggins
+    manage_cluster_pluggins
+    # load rbd for ceph
+    minikube ssh -p "$CLUSTER_NAME" "sudo modprobe rbd"
 }
 
 # removes cluster from minikube.
@@ -94,6 +96,8 @@ start_cluster() {
     local CLUSTER_VERSION="$4"
     local CLUSTER_NAME="$5"
 	$MINIKUBE start --cpus="$CLUSTER_CPUS" --memory="$CLUSTER_MEMORY" --disk-size="$CLUSTER_DISK" --kubernetes-version="$CLUSTER_VERSION" -p "$CLUSTER_NAME"
+    ## load rbd for ceph
+    minikube ssh -p "$CLUSTER_NAME" "sudo modprobe rbd"
 }
 
 # adds a second disk to minikube (to be used by ceph).
@@ -141,9 +145,10 @@ tunnel_registry() {
 #
 # Usage:
 #  $ ./helper.sh param1
-# * param1: helm-install-prometheus-operator
+# * param1: helm-install
 helm_install_prometheus_operator() {
-    NAMESPACE=kube-system
+    NAMESPACE=monitoring
+    kubectl create ns "$NAMESPACE" || true
     helm upgrade --install \
 		prometheus-operator infra/charts/prometheus-operator -n "$NAMESPACE"
 }
@@ -152,11 +157,56 @@ helm_install_prometheus_operator() {
 #
 # Usage:
 #  $ ./helper.sh param1
-# * param1: helm-install-kube-state-metrics
+# * param1: helm-install
 helm_install_kube_state_metrics() {
     NAMESPACE=kube-system
     helm upgrade --install \
         kube-state-metrics infra/charts/kube-state-metrics -n "$NAMESPACE"
+}
+
+# installs rook-ceph.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: helm-install
+helm_install_rook_ceph() {
+    NAMESPACE=rook-ceph
+    kubectl create ns "$NAMESPACE" || true
+    helm upgrade --install --wait \
+        rook-ceph infra/charts/rook-ceph -n "$NAMESPACE"
+}
+
+# installs velero.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: helm-install
+helm_install_velero() {
+    NAMESPACE=backup
+    kubectl create ns "$NAMESPACE" || true
+    helm upgrade --install \
+        velero infra/charts/velero -n "$NAMESPACE"
+}
+
+# installs postgres.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: helm-install
+helm_install_postgres() {
+    NAMESPACE=postgres
+    kubectl create ns "$NAMESPACE" || true
+    helm upgrade --install --wait \
+        postgres infra/charts/postgres -n "$NAMESPACE"
+}
+
+wait() {
+    secs=$(("$1" * 60))
+    while [ $secs -gt 0 ]; do
+       echo -ne "$secs\033[0K\r"
+       sleep 1
+       : $((secs--))
+    done
 }
 
 main() {
@@ -173,6 +223,10 @@ main() {
     bootstrap-cluster)
         bootstrap_cluster "$ARG1" "$ARG2" "$ARG3" "$ARG4" "$ARG5"
     ;;
+    clean-cluster)
+        stop_cluster "$ARG1"
+        clean_cluster "$ARG1"
+    ;;
     start-cluster)
         start_cluster "$ARG1" "$ARG2" "$ARG3" "$ARG4" "$ARG5"
     ;;
@@ -183,8 +237,13 @@ main() {
         tunnel_registry
     ;;
     helm-install)
-		helm_install_prometheus_operator
-		helm_install_kube_state_metrics
+        helm_install_prometheus_operator
+        helm_install_kube_state_metrics
+        helm_install_rook_ceph
+        echo "waiting for OSD before continuing..."
+        wait 3 # min
+        helm_install_velero
+        helm_install_postgres
 	;;
   esac
 }

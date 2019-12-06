@@ -3,7 +3,7 @@
 # Declare variables to be passed into your templates.
 
 grafanaLoki: 
-  enabled: true # slows down bootstraping the monitoring pulling images.
+  enabled: false # slows down bootstraping the monitoring pulling images.
 
 serviceMonitor:
   componentName: infra
@@ -19,7 +19,7 @@ image:
     containerPort: 3100
   promtail: 
     repo: grafana/promtail:v1.1.0
-    containerPort: 3101
+    containerPort: 9080
   pullPolicy: IfNotPresent
 
 serviceAccount:
@@ -43,7 +43,7 @@ service:
     port: 3000
     nodePort: 30003
   grafanaLoki:
-    port: 3100
+    port: 9080
     nodeport: 30004
 
 resources:

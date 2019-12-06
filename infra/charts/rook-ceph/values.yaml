@@ -1,0 +1,85 @@
+# Default values for rook-ceph.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+serviceMonitor:
+  componentName: infra
+
+cluster:
+  name: rook-ceph
+  # The path on the host where configuration files will be persisted.
+  # Use /var/lib/rook in production.
+  dataDirHostPath: /data/rook
+  monitoring: 
+    enabled: true
+  dashboard: 
+    enabled: true
+  mon:
+    count: 1
+    allowMultiplePerNode: false
+
+replicaCount: 1
+
+# The container image used to launch the Ceph daemon pods (mon, mgr, osd, mds, rgw).
+# v13 is mimic, v14 is nautilus, and v15 is octopus.
+# RECOMMENDATION: In production, use a specific version tag instead of the general
+# v14 flag, which pulls the latest release and could result in different
+# versions running within the cluster. See tags available at 
+# https://hub.docker.com/r/ceph/ceph/tags/.
+image:
+  rook: rook/ceph
+  ceph: 
+    repo: ceph/ceph
+    version: v14.2.4-20190917
+  pullPolicy: IfNotPresent
+  env:
+    # If the operator should only watch for cluster CRDs in the same namespace, 
+    # set this to "true".
+    watchRookNamespaceOnly: true
+    rookAllowMultipleFilesystems: false
+    # The logging level for the operator: INFO | DEBUG
+    rookLogLevel: "DEBUG" 
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+rbac:
+  create: "true"
+
+serviceAccount:
+  create: "true"
+  name: rook-ceph-system
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+resources:
+  prometheus:
+    limits:
+      cpu: 200m
+      memory: 200Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+  rookCeph:
+    limits:
+      cpu: 200m
+      memory: 200Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
