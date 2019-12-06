@@ -23,11 +23,20 @@ pre-install: ## Pre-Installs tools (E.g: $ make pre-install).
 bootstrap-cluster: ## Bootstraps cluster (E.g. make bootstrap).
 	@./helper.sh bootstrap-cluster ${CLUSTER_CPUS} ${CLUSTER_MEMORY} ${CLUSTER_DISK} ${CLUSTER_VERSION} ${CLUSTER_NAME}
 
+start-cluster: ## Starts cluster.
+	@./helper.sh start-cluster ${CLUSTER_CPUS} ${CLUSTER_MEMORY} ${CLUSTER_DISK} ${CLUSTER_VERSION} ${CLUSTER_NAME}
+
+stop-cluster: ## Stops cluster.
+	@./helper.sh stop-cluster ${CLUSTER_NAME}
+
 clean-cluster: ## Cleans Minikube (E.g. make clean-cluster).
 	@./helper.sh clean-cluster ${CLUSTER_NAME}
 
 tunnel-registry: ## Creates a tunnel to minikube's registry (E.g. make tunnel-registry).
 	@./helper.sh tunnel-registry
+
+helm-install: ## Installs components via helm charts.
+	@./helper.sh helm-install
 
 # Operator
 operator-build: ## Builds operator (E.g. make operator-build).

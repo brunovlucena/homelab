@@ -67,6 +67,17 @@ clean_cluster() {
     rm -r ~/.minikube/machines/"$CLUSTER_NAME" || true
 }
 
+# stops a kubernetes cluster using minikube.
+#
+# Usage:
+#  $ ./helper.sh param1 [param2]
+# * param1: stop-cluster
+# * param2: [cluster_name]
+stop_cluster() {
+    local CLUSTER_NAME="$1"
+	$MINIKUBE stop -p "$CLUSTER_NAME"
+}
+
 # starts a kubernetes cluster using minikube.
 #
 # Usage:
@@ -117,7 +128,6 @@ manage_cluster_pluggins() {
     minikube addons enable dashboard # Because dashboards are nice.
 }
 
-
 # creates a tunnel to registry.
 #
 # Usage:
@@ -125,6 +135,28 @@ manage_cluster_pluggins() {
 # * param1: tunnel-registry
 tunnel_registry() {
 	kubectl port-forward $(kubectl get pod -l actual-registry=true -o jsonpath='{.items[0].metadata.name}' -n kube-system) 5000:5000 -n kube-system &
+}
+
+# installs prometheus-operator.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: helm-install-prometheus-operator
+helm_install_prometheus_operator() {
+    NAMESPACE=kube-system
+    helm upgrade --install \
+		prometheus-operator infra/charts/prometheus-operator -n "$NAMESPACE"
+}
+
+# installs kube-state-metrics.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: helm-install-kube-state-metrics
+helm_install_kube_state_metrics() {
+    NAMESPACE=kube-system
+    helm upgrade --install \
+        kube-state-metrics infra/charts/kube-state-metrics -n "$NAMESPACE"
 }
 
 main() {
@@ -144,9 +176,16 @@ main() {
     start-cluster)
         start_cluster "$ARG1" "$ARG2" "$ARG3" "$ARG4" "$ARG5"
     ;;
+    stop-cluster)
+        stop_cluster "$ARG1"
+    ;;
     tunnel-registry)
         tunnel_registry
     ;;
+    helm-install)
+		helm_install_prometheus_operator
+		helm_install_kube_state_metrics
+	;;
   esac
 }
 
