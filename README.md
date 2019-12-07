@@ -56,6 +56,20 @@ API in golang using Chi Router
 
 - Tested: minikube v1.5.1 and Kubernetes: v1.16.2
 
+
+### Non-Functional Requirements
+
+1. Centralized configuration
+2. Service Discovery
+3. Logging
+4. Distributed Tracing
+5. Circuit Breaking
+6. Load balancing
+7. Edge
+8. Monitoring
+7. Security
+
+
 ### Endpoints
 
 | Name   | Method      | URL
@@ -66,6 +80,7 @@ API in golang using Chi Router
 | Update | `PUT/PATCH` | `/configs/{name}`
 | Delete | `DELETE`    | `/configs/{name}`
 | Query  | `GET`       | `/search?metadata.key=value`
+
 
 #### Query
 
@@ -112,6 +127,7 @@ Response example:
 ]
 ```
 
+
 #### Schema
 
 - **Config**
@@ -122,4 +138,3 @@ Response example:
 ### Configuration
 
 The application servers the API on the port defined by the environment variable `API_CONTAINER_PORT`.
-

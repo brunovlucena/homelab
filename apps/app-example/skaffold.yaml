@@ -1,10 +1,9 @@
 apiVersion: skaffold/v1
 kind: Config
 build:
-  # See: https://skaffold.dev/docs/pipeline-stages/filesync/
   artifacts:
     - image: localhost:5000/myapp
-      context: ./app-example/
+      context: .
       docker: 
         dockerfile: ./build/Dockerfile
   tagPolicy:
@@ -13,4 +12,4 @@ build:
 deploy:
   kubectl:
     manifests:
-      - ./app-example/deploy/*.yaml
+      - ./deploy/dev/*.yaml

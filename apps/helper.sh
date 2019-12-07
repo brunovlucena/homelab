@@ -104,8 +104,13 @@ build_deploy_operator() {
 }
 
 run_skaffold(){
-    cd apps
+    cd apps/app-example
     ENV=dev skaffold dev
+}
+
+run_myapp(){
+    cd apps/app-example/cmd/myapp
+    API_CONTAINER_PORT=8000 go run main.go
 }
 
 main() {
@@ -134,7 +139,7 @@ main() {
         run_skaffold
     ;;
     go-tidy)
-        cd apps/app-example && go mod tidy
+        cd apps/app-example/cmd/myapp && go mod tidy
     ;;
   esac
 }
