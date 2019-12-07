@@ -1,0 +1,33 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: "prometheus-myapp-test"
+  namespace: dev
+spec:
+  serviceAccountName: "myapp-test"
+  serviceMonitorSelector:
+    matchLabels:
+      component: "myapp"
+      role: "dev"
+  ruleSelector:
+    matchLabels:
+      role: myapp-test-alert-rules
+      prometheus: dev
+  resources:
+    requests:
+      memory: 400Mi
+  enableAdminAPI: false
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: "prometheus-myapp-test-rules"
+  labels:
+    prometheus: dev
+    role: myapp-test-alert-rules
+spec:
+  groups:
+  - name: ./example.rules
+    rules:
+    - alert: ExampleAlert
+      expr: vector(1)

@@ -133,6 +133,9 @@ main() {
     skaffold)
         run_skaffold
     ;;
+    go-tidy)
+        cd apps/app-example && go mod tidy
+    ;;
   esac
 }
 

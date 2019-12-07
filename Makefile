@@ -61,6 +61,7 @@ build-deploy-myapp: ## Builds image for app example (E.g. make build-push-myapp 
 
 # Dev
 skaffold: ## Uses skaffold during the development
+	@./apps/helper.sh go-tidy
 	@./apps/helper.sh skaffold
 
 checks:

@@ -1,0 +1,16 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: "myapp-test"
+  namespace: dev
+  labels:
+    component: "myapp"
+    role: "dev"
+spec:
+  selector:
+    matchLabels:
+      component: "myapp"
+      role: "dev"
+  endpoints:
+  - port: http

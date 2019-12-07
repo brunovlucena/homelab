@@ -13,4 +13,4 @@ build:
 deploy:
   kubectl:
     manifests:
-      - ./app-example/deploy/deployment.yaml
+      - ./app-example/deploy/*.yaml

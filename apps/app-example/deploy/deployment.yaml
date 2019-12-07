@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: "myapp-test"
+  namespace: dev
   labels:
     kube-monkey/enabled: "false"
     kube-monkey/identifier: "monkey-victim"
@@ -23,7 +24,7 @@ spec:
         component: myapp
         role: dev
     spec:
-      serviceAccountName: "default"
+      serviceAccountName: "myapp-test"
       containers:
         - name: "myapp-dev"
           imagePullPolicy: Always

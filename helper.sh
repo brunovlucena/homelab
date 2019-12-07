@@ -214,6 +214,22 @@ helm_install_postgres() {
         postgres infra/charts/postgres -n "$NAMESPACE"
 }
 
+# installs postgres.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: helm-install
+helm_install_efk() {
+    NAMESPACE=monitoring
+    kubectl create ns "$NAMESPACE" || true
+    helm upgrade --install --wait \
+        es infra/charts/efk/charts/es -n "$NAMESPACE"
+    helm upgrade --install --wait \
+        fluentd infra/charts/efk/charts/fluentd -n "$NAMESPACE"
+    helm upgrade --install --wait \
+        kibana infra/charts/efk/charts/kibana -n "$NAMESPACE"
+}
+
 wait() {
     secs=$(("$1" * 60))
     while [ $secs -gt 0 ]; do
@@ -254,12 +270,13 @@ main() {
         helm_install_prometheus_operator
         helm_install_kube_state_metrics
         helm_install_rook_ceph
-        if [[ -n $(helm ls -n rook-ceph) ]]; then
+        if [[ ! -n $(helm ls -n rook-ceph) ]]; then
             echo -e "🙏 waiting for OSD before continuing..."
             wait 2 # minutes moreless in my environment
         fi
         helm_install_velero
         helm_install_postgres
+        helm_install_efk
 	;;
   esac
 }
