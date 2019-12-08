@@ -175,7 +175,8 @@ run_postgres_local(){
      echo "Creating examples..."
      local CONN=postgresql://$DATABASE_USER:$DATABASE_PASS@$DATABASE_HOST:$DATABASE_PORT/$DATABASE_NAME?sslmode=disable
      echo "Connecting to $CONN"
-    /usr/bin/psql "$CONN" < apps/examples.sql
+    #/usr/bin/psql "$CONN" < apps/examples.sql
+    /usr/bin/psql "$CONN" < infra/charts/postgres/data.sql
 }
 
 main() {

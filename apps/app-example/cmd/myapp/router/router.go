@@ -125,11 +125,13 @@ func Create(w http.ResponseWriter, r *http.Request) {
 	// persist data into database
 	// create
 	config := data.Config{Data: configJson}
-	err = repo.Create(&config)
+	c, err := repo.Create(&config)
 	if err != nil {
 		render.Render(w, r, ErrRender(err))
 		return
 	}
+
+	render.Render(w, r, NewConfigResponse(c))
 }
 
 // Find returns the specified config.
@@ -148,11 +150,12 @@ func Update(w http.ResponseWriter, r *http.Request) {
 	utils.LogErr(err)
 	config := data.Config{Data: configJson}
 	// update
-	err = repo.Update(&config)
+	c, err := repo.Update(&config)
 	if err != nil {
 		render.Render(w, r, ErrRender(err))
 		return
 	}
+	render.Render(w, r, NewConfigResponse(c))
 }
 
 // Delete removes the specified Config.
@@ -163,11 +166,12 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 	utils.LogErr(err)
 	config := data.Config{Data: configJson}
 	// removes from database
-	_, err = repo.Remove(config.Data["name"])
+	c, err := repo.Remove(config.Data["name"].(string))
 	if err != nil {
 		render.Render(w, r, ErrRender(err))
 		return
 	}
+	render.Render(w, r, NewConfigResponse(c))
 }
 
 // Search returns the Configs data for a matching config.
