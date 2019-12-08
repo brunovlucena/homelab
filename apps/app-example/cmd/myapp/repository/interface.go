@@ -8,22 +8,22 @@ import (
 	"github.com/brunovlucena/mobimeo/apps/app-example/cmd/myapp/data"
 )
 
+const CONFIG_NOT_FOUND = "config not found"
+
 //Repository repository interface
 type Repository interface {
-	Create(config data.Config) (int, error)
-	Find(name string) (data.Config, error)
-	FindAll() ([]data.Config, error)
-	Update(config data.Config) (data.Config, error)
-	Remove(name string) (data.Config, error)
-	Search(params url.Values) ([]data.Config, error)
+	Create(config *data.Config) (*data.Config, error)
+	Find(name string) (*data.Config, error)
+	FindAll() ([]*data.Config, error)
+	Update(config *data.Config) (*data.Config, error)
+	Remove(name string) (*data.Config, error)
+	Search(params url.Values) ([]*data.Config, error)
 }
 
-func NewRepository(name string) (Repository, error) {
+func NewRepository(name, host, port, user, pass, dbname string) (Repository, error) {
 	switch strings.ToLower(name) {
-	case "inmemdb":
-		return NewInMemDB(), nil
 	case "postgres":
-		return NewPostgres(), nil
+		return NewPostgres(host, port, user, pass, dbname), nil
 	}
 	return nil, errors.New("Invalid base given")
 }

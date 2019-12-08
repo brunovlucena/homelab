@@ -7,6 +7,14 @@ set -e # Exit immediately if a command exits with a non-zero status.
 OPERATOR_SDK=~/.local/bin/operator-sdk
 MYAPP=apps/app-example
 MYAPP_OPERATOR=apps/myapp-operator
+# App Variables
+export DATABASE_TYPE=postgres
+export DATABASE_HOST=0.0.0.0
+export DATABASE_PORT=5432
+export DATABASE_USER=postgres
+export DATABASE_PASS=postgres
+export DATABASE_NAME=myapp
+export API_CONTAINER_PORT=8000
 
 # x.
 #
@@ -103,14 +111,71 @@ build_deploy_operator() {
     kubectl apply -f deploy/operator.yaml -n "$NAMESPACE"
 }
 
+# x.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: run-skafoold
 run_skaffold(){
     cd apps/app-example
     ENV=dev skaffold dev
 }
 
+# x.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: run-my-app
 run_myapp(){
     cd apps/app-example/cmd/myapp
-    API_CONTAINER_PORT=8000 go run main.go
+    go mod tidy
+	go run main.go
+}
+
+# x.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: test
+test(){
+	cd apps/app-example/cmd/myapp/repository
+	go mod tidy
+    go test
+}
+
+# x.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: debug-myapp
+#
+# b apps/app-example/cmd/myapp/repository/postgres.go:68
+# c
+debug_myapp(){
+    cd apps/app-example/cmd/myapp
+    dlv debug
+}
+
+# x.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: run-postgres-local
+run_postgres_local(){
+    # start postgres
+    docker stop postgres-myapp || true
+    echo "Starting Container..."
+    docker run --rm -d --network=host \
+          -e "POSTGRES_DB=$DATABASE_NAME" \
+          -e "POSTGRES_USER=$DATABASE_USER" \
+          -e "POSTGRES_PASSWORD=$DATABASE_PASS" \
+          --name postgres-myapp postgres:12 || true
+     # create table on database myapp
+     sleep 3
+     echo "Creating examples..."
+     local CONN=postgresql://$DATABASE_USER:$DATABASE_PASS@$DATABASE_HOST:$DATABASE_PORT/$DATABASE_NAME?sslmode=disable
+     echo "Connecting to $CONN"
+    /usr/bin/psql "$CONN" < apps/examples.sql
 }
 
 main() {
@@ -132,14 +197,23 @@ main() {
     run-myapp)
         run_myapp
     ;;
-    deploy-operator-test)
-        deploy_operator_test
+    debug-myapp)
+        debug_myapp
+    ;;
+    run-postgres-local)
+        run_postgres_local
+    ;;
+    deploy-operator-host)
+        deploy_operator_host
     ;;
     skaffold)
         run_skaffold
     ;;
     go-tidy)
         cd apps/app-example/cmd/myapp && go mod tidy
+    ;;
+    test)
+        test
     ;;
   esac
 }

@@ -32,6 +32,18 @@ spec:
           env:
           - name: API_CONTAINER_PORT 
             value: "8000"
+          - name: DATABASE_TYPE
+            value: "postgres"
+          - name: DATABASE_HOST
+            value: "postgres.postgres"
+          - name: DATABASE_PORT
+            value: "5432"
+          - name: DATABASE_USER
+            value: "myapp"
+          - name: DATABASE_TYPE
+            value: "supersecret"
+          - name: DATABASE_NAME
+            value: "myapp"
           ports:
             - name: "http"
               containerPort: 8000

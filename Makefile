@@ -50,8 +50,11 @@ build-deploy-operator-test: ## Tests MyAppOperator (E.g. make build-deploy-test)
 	 @./apps/helper.sh deploy-operator-test
 
 # MyApp
-run-myapp: ## Runs app example (E.g. make run-myapp).
+run-myapp: ## Runs app example on host (E.g. make run-myapp).
 	 @./apps/helper.sh run-myapp
+
+run-postgres-local: ## Runs postgres on host (E.g. make run-postgres-local).
+	 @./apps/helper.sh run-postgres-local
 
 build-myapp: ## Builds binary app example (E.g. make build-myapp).
 	 @./apps/helper.sh build-myapp
@@ -63,6 +66,12 @@ build-deploy-myapp: ## Builds image for app example (E.g. make build-push-myapp 
 skaffold: ## Uses skaffold during the development
 	@./apps/helper.sh go-tidy
 	@./apps/helper.sh skaffold
+
+debug-myapp: ## Runs dlv (E.g. make debug-myapp).
+	 @./apps/helper.sh debug-myapp
+
+test: ## Run Go Tests
+	 @./apps/helper.sh test
 
 checks:
 	@shellcheck helper.sh || true

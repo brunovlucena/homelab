@@ -1,0 +1,48 @@
+<h2>Welcome to myapp!</h2>
+
+<h3>Endpoints</h3>
+
+<table>
+  <tr>
+    <th>Name</th>
+    <th>Method</th>
+    <th>URL</th>
+    <th>Response</th>
+  </tr>
+  <tr>
+    <td>List</td>
+    <td>GET</td>
+    <td>/configs</td>
+	<td></td>
+  </tr>
+  <tr>
+    <td>Create</td>
+    <td>POST</td>
+    <td>/configs '{"name":"test1", "metadata": {"monitoring": {"enabled":true}}}'</td>
+	<td></td>
+  </tr>
+  <tr>
+    <td>Get</td>
+    <td>GET</td>
+    <td>/configs/{name}</td>
+	<td>{"name": "foo","metadata": {"monitoring": {"enabled": "true"},"limits": {"cpu": {"enabled": "false","value": "300m"}}}}</td>
+  </tr>
+  <tr>
+    <td>Update</td>
+    <td>PUT/PATCH</td>
+    <td>/configs/{name}</td>
+	<td></td>
+  </tr>
+  <tr>
+    <td>Delete</td>
+    <td>DELETE</td>
+    <td>/configs/{name}</td>
+	<td></td>
+  </tr>
+  <tr>
+    <td>SEARCH</td>
+    <td>GET</td>
+    <td>/search?metadata.key=value</td>
+	<td></td>
+  </tr>
+</table>

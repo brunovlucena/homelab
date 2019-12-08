@@ -1,0 +1,44 @@
+[
+  {
+    "name": "datacenter-1",
+    "metadata": {
+      "monitoring": {
+        "enabled": "true"
+      },
+      "limits": {
+        "cpu": {
+          "enabled": "false",
+          "value": "300m"
+        }
+      }
+    }
+  },
+  {
+    "name": "datacenter-2",
+    "metadata": {
+      "monitoring": {
+        "enabled": "false"
+      },
+      "limits": {
+        "cpu": {
+          "enabled": "true",
+          "value": "250m"
+        }
+      }
+    }
+  },
+  {
+    "name": "datacenter-3",
+    "metadata": {
+      "monitoring": {
+        "enabled": "true"
+      },
+      "limits": {
+        "cpu": {
+          "enabled": "true",
+          "value": "550m"
+        }
+      }
+    }
+  }
+]
