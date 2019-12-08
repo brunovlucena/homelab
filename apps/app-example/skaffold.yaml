@@ -6,9 +6,6 @@ build:
       context: .
       docker: 
         dockerfile: ./build/Dockerfile
-  tagPolicy:
-    envTemplate:
-      template: "{{.IMAGE_NAME}}:{{.ENV}}"
 deploy:
   kubectl:
     manifests:

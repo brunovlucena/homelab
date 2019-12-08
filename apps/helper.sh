@@ -118,7 +118,7 @@ build_deploy_operator() {
 # * param1: run-skafoold
 run_skaffold(){
     cd apps/app-example
-    ENV=dev skaffold dev
+    ENV=dev skaffold dev --cache-artifacts=false --watch-poll-interval=2000
 }
 
 # x.

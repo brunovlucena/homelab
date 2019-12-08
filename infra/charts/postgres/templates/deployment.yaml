@@ -25,6 +25,9 @@ spec:
         - name: postgredb
           persistentVolumeClaim:
             claimName: postgres-pv-claim
+        - name: restore
+          configMap:
+            name: job-{{ include "chart-postgres.fullname" . }}-restore
       containers:
         {{- if .Values.exporter.enabled }}
         - name: {{ .Chart.Name }}-exporter
@@ -51,7 +54,15 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          ports:
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5 && su postgres -c '/usr/bin/psql -d myapp -f /tmp/restore/data.sql'"]
+          ports: 
             - name: postgres
               containerPort: {{ .Values.image.containerPort }}
               protocol: TCP
@@ -61,6 +72,8 @@ spec:
           volumeMounts:
             - mountPath: /var/lib/postgresql/
               name: postgredb
+            - mountPath: /tmp/restore
+              name: restore
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

@@ -13,6 +13,14 @@ serviceMonitor:
 
 replicaCount: 1
 
+env:
+  - name: POSTGRES_DB
+    value: "myapp"
+  - name: POSTGRES_USER
+    value: "postgres"         
+  - name: POSTGRES_PASSWORD
+    value: "postgres"
+
 image: 
   repository: postgres
   pullPolicy: IfNotPresent

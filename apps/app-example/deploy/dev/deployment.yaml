@@ -39,9 +39,9 @@ spec:
           - name: DATABASE_PORT
             value: "5432"
           - name: DATABASE_USER
-            value: "myapp"
-          - name: DATABASE_TYPE
-            value: "supersecret"
+            value: "postgres"
+          - name: DATABASE_PASS
+            value: "postgres"
           - name: DATABASE_NAME
             value: "myapp"
           ports:
