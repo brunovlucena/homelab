@@ -54,6 +54,9 @@ securityContext:
       - NET_RAW           # send a raw packet (e.g. ping).
       - NET_ADMIN         # manage network configuration.
       - NET_BIND_SERVICE  # open a port under 1024.
+    
+networkPolicy:
+  enabled: true
 
 service:
   type: NodePort
