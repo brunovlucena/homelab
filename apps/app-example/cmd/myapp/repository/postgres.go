@@ -9,7 +9,6 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/brunovlucena/mobimeo/apps/app-example/cmd/myapp/data"
-	"github.com/brunovlucena/mobimeo/apps/app-example/cmd/myapp/utils"
 	"github.com/sirupsen/logrus"
 )
 
@@ -62,8 +61,10 @@ func (p *Postgres) Create(config *data.Config) (*data.Config, error) {
 	var id int
 	dataMap := config.Data
 	err := p.dbconn.QueryRow(sqlStatement, dataMap).Scan(&id)
-	// log error
-	utils.LogErr(err)
+	if err != nil {
+		logrus.Error(err)
+		return nil, err
+	}
 	fmt.Println("Create: New record ID is:", id)
 	return config, nil
 }
@@ -91,6 +92,7 @@ func (p *Postgres) Update(config *data.Config) (*data.Config, error) {
 	dataMap := config.Data
 	_, err := p.dbconn.Exec(sqlStatement, dataMap, dataMap["name"])
 	if err != nil {
+		logrus.Error(err)
 		return nil, err
 	}
 	fmt.Println("Update: Record Updated!")
@@ -103,6 +105,7 @@ func (p *Postgres) Remove(name string) (*data.Config, error) {
 	row := p.dbconn.QueryRow(sqlStatement, name)
 	err := row.Scan(&config.Data)
 	if err != nil {
+		logrus.Error(err)
 		return nil, err
 	}
 	// return removed record

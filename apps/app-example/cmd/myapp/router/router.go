@@ -32,9 +32,8 @@ func init() {
 	dPass := os.Getenv("DATABASE_PASS")
 	dbName := os.Getenv("DATABASE_NAME")
 	repo, err = repository.NewRepository(dType, dHost, dPort, dUser, dPass, dbName)
-	if err != nil {
-		logrus.Infoln(err)
-	}
+	// log error
+	utils.LogErr(err)
 }
 
 func (r *MyRouter) StartWebServerHTTP(appName, serverAddr string) {
@@ -51,9 +50,8 @@ func (r *MyRouter) StartWebServerHTTP(appName, serverAddr string) {
 
 	// Use HTTP2
 	err := http2.ConfigureServer(srv, &http2.Server{})
-	if err != nil {
-		logrus.Infoln("Couldn't upgrade to http2: ", err.Error())
-	}
+	// log error
+	utils.LogErr(err)
 	// setup
 	r.setupRoutes()
 	// start listening
@@ -102,10 +100,13 @@ func ConfigCtx(next http.Handler) http.Handler {
 		sk := strings.Split(r.URL.Path, "/") // E.g route: /configs/foo/bar/
 		configName := sk[2]                  // configName: foo
 		config, err := repo.Find(configName) // gets from repository
+		// check errors
 		if err != nil {
+			logrus.Error(err)
 			render.Render(w, r, ErrRender(err))
 			return
 		}
+		// save config
 		ctx := context.WithValue(r.Context(), "config", config)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -126,11 +127,13 @@ func Create(w http.ResponseWriter, r *http.Request) {
 	// create
 	config := data.Config{Data: configJson}
 	c, err := repo.Create(&config)
+	// check errors
 	if err != nil {
+		logrus.Error(err)
 		render.Render(w, r, ErrRender(err))
 		return
 	}
-
+	// render
 	render.Status(r, http.StatusCreated)
 	render.Render(w, r, NewConfigResponse(c))
 }
@@ -152,7 +155,9 @@ func Update(w http.ResponseWriter, r *http.Request) {
 	config := data.Config{Data: configJson}
 	// update
 	c, err := repo.Update(&config)
+	// check errors
 	if err != nil {
+		logrus.Error(err)
 		render.Render(w, r, ErrRender(err))
 		return
 	}
@@ -169,7 +174,9 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 	config := data.Config{Data: configJson}
 	// removes from database
 	c, err := repo.Remove(config.Data["name"].(string))
+	// check errors
 	if err != nil {
+		logrus.Error(err)
 		render.Render(w, r, ErrRender(err))
 		return
 	}

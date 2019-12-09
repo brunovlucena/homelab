@@ -11,13 +11,13 @@ import (
 
 func LogPrint(msg string) {
 	if msg != "" {
-		logrus.Println(msg)
+		logrus.Info(msg)
 	}
 }
 
 func LogErr(err error) {
 	if err != nil {
-		logrus.Println(err)
+		logrus.Error(err)
 	}
 }
 
@@ -39,6 +39,7 @@ func LoadJson(filePath string, configs *[]map[string]interface{}) {
 func GetIP() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
+		LogErr(err)
 		return "error"
 	}
 	for _, address := range addrs {
