@@ -60,7 +60,8 @@ func (p *Postgres) Create(config *data.Config) (*data.Config, error) {
 	sqlStatement := `INSERT INTO configs (data) VALUES ($1) RETURNING id`
 	var id int
 	dataMap := config.Data
-	err := p.dbconn.QueryRow(sqlStatement, dataMap).Scan(&id)
+	row := p.dbconn.QueryRow(sqlStatement, dataMap)
+	err := row.Scan(&id)
 	if err != nil {
 		logrus.Error(err)
 		return nil, err
@@ -84,7 +85,29 @@ func (p *Postgres) Find(name string) (*data.Config, error) {
 }
 
 func (p *Postgres) FindAll() ([]*data.Config, error) {
-	return make([]*data.Config, 0, 1), nil
+	// return value
+	var configs []*data.Config
+	// query
+	sqlStatement := `SELECT data FROM configs;`
+	rows, err := p.dbconn.Query(sqlStatement)
+	// check for errors
+	if err != nil {
+		logrus.Error(err)
+		return nil, err
+	}
+	// Loop through the data
+	for rows.Next() {
+		var m data.DataMap
+		err := rows.Scan(&m)
+		// check for errors
+		if err != nil {
+			logrus.Error(err)
+			return nil, err
+		}
+		// append results
+		configs = append(configs, &data.Config{Data: m})
+	}
+	return configs, err
 }
 
 func (p *Postgres) Update(config *data.Config) (*data.Config, error) {
