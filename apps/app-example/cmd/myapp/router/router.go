@@ -114,7 +114,13 @@ func ConfigCtx(next http.Handler) http.Handler {
 
 // FindsAll returns all configs.
 func FindAll(w http.ResponseWriter, r *http.Request) {
-
+	// get configs
+	configs, _ := repo.FindAll()
+	if err := render.RenderList(w, r, NewConfigListResponse(configs)); err != nil {
+		logrus.Error(err)
+		render.Render(w, r, ErrRender(err))
+		return
+	}
 }
 
 // Create creates a new config.
