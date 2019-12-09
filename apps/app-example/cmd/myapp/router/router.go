@@ -147,7 +147,7 @@ func Find(w http.ResponseWriter, r *http.Request) {
 	// get from context
 	config := r.Context().Value("config").(*data.Config)
 	render.Render(w, r, NewConfigResponse(config))
-	//render.Status(r, http.StatusFound)
+	render.Status(r, http.StatusFound)
 }
 
 // Update updates the specified Config.
@@ -170,20 +170,18 @@ func Update(w http.ResponseWriter, r *http.Request) {
 
 // Delete removes the specified Config.
 func Delete(w http.ResponseWriter, r *http.Request) {
-	// convert post data into json format
-	cr := ConfigRequest{}
-	err := cr.Bind(r)
-	utils.LogErr(err)
+	// get data from context
+	config := r.Context().Value("config").(*data.Config)
 	// removes from database
-	c, err := repo.Remove(cr.Config.Data["name"].(string))
+	_, err := repo.Remove(config.Data["name"].(string))
 	// check errors
 	if err != nil {
 		logrus.Error(err)
 		render.Render(w, r, ErrRender(err))
 		return
 	}
-	render.Render(w, r, NewConfigResponse(c))
 	render.Status(r, http.StatusFound)
+	render.Render(w, r, NewConfigResponse(config))
 }
 
 // Search returns the Configs data for a matching config.

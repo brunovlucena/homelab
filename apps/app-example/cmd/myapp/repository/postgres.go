@@ -128,8 +128,10 @@ func (p *Postgres) Remove(name string) (*data.Config, error) {
 	row := p.dbconn.QueryRow(sqlStatement, name)
 	err := row.Scan(&config.Data)
 	if err != nil {
-		logrus.Error(err)
-		return nil, err
+		if err.Error() != "sql: no rows in result set" {
+			logrus.Error(err)
+			return nil, err
+		}
 	}
 	// return removed record
 	fmt.Println("Remove: Record removed!")

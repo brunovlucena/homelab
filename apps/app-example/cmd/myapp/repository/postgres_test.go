@@ -67,7 +67,24 @@ func TestFind(t *testing.T) {
 }
 
 func TestRemove(t *testing.T) {
-	_, err := rep.Remove("pod-3p")
+	// remove pod-13-idonotexist
+	_, err := rep.Remove("pod-13-idonotexit")
 	utils.LogErr(err)
-	assert.Equal(t, "sql: no rows in result set", err.Error())
+	if err != nil {
+		assert.Equal(t, "sql: no rows in result set", err.Error())
+	}
+}
+
+func TestFindAll(t *testing.T) {
+	// find pod-11
+	configs, err := rep.FindAll()
+	utils.LogErr(err)
+	// compare metadata
+	config := configs[0]
+	data := config.Data
+	metadata := data["metadata"].(map[string]interface{})
+	monitoring := metadata["monitoring"].(map[string]interface{})
+	enabled := monitoring["enabled"].(bool)
+	// it becomes true because TestUpdate
+	assert.Equal(t, false, enabled)
 }
