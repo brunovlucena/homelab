@@ -38,14 +38,18 @@ build-deploy-operator-test     Tests MyAppOperator (E.g. make build-deploy-test)
 build-myapp                    Builds binary app example (E.g. make build-myapp).
 check-pod-security             outputs infomation about the cluster
 clean-cluster                  Cleans Minikube (E.g. make clean-cluster).
+debug-myapp                    Runs dlv (E.g. make debug-myapp).
 helm-install                   Installs components via helm charts.
 help                           Help. 
+load-test                      Run Go Tests
 pre-install                    Pre-Installs tools (E.g: $ make pre-install).
-run-myapp                      Runs app example (E.g. make run-myapp).
+run-myapp                      Runs app example on host (E.g. make run-myapp).
+run-postgres-local             Runs postgres on host (E.g. make run-postgres-local).
 skaffold                       Uses skaffold during the development
 sniff                          Sniffs comunication (E.g. make sniff)
 start-cluster                  Starts cluster.
 stop-cluster                   Stops cluster.
+test                           Run Go Tests
 tunnel-registry                Creates a tunnel to minikube's registry (E.g. make tunnel-registry).
 ```
 
