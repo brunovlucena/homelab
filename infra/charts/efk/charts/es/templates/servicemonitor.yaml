@@ -4,7 +4,7 @@ kind: ServiceMonitor
 metadata:
   name: prometheus-es
   labels:
-    component: {{ .Values.serviceMonitor.componentName }}
+    {{- include "es.prometheus" . | nindent 4 }}
 spec:
   selector:
     matchLabels:

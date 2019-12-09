@@ -11,6 +11,5 @@ spec:
       targetPort: ui
       protocol: TCP
       name: ui
-      nodePort: {{ .Values.service.nodePort }}
   selector:
     {{- include "kibana.selectorLabels" . | nindent 4 }}

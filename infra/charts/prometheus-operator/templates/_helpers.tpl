@@ -54,6 +54,13 @@ app.kubernetes.io/component: controller
 {{- end -}}
 
 {{/*
+Prometheus labels
+*/}}
+{{- define "chart-prometheus.prometheus" -}}
+component: infra
+{{- end -}}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "chart-prometheus-operator.serviceAccountName" -}}

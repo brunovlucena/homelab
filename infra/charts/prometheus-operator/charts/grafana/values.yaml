@@ -2,8 +2,9 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+# TODO setup grana loki
 grafanaLoki: 
-  enabled: false # slows down bootstraping the monitoring pulling images.
+  enabled: false
 
 serviceMonitor:
   componentName: infra
@@ -38,14 +39,27 @@ securityContext:
    runAsUser: 1000
 
 service:
-  type: NodePort
+  type: ClusterIP
   grafana:
     port: 3000
     nodePort: 30003
   grafanaLoki:
     port: 9080
-    nodeport: 30004
 
+ingress:
+  enabled: enabled
+  annotations:
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: grafana.local
+      paths:
+        - /
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+  #
 resources:
   limits:
     cpu: 100m
@@ -59,3 +73,9 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+# TODO: ConfigMaps.
+configMaps:
+  grafana:
+    default.ini: | 
+       foo: bar

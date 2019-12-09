@@ -29,7 +29,13 @@ pre_install() {
             git clone https://github.com/weaveworks/kubediff.git /tmp/kubediff
             cp /temp/kubediff/kubediff ~./local/bin/kubediff
             cp -R kubedifflib ~/.local/usr/local/bin
-    ;;
+        ;;
+        k6)
+            sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 379CE192D401AB61
+            echo "deb https://dl.bintray.com/loadimpact/deb stable main" | sudo tee -a /etc/apt/sources.list
+            sudo apt-get update
+            sudo apt-get install k6
+        ;;
     esac
 }
 
@@ -269,14 +275,14 @@ main() {
     helm-install)
         helm_install_prometheus_operator
         helm_install_kube_state_metrics
-        helm_install_rook_ceph
-        if [[ ! -n $(helm ls -n rook-ceph) ]]; then
-            echo -e "🙏 waiting for OSD before continuing..."
-            wait 2 # minutes moreless in my environment
-        fi
-        helm_install_velero
+        #helm_install_rook_ceph
+        #if [[ ! -n $(helm ls -n rook-ceph) ]]; then
+            #echo -e "🙏 waiting for OSD before continuing..."
+            #wait 2 # minutes moreless in my environment
+        #fi
+        #helm_install_velero
         helm_install_efk
-        helm_install_postgres
+        #helm_install_postgres
 	;;
   esac
 }

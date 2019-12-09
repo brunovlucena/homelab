@@ -28,3 +28,21 @@ spec:
       name: http
   selector:
     alertmanager: alertmanager 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: proemtheus-operated-nodeport
+  labels:
+    {{- include "chart-prometheus.prometheus" . | nindent 4 }}
+spec:
+  type: NodePort
+  ports:
+  - port: 9090
+    nodePort: 30200
+    targetPort: web
+    protocol: TCP
+    name: web
+  selector:
+    app: prometheus
+    prometheus: prometheus

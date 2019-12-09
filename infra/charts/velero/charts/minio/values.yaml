@@ -34,15 +34,15 @@ securityContext:
   #   - ALL
 
 service:
-  type: NodePort
+  type: ClusterIP
   port: 443
-  nodePort: 30008
 
 ingress:
-  enabled: false
+  enabled: true
   hosts:
-    - host: chart-example.local
-      paths: []
+    - host: backup.local
+      paths:
+        - /minio
   tls: []
   #  - secretName: chart-example-tls
   #    hosts:

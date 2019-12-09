@@ -138,9 +138,9 @@ run_myapp(){
 #  $ ./helper.sh param1
 # * param1: test
 test(){
-	cd apps/app-example/cmd/myapp/repository
+	cd apps/app-example/cmd/myapp
 	go mod tidy
-    go test
+    go test ./...
 }
 
 # x.
@@ -179,6 +179,17 @@ run_postgres_local(){
     /usr/bin/psql "$CONN" < infra/charts/postgres/data.sql
 }
 
+# performas a load test.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: load-test
+# NOTE:  sudo apt install maven
+load_test() {
+    cd apps
+    k6 run load.js
+}
+
 main() {
   local ARG0="$1"
   local ARG1="$2"
@@ -215,6 +226,9 @@ main() {
     ;;
     test)
         test
+    ;;
+    load-test)
+        load_test
     ;;
   esac
 }

@@ -1,0 +1,40 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: kube-state-metrics
+spec:
+  serviceAccountName: prometheus-operated
+  serviceMonitorSelector:
+    matchLabels:
+      {{- include "kube-state-metrics.prometheus" . | nindent 6 }}
+  ruleSelector:
+    matchLabels:
+      {{- include "kube-state-metrics.prometheus" . | nindent 6 }}
+  resources:
+    {{- toYaml .Values.resources | nindent 4 }}
+  enableAdminAPI: true
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-operated
+  labels:
+    {{ include "kube-state-metrics.labels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: proemtheus-operated-nodeport
+  labels:
+    {{- include "kube-state-metrics.prometheus" . | nindent 4 }}
+spec:
+  type: NodePort
+  ports:
+  - port: 9090
+    nodePort: 30100
+    targetPort: web
+    protocol: TCP
+    name: web
+  selector:
+    app: prometheus
+    prometheus: kube-state-metrics

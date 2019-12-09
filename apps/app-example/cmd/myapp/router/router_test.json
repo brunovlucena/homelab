@@ -1,6 +1,6 @@
 [
   {
-    "name": "pod-1p",
+    "name": "pod-1r",
     "metadata": {
       "monitoring": {
         "enabled": "true"
@@ -14,7 +14,7 @@
     }
   },
   {
-    "name": "pod-2p",
+    "name": "pod-2r",
     "metadata": {
       "monitoring": {
         "enabled": "false"
@@ -28,7 +28,7 @@
     }
   },
   {
-    "name": "pod-3p",
+    "name": "pod-3r",
     "metadata": {
       "monitoring": {
         "enabled": "true"
@@ -37,6 +37,20 @@
         "cpu": {
           "enabled": "true",
           "value": "550m"
+        }
+      }
+    }
+  },
+  {
+    "name": "pod-3",
+    "metadata": {
+      "monitoring": {
+        "enabled": "false"
+      },
+      "limits": {
+        "cpu": {
+          "enabled": "false",
+          "value": "250m"
         }
       }
     }

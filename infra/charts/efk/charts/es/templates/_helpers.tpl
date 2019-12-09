@@ -52,6 +52,13 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{/*
+Prometheus labels
+*/}}
+{{- define "es.prometheus" -}}
+component: infra
+{{- end -}}
+{{/*
+
 Create the name of the service account to use
 */}}
 {{- define "es.serviceAccountName" -}}

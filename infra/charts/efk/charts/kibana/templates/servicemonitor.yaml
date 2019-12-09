@@ -4,7 +4,7 @@ kind: ServiceMonitor
 metadata:
   name: prometheus-kibana
   labels:
-    component: {{ .Values.serviceMonitor.componentName }}
+    {{- include "kibana.prometheus" . | nindent 4 }}
 spec:
   selector:
     matchLabels:

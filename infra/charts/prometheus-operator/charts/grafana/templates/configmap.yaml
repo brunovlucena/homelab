@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "grafana.fullname" . }}-grafana
+  labels:
+    {{- include "grafana.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+data:
+  {{- toYaml .Values.configMaps.grafana | nindent 2 }}
+---

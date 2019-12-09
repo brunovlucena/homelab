@@ -12,13 +12,11 @@ spec:
       targetPort: ui
       protocol: TCP
       name: ui
-      nodePort: {{ .Values.service.grafana.nodePort }}
     {{- if .Values.grafanaLoki.enabled }}
     - port: {{ .Values.service.grafanaLoki.port }}
       targetPort: loki
       protocol: TCP
       name: loki
-      nodePort: {{ .Values.service.grafanaLoki.nodePort }}
     {{ end }}
   selector:
     {{- include "grafana.selectorLabels" . | nindent 4 }}

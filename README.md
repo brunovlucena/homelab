@@ -49,6 +49,16 @@ stop-cluster                   Stops cluster.
 tunnel-registry                Creates a tunnel to minikube's registry (E.g. make tunnel-registry).
 ```
 
+## Infra Endpoints
+
+**NOTE**: You should edit `/etc/hosts` to point minikube's ip
+
+[Kibana](http://kibana.local/kibana)
+[Grafana](http://grafana.local)
+[Prometheus-Monitoring](http://prom.local:30100)
+[Prometheus-Rook](http://prom.local:30200)
+[Prometheus-Dev](http://prom.local:30300)
+
 
 ## API In Golang
 
@@ -68,6 +78,7 @@ API in golang using Chi Router
 7. Edge
 8. Monitoring
 7. Security
+
 
 
 ### Endpoints
@@ -138,3 +149,4 @@ Response example:
 ### Configuration
 
 The application servers the API on the port defined by the environment variable `API_CONTAINER_PORT`.
+

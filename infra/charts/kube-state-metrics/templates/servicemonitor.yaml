@@ -4,7 +4,7 @@ kind: ServiceMonitor
 metadata:
   name: kube-state-metrics
   labels:
-    component: {{ .Values.serviceMonitor.componentName }}
+    {{- include "kube-state-metrics.prometheus" . | nindent 4 }}
 spec:
   selector:
     matchLabels:

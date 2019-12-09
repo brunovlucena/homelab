@@ -32,6 +32,11 @@ spec:
         securityContext:
           privileged: true
       containers:
+        - name: {{ .Chart.Name }}-exporter
+          image: justwatch/elasticsearch_exporter:1.1.0
+          ports:
+          - containerPort: 9114
+            name: exporter
         - name: {{ .Chart.Name }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}

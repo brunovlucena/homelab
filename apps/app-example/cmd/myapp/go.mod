@@ -11,6 +11,7 @@ require (
 	github.com/prometheus/client_golang v1.2.1
 	github.com/rs/cors v1.7.0
 	github.com/sirupsen/logrus v1.4.2
+	github.com/smartystreets/goconvey v1.6.4
 	github.com/stretchr/testify v1.4.0
 	golang.org/x/net v0.0.0-20191105084925-a882066a44e0
 	golang.org/x/sys v0.0.0-20191110163157-d32e6e3b99c4 // indirect

@@ -1,9 +1,6 @@
 package repository
 
 import (
-	"encoding/json"
-	"io/ioutil"
-	"os"
 	"testing"
 
 	"github.com/brunovlucena/mobimeo/apps/app-example/cmd/myapp/data"
@@ -17,17 +14,8 @@ var (
 )
 
 func init() {
-	// Open our jsonFile
-	jsonFile, err := os.Open("postgres_test.json")
-	// if we os.Open returns an error then handle it
-	utils.LogErr(err)
-	utils.LogPrint("Successfully Opened postgres_test.json")
-	// defer the closing of our jsonFile
-	defer jsonFile.Close()
-	// read our opened json
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-	// we unmarshal our byteArray
-	json.Unmarshal(byteValue, &configs)
+	// load json
+	utils.LoadJson("postgres_test.json", &configs)
 	// initialize repository
 	dType := "postgres"
 	dHost := "0.0.0.0"
@@ -35,6 +23,7 @@ func init() {
 	dUser := "postgres"
 	dPass := "postgres"
 	dbName := "myapp"
+	var err error
 	rep, err = NewRepository(dType, dHost, dPort, dUser, dPass, dbName)
 	utils.LogErr(err)
 	utils.LogPrint("Successfully Loaded tests")
@@ -51,22 +40,22 @@ func TestCreate(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	// new changed metadata
 	newData := map[string]interface{}{
-		"name": "datacenter-2",
+		"name": "pod-2p",
 		"metadata": map[string]interface{}{
 			"monitoring": map[string]interface{}{
 				"enabled": "true",
 			},
 		},
 	}
-	// update datacenter-2
+	// update pod-2
 	_, err := rep.Update(&data.Config{Data: newData})
 	utils.LogErr(err)
 	// TestFind is gonna fail if TestUpdate fails.
 }
 
 func TestFind(t *testing.T) {
-	// find datacenter-2
-	config, err := rep.Find("datacenter-2")
+	// find pod-2
+	config, err := rep.Find("pod-2p")
 	utils.LogErr(err)
 	// compare metadata
 	data := config.Data
@@ -78,7 +67,7 @@ func TestFind(t *testing.T) {
 }
 
 func TestRemove(t *testing.T) {
-	_, err := rep.Remove("datacenter-3")
+	_, err := rep.Remove("pod-3p")
 	utils.LogErr(err)
 	assert.Equal(t, "sql: no rows in result set", err.Error())
 }

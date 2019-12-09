@@ -36,23 +36,23 @@ spec:
             value: "http://{{ .Values.deps.elasticsearch.service }}.{{ .Release.Namespace }}:{{ .Values.deps.elasticsearch.port }}"
           - name: SERVER_NAME
             value: kibana
-          #- name: SERVER_BASEPATH
-            #value: /api/v1/namespaces/kube-system/services/kibana-logging/proxy
+          - name: SERVER_BASEPATH
+            value: /kibana
           - name: SERVER_REWRITEBASEPATH
-            value: "false"
+            value: "true"
           ports:
             - name: ui
               containerPort: 5601
               protocol: TCP
           livenessProbe:
             httpGet:
-              path: /api/status
+              path: /kibana/api/status
               port: ui
             initialDelaySeconds: 5
             timeoutSeconds: 10
           readinessProbe:
             httpGet:
-              path: /api/status
+              path: /kibana/api/status
               port: ui
             initialDelaySeconds: 5
             timeoutSeconds: 10

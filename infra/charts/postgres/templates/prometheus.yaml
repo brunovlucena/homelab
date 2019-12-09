@@ -6,10 +6,10 @@ spec:
   serviceAccountName: prometheus-operator
   serviceMonitorSelector:
     matchLabels:
-      {{ include "chart-prometheus.prometheus" . | nindent 6 }}
+      component: {{ .Values.componentName | nindent 6 }}
   ruleSelector:
     matchLabels:
-      {{ include "chart-prometheus.prometheus" . | nindent 6 }}
+      component: {{ .Values.componentName | nindent 6 }}
   resources:
     {{- toYaml .Values.resources.operated | nindent 4 }}
-  enableAdminAPI: false
+  enableAdminAPI: true

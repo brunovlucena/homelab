@@ -21,4 +21,5 @@
 *.tmproj
 .vscode/
 # Custom
+# TODO: ceph prom rules
 prometheus-ceph-rules.yaml

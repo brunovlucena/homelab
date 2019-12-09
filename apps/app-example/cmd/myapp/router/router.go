@@ -131,6 +131,7 @@ func Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	render.Status(r, http.StatusCreated)
 	render.Render(w, r, NewConfigResponse(c))
 }
 
@@ -155,6 +156,7 @@ func Update(w http.ResponseWriter, r *http.Request) {
 		render.Render(w, r, ErrRender(err))
 		return
 	}
+	render.Status(r, http.StatusOK)
 	render.Render(w, r, NewConfigResponse(c))
 }
 
@@ -171,6 +173,7 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 		render.Render(w, r, ErrRender(err))
 		return
 	}
+	render.Status(r, http.StatusFound)
 	render.Render(w, r, NewConfigResponse(c))
 }
 
