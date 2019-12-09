@@ -12,14 +12,14 @@ clean(){
 # cluster
 icon=🚀
 echo -e "$icon Pre-install..."
-#make pre-install
+make pre-install
 echo -e "$icon Bootstrapping..."
-#make bootstrap-cluster
+make bootstrap-cluster
 echo -e "$icon Intalling Components via Helm Charts..."
-#make helm-install
+make helm-install
 # app
-#echo -e "🌉 Creating tunnel..."
-#make tunnel-registry
+echo -e "🌉 Creating tunnel..."
+make tunnel-registry
 #echo -e "😁  cleaning local images..."
 #clean
 echo -e "🚛 Deploying myapp-operator..."

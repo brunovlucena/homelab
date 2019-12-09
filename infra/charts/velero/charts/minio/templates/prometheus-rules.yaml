@@ -3,16 +3,17 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   labels:
-    component: {{ .Values.componentName | nindent 4 }}
+    {{- include "minio.prometheus" . | nindent 4 }}
   name: prometheus-rules-minio
 spec:
   groups:
   - name: ./minio.rules
+    rules:
     - alert: DiskDown
       expr: minio_offline_disks > 0
       for: 5m
       labels:
         severity: error
       annotations:
-        summary: "Disk down (instance {{ $labels.instance }})"
-        description: "Minio Disk is down\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}"
+        summary: "{{`Disk down (instance {{ $labels.instance }})`}}"
+        description: "{{`Minio Disk is down\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"

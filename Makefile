@@ -19,7 +19,7 @@ help: ## Help.
 pre-install: ## Pre-Installs tools (E.g: $ make pre-install).
 	@./helper.sh pre-install minikube ${MINIKUBE_VERSION}
 	@./helper.sh pre-install operator-sdk ${OPERATOR_VERSION}
-	@./helper.sh pre-install k6
+	#@./helper.sh pre-install k6
 
 bootstrap-cluster: ## Bootstraps cluster (E.g. make bootstrap).
 	@./helper.sh bootstrap-cluster ${CLUSTER_CPUS} ${CLUSTER_MEMORY} ${CLUSTER_DISK} ${CLUSTER_VERSION} ${CLUSTER_NAME}

@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: {{ include "minio.fullname" . }}
   labels:
-    component: {{ .Values.serviceMonitor.componentName }}
+    {{- include "minio.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:

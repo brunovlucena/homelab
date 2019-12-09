@@ -35,7 +35,7 @@ spec:
           - name: DATABASE_TYPE
             value: "postgres"
           - name: DATABASE_HOST
-            value: "postgres.postgres"
+            value: "postgres.storage"
           - name: DATABASE_PORT
             value: "5432"
           - name: DATABASE_USER

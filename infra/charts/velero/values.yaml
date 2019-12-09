@@ -99,7 +99,7 @@ configuration:
       #region: eu-west-1
       region: minio
       s3ForcePathStyle: "true"
-      s3Url: http://velero-minio.backup:443
+      s3Url: http://velero-minio.storage:443
 
   # Parameters for the `default` VolumeSnapshotLocation. See
   # https://velero.io/docs/v1.0.0/api-types/volumesnapshotlocation/

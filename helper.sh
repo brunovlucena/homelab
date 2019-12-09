@@ -5,6 +5,8 @@ set -e # Exit immediately if a command exits with a non-zero status.
 
 # Variables
 MINIKUBE=~/.local/bin/minikube
+OPERATOR=~/.local/bin/operator-sdk
+KUBEDIFF=~./local/bin/kubediff
 
 # pre-install some basic components.
 #
@@ -24,18 +26,18 @@ pre_install() {
             local PATH="https://github.com/operator-framework/operator-sdk/releases/download/$VERSION/operator-sdk-$VERSION-x86_64-linux-gnu"
             [[ ! -f $OPERATOR ]] && /usr/bin/wget "$PATH" -O "$OPERATOR" ; /bin/chmod +x "$OPERATOR"
         ;;
-        kubediff)
-            [[ ! -f $OPERATOR  ]] &&
-            git clone https://github.com/weaveworks/kubediff.git /tmp/kubediff
-            cp /temp/kubediff/kubediff ~./local/bin/kubediff
-            cp -R kubedifflib ~/.local/usr/local/bin
-        ;;
-        k6)
-            sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 379CE192D401AB61
-            echo "deb https://dl.bintray.com/loadimpact/deb stable main" | sudo tee -a /etc/apt/sources.list
-            sudo apt-get update
-            sudo apt-get install k6
-        ;;
+        #kubediff)
+            #[[ ! -f $KUBEDIFF  ]] &&
+            #git clone https://github.com/weaveworks/kubediff.git /tmp/kubediff
+            #cp /temp/kubediff/kubediff ~./local/bin/kubediff
+            #cp -R kubedifflib ~/.local/bin
+        #;;
+        #k6)
+            #sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 379CE192D401AB61
+            #echo "deb https://dl.bintray.com/loadimpact/deb stable main" | sudo tee -a /etc/apt/sources.list
+            #sudo apt-get update
+            #sudo apt-get install k6
+        #;;
     esac
 }
 
@@ -201,7 +203,7 @@ helm_install_rook_ceph() {
 #  $ ./helper.sh param1
 # * param1: helm-install
 helm_install_velero() {
-    NAMESPACE=backup
+    NAMESPACE=storage
     kubectl create ns "$NAMESPACE" || true
     helm upgrade --install --wait \
         velero infra/charts/velero -n "$NAMESPACE"
@@ -214,7 +216,7 @@ helm_install_velero() {
 #  $ ./helper.sh param1
 # * param1: helm-install
 helm_install_postgres() {
-    NAMESPACE=postgres
+    NAMESPACE=storage
     kubectl create ns "$NAMESPACE" || true
     helm upgrade --install --wait \
         postgres infra/charts/postgres -n "$NAMESPACE"
@@ -275,14 +277,14 @@ main() {
     helm-install)
         helm_install_prometheus_operator
         helm_install_kube_state_metrics
-        #helm_install_rook_ceph
-        #if [[ ! -n $(helm ls -n rook-ceph) ]]; then
-            #echo -e "🙏 waiting for OSD before continuing..."
-            #wait 2 # minutes moreless in my environment
-        #fi
-        #helm_install_velero
+        helm_install_rook_ceph
+        if [[ ! -n $(helm ls -n rook-ceph) ]]; then
+            echo -e "🙏 waiting for OSD before continuing..."
+            wait 2 # minutes moreless in my environment
+        fi
+        helm_install_velero
         helm_install_efk
-        #helm_install_postgres
+        helm_install_postgres
 	;;
   esac
 }
