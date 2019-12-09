@@ -23,16 +23,16 @@ func LogErr(err error) {
 
 func LoadJson(filePath string, configs *[]map[string]interface{}) {
 	// Open our jsonFile
-	jsonFile, err := os.Open(filePath)
+	jsonArrayFile, err := os.Open(filePath)
 	// if we os.Open returns an error then handle it
 	LogErr(err)
 	LogPrint("Successfully Opened " + filePath)
 	// defer the closing of our jsonFile
-	defer jsonFile.Close()
+	defer jsonArrayFile.Close()
 	// read our opened json
-	byteValue, _ := ioutil.ReadAll(jsonFile)
+	byteValue, _ := ioutil.ReadAll(jsonArrayFile)
 	// we unmarshal our byteArray
-	json.Unmarshal(byteValue, &configs)
+	json.Unmarshal(byteValue, configs)
 }
 
 // this helper function returns the ipv4 address from the server

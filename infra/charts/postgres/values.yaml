@@ -53,9 +53,8 @@ networkPolicy:
   enabled: true
 
 service:
-  type: NodePort
+  type: ClusterIP
   port: 5432
-  nodePort: 30009
   exporter:
     type: ClusterIP
     port: 9187

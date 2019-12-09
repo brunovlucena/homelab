@@ -31,8 +31,9 @@ securityContext:
   #   - ALL
 
 service:
-  type: ClusterIP
+  type: NodePort
   port: 443
+  nodePort: 30600
 
 ingress:
   enabled: true

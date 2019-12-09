@@ -3,7 +3,8 @@ kind: Job
 metadata:
   name: job-{{ include "minio.fullname" . }}
   annotations:
-    "helm.sh/hook-delete-policy": hook-succeeded
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded,hook-failed
+    "helm.sh/hook-weight": "-5"
 spec:
   template:
     metadata:
@@ -21,6 +22,6 @@ spec:
         image: minio/mc
         command: ["/bin/sh","-c"]
         args: 
-          - "sleep 15"
+          - "sleep 60"
           - "mc config host add minio http://velero-minio.storage:443 OSY6A34KEVVJWXU36WL8 IkVBhxIgdd6sf7zLjdoRMJ1Vdm4OEjMP7pwNNVUh --api S3v4"
           - "mc mb minio/minikube --region=minio"

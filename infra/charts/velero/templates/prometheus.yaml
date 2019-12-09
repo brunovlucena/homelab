@@ -3,10 +3,13 @@ kind: Prometheus
 metadata:
   name: prometheus
 spec:
-  serviceAccountName: prometheus-operator
+  serviceAccountName: prometheus-operated
   serviceMonitorSelector:
     matchLabels:
-      component: {{ .Values.serviceMonitor.componentName }}
+      {{- include "velero.prometheus" . | nindent 6 }}
+  ruleSelector:
+    matchLabels:
+      {{- include "velero.prometheus" . | nindent 6 }}
   resources:
     {{- toYaml .Values.resources.prometheus | nindent 4 }}
   enableAdminAPI: false
@@ -34,4 +37,4 @@ spec:
     name: web
   selector:
     app: prometheus
-    prometheus: kube-state-metrics
+    prometheus: prometheus

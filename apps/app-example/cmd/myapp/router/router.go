@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -115,24 +114,23 @@ func ConfigCtx(next http.Handler) http.Handler {
 // FindsAll returns all configs.
 func FindAll(w http.ResponseWriter, r *http.Request) {
 	// get configs
-	configs, _ := repo.FindAll()
-	if err := render.RenderList(w, r, NewConfigListResponse(configs)); err != nil {
+	configs, err := repo.FindAll()
+	if err != nil {
 		logrus.Error(err)
 		render.Render(w, r, ErrRender(err))
 		return
 	}
+	render.RenderList(w, r, NewConfigListResponse(configs))
 }
 
 // Create creates a new config.
 func Create(w http.ResponseWriter, r *http.Request) {
 	// convert post data into json format
-	var configJson map[string]interface{}
-	err := json.NewDecoder(r.Body).Decode(&configJson)
+	cr := ConfigRequest{}
+	err := cr.Bind(r)
 	utils.LogErr(err)
-	// persist data into database
-	// create
-	config := data.Config{Data: configJson}
-	c, err := repo.Create(&config)
+	// persist data in the database
+	c, err := repo.Create(&cr.Config)
 	// check errors
 	if err != nil {
 		logrus.Error(err)
@@ -148,19 +146,18 @@ func Create(w http.ResponseWriter, r *http.Request) {
 func Find(w http.ResponseWriter, r *http.Request) {
 	// get from context
 	config := r.Context().Value("config").(*data.Config)
-	render.Status(r, http.StatusOK)
 	render.Render(w, r, NewConfigResponse(config))
+	//render.Status(r, http.StatusFound)
 }
 
 // Update updates the specified Config.
 func Update(w http.ResponseWriter, r *http.Request) {
 	// convert post data into json format
-	var configJson map[string]interface{}
-	err := json.NewDecoder(r.Body).Decode(&configJson)
+	cr := ConfigRequest{}
+	err := cr.Bind(r)
 	utils.LogErr(err)
-	config := data.Config{Data: configJson}
-	// update
-	c, err := repo.Update(&config)
+	// update record
+	c, err := repo.Update(&cr.Config)
 	// check errors
 	if err != nil {
 		logrus.Error(err)
@@ -174,20 +171,19 @@ func Update(w http.ResponseWriter, r *http.Request) {
 // Delete removes the specified Config.
 func Delete(w http.ResponseWriter, r *http.Request) {
 	// convert post data into json format
-	var configJson map[string]interface{}
-	err := json.NewDecoder(r.Body).Decode(&configJson)
+	cr := ConfigRequest{}
+	err := cr.Bind(r)
 	utils.LogErr(err)
-	config := data.Config{Data: configJson}
 	// removes from database
-	c, err := repo.Remove(config.Data["name"].(string))
+	c, err := repo.Remove(cr.Config.Data["name"].(string))
 	// check errors
 	if err != nil {
 		logrus.Error(err)
 		render.Render(w, r, ErrRender(err))
 		return
 	}
-	render.Status(r, http.StatusFound)
 	render.Render(w, r, NewConfigResponse(c))
+	render.Status(r, http.StatusFound)
 }
 
 // Search returns the Configs data for a matching config.

@@ -137,10 +137,24 @@ run_myapp(){
 # Usage:
 #  $ ./helper.sh param1
 # * param1: test
+#
 test(){
 	cd apps/app-example/cmd/myapp
-	go mod tidy
-    go test ./...
+    go mod tidy
+    go test ./... || true
+}
+
+# x.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: test
+#
+# go get github.com/smartystreets/goconvey
+test_gui(){
+	cd apps/app-example/cmd/myapp
+    # Then watch the test results display in your browser
+    $GOPATH/bin/goconvey
 }
 
 # x.
@@ -154,6 +168,19 @@ test(){
 debug_myapp(){
     cd apps/app-example/cmd/myapp
     dlv debug
+}
+
+# x.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: debug-myapp
+#
+# b apps/app-example/cmd/myapp/repository/postgres_test.go:32
+# c
+debug_myapp_tests(){
+    cd apps/app-example/cmd/myapp/router/
+    dlv test
 }
 
 # x.
@@ -212,6 +239,9 @@ main() {
     debug-myapp)
         debug_myapp
     ;;
+    debug-myapp-tests)
+        debug_myapp_tests
+    ;;
     run-postgres-local)
         run_postgres_local
     ;;
@@ -226,6 +256,9 @@ main() {
     ;;
     test)
         test
+    ;;
+    test-gui)
+        test_gui
     ;;
     load-test)
         load_test

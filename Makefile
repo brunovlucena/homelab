@@ -71,8 +71,14 @@ skaffold: ## Uses skaffold during the development
 debug-myapp: ## Runs dlv (E.g. make debug-myapp).
 	 @./apps/helper.sh debug-myapp
 
+debug-myapp-tests: ## Runs dlv to debug Tests.
+	 @./apps/helper.sh debug-myapp-tests
+
 test: ## Run Go Tests
 	 @./apps/helper.sh test
+
+test-gui: ## Run Go Tests (Browser)
+	 @./apps/helper.sh test-gui
 
 load-test: ## Run Go Tests
 	 @./apps/helper.sh load-test

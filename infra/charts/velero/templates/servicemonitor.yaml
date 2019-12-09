@@ -3,7 +3,7 @@ kind: ServiceMonitor
 metadata:
   name: velero
   labels:
-    component: {{ .Values.serviceMonitor.componentName }}
+    {{- include "velero.prometheus" . | nindent 4 }}
 spec:
   selector:
     matchLabels:
