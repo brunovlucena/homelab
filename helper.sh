@@ -222,7 +222,7 @@ helm_install_postgres() {
         postgres infra/charts/postgres -n "$NAMESPACE"
 }
 
-# installs postgres.
+# installs efk.
 #
 # Usage:
 #  $ ./helper.sh param1
@@ -238,6 +238,8 @@ helm_install_efk() {
         kibana infra/charts/efk/charts/kibana -n "$NAMESPACE"
 }
 
+# helper method for helm-install because rook takes a loot time
+# and did not wanted to --wait.
 wait() {
     secs=$(("$1" * 60))
     while [ $secs -gt 0 ]; do

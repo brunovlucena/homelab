@@ -30,8 +30,7 @@ spec:
       containers:
         - name: {{ .Chart.Name }}-client
           image: minio/mc
-          command: ["/bin/sh"]
-          args: ["-c", "sleep 3000"]
+          command: ["/bin/sh", "-c", "sleep 120"]
         - name: {{ .Chart.Name }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}

@@ -1,7 +1,7 @@
 apiVersion: monitoring.coreos.com/v1
 kind: Prometheus
 metadata:
-  name: velero
+  name: prometheus
 spec:
   serviceAccountName: prometheus-operator
   serviceMonitorSelector:
@@ -10,3 +10,28 @@ spec:
   resources:
     {{- toYaml .Values.resources.prometheus | nindent 4 }}
   enableAdminAPI: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-operated
+  labels:
+    {{ include "velero.labels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: proemtheus-operated-nodeport
+  labels:
+    {{- include "velero.prometheus" . | nindent 4 }}
+spec:
+  type: NodePort
+  ports:
+  - port: 9090
+    nodePort: 30300
+    targetPort: web
+    protocol: TCP
+    name: web
+  selector:
+    app: prometheus
+    prometheus: kube-state-metrics

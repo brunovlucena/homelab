@@ -66,6 +66,13 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
 {{/*
+Prometheus labels
+*/}}
+{{- define "velero.prometheus" -}}
+component: infra
+{{- end -}}
+
+{{/*
 Selector labels
 */}}
 {{- define "velero.selectorLabels" -}}
