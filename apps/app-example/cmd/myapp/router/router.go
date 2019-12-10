@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -13,13 +14,18 @@ import (
 	"github.com/brunovlucena/mobimeo/apps/app-example/cmd/myapp/utils"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/render"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/http2"
 )
 
 var (
-	repo repository.Repository
+	repo      repository.Repository
+	histogram = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "create_duration_seconds",
+		Help: "Time taken to create a config",
+	}, []string{"code"})
 )
 
 func init() {
@@ -33,6 +39,8 @@ func init() {
 	repo, err = repository.NewRepository(dType, dHost, dPort, dUser, dPass, dbName)
 	// log error
 	utils.LogErr(err)
+	// prometheus
+	prometheus.Register(histogram)
 }
 
 func (r *MyRouter) StartWebServerHTTP(appName, serverAddr string) {
@@ -125,6 +133,8 @@ func FindAll(w http.ResponseWriter, r *http.Request) {
 
 // Create creates a new config.
 func Create(w http.ResponseWriter, r *http.Request) {
+	// start of metric
+	start := time.Now()
 	// convert post data into json format
 	cr := ConfigRequest{}
 	err := cr.Bind(r)
@@ -134,11 +144,21 @@ func Create(w http.ResponseWriter, r *http.Request) {
 	// check errors
 	if err != nil {
 		logrus.Error(err)
+		// Status Error
+		code := http.StatusUnprocessableEntity // 422
+		// prometheus: observe error
+		duration := time.Since(start)
+		observe(duration, code)
 		render.Render(w, r, ErrRender(err))
 		return
 	}
+	// Status Created
+	code := http.StatusCreated
+	// prometheus: observe created
+	duration := time.Since(start)
+	observe(duration, code)
 	// render
-	render.Status(r, http.StatusCreated)
+	render.Status(r, code)
 	render.Render(w, r, NewConfigResponse(c))
 }
 
@@ -188,4 +208,8 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 // Query:   /metadata.{key}={value}
 func Search(w http.ResponseWriter, r *http.Request) {
 
+}
+
+func observe(duration time.Duration, code int) {
+	histogram.WithLabelValues(fmt.Sprintf("%d", code)).Observe(duration.Seconds())
 }

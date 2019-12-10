@@ -24,7 +24,7 @@ metadata:
 apiVersion: v1
 kind: Service
 metadata:
-  name: proemtheus-operated-nodeport
+  name: prometheus-operated-nodeport
   labels:
     {{- include "kube-state-metrics.prometheus" . | nindent 4 }}
 spec:
