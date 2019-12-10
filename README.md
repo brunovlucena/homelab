@@ -158,3 +158,8 @@ Response example:
 The application servers the API on the port defined by the environment variable `API_CONTAINER_PORT`.
 
 
+## TODO
+
+- Search
+- Ingres TLS
+- Make Operator interact with cluster (E.g create a backup given some alert).
