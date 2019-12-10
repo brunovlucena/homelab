@@ -77,7 +77,6 @@ test-gui: ## Run Go Tests (Browser)
 	 @./apps/helper.sh test-gui
 
 load-test: ## Run Go Test (E.g make load-test)
-	 # Note: run in paralell $ make run-myapp
 	 @./apps/helper.sh load-test
 
 checks:

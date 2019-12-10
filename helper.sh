@@ -282,15 +282,6 @@ main() {
         helm_install_prometheus_operator
         helm_install_kube_state_metrics
         helm_install_rook_ceph
-        local msg=$(kubectl get pods -l app=rook-ceph-osd -n rook-ceph)
-        if [ "$msg" = "No resources found in rook-ceph namespace." ]; then
-             echo -e "🙏 Waiting for OSD before continuing..."
-            while [ "$msg" = "No resources found in rook-ceph namespace."  ]
-            do
-                msg = $(kubectl get pods -l app=rook-ceph-osd -n rook-ceph)
-                sleep 1;
-            done
-        fi
         helm_install_postgres
 	;;
     helm-install-extra)

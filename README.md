@@ -57,13 +57,14 @@ tunnel-registry                Creates a tunnel to minikube's registry (E.g. mak
 
 ## Infra Endpoints
 
-**NOTE**: You should edit `/etc/hosts` to point minikube's ip
+**NOTE**: You should edit `/etc/hosts` ([minikube_ip] kibana.local grafana.local prom.local myapp.local)
 
 - [Kibana](http://kibana.local/kibana)
 - [Grafana](http://grafana.local)
 - [Prometheus-Monitoring](http://prom.local:30100)
 - [Prometheus-Rook](http://prom.local:30200)
 - [Prometheus-Dev](http://prom.local:30300)
+
 
 
 ## API In Golang

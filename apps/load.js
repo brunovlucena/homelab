@@ -1,12 +1,19 @@
 import http from "k6/http";
 import { group, check  } from "k6";
 
-
 export let options = {
+    vus: 30,
     thresholds: {
         'http_req_duration{kind:html}': ["avg<=10"],
         'http_reqs': ["rate>100"],
-    }
+        "http_req_duration": ["p(95)<500"],
+        "check_failure_rate": [
+            // Global failure rate should be less than 1%
+            "rate<0.01",
+            // Abort the test early if it climbs over 5%
+            { threshold: "rate<=0.05", abortOnFail: true },
+        ],
+    },
 };
 
 export default function() {
@@ -51,10 +58,10 @@ export default function() {
     //});
 
     // DELETE request
-    //group("DELETE", function() {
-        //let res = http.del("http://myapp.local/configs/pod-1");
-        //check(res, {
-            //"status is 200": (r) => r.status === 200,
-        //});
-    //});
+    group("DELETE", function() {
+        let res = http.del("http://myapp.local/configs/pod-1-idonotexist");
+        check(res, {
+            "status is 422": (r) => r.status === 422,
+        });
+    });
 };
