@@ -16,6 +16,9 @@
 ```sh
 go get github.com/brunovlucena/homelab
 ./start.sh
+# Edit crud.sh
+make crud
+make load-test
 ```
 
 or
@@ -55,6 +58,7 @@ test                           Run Go Tests
 tunnel-registry                Creates a tunnel to minikube's registry (E.g. make tunnel-registry).
 ```
 
+
 ## Infra Endpoints
 
 **NOTE**: You should edit `/etc/hosts` ([minikube_ip] kibana.local grafana.local prom.local myapp.local)
@@ -64,6 +68,7 @@ tunnel-registry                Creates a tunnel to minikube's registry (E.g. mak
 - [Prometheus-Monitoring](http://prom.local:30100)
 - [Prometheus-Rook](http://prom.local:30200)
 - [Prometheus-Dev](http://prom.local:30300)
+
 
 
 ## API In Golang
@@ -150,9 +155,43 @@ Response example:
   - Metadata (nested key:value pairs where both key and value are strings of arbitrary length)
 
 
+
 ### Configuration
 
-The application servers the API on the port defined by the environment variable `API_CONTAINER_PORT`.
+- The **application** servers the API on the port defined by the environment variable `API_CONTAINER_PORT`.
+
+- **Database Variables**:
+
+| Variable | Type | Example | Description |
+| -------- | ---- | ------- | ----------- |
+|`DATABASE_TYPE`| string | "postgres"			| ## Database type
+|`DATABASE_HOST`| string | "postgres.storage"	| ## Database location
+|`DATABASE_PORT`| string | "5432"				| ## Port
+|`DATABASE_USER`| string | "postgres"			| ## User
+|`DATABASE_PASS`| string | "postgres"			| ## Pass
+|`DATABASE_NAME`| string | "myapp"				| ## Database name
+
+### Operator (apps/app-example/deploy/chart/myapp/crds/myapp.yaml)
+
+```yaml
+apiVersion: myapp.com/v1alpha1
+kind: MyApp
+metadata:
+  name: myapp
+spec:
+  size: 3
+  database_type: postgres
+  database_name: myapp
+  host: postgres.storage
+  port: 5432
+  user: postgres
+  pass: postgres
+  container_port: 8000
+  watch:
+    - namespace: storage
+      deployments:
+        - name: postgres
+```
 
 
 ## TODO
@@ -160,3 +199,7 @@ The application servers the API on the port defined by the environment variable 
 - Search
 - Ingress TLS
 - Make Operator interact with cluster (E.g create a backup given some alert).
+- Grafana Loki
+- Fix Velero's Job
+- Use Vault for secrets
+
