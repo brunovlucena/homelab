@@ -280,7 +280,7 @@ main() {
         helm_install_prometheus_operator
         helm_install_kube_state_metrics
         helm_install_rook_ceph
-        if [[ ! -n $(helm ls -n rook-ceph) ]]; then
+        if [[! -n $(helm ls -n storage) ]]; then
             echo -e "🙏 waiting for OSD before continuing..."
             wait 2 # minutes moreless in my environment
         fi
