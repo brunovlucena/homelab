@@ -76,16 +76,14 @@ API in golang using Chi Router
 
 ### Non-Functional Requirements
 
-1. Centralized configuration
-2. Service Discovery
+1. Centralized configuration (TODO)
+2. Service Discovery (TODO)
 3. Logging
-4. Distributed Tracing
-5. Circuit Breaking
-6. Load balancing
-7. Edge
-8. Monitoring
-7. Security
-
+4. Distributed Tracing (TODO)
+5. Circuit Breaking (TODO)
+6. Load balancing (TODO)
+7. Monitoring
+8. Security (TODO)
 
 
 ### Endpoints
