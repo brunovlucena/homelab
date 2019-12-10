@@ -1,7 +1,17 @@
-apiVersion: app.example.com/v1alpha1
-kind: MyAppExample
+apiVersion: myapp.com/v1alpha1
+kind: MyApp
 metadata:
   name: myapp
 spec:
-  # Add fields here
   size: 3
+  database_type: postgres
+  database_name: myapp
+  host: postgres.storage
+  port: 5432
+  user: postgres
+  pass: postgres
+  container_port: 8000
+  watch:
+    - namespace: storage
+      deployments:
+        - name: postgres

@@ -11,9 +11,9 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 
-	"github.com/brunovlucena/mobimeo/pkg/apis"
-	"github.com/brunovlucena/mobimeo/pkg/controller"
-	"github.com/brunovlucena/mobimeo/version"
+	"github.com/brunovlucena/myapp-operator/pkg/apis"
+	"github.com/brunovlucena/myapp-operator/pkg/controller"
+	"github.com/brunovlucena/myapp-operator/version"
 
 	"github.com/operator-framework/operator-sdk/pkg/k8sutil"
 	kubemetrics "github.com/operator-framework/operator-sdk/pkg/kube-metrics"

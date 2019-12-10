@@ -89,6 +89,11 @@ build_deploy_operator() {
     local IMAGE=$REPOSITORY/$BUILD_NAME:$RELEASE
     cd "$MYAPP_OPERATOR"
     pwd
+    # Run it after updates to regenerate files after changes
+    $OPERATOR_SDK generate k8s
+    # Update CRDs
+    $OPERATOR_SDK generate openapi
+    # Build images
     $OPERATOR_SDK build "$IMAGE"
     docker push "$IMAGE"
     local IMAGE=$REPOSITORY\/$BUILD_NAME\:$RELEASE
@@ -99,9 +104,10 @@ build_deploy_operator() {
     kubectl apply -f deploy/role.yaml -n "$NAMESPACE"
     kubectl apply -f deploy/role_binding.yaml -n "$NAMESPACE"
     # Setup the CRD
-    kubectl apply -f deploy/crds/myapp.yaml -n "$NAMESPACE"
+    kubectl delete -f deploy/crds/myapp.com_myapps_crd.yaml -n "$NAMESPACE"
+    kubectl apply -f deploy/crds/myapp.com_myapps_crd.yaml -n "$NAMESPACE"
     # Deploy the app-operator
-    kubectl delete -f deploy/operator.yaml -n "$NAMESPACE"
+    kubectl delete -f deploy/operator.yaml -n "$NAMESPACE" || true
     kubectl apply -f deploy/operator.yaml -n "$NAMESPACE"
 }
 
