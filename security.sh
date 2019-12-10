@@ -34,9 +34,8 @@ pre_install() {
 #  $ ./security.sh check_pod_security param1
 # * param1: it's the pod name
 check_pod_security() {
-    local LABEL="$1"
+    local POD_NAME="$1"
     local NAMESPACE="$2"
-    POD_NAME=$(kubectl get pod -l "$LABEL" -o jsonpath='{.items[0].metadata.name}' -n "$NAMESPACE")
     kubectl kubesec-scan pod $POD_NAME -n "$NAMESPACE"
 }
 
@@ -65,8 +64,7 @@ main() {
   local ARG2="$3"
   case "$ARG0" in
     check-pod-security)
-        check_pod_security "component=myapp" "dev"
-        check_pod_security "name=myapp-operator" "dev"
+        check_pod_security myapp-pod "dev"
     ;;
     sniff)
         pod_sniff

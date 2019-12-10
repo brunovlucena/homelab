@@ -51,6 +51,7 @@ tunnel-registry                Creates a tunnel to minikube's registry (E.g. mak
 ```
 
 
+
 ## Infra Endpoints
 
 **NOTE**: You should edit `/etc/hosts` ([minikube_ip] kibana.local grafana.local prom.local myapp.local)

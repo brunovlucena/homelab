@@ -52,7 +52,11 @@ func Connect(host, port, user, pass, dbname string) *sql.DB {
 		//any connections to the database.
 		err = db.Ping()
 		if err != nil {
-			fmt.Println("db.Ping failed:", err)
+			logrus.WithFields(logrus.Fields{
+				"host":     host,
+				"port":     port,
+				"database": dbname,
+			}).Error("Connect: failed to ping!")
 			panic(err)
 		}
 	}

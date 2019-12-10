@@ -6,7 +6,8 @@ set -e # Exit immediately if a command exits with a non-zero status.
 # Variables
 MINIKUBE=~/.local/bin/minikube
 OPERATOR=~/.local/bin/operator-sdk
-KUBEDIFF=~./local/bin/kubediff
+KUBEDIFF=~/.local/bin/kubediff
+SQUASH=~/.local/bin/squashctl
 
 # pre-install some basic components.
 #
@@ -26,18 +27,24 @@ pre_install() {
             local PATH="https://github.com/operator-framework/operator-sdk/releases/download/$VERSION/operator-sdk-$VERSION-x86_64-linux-gnu"
             [[ ! -f $OPERATOR ]] && /usr/bin/wget "$PATH" -O "$OPERATOR" ; /bin/chmod +x "$OPERATOR"
         ;;
-        #kubediff)
-            #[[ ! -f $KUBEDIFF  ]] &&
-            #git clone https://github.com/weaveworks/kubediff.git /tmp/kubediff
-            #cp /temp/kubediff/kubediff ~./local/bin/kubediff
-            #cp -R kubedifflib ~/.local/bin
-        #;;
-        #k6)
-            #sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 379CE192D401AB61
-            #echo "deb https://dl.bintray.com/loadimpact/deb stable main" | sudo tee -a /etc/apt/sources.list
-            #sudo apt-get update
-            #sudo apt-get install k6
-        #;;
+        kubediff)
+            if [[ ! -f $KUBEDIFF  ]]
+            then
+                git clone https://github.com/weaveworks/kubediff.git /tmp/kubediff
+                cp /temp/kubediff/kubediff ~./local/bin/kubediff
+                cp -R kubedifflib ~/.local/bin
+            fi
+        ;;
+        squash)
+            local PATH="https://github.com/solo-io/squash/releases/download/$VERSION/squashctl-linux"
+            [[ ! -f $SQUASH  ]] && /usr/bin/wget "$PATH" -O "$SQUASH"; /bin/chmod +x "$SQUASH"
+        ;;
+        k6)
+            sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 379CE192D401AB61
+            echo "deb https://dl.bintray.com/loadimpact/deb stable main" | sudo tee -a /etc/apt/sources.list
+            sudo apt-get update
+            sudo apt-get install k6
+        ;;
     esac
 }
 

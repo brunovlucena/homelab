@@ -5,6 +5,7 @@ ARGS = $(filter-out $(firstword $(MAKECMDGOALS)), $(MAKECMDGOALS))
 # Tool Variables
 MINIKUBE_VERSION = v1.5.2
 OPERATOR_VERSION = v0.12.0
+SQUASH_VERSION = v0.5.18
 # Cluster Specification
 CLUSTER_CPUS = 4
 CLUSTER_MEMORY = 8192mb
@@ -20,6 +21,7 @@ pre-install: ## Pre-Installs tools (E.g: $ make pre-install).
 	@./helper.sh pre-install minikube ${MINIKUBE_VERSION}
 	@./helper.sh pre-install operator-sdk ${OPERATOR_VERSION}
 	@./helper.sh pre-install k6
+	@./helper.sh pre-install squash ${SQUASH_VERSION}
 
 bootstrap-cluster: ## Bootstraps cluster (E.g. make bootstrap).
 	@./helper.sh bootstrap-cluster ${CLUSTER_CPUS} ${CLUSTER_MEMORY} ${CLUSTER_DISK} ${CLUSTER_VERSION} ${CLUSTER_NAME}
