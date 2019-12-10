@@ -23,4 +23,6 @@ make tunnel-registry
 #echo -e "😁  cleaning local images..."
 #clean
 echo -e "🚛 Deploying myapp-operator..."
-make build-deploy-operator-test
+make build-deploy-operator
+echo -e "🚛 Deploying myapp..."
+make deploy-myapp-test

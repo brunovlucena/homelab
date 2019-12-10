@@ -24,7 +24,8 @@ make pre-install
 make bootstrap-cluster
 make helm-install
 make tunnel-registry
-build-deploy-operator-test 
+make build-deploy-operator 
+make deploy-myapp-test 
 ```
 
 **Make Commands**
@@ -153,4 +154,5 @@ Response example:
 ### Configuration
 
 The application servers the API on the port defined by the environment variable `API_CONTAINER_PORT`.
+
 
