@@ -76,7 +76,7 @@ test: ## Run Go Tests
 test-gui: ## Run Go Tests (Browser)
 	 @./apps/helper.sh test-gui
 
-load-test: ## Run Go Test (E.g make load-test)
+load-test: ## Run Load Tests (E.g make load-test)
 	 @./apps/helper.sh load-test
 
 checks:

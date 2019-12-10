@@ -43,7 +43,7 @@ clean-cluster                  Cleans Minikube (E.g. make clean-cluster).
 debug-myapp                    Runs dlv (E.g. make debug-myapp).
 helm-install                   Installs components via helm charts.
 help                           Help. 
-load-test                      Run Go Tests
+load-test                      Run Load Tests
 pre-install                    Pre-Installs tools (E.g: $ make pre-install).
 run-myapp                      Runs app example on host (E.g. make run-myapp).
 run-postgres-local             Runs postgres on host (E.g. make run-postgres-local).
@@ -54,7 +54,7 @@ stop-cluster                   Stops cluster.
 test                           Run Go Tests
 tunnel-registry                Creates a tunnel to minikube's registry (E.g. make tunnel-registry).
 ```
-
+o
 ## Infra Endpoints
 
 **NOTE**: You should edit `/etc/hosts` ([minikube_ip] kibana.local grafana.local prom.local myapp.local)
@@ -142,6 +142,7 @@ Response example:
   },
 ]
 ```
+
 
 
 #### Schema
