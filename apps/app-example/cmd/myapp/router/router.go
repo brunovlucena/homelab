@@ -156,6 +156,9 @@ func Create(w http.ResponseWriter, r *http.Request) {
 	code := http.StatusCreated
 	// prometheus: observe created
 	duration := time.Since(start)
+	logrus.WithFields(logrus.Fields{
+		"duration": duration,
+	}).Info("Create: Record created!")
 	observe(duration, code)
 	// render
 	render.Status(r, code)

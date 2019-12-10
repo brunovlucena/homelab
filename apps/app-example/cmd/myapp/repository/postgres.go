@@ -27,24 +27,25 @@ type Item struct {
 }
 
 func NewPostgres(host, port, user, pass, dbname string) *Postgres {
-	// connect to database
-	dbconn := Connect(host, port, user, pass, dbname)
-	// return
-	return &Postgres{host, port, user, pass, dbname, dbconn}
+	return &Postgres{host, port, user, pass, dbname, nil}
 }
 
-func Connect(host, port, user, pass, dbname string) *sql.DB {
+func (p *Postgres) Close() {
+	p.dbconn.Close()
+}
+
+func (p *Postgres) Connect() {
 	// info: sslmode - disabled
-	psqlConn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable", user, pass, host, port, dbname)
+	psqlConn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable", p.user, p.password, p.host, p.port, p.dbname)
 	logrus.Infof("Conn: %s", psqlConn)
-	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", host, port, user, pass, dbname)
+	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", p.host, p.port, p.user, p.password, p.dbname)
 	// opens connection
 	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
-			"host":     host,
-			"port":     port,
-			"database": dbname,
+			"host":     p.host,
+			"port":     p.port,
+			"database": p.dbname,
 		}).Warn("Connect: Cannot connect!")
 		panic(err)
 	} else {
@@ -53,19 +54,20 @@ func Connect(host, port, user, pass, dbname string) *sql.DB {
 		err = db.Ping()
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
-				"host":     host,
-				"port":     port,
-				"database": dbname,
+				"host":     p.host,
+				"port":     p.port,
+				"database": p.dbname,
 			}).Error("Connect: failed to ping!")
 			panic(err)
 		}
 	}
 	// Success
 	logrus.Println("Successfully connected to Postgres!")
-	return db
+	p.dbconn = db
 }
 
 func (p *Postgres) Create(config *data.Config) (*data.Config, error) {
+	p.Connect()
 	sqlStatement := `INSERT INTO configs (data) VALUES ($1) RETURNING id`
 	var id int
 	dataMap := config.Data
@@ -88,10 +90,12 @@ func (p *Postgres) Create(config *data.Config) (*data.Config, error) {
 		}).Warn("Create: The number of records number increased tremendously!")
 	}
 	logrus.Infoln("Create: New record ID is", id)
+	p.Close()
 	return config, nil
 }
 
 func (p *Postgres) Find(name string) (*data.Config, error) {
+	p.Connect()
 	sqlStatement := `SELECT data FROM configs WHERE data->>'name' = $1;`
 	row := p.dbconn.QueryRow(sqlStatement, name)
 	config := new(data.Config)
@@ -106,10 +110,12 @@ func (p *Postgres) Find(name string) (*data.Config, error) {
 	case nil:
 		logrus.Info("Find: Record found!")
 	}
+	p.Close()
 	return config, err
 }
 
 func (p *Postgres) FindAll() ([]*data.Config, error) {
+	p.Connect()
 	// return value
 	var configs []*data.Config
 	// query
@@ -135,10 +141,12 @@ func (p *Postgres) FindAll() ([]*data.Config, error) {
 		// append results
 		configs = append(configs, &data.Config{Data: m})
 	}
+	p.Close()
 	return configs, err
 }
 
 func (p *Postgres) Update(config *data.Config) (*data.Config, error) {
+	p.Connect()
 	sqlStatement := `UPDATE configs SET data = $1 WHERE data->>'name' = $2;`
 	dataMap := config.Data
 	_, err := p.dbconn.Exec(sqlStatement, dataMap, dataMap["name"])
@@ -150,10 +158,12 @@ func (p *Postgres) Update(config *data.Config) (*data.Config, error) {
 		return nil, err
 	}
 	fmt.Println("Update: Record Updated!")
+	p.Close()
 	return config, nil
 }
 
 func (p *Postgres) Remove(name string) (*data.Config, error) {
+	p.Connect()
 	sqlStatement := `DELETE FROM configs WHERE data->>'name' = $1;`
 	config := &data.Config{}
 	row := p.dbconn.QueryRow(sqlStatement, name)
@@ -169,9 +179,12 @@ func (p *Postgres) Remove(name string) (*data.Config, error) {
 	}
 	// return removed record
 	fmt.Println("Remove: Record removed!")
+	p.Close()
 	return config, nil
 }
 
 func (p *Postgres) Search(params url.Values) ([]*data.Config, error) {
+	p.Connect()
+	p.Close()
 	return make([]*data.Config, 0, 1), nil
 }

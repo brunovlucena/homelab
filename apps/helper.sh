@@ -214,7 +214,7 @@ run_postgres_local(){
 # NOTE:  sudo apt install maven
 load_test() {
     cd apps
-    k6 run -d 10s load.js
+    k6 run -d 10m load.js
 }
 
 main() {
