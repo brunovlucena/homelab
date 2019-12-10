@@ -14,6 +14,7 @@
 **How to Test**
 
 ```sh
+go get github.com/brunovlucena/homelab
 ./start.sh
 ```
 
