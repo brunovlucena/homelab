@@ -60,6 +60,9 @@ deploy-myapp-test: ## Builds image for app example (E.g. make build-push-myapp l
 	 @./apps/helper.sh deploy-myapp-test v0.0.1
 
 # Dev
+crud: ## Perform simple crud operations (On Cluster).
+	@./apps/crud.sh
+
 skaffold: ## Uses skaffold during the development
 	@./apps/helper.sh go-tidy
 	@./apps/helper.sh skaffold

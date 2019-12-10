@@ -16,20 +16,11 @@
 ```sh
 go get github.com/brunovlucena/homelab
 ./start.sh
-# Edit crud.sh
+# Edit crud.sh to change tests
 make crud
 make load-test
-```
-
-or
-
-```sh
-make pre-install
-make bootstrap-cluster
-make helm-install
-make tunnel-registry
-make build-deploy-operator 
-make deploy-myapp-test 
+make test ## Find and FindAll failing because the http.StatusCode but they work!
+make test-gui
 ```
 
 **Make Commands**
@@ -37,16 +28,16 @@ make deploy-myapp-test
 ```sh
 bootstrap-cluster              Bootstraps cluster (E.g. make bootstrap).
 bootstrap-operator             Builds operator (E.g. make bootstrap-operator).
-build-deploy-myapp             Builds image for app example (E.g. make build-push-myapp latest).
 build-deploy-operator          Deploys operator (E.g. make build-deploy-operator).
-build-deploy-operator-test     Tests MyAppOperator (E.g. make build-deploy-test). 
 build-myapp                    Builds binary app example (E.g. make build-myapp).
 check-pod-security             outputs infomation about the cluster
 clean-cluster                  Cleans Minikube (E.g. make clean-cluster).
 debug-myapp                    Runs dlv (E.g. make debug-myapp).
+debug-myapp-tests              Runs dlv to debug Tests.
+deploy-myapp-test              Builds image for app example (E.g. make build-push-myapp latest).
 helm-install                   Installs components via helm charts.
-help                           Help. 
-load-test                      Run Load Tests
+help                           Help.
+load-test                      Run Load Tests (E.g make load-test)
 pre-install                    Pre-Installs tools (E.g: $ make pre-install).
 run-myapp                      Runs app example on host (E.g. make run-myapp).
 run-postgres-local             Runs postgres on host (E.g. make run-postgres-local).
@@ -54,6 +45,7 @@ skaffold                       Uses skaffold during the development
 sniff                          Sniffs comunication (E.g. make sniff)
 start-cluster                  Starts cluster.
 stop-cluster                   Stops cluster.
+test-gui                       Run Go Tests (Browser)
 test                           Run Go Tests
 tunnel-registry                Creates a tunnel to minikube's registry (E.g. make tunnel-registry).
 ```
@@ -68,6 +60,7 @@ tunnel-registry                Creates a tunnel to minikube's registry (E.g. mak
 - [Prometheus-Monitoring](http://prom.local:30100)
 - [Prometheus-Rook](http://prom.local:30200)
 - [Prometheus-Dev](http://prom.local:30300)
+
 
 
 
