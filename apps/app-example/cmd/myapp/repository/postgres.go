@@ -68,17 +68,22 @@ func (p *Postgres) Create(config *data.Config) (*data.Config, error) {
 	row := p.dbconn.QueryRow(sqlStatement, dataMap)
 	err := row.Scan(&id)
 	if err != nil {
-		logrus.Error(err)
+		logrus.WithFields(logrus.Fields{
+			"cmd:":        "Create",
+			"config_name": config.Data["name"],
+			"database":    p.dbname,
+		}).Error(err.Error())
 		return nil, err
 	}
-	// some warn
+	// some crazy unescessary warn
 	if id == 1000 {
 		logrus.WithFields(logrus.Fields{
-			"omg": true,
-			"id":  id,
+			"cmd:":     "Create",
+			"id":       id,
+			"database": p.dbname,
 		}).Warn("Create: The number of records number increased tremendously!")
 	}
-	fmt.Println("Create: New record ID is:", id)
+	logrus.Infoln("Create: New record ID is", id)
 	return config, nil
 }
 
@@ -89,9 +94,13 @@ func (p *Postgres) Find(name string) (*data.Config, error) {
 	var err error
 	switch err = row.Scan(&config.Data); err {
 	case sql.ErrNoRows:
-		logrus.Println("No rows were returned!")
+		logrus.WithFields(logrus.Fields{
+			"cmd:":        "Find",
+			"config_name": name,
+			"database":    p.dbname,
+		}).Warn("No rows were returned!")
 	case nil:
-		logrus.Println("Find: Record found!")
+		logrus.Info("Find: Record found!")
 	}
 	return config, err
 }
@@ -104,7 +113,10 @@ func (p *Postgres) FindAll() ([]*data.Config, error) {
 	rows, err := p.dbconn.Query(sqlStatement)
 	// check for errors
 	if err != nil {
-		logrus.Error(err)
+		logrus.WithFields(logrus.Fields{
+			"cmd":      "FindAll",
+			"database": p.dbname,
+		}).Error(err.Error())
 		return nil, err
 	}
 	// Loop through the data
@@ -127,7 +139,10 @@ func (p *Postgres) Update(config *data.Config) (*data.Config, error) {
 	dataMap := config.Data
 	_, err := p.dbconn.Exec(sqlStatement, dataMap, dataMap["name"])
 	if err != nil {
-		logrus.Error(err)
+		logrus.WithFields(logrus.Fields{
+			"cmd":      "Update",
+			"database": p.dbname,
+		}).Error(err.Error())
 		return nil, err
 	}
 	fmt.Println("Update: Record Updated!")
@@ -141,7 +156,10 @@ func (p *Postgres) Remove(name string) (*data.Config, error) {
 	err := row.Scan(&config.Data)
 	if err != nil {
 		if err.Error() != "sql: no rows in result set" {
-			logrus.Error(err)
+			logrus.WithFields(logrus.Fields{
+				"cmd":      "Removee",
+				"database": p.dbname,
+			}).Error(err.Error())
 			return nil, err
 		}
 	}
