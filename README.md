@@ -3,11 +3,11 @@
 **Tasks**
 
 1. create a local running Kubernetes cluster with the tooling of your choice [DONE]
-2. Install Postgres on the cluster.
-3. Create and deploy a basic application in Go and connect to Postgres
-4. Perform simple CRUD operations
-5. Load-test your application.
-6. Setup basic monitoring and logging for the application with tools of your choice.
+2. Install Postgres on the cluster. [DONE]
+3. Create and deploy a basic application in Go and connect to Postgres [DONE]
+4. Perform simple CRUD operations [DONE]
+5. Load-test your application. [DONE] 
+6. Setup basic monitoring and logging for the application with tools of your choice. [DONE]
 
 ### TD;DR
 
@@ -54,7 +54,7 @@ stop-cluster                   Stops cluster.
 test                           Run Go Tests
 tunnel-registry                Creates a tunnel to minikube's registry (E.g. make tunnel-registry).
 ```
-o
+
 ## Infra Endpoints
 
 **NOTE**: You should edit `/etc/hosts` ([minikube_ip] kibana.local grafana.local prom.local myapp.local)
@@ -64,7 +64,6 @@ o
 - [Prometheus-Monitoring](http://prom.local:30100)
 - [Prometheus-Rook](http://prom.local:30200)
 - [Prometheus-Dev](http://prom.local:30300)
-
 
 
 ## API In Golang
@@ -142,7 +141,6 @@ Response example:
   },
 ]
 ```
-
 
 
 #### Schema
