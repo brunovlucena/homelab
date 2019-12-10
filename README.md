@@ -159,5 +159,5 @@ The application servers the API on the port defined by the environment variable 
 ## TODO
 
 - Search
-- Ingres TLS
+- Ingress TLS
 - Make Operator interact with cluster (E.g create a backup given some alert).
