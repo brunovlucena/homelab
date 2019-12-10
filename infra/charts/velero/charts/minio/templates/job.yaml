@@ -22,6 +22,6 @@ spec:
         image: minio/mc
         command: ["/bin/sh","-c"]
         args: 
-          - "sleep 60"
+          - "sleep 120"
           - "mc config host add minio http://velero-minio.storage:443 OSY6A34KEVVJWXU36WL8 IkVBhxIgdd6sf7zLjdoRMJ1Vdm4OEjMP7pwNNVUh --api S3v4"
           - "mc mb minio/minikube --region=minio"

@@ -205,7 +205,7 @@ helm_install_rook_ceph() {
 helm_install_velero() {
     NAMESPACE=storage
     kubectl create ns "$NAMESPACE" || true
-    helm upgrade --install --wait \
+    helm upgrade --install \
         velero infra/charts/velero -n "$NAMESPACE"
 }
 
@@ -218,6 +218,7 @@ helm_install_velero() {
 helm_install_postgres() {
     NAMESPACE=storage
     kubectl create ns "$NAMESPACE" || true
+    # --wait Because the myapp depends on a Database to start
     helm upgrade --install --wait \
         postgres infra/charts/postgres -n "$NAMESPACE"
 }
@@ -232,9 +233,9 @@ helm_install_efk() {
     kubectl create ns "$NAMESPACE" || true
     helm upgrade --install --wait \
         es infra/charts/efk/charts/es -n "$NAMESPACE"
-    helm upgrade --install --wait \
+    helm upgrade --install \
         fluentd infra/charts/efk/charts/fluentd -n "$NAMESPACE"
-    helm upgrade --install --wait \
+    helm upgrade --install \
         kibana infra/charts/efk/charts/kibana -n "$NAMESPACE"
 }
 
@@ -277,17 +278,25 @@ main() {
         tunnel_registry
     ;;
     helm-install)
+        echo -e "Now go grab a 🍵 Coffee..."
         helm_install_prometheus_operator
         helm_install_kube_state_metrics
         helm_install_rook_ceph
-        if [[! -n $(helm ls -n storage) ]]; then
-            echo -e "🙏 waiting for OSD before continuing..."
-            wait 2 # minutes moreless in my environment
+        local msg=$(kubectl get pods -l app=rook-ceph-osd -n rook-ceph)
+        if [ "$msg" = "No resources found in rook-ceph namespace." ]; then
+             echo -e "🙏 Waiting for OSD before continuing..."
+            while [ "$msg" = "No resources found in rook-ceph namespace."  ]
+            do
+                msg = $(kubectl get pods -l app=rook-ceph-osd -n rook-ceph)
+                sleep 1;
+            done
         fi
-        helm_install_velero
-        helm_install_efk
         helm_install_postgres
 	;;
+    helm-install-extra)
+        helm_install_efk
+        helm_install_velero
+    ;;
   esac
 }
 

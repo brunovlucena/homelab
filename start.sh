@@ -15,7 +15,7 @@ echo -e "$icon Pre-install..."
 make pre-install
 echo -e "$icon Bootstrapping..."
 make bootstrap-cluster
-echo -e "$icon Intalling Components via Helm Charts..."
+echo -e "$icon Intalling Basic Components via Helm Charts..."
 make helm-install
 # app
 echo -e "🌉 Creating tunnel..."
@@ -26,3 +26,5 @@ echo -e "🚛 Deploying myapp-operator..."
 make build-deploy-operator
 echo -e "🚛 Deploying myapp..."
 make deploy-myapp-test
+echo -e "$icon Intalling Monitoring via Helm Charts..."
+make helm-install
