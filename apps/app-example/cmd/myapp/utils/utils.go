@@ -32,7 +32,9 @@ func LoadJson(filePath string, configs *[]map[string]interface{}) {
 	// read our opened json
 	byteValue, _ := ioutil.ReadAll(jsonArrayFile)
 	// we unmarshal our byteArray
-	json.Unmarshal(byteValue, configs)
+	raw := json.RawMessage(string(byteValue))
+	bytes, err := raw.MarshalJSON()
+	json.Unmarshal(bytes, configs)
 }
 
 // this helper function returns the ipv4 address from the server

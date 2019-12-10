@@ -33,14 +33,15 @@ build_myapp() {
 # Usage:
 #  $ ./helper.sh param1
 # * param1: build-deploy-myapp
-build_deploy_myapp() {
+build_push_myapp() {
     cd "$MYAPP"
+    pwd
+    local RELEASE="$1"
     local REPOSITORY=localhost:5000
     local BUILD_NAME=myapp
-    local RELEASE="$1"
     local IMAGE="$REPOSITORY/$BUILD_NAME:$RELEASE"
 	docker rmi "$IMAGE" || true
-	docker build build -t "$IMAGE"
+	docker build -f build/Dockerfile -t "$IMAGE" .
     docker push "$IMAGE"
 }
 
@@ -48,23 +49,14 @@ build_deploy_myapp() {
 #
 # Usage:
 #  $ ./helper.sh param1
-# * param1: deploy-test
-deploy_test() {
-    local NAMESPACE=dev
-    kubectl create ns $NAMESPACE || true
-    cd "$MYAPP"
-    kubectl apply -f "$MYAPP"/deploy/deployment.yaml -n "$NAMESPACE"
-}
-
-# x.
-#
-# Usage:
-#  $ ./helper.sh param1
 # * param1: deploy-operator-test
-deploy_operator_test() {
+deploy_myapp_test() {
+    local RELEASE="$1"
+    build_push_myapp $RELEASE
     local NAMESPACE=dev
     kubectl create ns $NAMESPACE || true
-    kubectl apply -f "$MYAPP_OPERATOR"/deploy/crds/app.example.com_v1alpha1_myappexample_cr.yaml -n "$NAMESPACE"
+    helm delete myapp -n "$NAMESPACE" || true
+    helm install myapp  deploy/chart/myapp -n "$NAMESPACE"
 }
 
 # x.
@@ -90,6 +82,7 @@ bootstrap_operator(){
 # * param1: build-push-operator
 build_deploy_operator() {
     local NAMESPACE=dev
+    kubectl create ns $NAMESPACE || true
     local REPOSITORY=localhost:5000
     local BUILD_NAME=myapp-operator
     local RELEASE="$1"
@@ -99,15 +92,16 @@ build_deploy_operator() {
     $OPERATOR_SDK build "$IMAGE"
     docker push "$IMAGE"
     local IMAGE=$REPOSITORY\/$BUILD_NAME\:$RELEASE
-    sed -i "s|REPLACE_IMAGE|$IMAGE|g" deploy/operator.yaml
+    sed -i "s|image:.*|image: $IMAGE|g" deploy/operator.yaml
     # Setup Service Account
     kubectl apply -f deploy/service_account.yaml -n "$NAMESPACE"
     # Setup RBAC
     kubectl apply -f deploy/role.yaml -n "$NAMESPACE"
     kubectl apply -f deploy/role_binding.yaml -n "$NAMESPACE"
     # Setup the CRD
-    kubectl apply -f deploy/crds/app.example.com_myappexamples_crd.yaml -n "$NAMESPACE"
+    kubectl apply -f deploy/crds/myapp.yaml -n "$NAMESPACE"
     # Deploy the app-operator
+    kubectl delete -f deploy/operator.yaml -n "$NAMESPACE"
     kubectl apply -f deploy/operator.yaml -n "$NAMESPACE"
 }
 
@@ -224,11 +218,11 @@ main() {
     bootstrap-operator)
         bootstrap_operator
     ;;
-    build-deploy-myapp)
-        build_deploy_myapp "$ARG1"
-    ;;
     build-deploy-operator)
         build_deploy_operator "$ARG1"
+    ;;
+    deploy-myapp-test)
+        deploy_myapp_test "$ARG1"
     ;;
     build-myapp)
         build_myapp

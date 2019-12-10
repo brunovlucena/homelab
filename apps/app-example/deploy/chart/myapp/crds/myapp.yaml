@@ -1,7 +1,7 @@
 apiVersion: app.example.com/v1alpha1
 kind: MyAppExample
 metadata:
-  name: example-myappexample
+  name: myapp
 spec:
   # Add fields here
   size: 3

@@ -1,3 +1,4 @@
+{{- if .Values.redis.enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -13,3 +14,4 @@ spec:
       {{- include "redis.selectorLabels" . | nindent 6 }}
   endpoints:
   - port: exporter
+{{- end -}}

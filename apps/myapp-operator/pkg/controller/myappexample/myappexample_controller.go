@@ -131,9 +131,8 @@ func (r *ReconcileMyAppExample) Reconcile(request reconcile.Request) (reconcile.
 
 // newPodForCR returns a busybox pod with the same name/namespace as the cr
 func newPodForCR(cr *appv1alpha1.MyAppExample) *corev1.Pod {
-	labels := map[string]string{
-		"app": cr.Name,
-	}
+	// get labels
+	labels := getLabelsForCR(cr.Name)
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cr.Name + "-pod",
@@ -143,11 +142,31 @@ func newPodForCR(cr *appv1alpha1.MyAppExample) *corev1.Pod {
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
+					Name:  "myapp",
+					Image: "localhost:5000/myapp:v0.0.1",
+					Ports: []corev1.ContainerPort{{
+						Name:          "http",
+						ContainerPort: 8000,
+					}},
+					Env: []corev1.EnvVar{
+						{Name: "API_CONTAINER_PORT", Value: "8000"},
+						{Name: "DATABASE_TYPE", Value: "postgres"},
+						{Name: "DATABASE_HOST", Value: "postgres.storage"},
+						{Name: "DATABASE_PORT", Value: "5432"},
+						{Name: "DATABASE_USER", Value: "postgres"},
+						{Name: "DATABASE_PASS", Value: "postgres"},
+						{Name: "DATABASE_NAME", Value: "myapp"},
+					},
 				},
 			},
 		},
+	}
+}
+
+func getLabelsForCR(name string) map[string]string {
+	return map[string]string{
+		"app":                          name,
+		"app.kubernetes.io/managed-by": "myapp-operator",
+		"app.kubernetes.io/version":    "v0.0.1",
 	}
 }

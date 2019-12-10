@@ -41,6 +41,11 @@ func Connect(host, port, user, pass, dbname string) *sql.DB {
 	// opens connection
 	db, err := sql.Open("postgres", psqlInfo)
 	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"host":     host,
+			"port":     port,
+			"database": dbname,
+		}).Warn("Connect: Cannot connect!")
 		panic(err)
 	} else {
 		// SQL.Open only creates the DB object, but dies not open
@@ -65,6 +70,13 @@ func (p *Postgres) Create(config *data.Config) (*data.Config, error) {
 	if err != nil {
 		logrus.Error(err)
 		return nil, err
+	}
+	// some warn
+	if id == 1000 {
+		logrus.WithFields(logrus.Fields{
+			"omg": true,
+			"id":  id,
+		}).Warn("Create: The number of records number increased tremendously!")
 	}
 	fmt.Println("Create: New record ID is:", id)
 	return config, nil

@@ -1,3 +1,5 @@
+{{- if .Values.redis.enabled }}
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -53,3 +55,4 @@ spec:
     component: redis
     tier: backend
     role: slave
+{{- end -}}

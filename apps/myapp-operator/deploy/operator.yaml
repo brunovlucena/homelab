@@ -16,7 +16,7 @@ spec:
       containers:
         - name: myapp-operator
           # Replace this with the built image name
-          image: localhost:5000/myapp-operator:stable
+          image: localhost:5000/myapp-operator:dev
           command:
           - myapp-operator
           imagePullPolicy: Always

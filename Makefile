@@ -44,11 +44,7 @@ bootstrap-operator: ## Builds operator (E.g. make bootstrap-operator).
 	 @./apps/helper.sh bootstrap-operator
 
 build-deploy-operator: ## Deploys operator (E.g. make build-deploy-operator).
-	 @./apps/helper.sh build-deploy-operator stable
-
-build-deploy-operator-test: ## Tests MyAppOperator (E.g. make build-deploy-test). 
 	 @./apps/helper.sh build-deploy-operator dev
-	 @./apps/helper.sh deploy-operator-test
 
 # MyApp
 run-myapp: ## Runs app example on host (E.g. make run-myapp).
@@ -60,8 +56,8 @@ run-postgres-local: ## Runs postgres on host (E.g. make run-postgres-local).
 build-myapp: ## Builds binary app example (E.g. make build-myapp).
 	 @./apps/helper.sh build-myapp
 
-build-deploy-myapp: ## Builds image for app example (E.g. make build-push-myapp latest).
-	 @./apps/helper.sh build-deploy-myapp stable
+deploy-myapp-test: ## Builds image for app example (E.g. make build-push-myapp latest).
+	 @./apps/helper.sh deploy-myapp-test v0.0.1
 
 # Dev
 skaffold: ## Uses skaffold during the development
