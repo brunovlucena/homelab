@@ -292,9 +292,9 @@ main() {
         helm_install_kube_state_metrics
         helm_install_rook_ceph
         helm_install_postgres
+        helm_install_efk
 	;;
     helm-install-extra)
-        helm_install_efk
         helm_install_velero
     ;;
   esac

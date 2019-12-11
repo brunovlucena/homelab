@@ -31,47 +31,41 @@ func NewPostgres(host, port, user, password, dbname string) *Postgres {
 	return &Postgres{host, port, user, password, dbname, dbconn}
 }
 
-//func (p *Postgres) Close() {
-//logrus.Infoln("Disconnected from Postgres!")
-//p.dbconn.Close()
-//}
-
 func connect(host, port, user, password, dbname string) *sql.DB {
 	// info: sslmode - disabled
-	psqlConn := fmt.Sprintf("postgresql://%s:%s@%s:%s/%s?sslmode=disable", user, password, host, port, dbname)
-	logrus.Infof("Conn: %s", psqlConn)
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
 	// opens connection
 	db, err := sql.Open("postgres", psqlInfo)
 	// setup for highter performance
 	db.SetMaxOpenConns(50)
 	db.SetMaxIdleConns(20)
-
+	// error checking
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
 			"host":     host,
 			"port":     port,
 			"database": dbname,
 		}).Error("Connect: Cannot connect!")
-		//panic(err)
 	} else {
 		// SQL.Open only creates the DB object, but dies not open
 		//any connections to the database.
 		err = db.Ping()
 		if err != nil {
-			stats := db.Stats()
 			logrus.WithFields(logrus.Fields{
-				"host":             host,
-				"port":             port,
-				"database":         dbname,
-				"max_connections":  stats.MaxOpenConnections, // to check stats
-				"open_connections": stats.OpenConnections,    // to check stats
+				"host":     host,
+				"port":     port,
+				"database": dbname,
 			}).Error("Connect: failed to ping!")
-			//panic(err)
 		}
 	}
 	// Success
-	logrus.Infoln("Successfully connected to Postgres!")
+	logrus.WithFields(logrus.Fields{
+		"cmd":             "connect",
+		"host":            host,
+		"port":            port,
+		"database":        dbname,
+		"max_connections": db.Stats().MaxOpenConnections,
+	}).Infoln("Successfully connected to Postgres!")
 	return db
 }
 
@@ -83,21 +77,17 @@ func (p *Postgres) Create(config *data.Config) (*data.Config, error) {
 	err := row.Scan(&id)
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
-			"cmd:":        "Create",
-			"config_name": config.Data["name"],
-			"database":    p.dbname,
+			"cmd:":             "Create",
+			"config_name":      config.Data["name"],
+			"open_connections": p.dbconn.Stats().OpenConnections,
+			"database":         p.dbname,
 		}).Error(err.Error())
 		return nil, err
 	}
-	// some crazy unescessary warn
-	if id == 1000 {
-		logrus.WithFields(logrus.Fields{
-			"cmd:":     "Create",
-			"id":       id,
-			"database": p.dbname,
-		}).Warn("Create: The number of records number increased tremendously!")
-	}
-	logrus.Infoln("Create: New record ID is", id)
+	logrus.WithFields(logrus.Fields{
+		"cmd":      "Create",
+		"database": p.dbname,
+	}).Infoln("New record ID is", id)
 	return config, nil
 }
 
@@ -109,12 +99,16 @@ func (p *Postgres) Find(name string) (*data.Config, error) {
 	switch err = row.Scan(&config.Data); err {
 	case sql.ErrNoRows:
 		logrus.WithFields(logrus.Fields{
-			"cmd:":        "Find",
-			"config_name": name,
-			"database":    p.dbname,
+			"cmd:":             "Find",
+			"config_name":      name,
+			"database":         p.dbname,
+			"open_connections": p.dbconn.Stats().OpenConnections,
 		}).Warn("No rows were returned!")
 	case nil:
-		logrus.Info("Find: Record found!")
+		logrus.WithFields(logrus.Fields{
+			"cmd":      "Find",
+			"database": p.dbname,
+		}).Infoln("Record founded!")
 	}
 	return config, err
 }
@@ -128,8 +122,9 @@ func (p *Postgres) FindAll() ([]*data.Config, error) {
 	// check for errors
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
-			"cmd":      "FindAll",
-			"database": p.dbname,
+			"cmd":              "FindAll",
+			"database":         p.dbname,
+			"open_connections": p.dbconn.Stats().OpenConnections,
 		}).Error(err.Error())
 		return nil, err
 	}
@@ -140,12 +135,20 @@ func (p *Postgres) FindAll() ([]*data.Config, error) {
 		err := rows.Scan(&m)
 		// check for errors
 		if err != nil {
-			logrus.Error(err)
+			logrus.WithFields(logrus.Fields{
+				"cmd":              "FindAll",
+				"database":         p.dbname,
+				"open_connections": p.dbconn.Stats().OpenConnections,
+			}).Error(err.Error())
 			return nil, err
 		}
 		// append results
 		configs = append(configs, &data.Config{Data: m})
 	}
+	logrus.WithFields(logrus.Fields{
+		"cmd":      "FindAll",
+		"database": p.dbname,
+	}).Infoln("Records founded!")
 	return configs, err
 }
 
@@ -155,12 +158,16 @@ func (p *Postgres) Update(config *data.Config) (*data.Config, error) {
 	_, err := p.dbconn.Exec(sqlStatement, dataMap, dataMap["name"])
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
-			"cmd":      "Update",
-			"database": p.dbname,
+			"cmd":              "Update",
+			"database":         p.dbname,
+			"open_connections": p.dbconn.Stats().OpenConnections,
 		}).Error(err.Error())
 		return nil, err
 	}
-	fmt.Println("Update: Record Updated!")
+	logrus.WithFields(logrus.Fields{
+		"cmd":      "Update",
+		"database": p.dbname,
+	}).Infoln("Record removed!")
 	return config, nil
 }
 
@@ -172,14 +179,18 @@ func (p *Postgres) Remove(name string) (*data.Config, error) {
 	if err != nil {
 		if err.Error() != "sql: no rows in result set" {
 			logrus.WithFields(logrus.Fields{
-				"cmd":      "Removee",
-				"database": p.dbname,
+				"cmd":              "Remove",
+				"database":         p.dbname,
+				"open_connections": p.dbconn.Stats().OpenConnections,
 			}).Error(err.Error())
 			return nil, err
 		}
 	}
 	// return removed record
-	fmt.Println("Remove: Record removed!")
+	logrus.WithFields(logrus.Fields{
+		"cmd":      "Remove",
+		"database": p.dbname,
+	}).Infoln("Record removed!")
 	return config, nil
 }
 
