@@ -1,4 +1,4 @@
-## Platform Take-home Challenge
+## Home Lab
 
 **Tasks**
 
@@ -8,6 +8,15 @@
 4. Perform simple CRUD operations [DONE]
 5. Load-test your application. [DONE] 
 6. Setup basic monitoring and logging for the application with tools of your choice. [DONE]
+
+**TODO**
+
+- Search
+- Ingress TLS
+- Make Operator interact with cluster (E.g create a backup given some alert).
+- Grafana Loki
+- Fix Velero's Job
+- Use Vault for secrets
 
 ### TD;DR
 
@@ -52,6 +61,7 @@ tunnel-registry                Creates a tunnel to minikube's registry (E.g. mak
 
 
 
+
 ## Infra Endpoints
 
 **NOTE**: You should edit `/etc/hosts` ([minikube_ip] kibana.local grafana.local dashboard.local prom.local myapp.local)
@@ -62,8 +72,6 @@ tunnel-registry                Creates a tunnel to minikube's registry (E.g. mak
 - [Prometheus-Monitoring](http://prom.local:30100)
 - [Prometheus-Rook](http://prom.local:30200)
 - [Prometheus-Dev](http://prom.local:30300)
-
-
 
 
 ## API In Golang
@@ -189,12 +197,4 @@ spec:
 ```
 
 
-## TODO
-
-- Search
-- Ingress TLS
-- Make Operator interact with cluster (E.g create a backup given some alert).
-- Grafana Loki
-- Fix Velero's Job
-- Use Vault for secrets
 

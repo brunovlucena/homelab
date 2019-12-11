@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "vault.fullname" . }}
+  labels:
+    component: {{ .Values.serviceMonitor.componentName }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "vault.labels" . | nindent 6 }}
+  endpoints:
+    - port: api
+      path: /metrics
+      interval: 5s

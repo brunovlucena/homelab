@@ -1,0 +1,57 @@
+# Default values for chart-gogs.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+serviceMonitor:
+  componentName: infra
+
+replicaCount: 1
+
+image:
+  repository: gogs/gogs
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: gogs
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: NodePort
+  port: 3000
+  nodePort: 30009
+
+ingress:
+  enabled: false
+  annotations: {}
+  hosts:
+    - host: chart-example.local
+      paths: []
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "consul.fullname" . }}
+  labels:
+    {{- include "consul.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+  - name: http
+    port: {{.Values.HttpPort}}
+  - name: rpc
+    port: {{.Values.RpcPort}}
+  - name: serflan-tcp
+    protocol: "TCP"
+    port: {{.Values.SerflanPort}}
+  - name: serflan-udp
+    protocol: "UDP"
+    port: {{.Values.SerflanUdpPort}}
+  - name: serfwan-tcp
+    protocol: "TCP"
+    port: {{.Values.SerfwanPort}}
+  - name: serfwan-udp
+    protocol: "UDP"
+    port: {{.Values.SerfwanUdpPort}}
+  - name: server
+    port: {{.Values.ServerPort}}
+  - name: consuldns
+    port: {{.Values.ConsulDnsPort}}
+  clusterIP: None
+  selector:
+    {{- include "consul.selectorLabels" . | nindent 4 }}

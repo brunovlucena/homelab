@@ -1,0 +1,19 @@
+image:
+  repository: mysql
+  pullPolicy: IfNotPresent
+
+fullnameOverride: wordpress-mysql
+
+serviceMonitor:
+  componentName: app
+
+service:
+  type: ClusterIP
+  port: 3306
+
+serviceAccount:
+  create: true
+  name: wordpress
+
+persistentVolumeClaim:
+  storage: 2Gi

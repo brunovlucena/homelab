@@ -1,0 +1,11 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: prometheus
+spec:
+  serviceMonitorSelector:
+    matchLabels:
+      component: {{ .Values.componentName }}
+  resources:
+    {{- toYaml .Values.resources.prometheus | nindent 4 }}
+  enableAdminAPI: false

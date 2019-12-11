@@ -1,0 +1,44 @@
+        env:
+        - name: PETSET_NAME
+          value: "{{ printf "%s-%s" .Release.Name .Values.Name | trunc 24 }}"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: PETSET_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        command:
+          - "/bin/sh"
+          - "-ec"
+          - |
+            IP=$(hostname -i)
+
+            if [ -e /etc/consul/secrets/gossip-key ]; then
+              echo "{\"encrypt\": \"$(base64 /etc/consul/secrets/gossip-key)\"}" > /etc/consul/encrypt.json
+              GOSSIP_KEY="-config-file /etc/consul/encrypt.json"
+            fi
+
+            for i in $(seq 0 $((${INITIAL_CLUSTER_SIZE} - 1))); do
+                while true; do
+                    echo "Waiting for ${PETSET_NAME}-${i}.${PETSET_NAME} to come up"
+                    ping -W 1 -c 1 ${PETSET_NAME}-${i}.${PETSET_NAME}.${PETSET_NAMESPACE}.svc.cluster.local > /dev/null && break
+                    sleep 1s
+                done
+            done
+
+            PEERS=""
+            for i in $(seq 0 $((${INITIAL_CLUSTER_SIZE} - 1))); do
+                PEERS="${PEERS}${PEERS:+ } -retry-join $(ping -c 1 ${PETSET_NAME}-${i}.${PETSET_NAME}.${PETSET_NAMESPACE}.svc.cluster.local | awk -F'[()]' '/PING/{print $2}')"
+            done
+
+            exec /bin/consul agent \
+              -data-dir=/var/lib/consul \
+              -server \
+              -bootstrap-expect=${INITIAL_CLUSTER_SIZE} \
+              -bind=0.0.0.0 \
+              -advertise=${IP} \
+              ${PEERS} \
+              ${GOSSIP_KEY} \
+              -client=0.0.0.0

@@ -1,0 +1,78 @@
+# Default values for guestbook.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+serviceMonitor:
+  componentName: app
+
+replicaCount: 2
+
+image:
+  repository: gcr.io/google-samples/gb-frontend
+  pullPolicy: IfNotPresent
+  containerPort: 80
+
+serviceAccount:
+  create: true
+  name: guestbook
+
+podSecurityContext: {}
+  # fsGroup: 2000
+  # allowPrivilegeEscalation: false
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+    add:
+    #- CHOWN            # change the owner of any file.
+    #- SETUID           # change the user the process is
+    #- SETGID           # change the group the process is
+    #- KILL             # send a signal to any process (e.g. SIGKILL)
+    #- SYS_CHROOT       # use the chroot system call
+    #- SYS_TIME
+    - NET_RAW           # send a raw packet (e.g. ping).
+    - NET_ADMIN         # manage network configuration.
+    - NET_BIND_SERVICE  # open a port under 1024.
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+service:
+  name: frontend
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    # nginx.ingress.kubernetes.io/rewrite-target: /
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: guestbook.local
+      paths:
+        - /test
+  tls: []
+  #  - secretName: guestbook-tls
+  #    hosts:
+  #      - guestbook.local
+
+exporter:
+  enabled: false # It is necessary to build and push it before using it.
+  image: "localhost:5000/guestbook-prometheus-exporter:0.0.1"
+  port: 8081
+  scrapeAddress: localhost:80
+
+resources:
+  guestbook:
+  requests:
+    cpu: 100m
+    memory: 100Mi
+  prometheus: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

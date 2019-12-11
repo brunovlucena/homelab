@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vault.fullname" . }}
+  labels:
+    {{- include "vault.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "vault.selectorLabels" . | nindent 6 }}
+  # Deployment Strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  # End
+  template:
+    metadata:
+      labels:
+        {{- include "vault.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ include "vault.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+        - name: vault-config
+          configMap: 
+            name: {{ include "vault.fullname" . }}-config
+        - name: vault-root
+          emptyDir: {}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.vault.dev }}
+          command: ["vault", "server", "-dev", "-dev-listen-address", "[::]:8200"]
+          {{- else }}
+          command: ["vault", "server", "-config", "/vault/config/config.json"]
+          {{- end }}
+          env:
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: VAULT_ADDR
+            value: "http://127.0.0.1:8200"
+          - name: VAULT_TOKEN
+            value: s.AsFP4cExOkuztQX4tIq8P4RL # NOT SECURE! Just there because of the job.yaml.
+          volumeMounts:
+          - name: vault-config
+            mountPath: /vault/config/
+          - name: vault-root
+            mountPath: /root/
+          ports:
+          - containerPort: {{ .Values.service.port }}
+            name: api
+          - containerPort: {{ .Values.service.clusterPort }}
+            name: cluster-address
+          #livenessProbe:
+            #httpGet:
+              #path: /
+              #port: api
+          #readinessProbe:
+            #httpGet:
+              #path: /
+              #port: api
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+        # Prometheus Exporter
+        {{- if .Values.exporter.enabled }}
+        - name: {{ .Chart.Name }}-exporter
+          image: "{{ .Values.exporter.repository }}:{{ .Values.exporter.tag }}"
+          securityContext:
+            readOnlyRootFilesystem: true
+          env:
+          - name: VAULT_ADDR
+            value: "http://{{ .Values.exporter.vaultAddress }}"
+          ports:
+          - containerPort: 9410
+            name: metrics
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}

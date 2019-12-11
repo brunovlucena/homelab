@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "consul.fullname" . }}
+  labels:
+    {{- include "consul.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "consul.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "consul.selectorLabels" . | nindent 8 }}
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ include "consul.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+      - name: gossip-key
+        secret:
+          secretName: gossip-key
+      - name: data-dir
+        persistentVolumeClaim:
+          claimName: consul-pv-claim
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+          - name: INITIAL_CLUSTER_SIZE
+            value: {{ .Values.replicaCount | quote }}
+          ports:
+          - name: http
+            containerPort: {{.Values.HttpPort}}
+          - name: rpc
+            containerPort: {{.Values.RpcPort}}
+          - name: serflan-tcp
+            protocol: "TCP"
+            containerPort: {{.Values.SerflanPort}}
+          - name: serflan-udp
+            protocol: "UDP"
+            containerPort: {{.Values.SerflanUdpPort}}
+          - name: serfwan-tcp
+            protocol: "TCP"
+            containerPort: {{.Values.SerfwanPort}}
+          - name: serfwan-udp
+            protocol: "UDP"
+            containerPort: {{.Values.SerfwanUdpPort}}
+          - name: server
+            containerPort: {{.Values.ServerPort}}
+          - name: consuldns
+            containerPort: {{.Values.ConsulDnsPort}}
+          volumeMounts:
+            - name: data-dir
+              mountPath: /var/lib/consul
+            - name: gossip-key
+              mountPath: /etc/consul/secrets
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /v1/health/service/consul
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /v1/health/service/consul
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}

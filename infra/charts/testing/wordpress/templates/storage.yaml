@@ -1,0 +1,16 @@
+---
+# Troubleshoot (Terminating forever)
+# kubectl patch pvc wp-pv-claim -p '{"metadata":{"finalizers":null}}' -n wordpress
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wp-pv-claim
+  labels:
+    app: wordpress
+spec:
+  storageClassName: rook-ceph-block
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.persistentVolumeClaim.storage }}

@@ -1,0 +1,15 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: guestbook
+  labels:
+  component: {{ .Values.serviceMonitor.componentName }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "guestbook.labels" . | nindent 6 }}
+      app: guestbook
+      tier: frontend
+  endpoints:
+  - port: exporter
