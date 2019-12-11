@@ -171,9 +171,6 @@ func Create(w http.ResponseWriter, r *http.Request) {
 	err := cr.Bind(r)
 	// check error
 	if err != nil {
-		logrus.WithFields(logrus.Fields{
-			"cmd": "Bind",
-		}).Error(err.Error())
 		// return error
 		render.Render(w, r, ErrRender(err))
 		return
