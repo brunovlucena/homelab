@@ -22,10 +22,24 @@ export API_CONTAINER_PORT=8000
 #  $ ./helper.sh param1
 # * param1: build-myapp
 build_myapp() {
-    cd "$MYAPP"
-    cd cmd/myapp
+    cd "$MYAPP"/cmd/myapp
+	# go get 4d63.com/gochecknoglobals
+	gochecknoglobals ./...
     go mod tidy
-    go build -o ../../build/_output/bin/myapp
+    # One type of analysis the compiler performs is called escape analysis.
+    # This produces optimizations and simplifications around memory management.
+    # To Escape analysis and Inlining (-gcflags -m)
+    #go build -gcflags -m -o ../../build/_output/bin/myapp
+}
+
+# x.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: dissasemble
+dissasemble(){
+    cd "$MYAPP"/build/_output/bin
+    go tool objdump main
 }
 
 # x.
@@ -35,7 +49,6 @@ build_myapp() {
 # * param1: build-deploy-myapp
 build_push_myapp() {
     cd "$MYAPP"
-    pwd
     local RELEASE="$1"
     local REPOSITORY=localhost:5000
     local BUILD_NAME=myapp
@@ -141,7 +154,13 @@ run_myapp(){
 test(){
 	cd apps/app-example/cmd/myapp
     go mod tidy
-    go test ./... || true
+	go test ./... || true
+	# calculate the total of all packages
+	#go test ./... --cover | awk '{if ($1 != "?") print $5; else print "0.0";}' | sed 's/\%//g' | awk '{s+=$1} END {printf "%.2f\n", s}'
+	# total number of packages
+	#go test ./... --cover | wc -l
+	# 66.70/319.0 = 0.21
+	# So 21 % of the package covered.
 }
 
 # x.

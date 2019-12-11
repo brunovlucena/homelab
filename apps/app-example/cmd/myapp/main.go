@@ -7,12 +7,10 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var (
-	appName = "myapp"
-	r       = router.NewRouter()
-)
-
 func main() {
+	// Vars
+	appName := "myapp"
+	r := router.NewRouter()
 	// Log Config
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 	// Default is stderr
