@@ -23,8 +23,8 @@ export API_CONTAINER_PORT=8000
 # * param1: build-myapp
 build_myapp() {
     cd "$MYAPP"
-    go mod tidy
     cd cmd/myapp
+    go mod tidy
     go build -o ../../build/_output/bin/myapp
 }
 
