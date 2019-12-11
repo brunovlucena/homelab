@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/render"
 )
 
+// Response
 type ErrResponse struct {
 	Err            error `json:"-"` // low-level runtime error
 	HTTPStatusCode int   `json:"-"` // http response status code
@@ -15,6 +16,7 @@ type ErrResponse struct {
 	ErrorText  string `json:"error,omitempty"` // application-level error message, for debugging
 }
 
+// ErrRender returns an ErrResponse
 func ErrRender(err error) render.Renderer {
 	return &ErrResponse{
 		Err:            err,
@@ -24,6 +26,7 @@ func ErrRender(err error) render.Renderer {
 	}
 }
 
+// Now ErrResponse Implements Render interface
 func (e *ErrResponse) Render(w http.ResponseWriter, r *http.Request) error {
 	render.Status(r, e.HTTPStatusCode)
 	return nil

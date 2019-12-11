@@ -12,6 +12,7 @@ type MyRouter struct {
 	Mux *chi.Mux
 }
 
+// NewRouter returns a MyRouter
 func NewRouter() *MyRouter {
 	r := &MyRouter{Mux: chi.NewRouter()}
 	// Cors

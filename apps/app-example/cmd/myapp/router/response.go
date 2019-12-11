@@ -8,11 +8,13 @@ import (
 	"github.com/go-chi/render"
 )
 
+// ConfigResponse represents a Response.
 type ConfigResponse struct {
 	Config   *data.Config `json:"config"`
 	ServedBy string       `json:"served_by"`
 }
 
+// ConfigResponse implements Render Interface.
 func (rd *ConfigResponse) Render(w http.ResponseWriter, r *http.Request) error {
 	rd.ServedBy = utils.GetIP() // Pod's IP
 	return nil

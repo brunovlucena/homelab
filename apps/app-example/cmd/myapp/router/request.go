@@ -9,10 +9,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// ConfigRequest represents a Request
 type ConfigRequest struct {
 	Config data.Config
 }
 
+// ConfigRequest implements Binder interface
 func (cr *ConfigRequest) Bind(r *http.Request) error {
 	var data map[string]interface{}
 	err := json.NewDecoder(r.Body).Decode(&data)

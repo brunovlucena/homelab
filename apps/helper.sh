@@ -24,7 +24,9 @@ export API_CONTAINER_PORT=8000
 build_myapp() {
     cd "$MYAPP"/cmd/myapp
 	# go get 4d63.com/gochecknoglobals
-	gochecknoglobals ./...
+	gochecknoglobals ./... || true
+	# go get -u github.com/360EntSecGroup-Skylar/goreporter
+	# goreporter
     go mod tidy
     # One type of analysis the compiler performs is called escape analysis.
     # This produces optimizations and simplifications around memory management.

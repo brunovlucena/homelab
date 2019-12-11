@@ -43,6 +43,7 @@ func init() {
 	prometheus.Register(histogram)
 }
 
+// StartWebServerHTTP starts the App
 func (r *MyRouter) StartWebServerHTTP(appName, serverAddr string) {
 	if serverAddr == ":" {
 		serverAddr = ":8000" // falls back to default port
