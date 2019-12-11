@@ -150,7 +150,7 @@ func (p *Postgres) FindAll() ([]*data.Config, error) {
 	logrus.WithFields(logrus.Fields{
 		"cmd":      "FindAll",
 		"database": p.dbname,
-	}).Infoln("Records founded!")
+	}).Infoln("Record(s) founded!")
 	return configs, err
 }
 
@@ -169,7 +169,7 @@ func (p *Postgres) Update(config *data.Config) (*data.Config, error) {
 	logrus.WithFields(logrus.Fields{
 		"cmd":      "Update",
 		"database": p.dbname,
-	}).Infoln("Record removed!")
+	}).Infoln("Record updated!")
 	return config, nil
 }
 

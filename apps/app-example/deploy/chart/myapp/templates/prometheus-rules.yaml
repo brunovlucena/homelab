@@ -18,10 +18,10 @@ spec:
         summary: "{{`MyApp Usage Too High (instance {{ $labels.instance }})`}}"
         description: "{{`The amount of the requests is over the limit\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"
     - alert: MyAppPanicCount1
-      expr: rate(create_duration_seconds_sum{code="201"}[1m]) / rate(create_duration_seconds_count{code="201"}[1m]) > 1
+      expr: rate(task_duration_seconds_bucket{code="201",le="0.025"}[1m]) > 30
       for: 1m
       labels:
         severity: error
       annotations:
-        summary: "{{`MyApp Create Slow (instance {{ $labels.instance }})`}}"
-        description: "{{`The amount of time to create a record is over the limit\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"
+        summary: "{{`MyApp to Slow (instance {{ $labels.instance }})`}}"
+        description: "{{`The time duration to perform a task is over the limit\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"

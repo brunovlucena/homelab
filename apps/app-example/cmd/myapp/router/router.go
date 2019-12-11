@@ -23,9 +23,9 @@ import (
 var (
 	repo      repository.Repository
 	histogram = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "create_duration_seconds",
-		Help: "Time taken to create a config",
-	}, []string{"code"})
+		Name: "task_duration_seconds",
+		Help: "Time taken to performa a task",
+	}, []string{"code", "function"})
 )
 
 func init() {
@@ -104,13 +104,22 @@ func (r *MyRouter) setupRoutes() {
 // the Config could not be found.
 func ConfigCtx(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// start of find
+		start := time.Now()
 		sk := strings.Split(r.URL.Path, "/") // E.g route: /configs/foo/bar/
 		configName := sk[2]                  // configName: foo
 		config, err := repo.Find(configName) // gets from repository
+		duration := time.Since(start)
 		// render errors
 		if err != nil {
 			render.Render(w, r, ErrRender(err))
 			return
+		} else {
+			logrus.WithFields(logrus.Fields{
+				"cmd":      "Find",
+				"duration": duration,
+			}).Debug("Records found!")
+
 		}
 		// save config
 		ctx := context.WithValue(r.Context(), "config", config)
@@ -134,7 +143,7 @@ func FindAll(w http.ResponseWriter, r *http.Request) {
 			"duration": duration,
 		}).Debug("Records not found!")
 		// prometheus: observe error
-		observe(duration, code)
+		observe(duration, code, "findall")
 		// render
 		render.Render(w, r, ErrRender(err))
 		return
@@ -147,7 +156,7 @@ func FindAll(w http.ResponseWriter, r *http.Request) {
 		"duration": duration,
 	}).Debug("Records found!")
 	// prometheus: observe FindAll
-	observe(duration, code)
+	observe(duration, code, "findall")
 	// render
 	render.Status(r, code)
 	render.RenderList(w, r, NewConfigListResponse(configs))
@@ -161,9 +170,11 @@ func Create(w http.ResponseWriter, r *http.Request) {
 	cr := ConfigRequest{}
 	err := cr.Bind(r)
 	// check error
-	logrus.WithFields(logrus.Fields{
-		"cmd": "Bind",
-	}).Error(err.Error())
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"cmd": "Bind",
+		}).Error(err.Error())
+	}
 	// persist data in the database
 	c, err := repo.Create(&cr.Config)
 	duration := time.Since(start)
@@ -172,7 +183,7 @@ func Create(w http.ResponseWriter, r *http.Request) {
 		// Status Error
 		code := http.StatusUnprocessableEntity // 422
 		// prometheus: observe error
-		observe(duration, code)
+		observe(duration, code, "create")
 		// render
 		render.Render(w, r, ErrRender(err))
 		return
@@ -185,7 +196,7 @@ func Create(w http.ResponseWriter, r *http.Request) {
 		"duration": duration,
 	}).Debug("Record created!")
 	// prometheus: observe Create
-	observe(duration, code)
+	observe(duration, code, "create")
 	// render
 	render.Status(r, code)
 	render.Render(w, r, NewConfigResponse(c))
@@ -207,9 +218,11 @@ func Update(w http.ResponseWriter, r *http.Request) {
 	cr := ConfigRequest{}
 	err := cr.Bind(r)
 	// check error
-	logrus.WithFields(logrus.Fields{
-		"cmd": "Bind",
-	}).Error(err.Error())
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"cmd": "Bind",
+		}).Error(err.Error())
+	}
 	// update record
 	c, err := repo.Update(&cr.Config)
 	duration := time.Since(start)
@@ -218,7 +231,7 @@ func Update(w http.ResponseWriter, r *http.Request) {
 		// Status Error
 		code := http.StatusUnprocessableEntity // 422
 		// prometheus: observe error
-		observe(duration, code)
+		observe(duration, code, "update")
 		// render
 		render.Render(w, r, ErrRender(err))
 		return
@@ -230,7 +243,7 @@ func Update(w http.ResponseWriter, r *http.Request) {
 		"duration": duration,
 	}).Debug("Record updated!")
 	// prometheus: observe Update
-	observe(duration, code)
+	observe(duration, code, "update")
 	// render
 	render.Status(r, code)
 	render.Render(w, r, NewConfigResponse(c))
@@ -250,7 +263,7 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 		// Status Error
 		code := http.StatusUnprocessableEntity // 422
 		// prometheus: observe error
-		observe(duration, code)
+		observe(duration, code, "delete")
 		// render
 		render.Render(w, r, ErrRender(err))
 		return
@@ -263,7 +276,7 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 		"duration": duration,
 	}).Debug("Record removed!")
 	// prometheus: observe Delete
-	observe(duration, code)
+	observe(duration, code, "delete")
 	// render
 	render.Status(r, code)
 	render.Render(w, r, NewConfigResponse(config))
@@ -276,6 +289,6 @@ func Search(w http.ResponseWriter, r *http.Request) {
 }
 
 // Helper Funcion for Prometheus
-func observe(duration time.Duration, code int) {
-	histogram.WithLabelValues(fmt.Sprintf("%d", code)).Observe(duration.Seconds())
+func observe(duration time.Duration, code int, task string) {
+	histogram.WithLabelValues(fmt.Sprintf("%d", code), task).Observe(duration.Seconds())
 }
