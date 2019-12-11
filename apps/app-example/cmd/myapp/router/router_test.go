@@ -44,6 +44,23 @@ func TestCreate(t *testing.T) {
 			})
 		})
 	})
+
+	// try to create a invalid config
+	Convey("Given a HTTP request for /configs to create pod-1z", t, func() {
+
+		jsonStr := `{"name": "pod-1z-inval{}id","metadata": {}{"monitoring": {"enabled": "true"},"limits": {"cpu": {{}"enabled": "false"{},"value": "300m"}}}}`
+
+		res := bytes.NewBuffer([]byte(jsonStr))
+		req := httptest.NewRequest("POST", "/configs", res)
+		resp := httptest.NewRecorder()
+
+		Convey("When the request is handled by the Router", func() {
+			r.Mux.ServeHTTP(resp, req)
+			Convey("Then the response should be a 201", func() {
+				So(resp.Code, ShouldEqual, http.StatusCreated)
+			})
+		})
+	})
 }
 
 func TestDelete(t *testing.T) {

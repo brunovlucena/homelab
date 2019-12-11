@@ -4,7 +4,6 @@
     "metadata": {
       "monitoring": {
         "enabled": "true"
-      },
       "limits": {
         "cpu": {
           "enabled": "false",
@@ -20,7 +19,6 @@
         "enabled": "false"
       },
       "limits": {
-        "cpu": {
           "enabled": "true",
           "value": "250m"
         }
@@ -28,10 +26,9 @@
     }
   },
   {
-    "name": "pod-3p",
     "metadata": {
       "monitoring": {
-        "enabled": "true"
+        "enabled":
       },
       "limits": {
         "cpu": {

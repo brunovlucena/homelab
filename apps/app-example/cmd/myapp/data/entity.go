@@ -4,6 +4,8 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+
+	"github.com/sirupsen/logrus"
 )
 
 // The most convenient way to work with JSONB coming from a database would be in
@@ -23,7 +25,13 @@ type DataMap map[string]interface{}
 // marshall the map to JSONB data (= []byte):
 func (p DataMap) Value() (driver.Value, error) {
 	j, err := json.Marshal(p)
-	return j, err
+	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"cmd": "value",
+		}).Error(err.Error())
+		return nil, err
+	}
+	return j, nil
 }
 
 func (p *DataMap) Scan(src interface{}) error {

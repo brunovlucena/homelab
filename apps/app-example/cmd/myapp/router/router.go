@@ -174,6 +174,9 @@ func Create(w http.ResponseWriter, r *http.Request) {
 		logrus.WithFields(logrus.Fields{
 			"cmd": "Bind",
 		}).Error(err.Error())
+		// return error
+		render.Render(w, r, ErrRender(err))
+		return
 	}
 	// persist data in the database
 	c, err := repo.Create(&cr.Config)
@@ -222,6 +225,9 @@ func Update(w http.ResponseWriter, r *http.Request) {
 		logrus.WithFields(logrus.Fields{
 			"cmd": "Bind",
 		}).Error(err.Error())
+		// return error
+		render.Render(w, r, ErrRender(err))
+		return
 	}
 	// update record
 	c, err := repo.Update(&cr.Config)

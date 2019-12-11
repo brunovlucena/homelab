@@ -33,17 +33,17 @@ export default function() {
         });
     });
 
-    //// POST request
-    //let payload = '{"metadata":{"limits":{"cpu":{"enabled":true,"value":"512m"},"memory":{"enabled":false,"value":"1024Mi"}},"monitoring":{"enabled":false}},"name":"pod-2boooo"}';
-    ////let body = JSON.stringify(payload);
-    //group("POST", function() {
-        //let res = http.post("http://myapp.local/configs", { verb: "post" }, payload, { headers: { "Content-Type": "application/json" }});
-        //// Use JSON.parse to deserialize the JSON (instead of using the r.json() method)
-        //let j = JSON.parse(res.body);
-        //check(res, {
-            //"status is 201": (r) => r.status === 200,
-        //});
-    //});
+    // POST request
+    let payload = {"metadata":{"limits":{"cpu":{"enabled":true,"value":"512m"},"memory":{"enabled":false,"value":"1024Mi"}},"monitoring":{"enabled":false}},"name":"pod-2boooo"};
+    let body = JSON.stringify(payload);
+    group("POST", function() {
+        let res = http.post("http://myapp.local/configs", { verb: "post" }, body, { headers: { "Content-Type": "application/json" }});
+        // Use JSON.parse to deserialize the JSON (instead of using the r.json() method)
+        let j = JSON.parse(res.body);
+        check(res, {
+            "status is 201": (r) => r.status === 200,
+        });
+    });
 
     // PUT request
     //group("PUT", function() {

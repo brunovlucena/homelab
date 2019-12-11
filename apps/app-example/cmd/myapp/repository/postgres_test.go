@@ -35,6 +35,7 @@ func TestCreate(t *testing.T) {
 		_, err := rep.Create(&data.Config{Data: c})
 		utils.LogErr(err)
 	}
+
 }
 
 func TestUpdate(t *testing.T) {
