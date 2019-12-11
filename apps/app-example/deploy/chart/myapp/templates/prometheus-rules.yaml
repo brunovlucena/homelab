@@ -9,7 +9,7 @@ spec:
   groups:
   - name: ./myapp.rules
     rules:
-    - alert: MyAppPanicCount
+    - alert: MyAppPanicRequests
       expr: rate(promhttp_metric_handler_requests_total{code="200"}[1m]) > 0.02
       for: 1m
       labels:
@@ -17,11 +17,19 @@ spec:
       annotations:
         summary: "{{`MyApp Usage Too High (instance {{ $labels.instance }})`}}"
         description: "{{`The amount of the requests is over the limit\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"
-    - alert: MyAppPanicCount1
+    - alert: MyAppPanicDuration
       expr: rate(task_duration_seconds_bucket{code="201",le="0.025"}[1m]) > 30
       for: 1m
       labels:
         severity: error
       annotations:
-        summary: "{{`MyApp to Slow (instance {{ $labels.instance }})`}}"
+        summary: "{{`MyApp too Slow (instance {{ $labels.instance }})`}}"
         description: "{{`The time duration to perform a task is over the limit\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"
+    - alert: MyAppPanicGoRoutines
+      expr: rate(rate(go_goroutines[1m])) > 1
+      for: 1m
+      labels:
+        severity: error
+      annotations:
+        summary: "{{`MyApp to Slow (instance {{ $labels.instance }})`}}"
+        description: "{{`The number of go_routines is over the limit\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"

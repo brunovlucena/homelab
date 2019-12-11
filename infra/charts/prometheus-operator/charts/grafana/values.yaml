@@ -74,12 +74,3 @@ tolerations: []
 
 affinity: {}
 
-# TODO: ConfigMaps.
-configMaps:
-  grafana:
-    #/etc/grafana/grafana.ini
-    grafana.ini: | 
-       foo: bar
-    #/var/lib/grafana/grafana.db
-    grafana.db: |
-       foo:bar

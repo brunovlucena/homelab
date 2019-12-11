@@ -22,9 +22,9 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       volumes:
-      - name: grafana-config
+      - name: grafana-defaults
         configMap:
-          name: {{ include "grafana.fullname" . }}-grafana  
+          name: {{ include "grafana.fullname" . }}-defaults
       containers:
           {{- if .Values.grafanaLoki.enabled }}
           # grafana loki
@@ -54,8 +54,13 @@ spec:
           image: "{{ .Values.image.grafana.repo }}:{{ .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           volumeMounts:
-          - name: grafana-config
-            mountPath: /usr/share/grafana/conf/foo.ini
+          - name: grafana-defaults
+            mountPath: /etc/grafana/grafana.ini
+            subPath: grafana.ini
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5 && grafana-cli"]
           env:
             - name: "GF_SERVER_DOMAIN"
               value: "mon.local"
