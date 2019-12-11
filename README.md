@@ -194,3 +194,18 @@ spec:
       deployments:
         - name: postgres
 ```
+
+### Postgres HA Cluster
+
+**Questions**
+
+- How do I automatically deploy a new PostgreSQL instance?
+- How do I failover a PostgreSQL pod to another availability zone if my PostgreSQL instance goes down?
+- How do I resize my PostgreSQL volume if I am running out of space?
+- How do I snapshot and backup PostgreSQL for disaster recovery?
+- How do I test upgrades?
+- Can I take my PostgreSQL deployment and run it in any environment if needed?
+
+**Achieving HA with PostgreSQL**
+
+- [Zalando Operator](https://github.com/zalando/postgres-operator)

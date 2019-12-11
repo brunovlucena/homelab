@@ -18,7 +18,7 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
 else
 	echo "OS unknown. Exiting" && exit 1
 fi
-        
+
 
 # pre-install some basic components.
 #
