@@ -34,7 +34,7 @@ export default function() {
     });
 
     // POST request
-    let payload = {"metadata":{"limits":{"cpu":{"enabled":true,"value":"512m"},"memory":{"enabled":false,"value":"1024Mi"}},"monitoring":{"enabled":false}},"name":"pod-2boooo"};
+    let payload = '{"metadata":{"limits":{"cpu":{"enabled":true,"value":"512m"},"memory":{"enabled":false,"value":"1024Mi"}},"monitoring":{"enabled":false}},"name":"pod-2boooo"}';
     let body = JSON.stringify(payload);
     group("POST", function() {
         let res = http.post("http://myapp.local/configs", { verb: "post" }, body, { headers: { "Content-Type": "application/json" }});
@@ -46,20 +46,20 @@ export default function() {
     });
 
     // PUT request
-    //group("PUT", function() {
-        //let res = http.put("http://myapp.local/configs", JSON.stringify({ verb: "put" }), { headers: { "Content-Type": "application/json" }});
-        //check(res, {
-            //"status is 200": (r) => r.status === 200,
-        //});
-    //});
+    group("PUT", function() {
+        let res = http.put("http://myapp.local/configs", JSON.stringify({ verb: "put" }), { headers: { "Content-Type": "application/json" }});
+        check(res, {
+            "status is 200": (r) => r.status === 200,
+        });
+    });
 
     // PATCH request
-    //group("PATCH", function() {
-        //let res = http.patch("http://myapp.local/configs", JSON.stringify({ verb: "patch" }), { headers: { "Content-Type": "application/json" }});
-        //check(res, {
-            //"status is 200": (r) => r.status === 200,
-        //});
-    //});
+    group("PATCH", function() {
+        let res = http.patch("http://myapp.local/configs", JSON.stringify({ verb: "patch" }), { headers: { "Content-Type": "application/json" }});
+        check(res, {
+            "status is 200": (r) => r.status === 200,
+        });
+    });
 
     // DELETE request
     group("DELETE", function() {
