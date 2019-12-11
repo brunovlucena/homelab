@@ -8,6 +8,17 @@ MINIKUBE=~/.local/bin/minikube
 OPERATOR=~/.local/bin/operator-sdk
 KUBEDIFF=~/.local/bin/kubediff
 SQUASH=~/.local/bin/squashctl
+WGET=$(which wget)
+if [[ "$OSTYPE" == "linux-gnu" ]]; then
+	OS="linux"
+	OSLONG="linux-gnu"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+	OS="darwin"
+	OSLONG="apple-darwin"
+else
+	echo "OS unknown. Exiting" && exit 1
+fi
+        
 
 # pre-install some basic components.
 #
@@ -20,12 +31,12 @@ pre_install() {
     local VERSION="$2"
     case "$ARG" in
         minikube)
-            local PATH="https://github.com/kubernetes/minikube/releases/download/$VERSION/minikube-linux-amd64"
-            [[ ! -f $MINIKUBE ]] && /usr/bin/wget "$PATH" -O "$MINIKUBE" ; /bin/chmod +x "$MINIKUBE"
+            local PATH="https://github.com/kubernetes/minikube/releases/download/$VERSION/minikube-$OS-amd64"
+            [[ ! -f $MINIKUBE ]] && $WGET "$PATH" -O "$MINIKUBE" ; /bin/chmod +x "$MINIKUBE" ; $MINIKUBE version
         ;;
         operator-sdk)
-            local PATH="https://github.com/operator-framework/operator-sdk/releases/download/$VERSION/operator-sdk-$VERSION-x86_64-linux-gnu"
-            [[ ! -f $OPERATOR ]] && /usr/bin/wget "$PATH" -O "$OPERATOR" ; /bin/chmod +x "$OPERATOR"
+            local PATH="https://github.com/operator-framework/operator-sdk/releases/download/$VERSION/operator-sdk-$VERSION-x86_64-$OSLONG"
+            [[ ! -f $OPERATOR ]] && $WGET "$PATH" -O "$OPERATOR" ; /bin/chmod +x "$OPERATOR" ; $OPERATOR version
         ;;
         kubediff)
             if [[ ! -f $KUBEDIFF  ]]
@@ -36,14 +47,21 @@ pre_install() {
             fi
         ;;
         squash)
-            local PATH="https://github.com/solo-io/squash/releases/download/$VERSION/squashctl-linux"
-            [[ ! -f $SQUASH  ]] && /usr/bin/wget "$PATH" -O "$SQUASH"; /bin/chmod +x "$SQUASH"
+            local PATH="https://github.com/solo-io/squash/releases/download/$VERSION/squashctl-$OS"
+            [[ ! -f $SQUASH  ]] && $WGET "$PATH" -O "$SQUASH"; /bin/chmod +x "$SQUASH" ; $SQUASH --version
         ;;
         k6)
-            sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 379CE192D401AB61
-            echo "deb https://dl.bintray.com/loadimpact/deb stable main" | sudo tee -a /etc/apt/sources.list
-            sudo apt-get update
-            sudo apt-get install k6
+			if [[ "$OSTYPE" == "linux-gnu" ]]; then
+                sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 379CE192D401AB61
+                echo "deb https://dl.bintray.com/loadimpact/deb stable main" | sudo tee -a /etc/apt/sources.list
+                sudo apt-get update
+                sudo apt-get install k6
+			elif [[ "$OSTYPE" == "darwin"* ]]; then
+				brew install k6
+			else
+				echo "OS unknown. Exiting" && exit 1
+			fi
+			k6 version
         ;;
     esac
 }
