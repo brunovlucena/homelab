@@ -8,8 +8,6 @@ import (
 	"github.com/brunovlucena/mobimeo/apps/app-example/cmd/myapp/data"
 )
 
-const CONFIG_NOT_FOUND = "config not found"
-
 //Repository repository interface
 type Repository interface {
 	Create(config *data.Config) (*data.Config, error)
