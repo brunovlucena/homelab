@@ -42,20 +42,22 @@ func connect(host, port, user, password, dbname string) *sql.DB {
 	// error checking
 	if err != nil {
 		logrus.WithFields(logrus.Fields{
+			"cmd":      "connect",
 			"host":     host,
 			"port":     port,
 			"database": dbname,
-		}).Error("Connect: Cannot connect!")
+		}).Error("Cannot connect!")
 	} else {
 		// SQL.Open only creates the DB object, but dies not open
 		//any connections to the database.
 		err = db.Ping()
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
+				"cmd":      "connect",
 				"host":     host,
 				"port":     port,
 				"database": dbname,
-			}).Error("Connect: failed to ping!")
+			}).Error("Failed to ping database!")
 		}
 	}
 	// Success
