@@ -18,31 +18,32 @@ export let options = {
 
 export default function() {
     // GET request
-    //group("GET", function() {
-        //let res = http.get("http://myapp.local/configs");
-        //check(res, {
-            //"status is 200": (r) => r.status === 200,
-        //});
-    //});
-
-    //// GET request
-    //group("GET", function() {
-        //let res = http.get("http://myapp.local/configs/pod-2");
-        //check(res, {
-            //"status is 200": (r) => r.status === 200,
-        //});
-    //});
-
-    // POST request
-    let body = JSON.stringify({ key: '{"config":{"Data":{"metadata":{"limits":{"cpu":{"enabled":true,"value":"512m"},"memory":{"enabled":false,"value":"1024Mi"}},"monitoring":{"enabled":false}},"name":"pod-2boooo"}}' });
-    group("POST", function() {
-        let res = http.post("http://myapp.local/configs", { verb: "post" }, body, { headers: { "Content-Type": "application/json" }});
-        // Use JSON.parse to deserialize the JSON (instead of using the r.json() method)
-        let j = JSON.parse(res.body);
+    group("GET", function() {
+        let res = http.get("http://myapp.local/configs");
         check(res, {
-            "status is 201": (r) => r.status === 200,
+            "status is 200": (r) => r.status === 200,
         });
     });
+
+    // GET request
+    group("GET", function() {
+        let res = http.get("http://myapp.local/configs/pod-2");
+        check(res, {
+            "status is 200": (r) => r.status === 200,
+        });
+    });
+
+    //// POST request
+    //let payload = '{"metadata":{"limits":{"cpu":{"enabled":true,"value":"512m"},"memory":{"enabled":false,"value":"1024Mi"}},"monitoring":{"enabled":false}},"name":"pod-2boooo"}';
+    ////let body = JSON.stringify(payload);
+    //group("POST", function() {
+        //let res = http.post("http://myapp.local/configs", { verb: "post" }, payload, { headers: { "Content-Type": "application/json" }});
+        //// Use JSON.parse to deserialize the JSON (instead of using the r.json() method)
+        //let j = JSON.parse(res.body);
+        //check(res, {
+            //"status is 201": (r) => r.status === 200,
+        //});
+    //});
 
     // PUT request
     //group("PUT", function() {

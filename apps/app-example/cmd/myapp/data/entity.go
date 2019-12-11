@@ -13,7 +13,7 @@ import (
 // create our own database compatible type: sql.Scanner & driver.Valuer
 
 type Config struct {
-	Data DataMap `db:"data"`
+	Data DataMap `db:"data" json:"data"`
 }
 
 type DataMap map[string]interface{}

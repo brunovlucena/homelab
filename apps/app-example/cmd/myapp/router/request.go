@@ -14,6 +14,7 @@ type ConfigRequest struct {
 
 func (cr *ConfigRequest) Bind(r *http.Request) error {
 	var data map[string]interface{}
+	// TODO: check r.Body for nil
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
 		logrus.Error(err)
