@@ -119,7 +119,6 @@ func ConfigCtx(next http.Handler) http.Handler {
 				"cmd":      "Find",
 				"duration": duration,
 			}).Debug("Records found!")
-
 		}
 		// save config
 		ctx := context.WithValue(r.Context(), "config", config)

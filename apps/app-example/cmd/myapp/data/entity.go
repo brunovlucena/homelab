@@ -34,6 +34,11 @@ func (p DataMap) Value() (driver.Value, error) {
 	return j, nil
 }
 
+// To use the interfacec interface, sql.Scanner, we need to implement Scan method.
+// This method must take the raw data that comes from the database
+// and transform it to our new type. In our case, the database will return JSONB
+// ([]byte) that we must transform to our type (the reverse of what we did with
+// driver.Valuer)
 func (p *DataMap) Scan(src interface{}) error {
 	source, ok := src.([]byte)
 	if !ok {
