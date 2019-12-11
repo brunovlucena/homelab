@@ -13,11 +13,11 @@ import (
 // certainly not as bytes.
 // Luckely, the Go standard library has 2 built-in interfaces we can implement to
 // create our own database compatible type: sql.Scanner & driver.Valuer
-
 type Config struct {
 	Data DataMap `db:"data" json:"data"`
 }
 
+// DataMap represents the dynamic payload.
 type DataMap map[string]interface{}
 
 // To satisfy this interface, we must implement the Value method, which must
@@ -42,7 +42,7 @@ func (p DataMap) Value() (driver.Value, error) {
 func (p *DataMap) Scan(src interface{}) error {
 	source, ok := src.([]byte)
 	if !ok {
-		return errors.New("Type assertion .([]byte) failed.")
+		return errors.New("type assertion .([]byte) failed")
 	}
 
 	var i interface{}
@@ -53,7 +53,7 @@ func (p *DataMap) Scan(src interface{}) error {
 
 	*p, ok = i.(map[string]interface{})
 	if !ok {
-		return errors.New("Type assertion .(map[string]interface{}) failed.")
+		return errors.New("type assertion .(map[string]interface{}) failed")
 	}
 
 	return nil

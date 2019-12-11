@@ -15,7 +15,7 @@ var (
 
 func init() {
 	// load json
-	utils.LoadJson("postgres_test.json", &configs)
+	utils.LoadJSON("postgres_test.json", &configs)
 	// initialize repository
 	dType := "postgres"
 	dHost := "0.0.0.0" // or postgres.storage

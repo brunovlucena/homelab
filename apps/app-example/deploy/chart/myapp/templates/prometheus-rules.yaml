@@ -26,7 +26,7 @@ spec:
         summary: "{{`MyApp too Slow (instance {{ $labels.instance }})`}}"
         description: "{{`The time duration to perform a task is over the limit\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"
     - alert: MyAppPanicGoRoutines
-      expr: rate(rate(go_goroutines[1m])) > 1
+      expr: rate(go_goroutines[1m]) > 1
       for: 1m
       labels:
         severity: error

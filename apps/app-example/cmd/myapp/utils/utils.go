@@ -21,7 +21,8 @@ func LogErr(err error) {
 	}
 }
 
-func LoadJson(filePath string, configs *[]map[string]interface{}) {
+// LoadJSON loads from a json file.
+func LoadJSON(filePath string, configs *[]map[string]interface{}) {
 	// Open our jsonFile
 	jsonArrayFile, err := os.Open(filePath)
 	// if we os.Open returns an error then handle it
@@ -37,7 +38,7 @@ func LoadJson(filePath string, configs *[]map[string]interface{}) {
 	json.Unmarshal(bytes, configs)
 }
 
-// this helper function returns the ipv4 address from the server
+// GetIP returns the ipv4 address from the server
 func GetIP() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {

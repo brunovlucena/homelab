@@ -12,6 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Represents a Connection.
 type Postgres struct {
 	host     string
 	port     string
@@ -21,16 +22,19 @@ type Postgres struct {
 	dbconn   *sql.DB
 }
 
+// Represents a Item in the Database.
 type Item struct {
 	ID     int
 	Config data.Config
 }
 
+// NewPostgres creates a connection with the database.
 func NewPostgres(host, port, user, password, dbname string) *Postgres {
 	dbconn := connect(host, port, user, password, dbname)
 	return &Postgres{host, port, user, password, dbname, dbconn}
 }
 
+// Connect stablishes a connection with the database
 func connect(host, port, user, password, dbname string) *sql.DB {
 	// info: sslmode - disabled
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
@@ -71,6 +75,7 @@ func connect(host, port, user, password, dbname string) *sql.DB {
 	return db
 }
 
+// Create creates a Record in the database.
 func (p *Postgres) Create(config *data.Config) (*data.Config, error) {
 	sqlStatement := `INSERT INTO configs (data) VALUES ($1) RETURNING id`
 	var id int
@@ -93,6 +98,7 @@ func (p *Postgres) Create(config *data.Config) (*data.Config, error) {
 	return config, nil
 }
 
+// Find finds a Record in the database.
 func (p *Postgres) Find(name string) (*data.Config, error) {
 	sqlStatement := `SELECT data FROM configs WHERE data->>'name' = $1;`
 	row := p.dbconn.QueryRow(sqlStatement, name)
@@ -115,6 +121,7 @@ func (p *Postgres) Find(name string) (*data.Config, error) {
 	return config, err
 }
 
+// FindAll returns all Records in the database.
 func (p *Postgres) FindAll() ([]*data.Config, error) {
 	// return value
 	var configs []*data.Config
@@ -154,6 +161,7 @@ func (p *Postgres) FindAll() ([]*data.Config, error) {
 	return configs, err
 }
 
+// Update updates a Record in the database.
 func (p *Postgres) Update(config *data.Config) (*data.Config, error) {
 	sqlStatement := `UPDATE configs SET data = $1 WHERE data->>'name' = $2;`
 	dataMap := config.Data
@@ -173,6 +181,7 @@ func (p *Postgres) Update(config *data.Config) (*data.Config, error) {
 	return config, nil
 }
 
+// Remove removes a Record from database.
 func (p *Postgres) Remove(name string) (*data.Config, error) {
 	sqlStatement := `DELETE FROM configs WHERE data->>'name' = $1;`
 	config := &data.Config{}
@@ -196,6 +205,7 @@ func (p *Postgres) Remove(name string) (*data.Config, error) {
 	return config, nil
 }
 
+// Search searchs a records in the Database.
 func (p *Postgres) Search(params url.Values) ([]*data.Config, error) {
 	return make([]*data.Config, 0, 1), nil
 }

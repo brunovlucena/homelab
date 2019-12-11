@@ -18,6 +18,7 @@ type Repository interface {
 	Search(params url.Values) ([]*data.Config, error)
 }
 
+// NewRepository returns a selected repository.
 func NewRepository(name, host, port, user, pass, dbname string) (Repository, error) {
 	switch strings.ToLower(name) {
 	case "postgres":
