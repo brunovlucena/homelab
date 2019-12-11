@@ -124,11 +124,16 @@ func FindAll(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	// get configs
 	configs, err := repo.FindAll()
+	duration := time.Since(start)
 	// render errors
 	if err != nil {
-		code := http.StatusUnprocessableEntity // 422
+		code := http.StatusUnprocessableEntity
+		// loging
+		logrus.WithFields(logrus.Fields{
+			"cmd":      "FindAll",
+			"duration": duration,
+		}).Debug("Records not found!")
 		// prometheus: observe error
-		duration := time.Since(start)
 		observe(duration, code)
 		// render
 		render.Render(w, r, ErrRender(err))
@@ -136,12 +141,12 @@ func FindAll(w http.ResponseWriter, r *http.Request) {
 	}
 	// Status Created
 	code := http.StatusCreated
-	// prometheus: observe created
-	duration := time.Since(start)
+	// log FindAll
 	logrus.WithFields(logrus.Fields{
 		"cmd":      "FindAll",
 		"duration": duration,
-	}).Info("Record created!")
+	}).Debug("Records found!")
+	// prometheus: observe FindAll
 	observe(duration, code)
 	// render
 	render.Status(r, code)
@@ -161,13 +166,12 @@ func Create(w http.ResponseWriter, r *http.Request) {
 	}).Error(err.Error())
 	// persist data in the database
 	c, err := repo.Create(&cr.Config)
+	duration := time.Since(start)
 	// render errors
 	if err != nil {
 		// Status Error
 		code := http.StatusUnprocessableEntity // 422
 		// prometheus: observe error
-		duration := time.Since(start)
-		observe(duration, code)
 		observe(duration, code)
 		// render
 		render.Render(w, r, ErrRender(err))
@@ -175,12 +179,12 @@ func Create(w http.ResponseWriter, r *http.Request) {
 	}
 	// Status Created
 	code := http.StatusCreated
-	// prometheus: observe created
-	duration := time.Since(start)
+	// log created
 	logrus.WithFields(logrus.Fields{
-		"cmd":      "create",
+		"cmd":      "Create",
 		"duration": duration,
-	}).Info("Record created!")
+	}).Debug("Record created!")
+	// prometheus: observe Create
 	observe(duration, code)
 	// render
 	render.Status(r, code)
@@ -208,34 +212,60 @@ func Update(w http.ResponseWriter, r *http.Request) {
 	}).Error(err.Error())
 	// update record
 	c, err := repo.Update(&cr.Config)
+	duration := time.Since(start)
 	// render errors
 	if err != nil {
 		// Status Error
 		code := http.StatusUnprocessableEntity // 422
 		// prometheus: observe error
-		duration := time.Since(start)
 		observe(duration, code)
 		// render
 		render.Render(w, r, ErrRender(err))
 		return
 	}
-	render.Status(r, http.StatusOK)
+	// Status Updated
+	code := http.StatusFound
+	logrus.WithFields(logrus.Fields{
+		"cmd":      "Update",
+		"duration": duration,
+	}).Debug("Record updated!")
+	// prometheus: observe Update
+	observe(duration, code)
+	// render
+	render.Status(r, code)
 	render.Render(w, r, NewConfigResponse(c))
 }
 
 // Delete removes the specified Config.
 func Delete(w http.ResponseWriter, r *http.Request) {
+	// start of update
+	start := time.Now()
 	// get data from context
 	config := r.Context().Value("config").(*data.Config)
 	// removes from database
 	_, err := repo.Remove(config.Data["name"].(string))
-	// check errors
+	// render errors
+	duration := time.Since(start)
 	if err != nil {
-		logrus.Error(err)
+		// Status Error
+		code := http.StatusUnprocessableEntity // 422
+		// prometheus: observe error
+		observe(duration, code)
+		// render
 		render.Render(w, r, ErrRender(err))
 		return
 	}
-	render.Status(r, http.StatusFound)
+	// Status Deleted
+	code := http.StatusFound
+	// log delete
+	logrus.WithFields(logrus.Fields{
+		"cmd":      "Delete",
+		"duration": duration,
+	}).Debug("Record removed!")
+	// prometheus: observe Delete
+	observe(duration, code)
+	// render
+	render.Status(r, code)
 	render.Render(w, r, NewConfigResponse(config))
 }
 
@@ -245,6 +275,7 @@ func Search(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// Helper Funcion for Prometheus
 func observe(duration time.Duration, code int) {
 	histogram.WithLabelValues(fmt.Sprintf("%d", code)).Observe(duration.Seconds())
 }
