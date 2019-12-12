@@ -70,6 +70,7 @@ tunnel-registry                Creates a tunnel to minikube's registry (E.g. mak
 - [Prometheus-Monitoring](http://prom.local:30100)
 - [Prometheus-Rook](http://prom.local:30200)
 - [Prometheus-Dev](http://prom.local:30300)
+- [RabbitMQ](http://rabbitmq.local/)
 
 
 ### API In Golang
