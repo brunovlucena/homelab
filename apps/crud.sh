@@ -1,5 +1,5 @@
-#URL=localhost:8000
-URL=myapp.local
+URL=localhost:8000
+#URL=myapp.local
 echo "POST /configs"
 curl -XPOST "$URL"/configs -d '{"name": "pod-1000","metadata": {"monitoring": {"enabled": "true"},"limits": {"cpu": {"enabled": "false","value": "900m"}}}}'
 echo "\nGET /configs/pod-1000"

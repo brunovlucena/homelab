@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -332,7 +333,7 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// prometheus: observe Delete
+	// prometheus
 	code := http.StatusFound
 	observe(duration, code, "delete")
 
@@ -351,7 +352,40 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 // Search returns the Configs data for a matching config.
 // Query:   /metadata.{key}={value}
 func Search(w http.ResponseWriter, r *http.Request) {
+	// start tracking
+	start := time.Now()
+	// get params
+	params, _ := url.ParseQuery(r.URL.String())
 
+	// get configs
+	configs, err := repo.Search(params)
+	duration := time.Since(start)
+	// end tracking
+
+	// check errors
+	if err != nil {
+		// prometheus: observe error
+		code := http.StatusUnprocessableEntity
+		observe(duration, code, "search")
+
+		// render error
+		render.Render(w, r, ErrRender(err))
+		return
+	}
+
+	// prometheus
+	code := http.StatusFound
+	observe(duration, code, "search")
+
+	// log
+	logrus.WithFields(logrus.Fields{
+		"cmd":      "Search",
+		"duration": duration,
+		"code":     code,
+	}).Info("Record(s) found!")
+
+	// render result
+	render.RenderList(w, r, NewConfigListResponse(configs))
 }
 
 // Helper Funcion for Prometheus
