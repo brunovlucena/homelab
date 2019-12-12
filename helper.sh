@@ -5,6 +5,7 @@ set -e # Exit immediately if a command exits with a non-zero status.
 
 # Variables
 MINIKUBE=~/.local/bin/minikube
+HELM=~/.local/bin/helm
 OPERATOR=~/.local/bin/operator-sdk
 KUBEDIFF=~/.local/bin/kubediff
 SQUASH=~/.local/bin/squashctl
@@ -34,6 +35,10 @@ pre_install() {
             local PATH="https://github.com/kubernetes/minikube/releases/download/$VERSION/minikube-$OS-amd64"
             [[ ! -f $MINIKUBE ]] && $WGET "$PATH" -O "$MINIKUBE" ; /bin/chmod +x "$MINIKUBE" ; $MINIKUBE version
         ;;
+        helm)
+            local PATH="https://get.helm.sh/helm-$VERSION-$OS-amd64.tar.gz"
+            [[ ! -f $HELM ]] && $WGET "$PATH" -O /tmp/helm.tar.gz && cd /tmp && /usr/bin/tar zxvvf /tmp/helm.tar.gz && /bin/mv /tmp/$OS-amd64/helm $HELM; /bin/chmod +x "$HELM" ; $HELM version
+         ;;
         operator-sdk)
             local PATH="https://github.com/operator-framework/operator-sdk/releases/download/$VERSION/operator-sdk-$VERSION-x86_64-$OSLONG"
             [[ ! -f $OPERATOR ]] && $WGET "$PATH" -O "$OPERATOR" ; /bin/chmod +x "$OPERATOR" ; $OPERATOR version
