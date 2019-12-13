@@ -175,6 +175,9 @@ manage_cluster_pluggins() {
 	minikube addons disable helm-tiller # Helm 3.
     minikube addons disable registry-creds # Using local registry only.
 	# enable
+    minikube addons enable registry # explicit enable local internal registry
+    minikube addons enable ingress
+    minikube addons enable ingress-dns
     minikube addons enable dashboard # Because dashboards are nice.
     # expose dashboard
     kubectl create -f infra/dashboard.yaml -n kubernetes-dashboard || true
