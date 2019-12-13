@@ -5,7 +5,7 @@ metadata:
   labels:
     {{- include "rabbitmq.labels" . | nindent 4 }}
 spec:
-  serviceName: {{ template "rabbitmq.fullname" . }}-headless
+  serviceName: {{ template "rabbitmq.fullname" . }}
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
@@ -91,14 +91,16 @@ spec:
               chmod 600 /opt/bitnami/rabbitmq/.rabbitmq/.erlang.cookie /opt/bitnami/rabbitmq/var/lib/rabbitmq/.erlang.cookie
               #copy the mounted configuration to both places
               cp  /opt/bitnami/rabbitmq/conf/* /opt/bitnami/rabbitmq/etc/rabbitmq
-              #replace the default password that is generated
-              sed -i "/CHANGEME/cdefault_pass=${RABBITMQ_PASSWORD//\\/\\\\}" /opt/bitnami/rabbitmq/etc/rabbitmq/rabbitmq.conf
               exec rabbitmq-server
           ports:
             - name: epmd
               containerPort: {{ .Values.service.epmd }}
             - name: amqp
               containerPort: {{ .Values.service.port }}
+            {{- if .Values.rabbitmq.tls.enabled }}
+            - name: amqp-ssl
+              containerPort: {{ .Values.service.tlsPort }}
+            {{- end }}
             - name: dist
               containerPort: {{ .Values.service.distPort }}
             - name: stats
@@ -109,7 +111,7 @@ spec:
               command:
                 - sh
                 - -c
-                - rabbitmq-api-check "http://{{ .Values.rabbitmq.username }}:$RABBITMQ_PASSWORD@127.0.0.1:{{ .Values.service.managerPort }}/api/healthchecks/node" '{"status":"ok"}'
+                - rabbitmq-api-check "http://{{ .Values.rabbitmq.username }}:{{ .Values.rabbitmq.password }}@127.0.0.1:{{ .Values.service.managerPort }}/api/healthchecks/node" '{"status":"ok"}'
             initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
             timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
             periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
@@ -122,7 +124,7 @@ spec:
               command:
                 - sh
                 - -c
-                - rabbitmq-health-check "http://{{ .Values.rabbitmq.username }}:$RABBITMQ_PASSWORD@127.0.0.1:{{ .Values.service.managerPort }}/api/healthchecks/node" '{"status":"ok"}'
+                - rabbitmq-health-check "http://{{ .Values.rabbitmq.username }}:${{ .Values.rabbitmq.password }}@127.0.0.1:{{ .Values.service.managerPort }}/api/healthchecks/node" '{"status":"ok"}'
             initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
             timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
             periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
@@ -144,7 +146,7 @@ spec:
               fieldRef:
                 fieldPath: metadata.namespace
           - name: K8S_SERVICE_NAME
-            value: "{{ template "rabbitmq.fullname" . }}-headless"
+            value: "{{ template "rabbitmq.fullname" . }}"
           - name: K8S_ADDRESS_TYPE
             value: {{ .Values.rabbitmq.clustering.address_type }}
           - name: RABBITMQ_NODENAME
@@ -152,9 +154,7 @@ spec:
           - name: K8S_HOSTNAME_SUFFIX
             value: ".$(K8S_SERVICE_NAME).$(MY_POD_NAMESPACE).svc.{{ .Values.rabbitmq.clustering.k8s_domain }}"
           - name: RABBITMQ_LOGS
-            value: {{ .Values.rabbitmq.logs | quote }}
-          - name: RABBITMQ_ULIMIT_NOFILES
-            value: {{ .Values.rabbitmq.ulimitNofiles | quote }}
+            value: "{{ .Values.rabbitmq.logs }}"
           - name: RABBITMQ_USE_LONGNAME
             value: "true"
           - name: RABBITMQ_ERL_COOKIE

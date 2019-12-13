@@ -8,7 +8,7 @@ apiVersion: extensions/v1beta1
 {{- end }}
 kind: Ingress
 metadata:
-  name: {{ $fullName }}
+  name: {{ $fullName }}-dashboard
   labels:
     {{- include "rabbitmq.labels" . | nindent 4 }}
   {{- with .Values.ingress.annotations }}
