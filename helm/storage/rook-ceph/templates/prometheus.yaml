@@ -1,0 +1,69 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: prometheus
+spec:
+  serviceAccountName: prometheus-{{ .Release.Namespace }}
+  serviceMonitorSelector:
+    matchLabels:
+      component: {{ .Values.serviceMonitor.componentName }}
+  ruleSelector:
+    matchLabels:
+      role: alert-rules
+      prometheus: rook-prometheus
+  resources:
+    {{- toYaml .Values.resources.prometheus | nindent 4 }}
+  enableAdminAPI: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-{{ .Release.Namespace }}
+  labels:
+    {{ include "rook-ceph.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: prometheus-{{ .Release.Namespace }}
+aggregationRule:
+  clusterRoleSelectors:
+  - matchLabels:
+      rbac.ceph.rook.io/aggregate-to-prometheus: "true"
+rules: []
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: prometheus-rules-{{ .Release.Namespace  }}
+  labels:
+    rbac.ceph.rook.io/aggregate-to-prometheus: "true"
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
+  - configmaps
+  verbs: ["get"]
+- nonResourceURLs: ["/metrics"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-{{ .Release.Namespace  }}
+  labels:
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-{{ .Release.Namespace  }}
+subjects:
+- kind: ServiceAccount
+  name: prometheus-{{ .Release.Namespace  }}
+  namespace: {{ .Release.Namespace }}

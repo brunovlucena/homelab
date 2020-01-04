@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    {{ include "chart-prometheus-operator.labels" . | nindent 4 }}
+  name: {{ include "chart-prometheus-operator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpoints:
+  - honorLabels: true
+    port: http
+  selector:
+    matchLabels:
+      {{- include "chart-prometheus-operator.selectorLabels" . | nindent 6 }}

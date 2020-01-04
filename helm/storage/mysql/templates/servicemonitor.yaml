@@ -1,0 +1,12 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: wordpress-mysql
+  labels:
+    component: {{ .Values.serviceMonitor.componentName }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "mysql.labels" . | nindent 6 }}
+  endpoints:
+  - port: exporter

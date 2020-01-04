@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chart-postgres.fullname" . }}
+  labels:
+    {{- include "chart-postgres.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      protocol: TCP
+      name: postgres
+  selector:
+    {{- include "chart-postgres.selectorLabels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chart-postgres.fullname" . }}-exporter
+  labels:
+    {{- include "chart-postgres.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.exporter.type }}
+  ports:
+    - port: {{ .Values.service.exporter.port }}
+      protocol: TCP
+      name: exporter
+  selector:
+    {{- include "chart-postgres.selectorLabels" . | nindent 4 }}

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fluentd.fullname" . }}
+  labels:
+    {{- include "fluentd.labels" . | nindent 4 }}
+    component: infra-kube-system
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: exporter
+      protocol: TCP
+      name: exporter
+  selector:
+    {{- include "fluentd.selectorLabels" . | nindent 4 }}

@@ -1,0 +1,13 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    {{- include "velero.prometheus" . | nindent 4 }}
+  name: prometheus-rules-velero
+spec:
+  groups:
+  - name: ./velero.rules
+    rules:
+    - alert: ExampleAlert
+      expr: vector(1)

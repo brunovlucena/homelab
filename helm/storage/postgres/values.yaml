@@ -1,0 +1,85 @@
+# Default values for chart-postgres.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+persistentVolumeClaim:
+  storage: 3Gi
+  #storageClass: rook-ceph-block
+  storageClass: default
+
+
+replicaCount: 1
+
+env:
+  - name: POSTGRES_DB
+    value: "myapp"
+  - name: POSTGRES_USER
+    value: "postgres"         
+  - name: POSTGRES_PASSWORD
+    value: "postgres"
+
+image: 
+  repository: postgres
+  pullPolicy: IfNotPresent
+  containerPort: 5432
+
+exporter:
+  enabled: false
+  repository: wrouesnel/postgres_exporter:v0.8.0
+  containerPort: 9187
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: postgres
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext:
+  #runAsNonRoot: true # postgres image runs as root
+  #runAsUser: 1000
+  capabilities:
+    #drop:
+      #- ALL
+    add:
+      # chmod: changing permissions of '/var/lib/postgresql/data': Operation not permitted
+      - CHOWN             # change the owner of any file.
+      - NET_RAW           # send a raw packet (e.g. ping).
+      - NET_ADMIN         # manage network configuration.
+      - NET_BIND_SERVICE  # open a port under 1024.
+    
+networkPolicy:
+  enabled: true
+
+service:
+  type: ClusterIP
+  port: 5432
+  exporter:
+    type: ClusterIP
+    port: 9187
+
+resources:
+  prometheus:
+    limits:
+      cpu: 200m
+      memory: 200Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+  postgres:
+    limits:
+      cpu: 300m
+      memory: 512Mi
+    requests:
+      cpu: 300m
+      memory: 512Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

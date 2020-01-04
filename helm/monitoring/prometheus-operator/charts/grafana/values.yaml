@@ -1,0 +1,76 @@
+# Default values for grafana.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# TODO setup grana loki
+grafanaLoki: 
+  enabled: false
+
+serviceMonitor:
+  componentName: infra
+
+replicaCount: 1
+
+image:
+  grafana:
+    repo: grafana/grafana
+    containerPort: 3000
+  grafanaLoki: 
+    repo: grafana/loki:v1.1.0
+    containerPort: 3100
+  promtail: 
+    repo: grafana/promtail:v1.1.0
+    containerPort: 9080
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: grafana
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+securityContext:
+   capabilities:
+     drop:
+     - ALL
+   readOnlyRootFilesystem: false
+   runAsNonRoot: true
+   runAsUser: 1000
+
+service:
+  type: ClusterIP
+  grafana:
+    port: 3000
+    nodePort: 30003
+  grafanaLoki:
+    port: 9080
+
+ingress:
+  enabled: enabled
+  annotations:
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: grafana.local
+      paths:
+        - /
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+  #
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+

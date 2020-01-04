@@ -1,0 +1,23 @@
+{{- if .Values.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "grafana.fullname" . }}
+  labels:
+    {{- include "grafana.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.grafana.port }}
+      targetPort: ui
+      protocol: TCP
+      name: ui
+    {{- if .Values.grafanaLoki.enabled }}
+    - port: {{ .Values.service.grafanaLoki.port }}
+      targetPort: loki
+      protocol: TCP
+      name: loki
+    {{ end }}
+  selector:
+    {{- include "grafana.selectorLabels" . | nindent 4 }}
+{{- end }}

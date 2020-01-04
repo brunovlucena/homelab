@@ -1,0 +1,47 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: prometheus-rules-postgres
+  labels:
+    {{- include "chart-postgres.prometheus" . | nindent 4 }}
+spec:
+  groups:
+  - name: ./postgres.rules
+    rules:
+  
+    - alert: PostgresqlDown
+      expr: pg_up == 0
+      for: 5m
+      labels:
+        severity: error
+      annotations:
+        summary: "{{`PostgreSQL down (instance {{ $labels.instance }})`}}"
+        description: "{{`PostgreSQL instance is down\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"
+
+    - alert: TooManyConnections
+      expr: sum by (datname) (pg_stat_activity_count{datname!~"template.*|postgres"}) > 100
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "{{`Too many connections (instance {{ $labels.instance }})`}}"
+        description: "{{`PostgreSQL instance has too many connections\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"
+
+    - alert: NotEnoughConnections
+      expr: sum by (datname) (pg_stat_activity_count{datname!~"template.*|postgres"}) < 5
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "{{`Not enough connections (instance {{ $labels.instance }})`}}"
+        description: "{{`PostgreSQL instance should have more connections (> 5)\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"
+
+    - alert: SlowQueries
+      expr: avg(rate(pg_stat_activity_max_tx_duration{datname!~"template.*"}[1m])) BY (datname) > 60
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "{{`Slow queries (instance {{ $labels.instance }})`}}"
+        description: "{{`PostgreSQL executes slow queries (> 1min)\n  VALUE = {{ $value }}\n  LABELS: {{ $labels }}`}}"

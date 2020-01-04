@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "grafana.fullname" . }}
+  labels:
+    {{- include "grafana.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "grafana.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "grafana.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ include "grafana.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+      - name: grafana-defaults
+        configMap:
+          name: {{ include "grafana.fullname" . }}-defaults
+      containers:
+          {{- if .Values.grafanaLoki.enabled }}
+          # grafana loki
+        - name: {{ .Chart.Name }}-loki
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.grafanaLoki.repo }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: loki
+              containerPort: {{ .Values.image.grafanaLoki.containerPort }}
+              protocol: TCP
+        - name: {{ .Chart.Name }}-promtail
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.promtail.repo }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: promtail
+              containerPort: {{ .Values.image.promtail.containerPort }}
+              protocol: TCP
+          {{- end }}
+          # grafana
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.grafana.repo }}:{{ .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          volumeMounts:
+          - name: grafana-defaults
+            mountPath: /etc/grafana/grafana.ini
+            subPath: grafana.ini
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5 && grafana-cli"]
+          env:
+            - name: "GF_SERVER_DOMAIN"
+              value: "mon.local"
+            - name: "GF_SERVER_ROOT_URL"
+              value: "http://grafana.local/"
+          ports:
+            - name: ui
+              containerPort: {{ .Values.image.grafana.containerPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: ui
+          readinessProbe:
+            httpGet:
+              path: /
+              port: ui
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}

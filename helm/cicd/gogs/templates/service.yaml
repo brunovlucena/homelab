@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chart-gogs.fullname" . }}
+  labels:
+    {{- include "chart-gogs.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: gogs-port
+      protocol: TCP
+      name: gogs-port
+      nodePort: {{ .Values.service.nodePort }}
+  selector:
+    {{- include "chart-gogs.selectorLabels" . | nindent 4 }}

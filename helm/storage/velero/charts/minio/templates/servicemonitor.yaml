@@ -1,0 +1,14 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: minio
+  labels:
+    {{- include "minio.prometheus" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "minio.labels" . | nindent 6 }}
+  endpoints:
+  - port: minio
+    path: /minio/prometheus/metrics

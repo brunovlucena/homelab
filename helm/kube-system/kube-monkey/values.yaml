@@ -1,0 +1,40 @@
+# Default values for kube-monkey.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+namespace: testing
+
+image:
+  repository: ayushsobti/kube-monkey
+  pullPolicy: IfNotPresent
+
+podSecurityContext: {}
+  # fsGroup: 2000
+
+serviceAccount:
+  create: true
+  name: kube-monkey
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

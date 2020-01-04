@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "es.fullname" . }}
+  labels:
+    {{- include "es.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "es.fullname" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "es.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "es.selectorLabels" . | nindent 8 }}
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ include "es.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+      - name: elasticsearch-logging
+        emptyDir: {}
+      initContainers:
+      - image: alpine:3.6
+        command: ["/sbin/sysctl", "-w", "vm.max_map_count=262144"]
+        name: elasticsearch-logging-init
+        securityContext:
+          privileged: true
+      containers:
+        - name: {{ .Chart.Name }}-exporter
+          image: justwatch/elasticsearch_exporter:1.1.0
+          ports:
+          - containerPort: 9114
+            name: exporter
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+          - name: "NAMESPACE"
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: "MINIMUM_MASTER_NODES"
+            value: "2"
+          ports:
+          - containerPort: 9200
+            name: db
+            protocol: TCP
+          - containerPort: 9300
+            name: transport
+            protocol: TCP
+          #livenessProbe:
+            #httpGet:
+              #path: /_cluster/health
+              #port: db
+          #readinessProbe:
+             #httpGet:
+               #path: /
+               #port: db
+             #timeoutSeconds: 1
+             #successThreshold: 3
+          volumeMounts:
+          - name: elasticsearch-logging
+            mountPath: /data
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}

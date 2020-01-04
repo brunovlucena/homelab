@@ -1,0 +1,27 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-alertmanager
+data:
+  alertmanager.yaml: |
+    Z2xvYmFsOgogIHJlc29sdmVfdGltZW91dDogNW0Kcm91dGU6CiAgZ3JvdXBfYnk6IFsnam9iJ10K
+    ICBncm91cF93YWl0OiAzMHMKICBncm91cF9pbnRlcnZhbDogNW0KICByZXBlYXRfaW50ZXJ2YWw6
+    IDEyaAogIHJlY2VpdmVyOiAnd2ViaG9vaycKcmVjZWl2ZXJzOgotIG5hbWU6ICd3ZWJob29rJwog
+    IHdlYmhvb2tfY29uZmlnczoKICAtIHVybDogJ2h0dHA6Ly9hbGVydG1hbmFnZXJ3aDozMDUwMC8n
+    Cg==
+#global:
+  #resolve_timeout: 5m
+  # [ slack_api_url: <secret>  ]
+  # [ pagerduty_url: <string> | default = "https://events.pagerduty.com/v2/enqueue"  ]
+#route:
+  #group_by: ['api']
+  #group_wait: 30s
+  #group_interval: 5m
+  #repeat_interval: 12h
+  #receiver: 'default-receiver'
+  #routes:
+    #- receiver: 'api-pager'
+    #  group_wait: 10s
+    #  match_re:
+    #    service: api-chart 

@@ -1,0 +1,16 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "velero.fullname" . }}
+  labels:
+    {{- include "velero.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: monitoring
+      port: 8085
+      targetPort: monitoring
+  selector:
+    {{- include "velero.selectorLabels" . | nindent 4 }}
+{{- end }}

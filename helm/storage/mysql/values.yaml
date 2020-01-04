@@ -1,0 +1,33 @@
+image:
+  repository: mysql
+  pullPolicy: IfNotPresent
+
+serviceMonitor:
+  componentName: app
+
+service:
+  type: ClusterIP
+  port: 3306
+
+serviceAccount:
+  create: true
+  name: mysql
+
+persistentVolumeClaim:
+  storage: 2Gi
+  #storageClass: rook-ceph-block
+  storageClass: default
+
+resources:
+  limits:
+    cpu: 300m
+    memory: 512Mi
+  requests:
+    cpu: 300m
+    memory: 512Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

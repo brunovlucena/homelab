@@ -1,0 +1,140 @@
+# Default values for rabbitmq.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+rabbitmq:
+  username: user
+  password: pass
+  clustering:
+    address_type: hostname
+    k8s_domain: cluster.local
+  logs: '-' # which means all log messages will be printed to standard output.
+  configuration: |-
+    cluster_formation.peer_discovery_backend  = rabbit_peer_discovery_k8s
+    cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
+    cluster_formation.node_cleanup.interval = 10
+    cluster_formation.node_cleanup.only_log_warning = true
+    cluster_partition_handling = autoheal
+    queue_master_locator=min-masters
+    loopback_users.guest = false
+  tls:
+    enabled: false
+
+image:
+  repository: bitnami/rabbitmq
+  pullPolicy: IfNotPresent
+  debug: true
+  minideb:
+    repository: bitnami/minideb:stretch
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: rabbitmq
+
+podSecurityContext:
+  fsGroup: 1001
+  runAsUser: 1001
+
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 5672
+  tlsPort: 5671
+  distPort: 25672
+  managerPort: 15672
+  nodePort: 30003
+  epmd: 4369
+  
+
+ingress:
+  enabled: true
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: rabbitmq.local
+      paths:
+        - / 
+  tls: []
+  #  - secretName: chart-example-tls
+  #    hosts:
+  #      - chart-example.local
+
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+
+persistence:
+  enabled: true
+  storageClass: "rook-ceph"
+  accessMode: ReadWriteOnce
+
+  # If you change this value, you might have to adjust `rabbitmq.diskFreeLimit` as well.
+  size: 2Gi
+
+  # persistence directory, maps to the rabbitmq data directory
+  path: /opt/bitnami/rabbitmq/var/lib/rabbitmq
+
+livenessProbe:
+  enabled: true
+  initialDelaySeconds: 120
+  timeoutSeconds: 20
+  periodSeconds: 30
+  failureThreshold: 6
+  successThreshold: 1
+
+readinessProbe:
+  enabled: true
+  initialDelaySeconds: 10
+  timeoutSeconds: 20
+  periodSeconds: 30
+  failureThreshold: 3
+  successThreshold: 1
+
+metrics:
+  enabled: true
+  image:
+    repository: bitnami/rabbitmq-exporter:0.29.0
+  port: 9419
+  rabbitmqAddress: localhost
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 15
+    timeoutSeconds: 5
+    periodSeconds: 30
+    failureThreshold: 6
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    timeoutSeconds: 5
+    periodSeconds: 30
+    failureThreshold: 3
+    successThreshold: 1
+  serviceMonitor:
+    enabled: true
+    interval: 30s

@@ -1,0 +1,179 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "rabbitmq.fullname" . }}
+  labels:
+    {{- include "rabbitmq.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ template "rabbitmq.fullname" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "rabbitmq.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "rabbitmq.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/configmap: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name | quote }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+      - name: volume-permissions
+        image: "{{ .Values.image.minideb.repository }}"
+        command: ["/bin/chown", "-R", "{{ .Values.podSecurityContext.runAsUser }}:{{ .Values.podSecurityContext.fsGroup }}", "{{ .Values.persistence.path }}"]
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: data
+          mountPath: "{{ .Values.persistence.path }}"
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ template "rabbitmq.fullname" . }}-config
+            items:
+            - key: rabbitmq.conf
+              path: rabbitmq.conf
+            - key: enabled_plugins
+              path: enabled_plugins
+        - name: healthchecks
+          configMap:
+            name: {{ template "rabbitmq.fullname" . }}-healthchecks
+            items:
+            - key: rabbitmq-health-check
+              path: rabbitmq-health-check
+              mode: 111
+            - key: rabbitmq-api-check
+              path: rabbitmq-api-check
+              mode: 111
+      {{- if not .Values.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+      {{- else }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: rabbitmq-pv-claim 
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /opt/bitnami/rabbitmq/conf
+            - name: healthchecks
+              mountPath: /usr/local/sbin/rabbitmq-api-check
+              subPath: rabbitmq-api-check
+            - name: healthchecks
+              mountPath: /usr/local/sbin/rabbitmq-health-check
+              subPath: rabbitmq-health-check
+            - name: data
+              mountPath: "{{ .Values.persistence.path }}"
+          command:
+           - bash
+           - -ec
+           - |
+              mkdir -p /opt/bitnami/rabbitmq/.rabbitmq/
+              mkdir -p /opt/bitnami/rabbitmq/etc/rabbitmq/
+              touch /opt/bitnami/rabbitmq/var/lib/rabbitmq/.start
+              #persist the erlang cookie in both places for server and cli tools
+              echo $RABBITMQ_ERL_COOKIE > /opt/bitnami/rabbitmq/var/lib/rabbitmq/.erlang.cookie
+              cp /opt/bitnami/rabbitmq/var/lib/rabbitmq/.erlang.cookie /opt/bitnami/rabbitmq/.rabbitmq/
+              #change permission so only the user has access to the cookie file
+              chmod 600 /opt/bitnami/rabbitmq/.rabbitmq/.erlang.cookie /opt/bitnami/rabbitmq/var/lib/rabbitmq/.erlang.cookie
+              #copy the mounted configuration to both places
+              cp  /opt/bitnami/rabbitmq/conf/* /opt/bitnami/rabbitmq/etc/rabbitmq
+              exec rabbitmq-server
+          ports:
+            - name: epmd
+              containerPort: {{ .Values.service.epmd }}
+            - name: amqp
+              containerPort: {{ .Values.service.port }}
+            {{- if .Values.rabbitmq.tls.enabled }}
+            - name: amqp-ssl
+              containerPort: {{ .Values.service.tlsPort }}
+            {{- end }}
+            - name: dist
+              containerPort: {{ .Values.service.distPort }}
+            - name: stats
+              containerPort: {{ .Values.service.managerPort }}
+          {{- if .Values.livenessProbe.enabled }}
+          #livenessProbe:
+            #exec:
+              #command:
+                #- sh
+                #- -c
+                #- rabbitmq-api-check "http://{{ .Values.rabbitmq.username }}:{{ .Values.rabbitmq.password }}@127.0.0.1:{{ .Values.service.managerPort }}/api/healthchecks/node" '{"status":"ok"}'
+            #initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            #timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+            #periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            #failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+            #successThreshold: {{ .Values.livenessProbe.successThreshold }}
+          #{{- end }}
+          #{{- if .Values.readinessProbe.enabled }}
+          #readinessProbe:
+            #exec:
+              #command:
+                #- sh
+                #- -c
+                #- rabbitmq-health-check "http://{{ .Values.rabbitmq.username }}:${{ .Values.rabbitmq.password }}@127.0.0.1:{{ .Values.service.managerPort }}/api/healthchecks/node" '{"status":"ok"}'
+            #initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            #timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+            #periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+            #failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+            #successThreshold: {{ .Values.readinessProbe.successThreshold }}
+          env:
+          - name: BITNAMI_DEBUG
+            value: {{ ternary "true" "false" .Values.image.debug | quote }}
+          - name: MY_POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: K8S_SERVICE_NAME
+            value: "{{ template "rabbitmq.fullname" . }}"
+          - name: K8S_ADDRESS_TYPE
+            value: {{ .Values.rabbitmq.clustering.address_type }}
+          - name: RABBITMQ_NODENAME
+            #value: "rabbit@$(K8S_SERVICE_NAME).$(MY_POD_NAMESPACE).svc.{{ .Values.rabbitmq.clustering.k8s_domain }}"
+          - name: K8S_HOSTNAME_SUFFIX
+            value: ".$(K8S_SERVICE_NAME).$(MY_POD_NAMESPACE).svc.{{ .Values.rabbitmq.clustering.k8s_domain }}"
+          - name: RABBITMQ_LOGS
+            value: "{{ .Values.rabbitmq.logs }}"
+          - name: RABBITMQ_USE_LONGNAME
+            value: "true"
+          - name: RABBITMQ_ERL_COOKIE
+            valueFrom:
+              secretKeyRef:
+                name: {{ template "rabbitmq.secretErlangName" . }}
+                key: rabbitmq-erlang-cookie
+        {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}

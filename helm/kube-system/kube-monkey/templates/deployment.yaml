@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kube-monkey.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: kube-monkey
+    {{- include "kube-monkey.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kube-monkey.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: kube-monkey
+        {{- include "kube-monkey.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      serviceAccountName: {{ include "kube-monkey.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: kube-monkey-config-map
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - "/kube-monkey"
+          args: ["-v=5", "-log_dir=/var/log/kube-monkey"]
+          volumeMounts:
+            - name: config-volume
+              mountPath: "/etc/kube-monkey"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+
+#Example environment variables
+#kube-monkey_DRY_RUN=true
+#kube-monkey_RUN_HOUR=8
+#kube-monkey_START_HOUR=10
+#kube-monkey_END_HOUR=16
+#kube-monkey_BLACKLISTED_NAMESPACES=kube-system
+#kube-monkey_TIME_ZONE=America/New_York
