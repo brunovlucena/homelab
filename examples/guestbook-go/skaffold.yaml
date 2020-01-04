@@ -1,0 +1,12 @@
+apiVersion: skaffold/v1
+kind: Config
+build:
+  artifacts:
+    - image: localhost:5000/guestbook
+      context: .
+      docker: 
+        dockerfile: ./skaffold/Dockerfile
+deploy:
+  kubectl:
+    manifests:
+      - ./skaffold/deployment.yaml
