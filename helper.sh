@@ -160,7 +160,7 @@ start_cluster() {
     local VM_DRIVER="$7"
     if [[ $VM_DRIVER = "none" ]]; then
         # start
-        sudo $KIND create cluster --name $CLUSTER_NAME
+        sudo $KIND create cluster --name $CLUSTER_NAME --config=./kind.yaml
         kind_add_registry $CLUSTER_NAME
         $KIND export kubeconfig --name $CLUSTER_NAME
     else
