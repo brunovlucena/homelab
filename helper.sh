@@ -191,18 +191,6 @@ kind_add_registry() {
     done
 }
 
-# starts a cluster using minikube.
-#
-# Usage:
-#  $ ./helper.sh param1 [param2] [param3]
-# * param1: start-cluster
-# * param2: cluster name
-# * param3: vm driver.
-stop_cluster() {
-    local CLUSTER_NAME="$1"
-    local VM_DRIVER="$2"
-    kind delete cluster --name "$CLUSTER_NAME"
-}
 
 # adds a second disk to minikube.
 add_disk(){
@@ -305,15 +293,21 @@ add_testing(){
        kube-monkey helm/testing/kube-monkey -n "$NAMESPACE" || true
 }
 
-# stops a kubernetes cluster using minikube.
+# stops the kubernetes cluster.
 #
 # Usage:
 #  $ ./helper.sh param1 [param2]
 # * param1: stop-cluster
 # * param2: [cluster_name]
+# * param3: [vm_driver]
 stop_cluster() {
     local CLUSTER_NAME="$1"
-	$MINIKUBE stop -p "$CLUSTER_NAME" || true
+    local VM_DRIVER="$2"
+    if [[ $VM_DRIVER == "none" ]]; then
+        $KIND delete cluster --name "$CLUSTER_NAME"
+    else
+	    $MINIKUBE stop -p "$CLUSTER_NAME" || true
+    fi
 }
 
 # Creates a tunnel to registry.
