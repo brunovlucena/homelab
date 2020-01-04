@@ -93,6 +93,7 @@ pre_install() {
                 sudo $TAR -xvf /tmp/go.tar -C /usr/local
                 # tools
                 go get -u github.com/go-delve/delve/cmd/dlv
+                go get -u github.com/leighmcculloch/gochecknoglobals
             fi
         ;;
     esac
@@ -160,6 +161,7 @@ start_cluster() {
     if [[ $VM_DRIVER = "none" ]]; then
         # start
         sudo $KIND create cluster --name $CLUSTER_NAME
+        kind_add_registry $CLUSTER_NAME
     else
 	    $MINIKUBE start --cpus="$CLUSTER_CPUS" --memory="$CLUSTER_MEMORY" --disk-size="$CLUSTER_DISK" --kubernetes-version="$CLUSTER_VERSION" -p "$CLUSTER_NAME"
         ## NOTE: load rbd for ceph
@@ -169,6 +171,24 @@ start_cluster() {
         # manage pluggins
         manage_cluster_pluggins
     fi
+}
+
+kind_add_registry() {
+    # create registry container unless it already exists
+    local CLUSTER_NAME="$1"
+    local REG_PORT='5000'
+    local RUNNING="$(docker inspect -f '{{.State.Running}}' "${CLUSTER_NAME}-registry" 2>/dev/null || true)"
+    if [[ ${RUNNING} != 'true' ]]; then
+        docker run \
+            -d --restart=always -p "${REG_PORT}:5000" --name "${CLUSTER_NAME}-registry" \
+            registry:2
+    fi
+    # add the registry to /etc/hosts on each node
+    IP='{{.NetworkSettings.IPAddress}}'
+    CMD="echo $(docker inspect -f "${IP}" "${CLUSTER_NAME}-registry") registry >> /etc/hosts"
+    for NODE in $(kind get nodes --name "${KIND_CLUSTER_NAME}"); do
+        docker exec "${NODE}" sh -c "${CMD}"
+    done
 }
 
 # starts a cluster using minikube.
