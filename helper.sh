@@ -162,6 +162,7 @@ start_cluster() {
         # start
         sudo $KIND create cluster --name $CLUSTER_NAME
         kind_add_registry $CLUSTER_NAME
+        $KIND export kubeconfig --name $CLUSTER_NAME
     else
 	    $MINIKUBE start --cpus="$CLUSTER_CPUS" --memory="$CLUSTER_MEMORY" --disk-size="$CLUSTER_DISK" --kubernetes-version="$CLUSTER_VERSION" -p "$CLUSTER_NAME"
         ## NOTE: load rbd for ceph
