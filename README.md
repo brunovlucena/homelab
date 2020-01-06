@@ -33,13 +33,27 @@ VM_DRIVER           = none
 # other
 CLUSTER_NAME 		= homelab
 
+# components
+CNI					= calico
+MESH				= linkerd
+BASIC				= enabled
+MONITORING			= enabled
+STORAGE				= disabled
+CICD				= disabled
+SECURITY			= disabled
+TESTING				= disabled
+ROOK_CEPH			= disabled
+BACKUP				= disabled
+
 # tools
-K9S_VERSION         = 0.10.8
-KUBECTL_VERSION     = v1.17.0
-HELM_VERSION        = v3.0.1
-SQUASH_VERSION      = v0.5.18
+K9S_VERSION 		= 0.10.8
+KUBECTL_VERSION 	= v1.17.0
+HELM_VERSION 		= v3.0.1
+SQUASH_VERSION 		= v0.5.18
 SONOBUOY_VERSION	= 0.16.1
-GO_VERSION          = 1.13.5
+GO_VERSION			= 1.13.5
+LINKERD_VERSION		= 2.6.1
+KREW_VERSION		= v0.3.3
 ```
 
 **How to Test**:
