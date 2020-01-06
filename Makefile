@@ -16,6 +16,18 @@ VM_DRIVER			= none
 # other
 CLUSTER_NAME		= homelab
 
+# components
+CNI					= calico
+MESH				= linkerd
+BASIC				= enabled
+MONITORING			= enabled
+STORAGE				= disabled
+CICD				= disabled
+SECURITY			= disabled
+TESTING				= disabled
+ROOK_CEPH			= disabled
+BACKUP				= disabled
+
 # tools
 K9S_VERSION 		= 0.10.8
 KUBECTL_VERSION 	= v1.17.0
@@ -23,6 +35,8 @@ HELM_VERSION 		= v3.0.1
 SQUASH_VERSION 		= v0.5.18
 SONOBUOY_VERSION	= 0.16.1
 GO_VERSION			= 1.13.5
+LINKERD_VERSION		= 2.6.1
+KREW_VERSION		= v0.3.3
 
 help: ## helper. 
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -37,9 +51,11 @@ pre-install: ## pre-installs all nescessary tools to bootstrap and manage cluste
 	@./helper.sh pre-install kubectl ${KUBECTL_VERSION}
 	@./helper.sh pre-install squash ${SQUASH_VERSION}
 	@./helper.sh pre-install kubediff
+	@./helper.sh pre-install linkerd ${LINKERD_VERSION}
+	@./helper.sh pre-install krew ${KREW_VERSION}
 
 bootstrap-cluster: ## Bootstraps a kubernetes cluster.
-	@./helper.sh bootstrap-cluster ${CLUSTER_CPUS} ${CLUSTER_MEMORY} ${CLUSTER_DISK} ${CLUSTER_DISK_EXTRA} ${CLUSTER_VERSION} ${CLUSTER_NAME} ${VM_DRIVER}
+	@./helper.sh bootstrap-cluster ${CLUSTER_CPUS} ${CLUSTER_MEMORY} ${CLUSTER_DISK} ${CLUSTER_DISK_EXTRA} ${CLUSTER_VERSION} ${CLUSTER_NAME} ${VM_DRIVER} ${CNI} ${MESH}
 
 start-cluster-minikube: ## Starts using minikube cluster.
 	@./helper.sh start-cluster ${CLUSTER_CPUS} ${CLUSTER_MEMORY} ${CLUSTER_DISK} ${CLUSTER_DISK_EXTRA} ${CLUSTER_VERSION} ${CLUSTER_NAME} ${VM_DRIVER}
@@ -54,13 +70,15 @@ stop-cluster: ## Stops cluster.
 tunnel: ## Creates a tunnel to minikube's registry (E.g. make tunnel service=registry).
 	@./helper.sh tunnel ${ARGS}
 
-add: ## Adds components to the cluster.
-	@./helper.sh add-kube-system
-	@./helper.sh add-monitoring
-	@./helper.sh add-storage
-	@./helper.sh add-cicd
-	@./helper.sh add-security
-	@./helper.sh add-testing
+add-components: ## adds new components via helm upgrade  
+	@./helper.sh add-basic ${BASIC}
+	@./helper.sh add-monitoring ${MONITORING}
+	@./helper.sh add-storage ${STORAGE}
+	@./helper.sh add-cicd ${CICD}
+	@./helper.sh add-security ${SECURITY}
+	@./helper.sh add-testing ${TESTING}
+	@./helper.sh add-rook-ceph ${ROOK_CEPH}
+	@./helper.sh add-backup ${BACKUP}
 
 # Security
 sniff: ## Sniffs comunication (E.g. make sniff)

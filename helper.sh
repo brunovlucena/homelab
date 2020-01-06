@@ -11,6 +11,9 @@ KUBECTL=~/.local/bin/kubectl
 HELM=~/.local/bin/helm
 SQUASH=~/.local/bin/squash
 KUBEDIFF=~/.local/bin/kubediff
+LINKERD=~/.local/bin/linkerd
+CALICOCTL=~/.local/bin/calicoctl
+KREW=~/.krew/bin/krew
 
 # system binaries
 WGET=$(which wget)
@@ -20,6 +23,7 @@ MV=$(which mv)
 CP=$(which cp)
 CHMOD=$(which chmod)
 GIT=$(which git)
+MKDIR=$(which mkdir)
 
 # system variables
 if [[ $OSTYPE == "linux-gnu" ]]; then
@@ -62,7 +66,9 @@ pre_install() {
         ;;
         kubectl)
             local PATH="https://storage.googleapis.com/kubernetes-release/release/$VERSION/bin/$OS/amd64/kubectl"
-            [[ ! -f $KUBECTL ]] && $WGET "$PATH" -O "$KUBECTL" && $CHMOD +x $KUBECTL
+            if [[ ! -f $KUBECTL ]]; then
+                $WGET $PATH -O $KUBECTL && $CHMOD +x $KUBECTL
+            fi
         ;;
         helm)
             local PATH="https://get.helm.sh/helm-$VERSION-$OS-amd64.tar.gz"
@@ -76,7 +82,9 @@ pre_install() {
          ;;
         squash)
             local PATH="https://github.com/solo-io/squash/releases/download/$VERSION/squashctl-$OS"
-            [[ ! -f $SQUASH  ]] && $WGET "$PATH" -O "$SQUASH"; $CHMOD +x "$SQUASH"
+            if [[ ! -f $SQUASH  ]]; then
+                $WGET "$PATH" -O "$SQUASH"; $CHMOD +x "$SQUASH"
+            fi
         ;;
         kubediff)
             if [[ ! -f $KUBEDIFF && ! -d /tmp/kubediff ]]
@@ -84,6 +92,12 @@ pre_install() {
                 $GIT clone https://github.com/weaveworks/kubediff.git /tmp/kubediff
                 $CP /tmp/kubediff/kubediff $KUBEDIFF
                 $CP -R /tmp/kubediff/kubedifflib ~/.local/bin
+            fi
+        ;;
+        linkerd)
+            local PATH="https://github.com/linkerd/linkerd2/releases/download/stable-${VERSION}/linkerd2-cli-stable-${VERSION}-${OS}"
+            if [[ ! -f $LINKERD ]]; then
+                $WGET $PATH -O $LINKERD && $CHMOD +x $LINKERD
             fi
         ;;
         go)
@@ -94,6 +108,16 @@ pre_install() {
                 # tools
                 go get -u github.com/go-delve/delve/cmd/dlv
                 go get -u github.com/leighmcculloch/gochecknoglobals
+            fi
+        ;;
+        krew)
+            local PATH="https://github.com/kubernetes-sigs/krew/releases/download/${VERSION}/krew.tar.gz"
+            if [[ ! -f $KREW || ! -f /tmp/krew.tar ]]; then
+                $WGET "$PATH" -O /tmp/krew.tar.gz
+                $GZIP -d /tmp/krew.tar.gz
+                $TAR xvf /tmp/krew.tar -C /tmp
+                $MKDIR -p $HOME/.krew/bin
+                $MV /tmp/krew-"$OS"_amd64 $KREW
             fi
         ;;
     esac
@@ -108,6 +132,9 @@ pre_install() {
 # * param3: memory used
 # * param4: kubernetes version
 # * param5: cluster name
+# * param6: vm driver
+# * param7: cni
+# * param8: mesh
 bootstrap_cluster() {
     local CLUSTER_CPUS="$1"
     local CLUSTER_MEMORY="$2"
@@ -120,6 +147,14 @@ bootstrap_cluster() {
     [[ -d ~/.minikube/profiles/$CLUSTER_NAME/ ]] && clean_cluster "$CLUSTER_NAME"
     # start cluster
     start_cluster "$CLUSTER_CPUS" "$CLUSTER_MEMORY" "$CLUSTER_DISK" "$CLUSTER_DISK_EXTRA" "$CLUSTER_VERSION" "$CLUSTER_NAME" "$VM_DRIVER"
+    # networking
+    local CNI="$8"
+    [[ $CNI = "calico" ]] && kubectl apply -f manifests/calico
+    # CAVEAT: ./manifests/calico/kind-iptables-fix.sh
+    [[ $CNI = "kube-router" ]] && kubectl apply -f manifests/kube-router
+    # mesh
+    local MESH="$9"
+    [[ $MESH = "linkerd" ]] && kubectl apply -f manifests/linkerd
 }
 
 # removes cluster from minikube.
@@ -162,6 +197,7 @@ start_cluster() {
         # start
         sudo $KIND create cluster --name $CLUSTER_NAME --config=./kind.yaml
         kind_add_registry $CLUSTER_NAME
+        # get config
         $KIND export kubeconfig --name $CLUSTER_NAME
     else
 	    $MINIKUBE start --cpus="$CLUSTER_CPUS" --memory="$CLUSTER_MEMORY" --disk-size="$CLUSTER_DISK" --kubernetes-version="$CLUSTER_VERSION" -p "$CLUSTER_NAME"
@@ -227,71 +263,109 @@ add_helm_repos() {
 }
 
 # add kube-system components.
-add_kube_system() {
-    NAMESPACE=kube-system
-    helm upgrade --install \
-        nginx-ingress helm/kube-system/nginx-ingress -n "$NAMESPACE"
-    kubectl apply -f manifests
-    helm upgrade --install \
-       kube-state-metrics helm/kube-system/kube-state-metrics -n "$NAMESPACE"
+add_basic() {
+    local ARG0="$1"
+    if [[ $ARG0 = "enabled" ]]; then
+        kubectl apply -f manifests/dashboard.yaml || true
+        local NAMESPACE=kube-system
+        helm upgrade --install \
+            nginx-ingress helm/kube-system/nginx-ingress -n "$NAMESPACE"
+        helm upgrade --install \
+           kube-state-metrics helm/kube-system/kube-state-metrics -n "$NAMESPACE"
+    fi
 }
+
+
 # add ci/cd components.
 add_cicd() {
-    NAMESPACE=cicd
-    kubectl create ns $NAMESPACE || true
-    #helm upgrade --install \
-        #gocd helm/cicd/gocd -n "$NAMESPACE"
-    helm upgrade --install \
-        gogs helm/cicd/gogs -n "$NAMESPACE"
+    local ARG0="$1"
+    if [[ $ARG0 = "enabled" ]]; then
+        local NAMESPACE=cicd
+        kubectl create ns $NAMESPACE || true
+        helm upgrade --install \
+            gocd helm/cicd/gocd -n "$NAMESPACE"
+        helm upgrade --install \
+            gogs helm/cicd/gogs -n "$NAMESPACE"
+    fi
 }
 
 # add monitoring components.
 add_monitoring() {
-    NAMESPACE=monitoring
-    kubectl create ns $NAMESPACE || true
-    # order is important (prometheus first)
-    helm upgrade --install \
-        prometheus-operator helm/monitoring/prometheus-operator -n "$NAMESPACE"
-    helm upgrade --install \
-        kibana helm/monitoring/efk/charts/kibana -n "$NAMESPACE"
-    helm upgrade --install --wait \
-        es helm/monitoring/efk/charts/es -n "$NAMESPACE"
-    helm upgrade --install \
-        fluentd helm/monitoring/efk/charts/fluentd -n "$NAMESPACE"
+    local ARG0="$1"
+    if [[ $ARG0 = "enabled" ]]; then
+        local NAMESPACE=monitoring
+        kubectl create ns $NAMESPACE || true
+        # order is important (prometheus first)
+        helm upgrade --install \
+            prometheus-operator helm/monitoring/prometheus-operator -n "$NAMESPACE"
+        helm upgrade --install \
+            kibana helm/monitoring/efk/charts/kibana -n "$NAMESPACE"
+        helm upgrade --install \
+            es helm/monitoring/efk/charts/es -n "$NAMESPACE"
+        helm upgrade --install \
+            fluentd helm/monitoring/efk/charts/fluentd -n "$NAMESPACE"
+    fi
+}
+
+# add rook.
+add_rook_ceph() {
+    local ARG0="$1"
+    if [[ $ARG0 = "enabled" ]]; then
+        local NAMESPACE=rook-ceph
+        kubectl create ns $NAMESPACE || true
+        helm upgrade --install --wait \
+            rook-ceph helm/storage/rook-ceph -n "$NAMESPACE" || true
+    fi
+}
+
+# add backup capability.
+add_backup() {
+    local ARG0="$1"
+    if [[ $ARG0 = "enabled" ]]; then
+        local NAMESPACE=rook-ceph
+        kubectl create ns $NAMESPACE || true
+        helm upgrade -V-install \
+            velero helm/storage/velero -n "$NAMESPACE"
+    fi
 }
 
 # add storage components.
 add_storage() {
-    NAMESPACE=storage
-    kubectl create ns $NAMESPACE || true
-    #helm upgrade --install --wait \
-        #rook-ceph helm/storage/rook-ceph -n "$NAMESPACE" || true
-    #helm upgrade --install \
-        #velero helm/storage/velero -n "$NAMESPACE"
-    helm upgrade --install \
-       postgres helm/storage/postgres -n "$NAMESPACE" || true
-    helm upgrade --install \
-       rabbitmq helm/storage/rabbitmq -n "$NAMESPACE" || true
-    helm upgrade --install \
-       mysql helm/storage/mysql -n "$NAMESPACE" || true
-    helm upgrade --install \
-       redis helm/storage/redis -n "$NAMESPACE" || true
+    local ARG0="$1"
+    if [[ $ARG0 = "enabled" ]]; then
+        local NAMESPACE=storage
+        kubectl create ns $NAMESPACE || true
+        helm upgrade --install \
+           postgres helm/storage/postgres -n "$NAMESPACE" || true
+        helm upgrade --install \
+           rabbitmq helm/storage/rabbitmq -n "$NAMESPACE" || true
+        helm upgrade --install \
+           mysql helm/storage/mysql -n "$NAMESPACE" || true
+        helm upgrade --install \
+           redis helm/storage/redis -n "$NAMESPACE" || true
+    fi
 }
 
 # add security components
 add_security(){
-    NAMESPACE=security
-    kubectl create ns $NAMESPACE || true
-    helm upgrade --install \
-       vault helm/security/vault -n "$NAMESPACE"
+    local ARG0="$1"
+    if [[ $ARG0 = "enabled" ]]; then
+        local NAMESPACE=security
+        kubectl create ns $NAMESPACE || true
+        helm upgrade --install \
+           vault helm/security/vault -n "$NAMESPACE"
+    fi
 }
 
 # add testing components
 add_testing(){
-    NAMESPACE=testing
-    kubectl create ns $NAMESPACE || true
-    helm upgrade --install \
-       kube-monkey helm/testing/kube-monkey -n "$NAMESPACE" || true
+    local ARG0="$1"
+    if [[ $ARG0 = "enabled" ]]; then
+        local NAMESPACE=testing
+        kubectl create ns $NAMESPACE || true
+        helm upgrade --install \
+           kube-monkey helm/testing/kube-monkey -n "$NAMESPACE" || true
+    fi
 }
 
 # stops the kubernetes cluster.
@@ -334,12 +408,14 @@ main() {
   local ARG5="$6" # cluster version
   local ARG6="$7" # cluster name
   local ARG7="$8" # vm-driver
+  local ARG8="$9" # cni
+  local ARG9="${10}" # mesh
   case "$ARG0" in
     pre-install)
 		pre_install "$ARG1" "$ARG2" #
 	;;
     bootstrap-cluster)
-        bootstrap_cluster "$ARG1" "$ARG2" "$ARG3" "$ARG4" "$ARG5" "$ARG6" "$ARG7"
+        bootstrap_cluster "$ARG1" "$ARG2" "$ARG3" "$ARG4" "$ARG5" "$ARG6" "$ARG7" "$ARG8" "$ARG9"
     ;;
     start-cluster)
         start_cluster "$ARG1" "$ARG2" "$ARG3" "$ARG4" "$ARG5" "$ARG6" "$ARG7"
@@ -350,23 +426,29 @@ main() {
     tunnel)
         tunnel "$ARG1"
     ;;
-    add-kube-system)
-        add_kube_system
+    add-basic)
+        add_basic "$ARG1"
     ;;
     add-cicd)
-        add_cicd
+        add_cicd "$ARG1"
     ;;
     add-monitoring)
-        add_monitoring
+        add_monitoring "$ARG1"
     ;;
     add-storage)
-        add_storage
+        add_storage "$ARG1"
     ;;
     add-security)
-        add_security
+        add_security "$ARG1"
     ;;
     add-testing)
-        add_testing
+        add_testing "$ARG1"
+    ;;
+    add-rook-ceph)
+        add_rook_ceph "$ARG1"
+    ;;
+    add-backup)
+        add_backup "$ARG1"
     ;;
   esac
 }

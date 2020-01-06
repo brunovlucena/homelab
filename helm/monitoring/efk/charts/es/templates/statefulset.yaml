@@ -23,20 +23,20 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       volumes:
-      - name: elasticsearch-logging
+      - name: elasticsearch
         emptyDir: {}
       initContainers:
       - image: alpine:3.6
         command: ["/sbin/sysctl", "-w", "vm.max_map_count=262144"]
-        name: elasticsearch-logging-init
+        name: elasticsearch-init
         securityContext:
           privileged: true
       containers:
-        - name: {{ .Chart.Name }}-exporter
-          image: justwatch/elasticsearch_exporter:1.1.0
-          ports:
-          - containerPort: 9114
-            name: exporter
+        #- name: {{ .Chart.Name }}-exporter
+          #image: justwatch/elasticsearch_exporter:1.1.0
+          #ports:
+          #- containerPort: 9114
+            #name: exporter
         - name: {{ .Chart.Name }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
@@ -48,7 +48,9 @@ spec:
               fieldRef:
                 fieldPath: metadata.namespace
           - name: "MINIMUM_MASTER_NODES"
-            value: "2"
+            value: "1"
+          - name: "ELASTICSEARCH_SERVICE_NAME"
+            value: "elasticsearch"
           ports:
           - containerPort: 9200
             name: db
@@ -56,18 +58,19 @@ spec:
           - containerPort: 9300
             name: transport
             protocol: TCP
-          #livenessProbe:
-            #httpGet:
-              #path: /_cluster/health
-              #port: db
-          #readinessProbe:
-             #httpGet:
-               #path: /
-               #port: db
-             #timeoutSeconds: 1
-             #successThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: db
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: db
+            timeoutSeconds: 120
+            successThreshold: 3
           volumeMounts:
-          - name: elasticsearch-logging
+          - name: elasticsearch
             mountPath: /data
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

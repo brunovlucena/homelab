@@ -10,7 +10,7 @@ image:
 
 deps:
   elasticsearch:
-    service: elasticsearch-logging
+    service: elasticsearch
     port: 9200
 
 imagePullSecrets: []

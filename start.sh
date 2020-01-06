@@ -10,11 +10,11 @@ echo -e "$icon Pre-install..."
 make pre-install
 echo -e "$icon Bootstrapping..."
 make bootstrap-cluster
-mywait
 echo -e "$icon Waiting..."
 make add
 
-mywait() {
+# helper
+espera() {
     secs=$(("$1" * 60))
     while [ $secs -gt 0 ]; do
        echo -ne "$secs\033[0K\r"
