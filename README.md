@@ -16,45 +16,47 @@ Create a local development environment for Kubernetes.
 - Add Postgres HA
 - Add MySQL HA
 
-**Configuration**:
+**Basic Configuration(in Makefile)**:
 
-```sh
-# minikube variables
-MINIKUBE_VERSION 	= v1.5.2
-CLUSTER_CPUS 		= 6
-CLUSTER_MEMORY 		= 4096mb
-CLUSTER_DISK 		= 20GB
-CLUSTER_DISK_EXTRA  = 15GB
-CLUSTER_VERSION 	= v1.17.0
-VM_DRIVER           = virtualbox 
-# kind variables
-KIND_VERSION		= v0.6.1
-VM_DRIVER           = none
-# other
-CLUSTER_NAME 		= homelab
+| Variable | Value |
+| -------- | ------- |
+|`MINIKUBE_VERSION` |   v1.5.2
+|`CLUSTER_CPUS`     |   6
+|`CLUSTER_MEMORY`   |   4096mb 
+|`CLUSTER_DISK`     |   20GB
+|`CLUSTER_DISK_EXTRA` | 15GB
+|`CLUSTER_VERSION`  |   v1.17.0
+|`VM_DRIVER`        |   none or virtualbox
+|`KIND_VERSION`	    |   v0.6.1
+|`CLUSTER_NAME`     |   homelab
 
-# components
-CNI					= calico
-MESH				= linkerd
-BASIC				= enabled
-MONITORING			= enabled
-STORAGE				= disabled
-CICD				= disabled
-SECURITY			= disabled
-TESTING				= disabled
-ROOK_CEPH			= disabled
-BACKUP				= disabled
+**Components(in Makefile)**:
 
-# tools
-K9S_VERSION 		= 0.10.8
-KUBECTL_VERSION 	= v1.17.0
-HELM_VERSION 		= v3.0.1
-SQUASH_VERSION 		= v0.5.18
-SONOBUOY_VERSION	= 0.16.1
-GO_VERSION			= 1.13.5
-LINKERD_VERSION		= 2.6.1
-KREW_VERSION		= v0.3.3
-```
+| Variable | Value |
+| -------- | ------- |
+|`CNI`      |	calico |
+|`MESH`     |	linkerd
+|`BASIC`    |	enabled
+|`MONITORING` |	enabled
+|`STORAGE`  |	disabled
+|`CICD`     |	disabled
+|`SECURITY` |	disabled
+|`TESTING`  |	disabled
+|`ROOK_CEPH`|	disabled
+|`BACKUP`   |	disabled
+
+**Tools(in Makefile)**:
+
+| Variable | Value |
+| -------- | ------- |
+|`K9S_VERSION`      |	0.10.8
+|`KUBECTL_VERSION`  |	v1.17.0
+|`HELM_VERSION`     |	v3.0.1
+|`SQUASH_VERSION`   |	v0.5.18
+|`SONOBUOY_VERSION` |	0.16.1
+|`GO_VERSION`       |	1.13.5
+|`LINKERD_VERSION`  |	2.6.1
+|`KREW_VERSION`     |   v0.3.3
 
 **How to Test**:
 
