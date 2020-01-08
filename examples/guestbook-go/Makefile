@@ -19,7 +19,7 @@ skaffold: ## Uses skaffold during the development (make scaffold).
 	@./helper.sh skaffold
 
 run: ## Runs app locally.
-	@./helper.sh run
+	@./helper.sh run app
 
 test: ## Runs Tests (make test).
 	@./helper.sh test

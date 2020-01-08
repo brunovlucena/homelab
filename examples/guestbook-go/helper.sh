@@ -29,8 +29,8 @@ check() {
 # * param1: [api|repository]
 run_app() {
     local APP="$1"
-
     cd "cmd/$APP"
+    pwd
 
     go mod tidy
     go run main.go

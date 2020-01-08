@@ -22,6 +22,7 @@ func ViperSetup() {
 	// Setup path
 	viper.SetConfigName("config.yaml")
 	viper.AddConfigPath("/app")
+	viper.AddConfigPath(".")
 	viper.SetConfigType("yaml")
 
 	// Read config
