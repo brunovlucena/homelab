@@ -8,11 +8,41 @@ build() {
 
     cd "cmd/$APP"
 
-    # checks
-    gochecknoglobals ./... || true
     go mod tidy
 
-    go build -gcflags -m -o "build/bin/$APP"
+    go build -gcflags -m -o "../../build/bin/$APP"
+}
+
+check() {
+    local APP="$1"
+
+    cd "cmd/$APP"
+
+    # syscalls
+    strace -c "../../build/bin/$APP"
+}
+
+# Runs App.
+#
+# Usage:
+#  $ ./helper.sh param1
+# * param1: [api|repository]
+run_app() {
+    local APP="$1"
+
+    cd "cmd/$APP"
+
+    go mod tidy
+    go run main.go
+}
+
+# Runs skaffold.
+#
+# Usage:
+#  $ ./helper.sh skaffold param1
+# * param1: [api|repository]
+run_skaffold() {
+    ENV=dev skaffold dev --cache-artifacts=false --watch-poll-interval=2000
 }
 
 main() {
@@ -25,11 +55,17 @@ main() {
     build)
         build "$ARG1"
     ;;
+    check)
+        check "$ARG1"
+    ;;
     debug)
         debug "$ARG1"
     ;;
     debug-tests)
         debug_tests "$ARG1"
+    ;;
+    run)
+        run_app "$ARG1"
     ;;
     skaffold)
         run_skaffold

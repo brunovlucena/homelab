@@ -34,7 +34,7 @@ Create a local development environment for Kubernetes.
 
 | Variable | Value |
 | -------- | ------- |
-|`CNI`      |	calico |
+|`CNI`      |	calico
 |`MESH`     |	linkerd
 |`BASIC`    |	enabled
 |`MONITORING` |	enabled

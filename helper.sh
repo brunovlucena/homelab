@@ -4,16 +4,18 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 
 # local binaries
-MINIKUBE=~/.local/bin/minikube
-KIND=~/.local/bin/kind
-K9S=~/.local/bin/k9s
-KUBECTL=~/.local/bin/kubectl
-HELM=~/.local/bin/helm
-SQUASH=~/.local/bin/squash
-KUBEDIFF=~/.local/bin/kubediff
-LINKERD=~/.local/bin/linkerd
-CALICOCTL=~/.local/bin/calicoctl
+BIN=~/.local/bin
+MINIKUBE=$BIN/minikube
+KIND=$BIN/kind
+K9S=$BIN/k9s
+KUBECTL=$BIN/kubectl
+HELM=$BIN/helm
+SQUASH=$BIN/squash
+KUBEDIFF=$BIN/kubediff
+LINKERD=$BIN/linkerd
+CALICOCTL=$BIN/calicoctl
 KREW=~/.krew/bin/krew
+SKAFFOLD=$BIN/skaffold
 
 # system binaries
 WGET=$(which wget)
@@ -106,9 +108,8 @@ pre_install() {
                 $GZIP -d /tmp/go.tar.gz
                 sudo $TAR -xvf /tmp/go.tar -C /usr/local
                 # tools
-                go get -u github.com/go-delve/delve/cmd/dlv
-                go get -u github.com/leighmcculloch/gochecknoglobals
             fi
+            go get -u github.com/go-delve/delve/cmd/dlv
         ;;
         krew)
             local PATH="https://github.com/kubernetes-sigs/krew/releases/download/${VERSION}/krew.tar.gz"
@@ -118,6 +119,12 @@ pre_install() {
                 $TAR xvf /tmp/krew.tar -C /tmp
                 $MKDIR -p $HOME/.krew/bin
                 $MV /tmp/krew-"$OS"_amd64 $KREW
+            fi
+        ;;
+        skaffold)
+            local PATH="https://github.com/GoogleContainerTools/skaffold/releases/download/$VERSION/skaffold-$OS-amd64"
+            if [[ ! -f $SKAFFOLD ]]; then
+                $WGET $PATH -O $SKAFFOLD && $CHMOD +x $SKAFFOLD
             fi
         ;;
     esac
@@ -217,13 +224,12 @@ kind_add_registry() {
     local RUNNING="$(docker inspect -f '{{.State.Running}}' "${CLUSTER_NAME}-registry" 2>/dev/null || true)"
     if [[ ${RUNNING} != 'true' ]]; then
         docker run \
-            -d --restart=always -p "${REG_PORT}:5000" --name "${CLUSTER_NAME}-registry" \
-            registry:2
+            -d --restart=always -p "${REG_PORT}:5000" --name "${CLUSTER_NAME}-registry" registry:2
     fi
     # add the registry to /etc/hosts on each node
-    IP='{{.NetworkSettings.IPAddress}}'
-    CMD="echo $(docker inspect -f "${IP}" "${CLUSTER_NAME}-registry") registry >> /etc/hosts"
-    for NODE in $(kind get nodes --name "${KIND_CLUSTER_NAME}"); do
+    local IP="$(docker inspect -f '{{.NetworkSettings.IPAddress}}' "${CLUSTER_NAME}-registry" 2>/dev/null || true)"
+    CMD="echo $IP registry >> /etc/hosts"
+    for NODE in $(kind get nodes --name "${CLUSTER_NAME}"); do
         docker exec "${NODE}" sh -c "${CMD}"
     done
 }
@@ -414,6 +420,9 @@ main() {
     pre-install)
 		pre_install "$ARG1" "$ARG2" #
 	;;
+    kind-add-registry)
+        kind_add_registry "$ARG1"
+    ;;
     bootstrap-cluster)
         bootstrap_cluster "$ARG1" "$ARG2" "$ARG3" "$ARG4" "$ARG5" "$ARG6" "$ARG7" "$ARG8" "$ARG9"
     ;;

@@ -1,7 +1,10 @@
 package utils
 
 import (
+	"os"
+
 	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 func LogrusSetup() {
@@ -18,9 +21,7 @@ func LogrusSetup() {
 func ViperSetup() {
 	// Setup path
 	viper.SetConfigName("config.yaml")
-	viper.AddConfigPath("$HOME/.guestbook")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("../")
+	viper.AddConfigPath("/app")
 	viper.SetConfigType("yaml")
 
 	// Read config
@@ -29,8 +30,8 @@ func ViperSetup() {
 
 func HandleError(result interface{}, err error) (r interface{}) {
 	if err != nil {
+		logrus.Errorf("Fatal error config file: %s \n", err)
 		panic(err)
-		panic(logrus.Errorf("Fatal error config file: %s \n", err))
 	}
 	return result
 }

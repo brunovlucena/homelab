@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"github.com/brunovlucena/guestbook-go/cmd/utils"
 )
 
 func init() {
-	//utils.LogrusInit()
+	utils.LogrusSetup()
+	utils.ViperSetup()
 }
 
 func main() {

@@ -2,7 +2,7 @@ apiVersion: skaffold/v1
 kind: Config
 build:
   artifacts:
-    - image: localhost:5000/guestbook
+    - image: registry:5000/guestbook
       context: .
       docker: 
         dockerfile: ./skaffold/Dockerfile

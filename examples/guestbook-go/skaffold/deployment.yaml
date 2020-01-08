@@ -29,17 +29,17 @@ spec:
       containers:
         - name: backend
           #securityContext:
-        image: "registry:5000/guestbook"
-          ports:
-          - containerPort: 8000
-            name: http
-          livenessProbe:
-            httpGet:
-              path: /
-              port: http
-          readinessProbe:
-            httpGet:
-              path: /
-              port: http
-            initialDelaySeconds: 5
-            timeoutSeconds: 5
+          image: "registry:5000/guestbook:dev"
+          #ports:
+          #- containerPort: 8000
+            #name: http
+          #livenessProbe:
+            #httpGet:
+              #path: /
+              #port: http
+          #readinessProbe:
+            #httpGet:
+              #path: /
+              #port: http
+            #initialDelaySeconds: 5
+            #timeoutSeconds: 5

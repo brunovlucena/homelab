@@ -18,7 +18,7 @@ CLUSTER_NAME		= homelab
 
 # components
 CNI					= calico
-MESH				= linkerd
+MESH				= disabled #linkerd
 BASIC				= enabled
 MONITORING			= enabled
 STORAGE				= disabled
@@ -37,6 +37,7 @@ SONOBUOY_VERSION	= 0.16.1
 GO_VERSION			= 1.13.5
 LINKERD_VERSION		= 2.6.1
 KREW_VERSION		= v0.3.3
+SKAFFOLD_VERSION	= v1.1.0
 
 help: ## helper. 
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -50,9 +51,13 @@ pre-install: ## pre-installs all nescessary tools to bootstrap and manage cluste
 	@./helper.sh pre-install helm ${HELM_VERSION}
 	@./helper.sh pre-install kubectl ${KUBECTL_VERSION}
 	@./helper.sh pre-install squash ${SQUASH_VERSION}
+	@./helper.sh pre-install skaffold ${SKAFFOLD_VERSION}
 	@./helper.sh pre-install kubediff
 	@./helper.sh pre-install linkerd ${LINKERD_VERSION}
 	@./helper.sh pre-install krew ${KREW_VERSION}
+
+kind-add-registry: ## add local docker registry for cluster.
+	@./helper.sh kind-add-registry ${CLUSTER_NAME}
 
 bootstrap-cluster: ## Bootstraps a kubernetes cluster.
 	@./helper.sh bootstrap-cluster ${CLUSTER_CPUS} ${CLUSTER_MEMORY} ${CLUSTER_DISK} ${CLUSTER_DISK_EXTRA} ${CLUSTER_VERSION} ${CLUSTER_NAME} ${VM_DRIVER} ${CNI} ${MESH}
@@ -67,7 +72,7 @@ start-cluster-kind: ## Starts cluster using Kind
 stop-cluster: ## Stops cluster.
 	@./helper.sh stop-cluster ${CLUSTER_NAME} ${VM_DRIVER}
 
-tunnel: ## Creates a tunnel to minikube's registry (E.g. make tunnel service=registry).
+tunnel: ## Creates a tunnel to cluster.
 	@./helper.sh tunnel ${ARGS}
 
 add-components: ## adds new components via helm upgrade  
