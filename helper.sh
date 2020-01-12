@@ -26,6 +26,7 @@ CP=$(which cp)
 CHMOD=$(which chmod)
 GIT=$(which git)
 MKDIR=$(which mkdir)
+DOCKER=$(which docker)
 
 # system variables
 if [[ $OSTYPE == "linux-gnu" ]]; then
@@ -102,15 +103,6 @@ pre_install() {
                 $WGET $PATH -O $LINKERD && $CHMOD +x $LINKERD
             fi
         ;;
-        go)
-            if [[ ! -d /tmp/go.tar && ! -d /usr/local/go  ]]; then
-                $WGET https://dl.google.com/go/go$VERSION.linux-amd64.tar.gz -O /tmp/go.tar.gz
-                $GZIP -d /tmp/go.tar.gz
-                sudo $TAR -xvf /tmp/go.tar -C /usr/local
-                # tools
-            fi
-            go get -u github.com/go-delve/delve/cmd/dlv
-        ;;
         krew)
             local PATH="https://github.com/kubernetes-sigs/krew/releases/download/${VERSION}/krew.tar.gz"
             if [[ ! -f $KREW || ! -f /tmp/krew.tar ]]; then
@@ -151,7 +143,7 @@ bootstrap_cluster() {
     local CLUSTER_NAME="$6"
     local VM_DRIVER="$7"
     # clean before start for the first time
-    [[ -d ~/.minikube/profiles/$CLUSTER_NAME/ ]] && clean_cluster "$CLUSTER_NAME"
+    clean_cluster "$CLUSTER_NAME" "$VM_DRIVER"
     # start cluster
     start_cluster "$CLUSTER_CPUS" "$CLUSTER_MEMORY" "$CLUSTER_DISK" "$CLUSTER_DISK_EXTRA" "$CLUSTER_VERSION" "$CLUSTER_NAME" "$VM_DRIVER"
     # networking
@@ -171,15 +163,21 @@ bootstrap_cluster() {
 # * param1: [cluster_name]
 clean_cluster() {
     local CLUSTER_NAME="$1"
-    # just in case of a new bootstrap with the same name
-    rm -r ~/.minikube/profiles/"$CLUSTER_NAME" || true
-    # Stop
-    vboxmanage controlvm mobimeo poweroff || true
-    # Remove from virtualbox
-    vboxmanage unregistervm --delete "$CLUSTER_NAME" || true
-    # Remove volume because We need a new disk without partitions and filesystem.
-    vboxmanage closemedium disk /home/bvl/.minikube/disks/rook-ceph-1.vdi --delete || true
-    rm -r ~/.minikube/machines/"$CLUSTER_NAME" || true
+    local VM_DRIVER="$2"
+    if [[ $VM_DRIVER == "none" ]]; then
+        $KIND delete cluster --name "$CLUSTER_NAME"
+    else
+        if [[ -d ~/.minikube/profiles/$CLUSTER_NAME/ ]]; then
+            rm -r ~/.minikube/profiles/"$CLUSTER_NAME"
+            # Stop
+            vboxmanage controlvm mobimeo poweroff
+            # Remove from virtualbox
+            vboxmanage unregistervm --delete "$CLUSTER_NAME"
+            # Remove volume because We need a new disk without partitions and filesystem.
+            vboxmanage closemedium disk /home/bvl/.minikube/disks/rook-ceph-1.vdi --delete
+            rm -r ~/.minikube/machines/"$CLUSTER_NAME"
+        fi
+    fi
 }
 
 # starts a cluster using minikube.
@@ -217,6 +215,26 @@ start_cluster() {
     fi
 }
 
+# stops the kubernetes cluster.
+#
+# Usage:
+#  $ ./helper.sh param1 [param2]
+# * param1: stop-cluster
+# * param2: [cluster_name]
+# * param3: [vm_driver]
+stop_cluster() {
+    local CLUSTER_NAME="$1"
+    local VM_DRIVER="$2"
+    if [[ $VM_DRIVER == "none" ]]; then
+        $DOCKER stop $CLUSTER_NAME-control-plane
+        # TODO: implement stop workers
+        #kind get nodes --name homelab
+        #$DOCKER stop $CLUSTER_NAME-worker
+    else
+	    $MINIKUBE stop -p "$CLUSTER_NAME" || true
+    fi
+}
+
 kind_add_registry() {
     # create registry container unless it already exists
     local CLUSTER_NAME="$1"
@@ -234,6 +252,57 @@ kind_add_registry() {
     done
 }
 
+add_host_monitoring() {
+    local ARG="$1"
+    case "$ARG" in
+        prometheus)
+            local VERSION="$2"
+            local CLUSTER_NAME="$3"
+            local RUNNING="$(docker inspect -f '{{.State.Running}}' "${CLUSTER_NAME}-prometheus" 2>/dev/null || true)"
+            if [[ ${RUNNING} != 'true' ]]; then
+                docker run -v  /home/user/Workspace/homelab/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml \
+                    -d --restart=always --network=host --name "${CLUSTER_NAME}-prometheus" prom/prometheus:${VERSION}
+                docker run \
+                    -d --restart=always --network=host --name "${CLUSTER_NAME}-grafana" grafana/grafana:6.5.2
+            fi
+        ;;
+        node-exporter)
+            local VERSION="$2"
+            local CLUSTER_NAME="$3"
+            #local REG_PORT='9100'
+            local RUNNING="$(docker inspect -f '{{.State.Running}}' "${CLUSTER_NAME}-node-exporter" 2>/dev/null || true)"
+            if [[ ${RUNNING} != 'true' ]]; then
+                docker run \
+                    -d --restart=always --network=host --name "${CLUSTER_NAME}-node-exporter" prom/node-exporter:${VERSION}
+            fi
+        ;;
+        docker-hub-exporter)
+            local VERSION=latest
+            local CLUSTER_NAME="$3"
+            #local REG_PORT='9170'
+            local RUNNING="$(docker inspect -f '{{.State.Running}}' "${CLUSTER_NAME}-docker-hub-exporter" 2>/dev/null || true)"
+            if [[ ${RUNNING} != 'true' ]]; then
+                local IMAGES="prom/node-exporter,prom/prometheus,kindest/node,golang,busybox"
+                docker run \
+                    -d --restart=always --network=host --name "${CLUSTER_NAME}-docker-hub-exporter" infinityworks/docker-hub-exporter:"${VERSION}" -listen-address=:9170 -images="${IMAGES}"
+            fi
+        ;;
+        github-exporter)
+            local VERSION=latest
+            local CLUSTER_NAME="$3"
+            #local REG_PORT='9171'
+            local RUNNING="$(docker inspect -f '{{.State.Running}}' "${CLUSTER_NAME}-github-exporter" 2>/dev/null || true)"
+            if [[ ${RUNNING} != 'true' ]]; then
+                local GITHUB_TOKEN=ae7928a60bb8caa3402cc0bef5ca2d3853be36df
+                local API_URL=https://api.github.com/graphql
+                local REPOS="prometheus/node_exporter, prometheus/prometheus, kubernetes/minikube, kubernetes-sigs/kind derailed/k9s, golang/go"
+                docker run \
+                    -d --restart=always --network=host --name "${CLUSTER_NAME}-github-exporter" -e API_URL="$API_URL" -e GITHUB_TOKEN="$GITHUB_TOKEN" -e REPOS="$REPOS" infinityworks/github-exporter:"${VERSION}" -listen-address=:9170 -images="${IMAGES}"
+            fi
+        ;;
+
+    esac
+}
 
 # adds a second disk to minikube.
 add_disk(){
@@ -374,23 +443,6 @@ add_testing(){
     fi
 }
 
-# stops the kubernetes cluster.
-#
-# Usage:
-#  $ ./helper.sh param1 [param2]
-# * param1: stop-cluster
-# * param2: [cluster_name]
-# * param3: [vm_driver]
-stop_cluster() {
-    local CLUSTER_NAME="$1"
-    local VM_DRIVER="$2"
-    if [[ $VM_DRIVER == "none" ]]; then
-        $KIND delete cluster --name "$CLUSTER_NAME"
-    else
-	    $MINIKUBE stop -p "$CLUSTER_NAME" || true
-    fi
-}
-
 # Creates a tunnel to registry.
 #
 # Usage:
@@ -418,8 +470,11 @@ main() {
   local ARG9="${10}" # mesh
   case "$ARG0" in
     pre-install)
-		pre_install "$ARG1" "$ARG2" #
+		pre_install "$ARG1" "$ARG2"
 	;;
+    add-host-monitoring)
+        add_host_monitoring "$ARG1" "$ARG2" "$ARG3"
+    ;;
     kind-add-registry)
         kind_add_registry "$ARG1"
     ;;
@@ -431,6 +486,9 @@ main() {
     ;;
     stop-cluster)
         stop_cluster "$ARG1" "$ARG2"
+    ;;
+    clean-cluster)
+        clean_cluster "$ARG1" "$ARG2"
     ;;
     tunnel)
         tunnel "$ARG1"

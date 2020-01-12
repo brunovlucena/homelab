@@ -1,3 +1,0 @@
-# log
-logLevel: logrus.InfoLevel
-logOutput: os.Stdout 

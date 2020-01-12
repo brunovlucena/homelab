@@ -1,0 +1,59 @@
+groups:
+- name: Releases
+  rules:
+
+  - alert: Node Exporter
+    expr: (github_repo_releases{repo="node_exporter"}) > X
+    for: 1m
+    labels:
+      severity: info
+    annotations:
+      summary: New Version
+
+  - alert: New Prometheus Version
+    expr: (github_repo_releases{repo="prometheus"}) > X
+    for: 1m
+    labels:
+      severity: info
+    annotations:
+      summary: New Version
+
+  - alert: New Kind Version
+    expr: (github_repo_releases{repo="kind"}) > X
+    for: 1m
+    labels:
+      severity: info
+    annotations:
+      summary: New Version
+
+  - alert: New Go Version
+    expr: (github_repo_releases{repo="go"}) > X
+    for: 1m
+    labels:
+      severity: info
+    annotations:
+      summary: New Version
+
+  - alert: New Minikube Version
+    expr: (github_repo_releases{repo="minikube"}) > X
+    for: 1m
+    labels:
+      severity: info
+    annotations:
+      summary: New Version
+
+  - alert: New Helm Version
+    expr: (github_repo_releases{repo="helm"}) > X
+    for: 1m
+    labels:
+      severity: info
+    annotations:
+      summary: New Version
+
+  - alert: New Kubernetes Version
+    expr: (github_repo_releases{repo="kubernetes"}) > X
+    for: 1m
+    labels:
+      severity: info
+    annotations:
+      summary: New Version

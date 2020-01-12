@@ -18,7 +18,7 @@ CLUSTER_NAME		= homelab
 
 # components
 CNI					= calico
-MESH				= disabled #linkerd
+MESH				= disabled
 BASIC				= enabled
 MONITORING			= enabled
 STORAGE				= disabled
@@ -28,13 +28,16 @@ TESTING				= disabled
 ROOK_CEPH			= disabled
 BACKUP				= disabled
 
+# external k8s
+PROMETHEUS_VERSION		= v2.15.2
+NODE_EXPORTER_VERSION 	= v0.18.1
+
 # tools
 K9S_VERSION 		= 0.10.8
 KUBECTL_VERSION 	= v1.17.0
 HELM_VERSION 		= v3.0.1
 SQUASH_VERSION 		= v0.5.18
 SONOBUOY_VERSION	= 0.16.1
-GO_VERSION			= 1.13.5
 LINKERD_VERSION		= 2.6.1
 KREW_VERSION		= v0.3.3
 SKAFFOLD_VERSION	= v1.1.0
@@ -55,6 +58,12 @@ pre-install: ## pre-installs all nescessary tools to bootstrap and manage cluste
 	@./helper.sh pre-install kubediff
 	@./helper.sh pre-install linkerd ${LINKERD_VERSION}
 	@./helper.sh pre-install krew ${KREW_VERSION}
+
+add-host-monitoring: ## add local monitoring for the host
+	@./helper.sh add-host-monitoring prometheus ${PROMETHEUS_VERSION} ${CLUSTER_NAME}
+	@./helper.sh add-host-monitoring node-exporter ${NODE_EXPORTER_VERSION} ${CLUSTER_NAME}
+	@./helper.sh add-host-monitoring docker-hub-exporter latest ${CLUSTER_NAME}
+	@./helper.sh add-host-monitoring github-exporter latest ${CLUSTER_NAME}
 
 kind-add-registry: ## add local docker registry for cluster.
 	@./helper.sh kind-add-registry ${CLUSTER_NAME}

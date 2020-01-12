@@ -3,7 +3,7 @@
 Create a local development environment for Kubernetes.
 
 - (Virtualbox) Tested: minikube v1.5.1 and Kubernetes: v1.17.0
-- (Kind) Tested: minikube v1.5.1 and Kubernetes: v1.16.3
+- (Kind) Tested: minikube v1.5.1 and Kubernetes: v1.17.0
 
 **TODO**:
 
