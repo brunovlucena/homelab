@@ -198,14 +198,18 @@ start_cluster() {
     local CLUSTER_VERSION="$5"
     local CLUSTER_NAME="$6"
     local VM_DRIVER="$7"
-    if [[ $VM_DRIVER = "none" ]]; then
+    if [[ $VM_DRIVER = "kind" ]]; then
         # start
         sudo $KIND create cluster --name $CLUSTER_NAME --config=./kind.yaml
         kind_add_registry $CLUSTER_NAME
         # get config
         $KIND export kubeconfig --name $CLUSTER_NAME
+    elif [[ $VM_DRIVER = "none" ]]; then
+	    sudo $MINIKUBE start --vm-driver="$VM_DRIVER" --cpus="$CLUSTER_CPUS" --memory="$CLUSTER_MEMORY" --disk-size="$CLUSTER_DISK" --kubernetes-version="$CLUSTER_VERSION"
+        # manage pluggins
+        manage_cluster_pluggins
     else
-	    $MINIKUBE start --cpus="$CLUSTER_CPUS" --memory="$CLUSTER_MEMORY" --disk-size="$CLUSTER_DISK" --kubernetes-version="$CLUSTER_VERSION" -p "$CLUSTER_NAME"
+	    $MINIKUBE start --vm-driver="$VM_DRIVER" --cpus="$CLUSTER_CPUS" --memory="$CLUSTER_MEMORY" --disk-size="$CLUSTER_DISK" --kubernetes-version="$CLUSTER_VERSION" -p "$CLUSTER_NAME"
         ## NOTE: load rbd for ceph
         minikube ssh -p "$CLUSTER_NAME" "sudo modprobe rbd"
         # add a second disk for ceph

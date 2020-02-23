@@ -2,22 +2,19 @@
 
 ARGS = $(filter-out $(firstword $(MAKECMDGOALS)), $(MAKECMDGOALS))
 
-# minikube variables
-MINIKUBE_VERSION 	= v1.5.2
+# variables
+MINIKUBE_VERSION 	= v1.7.3
 CLUSTER_CPUS 		= 6
 CLUSTER_MEMORY 		= 4096mb
 CLUSTER_DISK 		= 20GB
 CLUSTER_DISK_EXTRA  = 15GB
 CLUSTER_VERSION 	= v1.17.0
-#VM_DRIVER           = virtualbox 
-# kind variables
+VM_DRIVER           = none # virtualbox|kind
 KIND_VERSION		= v0.6.1
-VM_DRIVER			= none
-# other
-CLUSTER_NAME		= homelab
+CLUSTER_NAME		= mobimeo
 
 # components
-CNI					= calico
+CNI					= cilium
 MESH				= disabled
 BASIC				= enabled
 MONITORING			= enabled
