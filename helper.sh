@@ -148,6 +148,7 @@ bootstrap_cluster() {
     start_cluster "$CLUSTER_CPUS" "$CLUSTER_MEMORY" "$CLUSTER_DISK" "$CLUSTER_DISK_EXTRA" "$CLUSTER_VERSION" "$CLUSTER_NAME" "$VM_DRIVER"
     # networking
     local CNI="$8"
+    [[ $CNI = "cilium" ]] && kubectl apply -f manifests/cilium
     [[ $CNI = "calico" ]] && kubectl apply -f manifests/calico
     # CAVEAT: ./manifests/calico/kind-iptables-fix.sh
     [[ $CNI = "kube-router" ]] && kubectl apply -f manifests/kube-router
@@ -164,8 +165,12 @@ bootstrap_cluster() {
 clean_cluster() {
     local CLUSTER_NAME="$1"
     local VM_DRIVER="$2"
-    if [[ $VM_DRIVER == "none" ]]; then
+    if [[ $VM_DRIVER == "kind" ]]; then
         $KIND delete cluster --name "$CLUSTER_NAME"
+    elif [[ $VM_DRIVER = "none" ]]; then
+        sudo rm -rf \
+            /var/tmp/minikube/kubeadm.yaml \
+            /root/.kube /root/.minikube /home/user/.kube /home/user/.minikube
     else
         if [[ -d ~/.minikube/profiles/$CLUSTER_NAME/ ]]; then
             rm -r ~/.minikube/profiles/"$CLUSTER_NAME"
@@ -205,7 +210,7 @@ start_cluster() {
         # get config
         $KIND export kubeconfig --name $CLUSTER_NAME
     elif [[ $VM_DRIVER = "none" ]]; then
-	    sudo $MINIKUBE start --vm-driver="$VM_DRIVER" --cpus="$CLUSTER_CPUS" --memory="$CLUSTER_MEMORY" --disk-size="$CLUSTER_DISK" --kubernetes-version="$CLUSTER_VERSION"
+	    sudo $MINIKUBE start --vm-driver="$VM_DRIVER" --disk-size="$CLUSTER_DISK" --kubernetes-version="$CLUSTER_VERSION"
         # manage pluggins
         manage_cluster_pluggins
     else
