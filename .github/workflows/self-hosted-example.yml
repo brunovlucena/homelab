@@ -1,0 +1,17 @@
+name: "🏃‍♂️ Self-Hosted Runner Example"
+
+on:
+  push:
+    branches: [ main, "add-ai-skills-homepage" ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  example-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Simple echo
+        run: echo "Workflow completed successfully"
