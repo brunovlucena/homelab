@@ -7,3 +7,6 @@ resources:
   - grafana-nodeport.yaml
   # - gateway.yaml  # Disabled - istio not enabled
   # - virtualservice.yaml  # Disabled - istio not enabled
+  - pagerduty.yaml
+  - slack.yaml
+  - strava.yaml

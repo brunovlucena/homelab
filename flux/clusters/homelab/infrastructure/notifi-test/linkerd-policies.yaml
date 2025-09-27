@@ -26,7 +26,7 @@
 
 ---
 # Default Server for Test Infrastructure Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: test-infrastructure-server
@@ -61,7 +61,7 @@ spec:
 
 ---
 # Server for Gateway Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: gateway-server
@@ -94,7 +94,7 @@ spec:
 
 ---
 # Server for gRPC Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: grpc-server
@@ -127,7 +127,7 @@ spec:
 
 ---
 # Server for Messenger Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: messenger-server
@@ -160,7 +160,7 @@ spec:
 
 ---
 # Server for Proxy Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: proxy-server
@@ -193,7 +193,7 @@ spec:
 
 ---
 # Server for Database Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: database-server
@@ -226,7 +226,7 @@ spec:
 
 ---
 # Server for Cache Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: cache-server
@@ -259,7 +259,7 @@ spec:
 
 ---
 # Server for Monitoring Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: monitoring-server
@@ -294,7 +294,7 @@ spec:
 
 ---
 # Server for Scheduler Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: scheduler-server
@@ -327,7 +327,7 @@ spec:
 
 ---
 # Server for Processor Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: processor-server
@@ -360,7 +360,7 @@ spec:
 
 ---
 # Server for Broker Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: broker-server
@@ -393,7 +393,7 @@ spec:
 
 ---
 # Server for Handler Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: handler-server
@@ -426,7 +426,7 @@ spec:
 
 ---
 # Server for Service Components
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: service-server
@@ -462,7 +462,7 @@ spec:
 
 ---
 # Server for Storage Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: storage-server
@@ -498,7 +498,7 @@ spec:
 
 ---
 # Server for Analytics Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: analytics-server
@@ -534,7 +534,7 @@ spec:
 
 ---
 # Server for Worker Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: worker-server
@@ -570,7 +570,7 @@ spec:
 
 ---
 # Server for API Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-server
@@ -606,7 +606,7 @@ spec:
 
 ---
 # Server for WebSocket Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: websocket-server
@@ -642,7 +642,7 @@ spec:
 
 ---
 # Server for Queue Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: queue-server
@@ -678,7 +678,7 @@ spec:
 
 ---
 # Server for Search Services
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: search-server

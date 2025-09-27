@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: github-actions-runner
+  labels:
+    name: github-actions-runner
+    app.kubernetes.io/name: github-actions-runner
+    app.kubernetes.io/instance: github-actions-runner
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: ci-cd
+    app.kubernetes.io/part-of: home-infrastructure
+    app.kubernetes.io/managed-by: flux

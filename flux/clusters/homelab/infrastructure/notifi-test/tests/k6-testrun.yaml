@@ -1,16 +1,16 @@
 apiVersion: k6.io/v1alpha1
 kind: TestRun
 metadata:
-  name: notifi-simple-prometheus-test
+  name: notifi-protocol-test
   namespace: notifi-test
   annotations:
     linkerd.io/inject: disabled
   labels:
-    app: notifi-k6-simple-test
+    app: notifi-k6-protocol-test
     component: testing
-    test-type: prometheus-metrics
+    test-type: protocol-validation
 spec:
-  arguments: --vus=10 --duration=50s
+  arguments: --vus=5 --duration=60s --iterations=10
   cleanup: post
   parallelism: 1
   paused: "false"  # Set to "true" to pause the test
@@ -30,14 +30,18 @@ spec:
       value: 5s
     - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
       value: "true"
+    - name: K6_HTTP_DEBUG
+      value: "true"
+    - name: K6_NO_COLOR
+      value: "false"
     image: grafana/k6:latest
     resources:
       limits:
-        cpu: 500m
-        memory: 512Mi
+        cpu: 1000m
+        memory: 1Gi
       requests:
-        cpu: 100m
-        memory: 128Mi
+        cpu: 200m
+        memory: 256Mi
   script:
     configMap:
       file: k6-simple-tests.js

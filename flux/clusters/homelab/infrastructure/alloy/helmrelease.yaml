@@ -1,0 +1,376 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy
+  namespace: alloy
+  annotations:
+    fluxcd.io/reconcile: "2025-09-26T00:00:00Z"
+spec:
+  interval: 5m
+  timeout: 10m
+  chart:
+    spec:
+      chart: alloy
+      version: 1.2.1
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+  values:
+    serviceMonitor:
+      enabled: true
+
+    extraPorts:
+    - name: "otlp"
+      port: 4317
+      targetPort: 4317
+      protocol: "TCP"
+      appProtocol: "h2c"
+
+    clustering:
+      enabled: false
+      name: ""
+      portName: http
+
+    stabilityLevel: "generally-available"
+    storagePath: /tmp/alloy
+
+    configMap:
+      create: true
+      content: |
+            logging {
+                level  = "debug"
+                format = "json"
+                write_to = [loki.write.loki.receiver]
+            }
+
+            discovery.kubernetes "kubernetes_apiservers" {
+                role = "endpoints"
+            }
+
+            discovery.relabel "kubernetes_apiservers" {
+                targets = discovery.kubernetes.kubernetes_apiservers.targets
+
+                rule {
+                    source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_service_name", "__meta_kubernetes_endpoint_port_name"]
+                    regex        = "default;kubernetes;https"
+                    action       = "keep"
+                }
+            }
+
+            discovery.kubernetes "kubernetes_pods" {
+                role = "pod"
+            }
+
+            discovery.relabel "kubernetes_pods" {
+                targets = discovery.kubernetes.kubernetes_pods.targets
+
+                rule {
+                    source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name", "__meta_kubernetes_pod_label_app", "__tmp_controller_name", "__meta_kubernetes_pod_name"]
+                    regex         = "^;*([^;]+)(;.*)?$"
+                    target_label  = "app"
+                }
+
+                rule {
+                    source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_instance", "__meta_kubernetes_pod_label_instance"]
+                    regex         = "^;*([^;]+)(;.*)?$"
+                    target_label  = "instance"
+                }
+
+                rule {
+                      source_labels = ["__meta_kubernetes_pod_container_name"]
+                      target_label  = "container"
+                }
+
+                rule {
+                    source_labels = ["__meta_kubernetes_pod_node_name"]
+                    target_label  = "node_name"
+                }
+
+                rule {
+                    source_labels = ["__meta_kubernetes_namespace"]
+                    target_label  = "namespace"
+                }
+
+                rule {
+                    source_labels = ["__meta_kubernetes_pod_name"]
+                    target_label  = "pod"
+                }
+            }
+
+            discovery.kubernetes "kubernetes_nodes" {
+                    role = "node"
+            }
+
+            discovery.relabel "kubernetes_nodes" {
+                    targets = discovery.kubernetes.kubernetes_nodes.targets
+
+                    rule {
+                            regex  = "__meta_kubernetes_node_label_(.+)"
+                            action = "labelmap"
+                    }
+
+                    rule {
+                            target_label = "__address__"
+                            replacement  = "kubernetes.default.svc:443"
+                    }
+
+                    rule {
+                            source_labels = ["__meta_kubernetes_node_name"]
+                            regex         = "(.+)"
+                            target_label  = "__metrics_path__"
+                            replacement   = "/api/v1/nodes/$1/proxy/metrics"
+                    }
+            }
+
+            discovery.kubernetes "kubernetes_nodes_cadvisor" {
+                    role = "node"
+            }
+
+            discovery.relabel "kubernetes_nodes_cadvisor" {
+                    targets = discovery.kubernetes.kubernetes_nodes_cadvisor.targets
+
+                    rule {
+                            regex  = "__meta_kubernetes_node_label_(.+)"
+                            action = "labelmap"
+                    }
+
+                    rule {
+                            target_label = "__address__"
+                            replacement  = "kubernetes.default.svc:443"
+                    }
+
+                    rule {
+                            source_labels = ["__meta_kubernetes_node_name"]
+                            regex         = "(.+)"
+                            target_label  = "__metrics_path__"
+                            replacement   = "/api/v1/nodes/$1/proxy/metrics/cadvisor"
+                    }
+            }
+
+            discovery.kubernetes "kubernetes_service_endpoints" {
+                    role = "endpoints"
+            }
+
+            discovery.relabel "kubernetes_service_endpoints" {
+                    targets = discovery.kubernetes.kubernetes_service_endpoints.targets
+
+                    rule {
+                            source_labels = ["__meta_kubernetes_service_annotation_prometheus_io_scrape"]
+                            regex         = "true"
+                            action        = "keep"
+                    }
+
+                    rule {
+                            source_labels = ["__meta_kubernetes_service_annotation_prometheus_io_scrape_slow"]
+                            regex         = "true"
+                            action        = "drop"
+                    }
+
+                    rule {
+                            source_labels = ["__meta_kubernetes_service_annotation_prometheus_io_scheme"]
+                            regex         = "(https?)"
+                            target_label  = "__scheme__"
+                    }
+
+                    rule {
+                            source_labels = ["__meta_kubernetes_service_annotation_prometheus_io_path"]
+                            regex         = "(.+)"
+                            target_label  = "__metrics_path__"
+                    }
+
+                    rule {
+                            source_labels = ["__address__", "__meta_kubernetes_service_annotation_prometheus_io_port"]
+                            regex         = "(.+?)(?::\\d+)?;(\\d+)"
+                            target_label  = "__address__"
+                            replacement   = "$1:$2"
+                    }
+
+                    rule {
+                            regex       = "__meta_kubernetes_service_annotation_prometheus_io_param_(.+)"
+                            replacement = "__param_$1"
+                            action      = "labelmap"
+                    }
+
+                    rule {
+                            regex  = "__meta_kubernetes_service_label_(.+)"
+                            action = "labelmap"
+                    }
+
+                    rule {
+                            source_labels = ["__meta_kubernetes_namespace"]
+                            target_label  = "namespace"
+                    }
+
+                    rule {
+                            source_labels = ["__meta_kubernetes_service_name"]
+                            target_label  = "service"
+                    }
+
+                    rule {
+                            source_labels = ["__meta_kubernetes_pod_node_name"]
+                            target_label  = "node"
+                    }
+            }
+
+            local.file_match "kubernetes_pods" {
+                    path_targets = discovery.relabel.kubernetes_pods.output
+            }
+
+            loki.source.kubernetes "kubernetes_pods" {
+                targets    = discovery.relabel.kubernetes_pods.output
+                forward_to = [loki.process.process.receiver]
+            }
+
+            loki.source.kubernetes_events "loki_events" {
+                namespaces = ["loki", "prometheus", "alloy", "tempo", "homepage", "k6-operator", "notifi-test", "bruno", "cert-manager", "cloudflare-tunnel", "flux-system"]
+                log_format = "json"
+                forward_to = [loki.write.loki.receiver]
+            }
+
+            loki.process "process" {
+                stage.drop {
+                      source             = "container"
+                      expression         = "linkerd-proxy"
+                      drop_counter_reason = "unwanted_container"
+                }
+
+                stage.json {
+                    expressions = {level = "\"@l\""}
+                }
+
+                stage.labels {
+                    values = {
+                      level  = "",         // Sets up a 'level' label, based on the 'level' extracted value.
+                    }
+                }
+
+                forward_to = [loki.write.loki.receiver]
+            }
+
+            loki.write "loki" {
+                endpoint {
+                    url = "http://loki-gateway.loki:80/loki/api/v1/push"
+                    headers = {
+                        "X-Scope-OrgID" = "fake",
+                    }
+                }
+            }
+
+            tracing {
+              sampling_fraction = 0.025
+
+              write_to = [otelcol.exporter.otlp.tempo.input]
+            }
+
+            otelcol.exporter.otlp "tempo" {
+              client {
+                  endpoint = "tempo-distributor.tempo:4317"
+
+                  tls {
+                      insecure = true
+                  }
+              }
+            }
+
+            otelcol.receiver.otlp "otlp" {
+              grpc {
+                endpoint = "0.0.0.0:4317"
+                max_recv_msg_size = "24MiB"
+              }
+
+              output {
+                traces  = [
+                  otelcol.connector.spanmetrics.default.input, 
+                  otelcol.connector.servicegraph.default.input, 
+                  otelcol.processor.attributes.otlp.input,
+                ]
+              }
+            }
+
+            otelcol.connector.spanmetrics "default" {
+              dimension {
+                name = "http.status_code"
+              }
+
+              dimension {
+                name = "http.method"
+                default = "GET"
+              }
+
+              dimension {
+                name = "http.target"
+              }
+
+              aggregation_temporality = "DELTA"
+
+              histogram {
+                explicit {
+                  buckets = ["50ms", "100ms", "250ms", "1s", "5s", "10s"]
+                }
+              }
+              
+              namespace = "traces_spanmetrics"
+
+              metrics_flush_interval = "33s"
+
+              output {
+                metrics = [otelcol.exporter.prometheus.default.input]
+              }
+            }
+
+            otelcol.processor.attributes "otlp" {
+              action {
+                key = "k8s.pod.name"
+                action = "delete"
+              }
+
+              debug_metrics {
+                disable_high_cardinality_metrics = true
+              }
+
+              output {
+                traces = [otelcol.processor.batch.otlp.input]
+              }
+            }
+
+            otelcol.processor.batch "otlp" {
+              send_batch_size = 5000
+              send_batch_max_size = 10000
+              metadata_cardinality_limit = 1000
+              timeout = "5s"
+              output {
+                traces  = [otelcol.exporter.otlp.tempo.input]
+              }
+            }
+
+            prometheus.exporter.self "alloy" {}
+
+            otelcol.connector.servicegraph "default" {
+              dimensions = ["http.method", "http.target", "http.status_code"]
+              output {
+                metrics = [otelcol.exporter.prometheus.default.input]
+              }
+            }
+
+            otelcol.exporter.prometheus "default" {
+              forward_to = [prometheus.remote_write.prometheus.receiver]
+            }
+
+            prometheus.remote_write "prometheus" {
+              endpoint {
+                url = "http://prometheus-operated.prometheus.svc:9090/api/v1/write"
+                send_exemplars = true
+              }
+            }
+
+    volumeMounts:
+      - name: alloy-config
+        mountPath: /etc/alloy
+        readOnly: true
+
+    ports:
+    - name: otlp-grpc
+      port: 4317
+      protocol: TCP

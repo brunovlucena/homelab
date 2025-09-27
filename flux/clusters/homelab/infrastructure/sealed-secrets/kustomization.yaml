@@ -7,10 +7,6 @@ metadata:
 resources:
   - helmrelease.yaml
   - ai.yaml
-  - bruno-site.yaml
   - buoyant-license.yaml
   - cloudflare.yaml
   - ghcr-secret.yaml
-  - pagerduty.yaml
-  - slack.yaml
-  - strava.yaml

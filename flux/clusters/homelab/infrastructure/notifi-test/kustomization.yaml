@@ -10,5 +10,6 @@ resources:
   - namespace.yaml
   - infrastructure.yaml
   - linkerd-policies.yaml 
+  - blockchain-rpc-alerts.yaml
   - tests/notifi-k6-simple-test-configmap.yaml
   - tests/notifi-k6-simple-testrun.yaml

@@ -1,0 +1,93 @@
+apiVersion: actions.summerwind.dev/v1alpha1
+kind: RunnerDeployment
+metadata:
+  name: github-actions-runner-deployment
+  namespace: github-actions-runner
+  labels:
+    app.kubernetes.io/name: github-actions-runner
+    app.kubernetes.io/instance: github-actions-runner
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: ci-cd
+    app.kubernetes.io/part-of: home-infrastructure
+    app.kubernetes.io/managed-by: flux
+spec:
+  replicas: 2
+  template:
+    spec:
+      # Repository configuration - will be set via secret
+      repository: "brunovlucena/homelab"
+      
+      # Runner configuration
+      image: summerwind/actions-runner:ubuntu-22.04
+      
+      # Resource limits
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 2000m
+          memory: 4Gi
+      
+      # Security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      
+      # Environment variables
+      env:
+        - name: RUNNER_WORKDIR
+          value: "/tmp/runner-work"
+        - name: RUNNER_TEMP
+          value: "/tmp/runner-temp"
+        - name: RUNNER_ALLOW_RUNASROOT
+          value: "false"
+        - name: RUNNER_DISABLE_UPDATE
+          value: "true"
+      
+      # Volume mounts
+      volumeMounts:
+        - name: runner-work
+          mountPath: /tmp/runner-work
+        - name: runner-temp
+          mountPath: /tmp/runner-temp
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+          readOnly: true
+      
+      # Volumes
+      volumes:
+        - name: runner-work
+          emptyDir: {}
+        - name: runner-temp
+          emptyDir: {}
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+      
+      # Service account
+      serviceAccountName: github-actions-runner
+      
+      # Node selector for better performance
+      nodeSelector:
+        kubernetes.io/os: linux
+      
+      # Tolerations for dedicated nodes (optional)
+      tolerations: []
+      
+      # Affinity rules (optional)
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - github-actions-runner
+                topologyKey: kubernetes.io/hostname

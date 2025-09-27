@@ -10,7 +10,7 @@ spec:
   chart:
     spec:
       chart: loki
-      version: 6.40.0
+      version: 6.25.0
       sourceRef:
         kind: HelmRepository
         name: grafana
@@ -23,31 +23,31 @@ spec:
         endpoint: minio.minio.svc:9000
         region: us-east-1
         bucket_name: loki
-        access_key_id: admin
-        secret_access_key: admin123
+        access_key_id: root-user
+        secret_access_key: supersecretpassword
         s3forcepathstyle: true
         insecure: true
     loki:
       schemaConfig:
         configs:
-          - from: "2024-04-01"
+          - from: "2020-10-24"
             store: tsdb
             object_store: s3
             schema: v13
             index:
               prefix: index_
               period: 24h
-      # Disable test schema since we have custom schemaConfig
-      useTestSchema: false
+      # Enable test schema for quick setup
+      useTestSchema: true
       limits_config:
         retention_period: 744h
         allow_structured_metadata: false
     backend:
       replicas: 1
     read:
-      replicas: 2
+      replicas: 3
     write:
-      replicas: 2
+      replicas: 3
     monitoring:
       selfMonitoring:
         enabled: false
@@ -56,8 +56,12 @@ spec:
     minio:
       enabled: true
       auth:
-        rootUser: admin
-        rootPassword: "admin123"
+        rootUser: root-user
+        rootPassword: "supersecretpassword"
+      buckets:
+        - name: loki
+          policy: none
+          purge: false
       persistence:
         enabled: true
         storageClassName: local-path

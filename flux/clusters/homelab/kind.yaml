@@ -42,10 +42,10 @@ nodes:
   - containerPort: 30090 # prometheus
     hostPort: 31090
     protocol: TCP
-  - containerPort: 30100 # loki
+  - containerPort: 3100 # loki
     hostPort: 31100
     protocol: TCP
-  - containerPort: 30110 # tempo
+  - containerPort: 3200 # tempo
     hostPort: 31110
     protocol: TCP
   - containerPort: 30120 # jamie

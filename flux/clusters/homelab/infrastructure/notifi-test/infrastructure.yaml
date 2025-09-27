@@ -1,2136 +1,508 @@
-
-# Mock Management Gateway Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-management-gateway
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: management-gateway-test
-    app.kubernetes.io/component: gateway
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: management-gateway-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: management-gateway-test
-        app.kubernetes.io/component: gateway
-    spec:
-      containers:
-      - name: management-gateway
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
+# Minimal Infrastructure for Notifi Test Environment
+# This file provides mock services to test all Linkerd policy scenarios
+# covering all unique port and protocol combinations without duplication.
 
 ---
+# Mock Service for HTTP/1 on port 80 (external HTTP services)
 apiVersion: v1
 kind: Service
 metadata:
-  name: mock-management-gateway
+  name: mock-http-80
   namespace: notifi-test
   labels:
-    app.kubernetes.io/name: management-gateway-test
+    app.kubernetes.io/name: mock-http-80
     app.kubernetes.io/component: gateway
 spec:
   selector:
-    app.kubernetes.io/name: management-gateway-test
+    app.kubernetes.io/name: mock-http-80
   ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Dataplane Gateway Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-dataplane-gateway
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: dataplane-gateway-test
-    app.kubernetes.io/component: gateway
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: dataplane-gateway-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: dataplane-gateway-test
-        app.kubernetes.io/component: gateway
-    spec:
-      containers:
-      - name: dataplane-gateway
-        image: httpd:alpine
-        ports:
-        - containerPort: 80
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-dataplane-gateway
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: dataplane-gateway-test
-    app.kubernetes.io/component: gateway
-spec:
-  selector:
-    app.kubernetes.io/name: dataplane-gateway-test
-  ports:
-  - name: http
-    port: 80
+  - port: 80
     targetPort: 80
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
+    protocol: TCP
 
 ---
-# Mock User Manager Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-user-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: user-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: user-manager-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: user-manager-test
-        app.kubernetes.io/component: manager
-    spec:
-      containers:
-      - name: user-manager
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
+# Mock Service for gRPC/HTTP2 on port 4000 (gRPC services)
 apiVersion: v1
 kind: Service
 metadata:
-  name: mock-user-manager
+  name: mock-grpc-4000
   namespace: notifi-test
   labels:
-    app.kubernetes.io/name: user-manager-test
+    app.kubernetes.io/name: mock-grpc-4000
     app.kubernetes.io/component: manager
 spec:
   selector:
-    app.kubernetes.io/name: user-manager-test
+    app.kubernetes.io/name: mock-grpc-4000
   ports:
-  - name: grpc
-    port: 4000
+  - port: 4000
     targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
+    protocol: TCP
 
 ---
-# Mock Template Manager Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-template-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: template-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: template-manager-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: template-manager-test
-        app.kubernetes.io/component: manager
-    spec:
-      containers:
-      - name: template-manager
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
+# Mock Service for WebSocket on port 8080 (WebSocket services)
 apiVersion: v1
 kind: Service
 metadata:
-  name: mock-template-manager
+  name: mock-websocket-8080
   namespace: notifi-test
   labels:
-    app.kubernetes.io/name: template-manager-test
-    app.kubernetes.io/component: manager
+    app.kubernetes.io/name: mock-websocket-8080
+    app.kubernetes.io/component: websocket
 spec:
   selector:
-    app.kubernetes.io/name: template-manager-test
+    app.kubernetes.io/name: mock-websocket-8080
   ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
 
 ---
-# Mock Tenant Manager Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-tenant-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: tenant-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: tenant-manager-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: tenant-manager-test
-        app.kubernetes.io/component: manager
-    spec:
-      containers:
-      - name: tenant-manager
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
+# Mock Service for HTTP/1 on port 5000 (internal HTTP services)
 apiVersion: v1
 kind: Service
 metadata:
-  name: mock-tenant-manager
+  name: mock-http-5000
   namespace: notifi-test
   labels:
-    app.kubernetes.io/name: tenant-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  selector:
-    app.kubernetes.io/name: tenant-manager-test
-  ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Blockchain Manager Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-blockchain-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: blockchain-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: blockchain-manager-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: blockchain-manager-test
-        app.kubernetes.io/component: manager
-    spec:
-      containers:
-      - name: blockchain-manager
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-blockchain-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: blockchain-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  selector:
-    app.kubernetes.io/name: blockchain-manager-test
-  ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Chat Manager Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-chat-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: chat-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: chat-manager-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: chat-manager-test
-        app.kubernetes.io/component: manager
-    spec:
-      containers:
-      - name: chat-manager
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-chat-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: chat-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  selector:
-    app.kubernetes.io/name: chat-manager-test
-  ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Storage Manager Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-storage-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: storage-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: storage-manager-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: storage-manager-test
-        app.kubernetes.io/component: manager
-    spec:
-      containers:
-      - name: storage-manager
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-storage-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: storage-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  selector:
-    app.kubernetes.io/name: storage-manager-test
-  ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Fusion Manager Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-fusion-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: fusion-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: fusion-manager-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: fusion-manager-test
-        app.kubernetes.io/component: manager
-    spec:
-      containers:
-      - name: fusion-manager
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-fusion-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: fusion-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  selector:
-    app.kubernetes.io/name: fusion-manager-test
-  ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Subscription Manager Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-subscription-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: subscription-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: subscription-manager-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: subscription-manager-test
-        app.kubernetes.io/component: manager
-    spec:
-      containers:
-      - name: subscription-manager
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-subscription-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: subscription-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  selector:
-    app.kubernetes.io/name: subscription-manager-test
-  ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Points Manager Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-points-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: points-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: points-manager-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: points-manager-test
-        app.kubernetes.io/component: manager
-    spec:
-      containers:
-      - name: points-manager
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-points-manager
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: points-manager-test
-    app.kubernetes.io/component: manager
-spec:
-  selector:
-    app.kubernetes.io/name: points-manager-test
-  ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Mailer Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-mailer
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: mailer-test
-    app.kubernetes.io/component: messenger
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: mailer-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: mailer-test
-        app.kubernetes.io/component: messenger
-    spec:
-      containers:
-      - name: mailer
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-mailer
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: mailer-test
+    app.kubernetes.io/name: mock-http-5000
     app.kubernetes.io/component: messenger
 spec:
   selector:
-    app.kubernetes.io/name: mailer-test
+    app.kubernetes.io/name: mock-http-5000
   ports:
-  - name: http
-    port: 5000
+  - port: 5000
     targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
+    protocol: TCP
 
 ---
-# Mock SMS Messenger Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-sms-messenger
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: sms-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: sms-messenger-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: sms-messenger-test
-        app.kubernetes.io/component: messenger
-    spec:
-      containers:
-      - name: sms-messenger
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
+# Mock Service for Health Check on port 6000
 apiVersion: v1
 kind: Service
 metadata:
-  name: mock-sms-messenger
+  name: mock-health-6000
   namespace: notifi-test
   labels:
-    app.kubernetes.io/name: sms-messenger-test
-    app.kubernetes.io/component: messenger
+    app.kubernetes.io/name: mock-health-6000
+    app.kubernetes.io/component: health
 spec:
   selector:
-    app.kubernetes.io/name: sms-messenger-test
+    app.kubernetes.io/name: mock-health-6000
   ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
+  - port: 6000
     targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
+    protocol: TCP
 
 ---
-# Mock Telegram Messenger Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-telegram-messenger
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: telegram-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: telegram-messenger-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: telegram-messenger-test
-        app.kubernetes.io/component: messenger
-    spec:
-      containers:
-      - name: telegram-messenger
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
+# Mock Service for Metrics on port 7000
 apiVersion: v1
 kind: Service
 metadata:
-  name: mock-telegram-messenger
+  name: mock-metrics-7000
   namespace: notifi-test
   labels:
-    app.kubernetes.io/name: telegram-messenger-test
-    app.kubernetes.io/component: messenger
+    app.kubernetes.io/name: mock-metrics-7000
+    app.kubernetes.io/component: metrics
 spec:
   selector:
-    app.kubernetes.io/name: telegram-messenger-test
+    app.kubernetes.io/name: mock-metrics-7000
   ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
+  - port: 7000
     targetPort: 7000
-  type: ClusterIP
+    protocol: TCP
 
 ---
-# Mock FCM Messenger Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-fcm-messenger
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: fcm-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: fcm-messenger-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: fcm-messenger-test
-        app.kubernetes.io/component: messenger
-    spec:
-      containers:
-      - name: fcm-messenger
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
+# Mock Service for Redis on port 6379 (cache)
 apiVersion: v1
 kind: Service
 metadata:
-  name: mock-fcm-messenger
+  name: mock-redis-6379
   namespace: notifi-test
   labels:
-    app.kubernetes.io/name: fcm-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  selector:
-    app.kubernetes.io/name: fcm-messenger-test
-  ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Discord Messenger Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-discord-messenger
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: discord-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: discord-messenger-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: discord-messenger-test
-        app.kubernetes.io/component: messenger
-    spec:
-      containers:
-      - name: discord-messenger
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-discord-messenger
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: discord-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  selector:
-    app.kubernetes.io/name: discord-messenger-test
-  ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Slack Channel Messenger Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-slack-channel-messenger
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: slack-channel-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: slack-channel-messenger-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: slack-channel-messenger-test
-        app.kubernetes.io/component: messenger
-    spec:
-      containers:
-      - name: slack-channel-messenger
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-slack-channel-messenger
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: slack-channel-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  selector:
-    app.kubernetes.io/name: slack-channel-messenger-test
-  ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Web Push Messenger Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-web-push-messenger
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: web-push-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: web-push-messenger-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: web-push-messenger-test
-        app.kubernetes.io/component: messenger
-    spec:
-      containers:
-      - name: web-push-messenger
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-web-push-messenger
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: web-push-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  selector:
-    app.kubernetes.io/name: web-push-messenger-test
-  ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Web3 Messenger Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-web3-messenger
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: web3-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: web3-messenger-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: web3-messenger-test
-        app.kubernetes.io/component: messenger
-    spec:
-      containers:
-      - name: web3-messenger
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-web3-messenger
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: web3-messenger-test
-    app.kubernetes.io/component: messenger
-spec:
-  selector:
-    app.kubernetes.io/name: web3-messenger-test
-  ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Webhook Sender Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-webhook-sender
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: webhook-sender-test
-    app.kubernetes.io/component: messenger
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: webhook-sender-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: webhook-sender-test
-        app.kubernetes.io/component: messenger
-    spec:
-      containers:
-      - name: webhook-sender
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-webhook-sender
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: webhook-sender-test
-    app.kubernetes.io/component: messenger
-spec:
-  selector:
-    app.kubernetes.io/name: webhook-sender-test
-  ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock EVM Proxy Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-evm-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: evm-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: evm-proxy-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: evm-proxy-test
-        app.kubernetes.io/component: proxy
-    spec:
-      containers:
-      - name: evm-proxy
-        image: httpd:alpine
-        ports:
-        - containerPort: 7000
-        - containerPort: 6000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-evm-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: evm-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  selector:
-    app.kubernetes.io/name: evm-proxy-test
-  ports:
-  - name: http
-    port: 7000
-    targetPort: 7000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  type: ClusterIP
-
----
-# Mock Solana Proxy Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-solana-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: solana-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: solana-proxy-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: solana-proxy-test
-        app.kubernetes.io/component: proxy
-    spec:
-      containers:
-      - name: solana-proxy
-        image: httpd:alpine
-        ports:
-        - containerPort: 7000
-        - containerPort: 6000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-solana-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: solana-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  selector:
-    app.kubernetes.io/name: solana-proxy-test
-  ports:
-  - name: http
-    port: 7000
-    targetPort: 7000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  type: ClusterIP
-
----
-# Mock Aptos Proxy Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-aptos-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: aptos-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: aptos-proxy-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: aptos-proxy-test
-        app.kubernetes.io/component: proxy
-    spec:
-      containers:
-      - name: aptos-proxy
-        image: httpd:alpine
-        ports:
-        - containerPort: 7000
-        - containerPort: 4000
-        - containerPort: 6000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-aptos-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: aptos-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  selector:
-    app.kubernetes.io/name: aptos-proxy-test
-  ports:
-  - name: http
-    port: 7000
-    targetPort: 7000
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  type: ClusterIP
-
----
-# Mock SUI Proxy Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-sui-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: sui-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: sui-proxy-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: sui-proxy-test
-        app.kubernetes.io/component: proxy
-    spec:
-      containers:
-      - name: sui-proxy
-        image: httpd:alpine
-        ports:
-        - containerPort: 7000
-        - containerPort: 6000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-sui-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: sui-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  selector:
-    app.kubernetes.io/name: sui-proxy-test
-  ports:
-  - name: http
-    port: 7000
-    targetPort: 7000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  type: ClusterIP
-
----
-# Mock Cosmos Proxy Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-cosmos-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: cosmos-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: cosmos-proxy-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: cosmos-proxy-test
-        app.kubernetes.io/component: proxy
-    spec:
-      containers:
-      - name: cosmos-proxy
-        image: httpd:alpine
-        ports:
-        - containerPort: 7000
-        - containerPort: 6000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-cosmos-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: cosmos-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  selector:
-    app.kubernetes.io/name: cosmos-proxy-test
-  ports:
-  - name: http
-    port: 7000
-    targetPort: 7000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  type: ClusterIP
-
----
-# Mock BTC Proxy Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-btc-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: btc-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: btc-proxy-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: btc-proxy-test
-        app.kubernetes.io/component: proxy
-    spec:
-      containers:
-      - name: btc-proxy
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 7000
-        - containerPort: 6000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-btc-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: btc-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  selector:
-    app.kubernetes.io/name: btc-proxy-test
-  ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: http
-    port: 7000
-    targetPort: 7000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  type: ClusterIP
-
----
-# Mock XMTP Proxy Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-xmtp-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: xmtp-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: xmtp-proxy-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: xmtp-proxy-test
-        app.kubernetes.io/component: proxy
-    spec:
-      containers:
-      - name: xmtp-proxy
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-xmtp-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: xmtp-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  selector:
-    app.kubernetes.io/name: xmtp-proxy-test
-  ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock RPC Proxy Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-rpc-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: rpc-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: rpc-proxy-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: rpc-proxy-test
-        app.kubernetes.io/component: proxy
-    spec:
-      containers:
-      - name: rpc-proxy
-        image: httpd:alpine
-        ports:
-        - containerPort: 80
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-rpc-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: rpc-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  selector:
-    app.kubernetes.io/name: rpc-proxy-test
-  ports:
-  - name: http
-    port: 80
-    targetPort: 80
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Fetch Proxy Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-fetch-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: fetch-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: fetch-proxy-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: fetch-proxy-test
-        app.kubernetes.io/component: proxy
-    spec:
-      containers:
-      - name: fetch-proxy
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-fetch-proxy
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: fetch-proxy-test
-    app.kubernetes.io/component: proxy
-spec:
-  selector:
-    app.kubernetes.io/name: fetch-proxy-test
-  ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock ClickHouse Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-clickhouse
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: clickhouse-test
-    app.kubernetes.io/component: database
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: clickhouse-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: clickhouse-test
-        app.kubernetes.io/component: database
-    spec:
-      containers:
-      - name: clickhouse
-        image: clickhouse/clickhouse-server:alpine
-        ports:
-        - containerPort: 8123
-        - containerPort: 9000
-        - containerPort: 9009
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-clickhouse
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: clickhouse-test
-    app.kubernetes.io/component: database
-spec:
-  selector:
-    app.kubernetes.io/name: clickhouse-test
-  ports:
-  - name: http
-    port: 8123
-    targetPort: 8123
-  - name: native
-    port: 9000
-    targetPort: 9000
-  - name: interserver
-    port: 9009
-    targetPort: 9009
-  type: ClusterIP
-
----
-# Mock Internal Cache Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-internal-cache
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: internal-cache-test
-    app.kubernetes.io/component: cache
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: internal-cache-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: internal-cache-test
-        app.kubernetes.io/component: cache
-    spec:
-      containers:
-      - name: internal-cache
-        image: redis:alpine
-        ports:
-        - containerPort: 6379
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-internal-cache
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: internal-cache-test
+    app.kubernetes.io/name: mock-redis-6379
     app.kubernetes.io/component: cache
 spec:
   selector:
-    app.kubernetes.io/name: internal-cache-test
+    app.kubernetes.io/name: mock-redis-6379
   ports:
-  - name: redis
-    port: 6379
+  - port: 6379
     targetPort: 6379
-  type: ClusterIP
+    protocol: TCP
 
 ---
-# Mock Monitor Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-monitor
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: monitor-test
-    app.kubernetes.io/component: monitoring
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: monitor-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: monitor-test
-        app.kubernetes.io/component: monitoring
-    spec:
-      containers:
-      - name: monitor
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
+# Mock Service for RabbitMQ on port 5672 (queue)
 apiVersion: v1
 kind: Service
 metadata:
-  name: mock-monitor
+  name: mock-rabbitmq-5672
   namespace: notifi-test
   labels:
-    app.kubernetes.io/name: monitor-test
-    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/name: mock-rabbitmq-5672
+    app.kubernetes.io/component: queue
 spec:
   selector:
-    app.kubernetes.io/name: monitor-test
+    app.kubernetes.io/name: mock-rabbitmq-5672
   ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
+  - port: 5672
+    targetPort: 5672
+    protocol: TCP
 
 ---
-# Mock Scheduler Service
+# Mock Deployments for all services
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mock-scheduler
+  name: mock-http-80
   namespace: notifi-test
   labels:
-    app.kubernetes.io/name: scheduler-test
-    app.kubernetes.io/component: scheduler
+    app.kubernetes.io/name: mock-http-80
+    app.kubernetes.io/component: gateway
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: scheduler-test
+      app.kubernetes.io/name: mock-http-80
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: scheduler-test
-        app.kubernetes.io/component: scheduler
+        app.kubernetes.io/name: mock-http-80
+        app.kubernetes.io/component: gateway
     spec:
       containers:
-      - name: scheduler
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-scheduler
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: scheduler-test
-    app.kubernetes.io/component: scheduler
-spec:
-  selector:
-    app.kubernetes.io/name: scheduler-test
-  ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Event Processor Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-event-processor
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: event-processor-test
-    app.kubernetes.io/component: processor
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: event-processor-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: event-processor-test
-        app.kubernetes.io/component: processor
-    spec:
-      containers:
-      - name: event-processor
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-event-processor
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: event-processor-test
-    app.kubernetes.io/component: processor
-spec:
-  selector:
-    app.kubernetes.io/name: event-processor-test
-  ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Rate Limit Broker Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-rate-limit-broker
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: rate-limit-broker-test
-    app.kubernetes.io/component: broker
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: rate-limit-broker-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: rate-limit-broker-test
-        app.kubernetes.io/component: broker
-    spec:
-      containers:
-      - name: rate-limit-broker
-        image: httpd:alpine
-        ports:
-        - containerPort: 4000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-rate-limit-broker
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: rate-limit-broker-test
-    app.kubernetes.io/component: broker
-spec:
-  selector:
-    app.kubernetes.io/name: rate-limit-broker-test
-  ports:
-  - name: grpc
-    port: 4000
-    targetPort: 4000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Callback Handler Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-callback-handler
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: callback-handler-test
-    app.kubernetes.io/component: handler
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: callback-handler-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: callback-handler-test
-        app.kubernetes.io/component: handler
-    spec:
-      containers:
-      - name: callback-handler
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-callback-handler
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: callback-handler-test
-    app.kubernetes.io/component: handler
-spec:
-  selector:
-    app.kubernetes.io/name: callback-handler-test
-  ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock Outpost Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-outpost-service
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: outpost-service-test
-    app.kubernetes.io/component: service
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: outpost-service-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: outpost-service-test
-        app.kubernetes.io/component: service
-    spec:
-      containers:
-      - name: outpost-service
-        image: httpd:alpine
-        ports:
-        - containerPort: 5000
-        - containerPort: 6000
-        - containerPort: 7000
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-outpost-service
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: outpost-service-test
-    app.kubernetes.io/component: service
-spec:
-  selector:
-    app.kubernetes.io/name: outpost-service-test
-  ports:
-  - name: http
-    port: 5000
-    targetPort: 5000
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
----
-# Mock gRPC Server Service
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: mock-grpc-server
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: grpc-server-test
-    app.kubernetes.io/component: grpc-server
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: grpc-server-test
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: grpc-server-test
-        app.kubernetes.io/component: grpc-server
-    spec:
-      containers:
-      - name: grpc-server
+      - name: mock-server
         image: nginx:alpine
         ports:
-        - containerPort: 50051
-        - containerPort: 50052
-        - containerPort: 50053
-        - containerPort: 6000
-        - containerPort: 7000
+        - containerPort: 80
+        command: ["/bin/sh"]
+        args: 
+        - -c
+        - |
+          echo 'server {
+              listen 80;
+              location / {
+                  return 200 "Mock HTTP Service on port 80 (External)\n";
+                  add_header Content-Type text/plain;
+              }
+          }' > /etc/nginx/conf.d/default.conf &&
+          nginx -g "daemon off;"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-grpc-4000
+  namespace: notifi-test
+  labels:
+    app.kubernetes.io/name: mock-grpc-4000
+    app.kubernetes.io/component: manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mock-grpc-4000
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mock-grpc-4000
+        app.kubernetes.io/component: manager
+    spec:
+      containers:
+      - name: mock-server
+        image: moul/grpcbin:latest
+        ports:
+        - containerPort: 4000
+        env:
+        - name: GRPC_PORT
+          value: "4000"
         command: ["/bin/sh"]
         args:
         - -c
         - |
-          # Ultra-lightweight gRPC mock using nginx
-          cat > /etc/nginx/nginx.conf << 'EOF'
-          events { worker_connections 1024; }
-          http {
-              server {
-                  listen 50051;
-                  location / {
-                      return 200 "gRPC mock server\n";
-                      add_header Content-Type text/plain;
-                  }
-              }
-              server {
-                  listen 6000;
-                  location / {
-                      return 200 "healthy\n";
-                      add_header Content-Type text/plain;
-                  }
-              }
-              server {
-                  listen 7000;
-                  location /metrics {
-                      return 200 "# HELP grpc_requests_total Total gRPC requests\n# TYPE grpc_requests_total counter\ngrpc_requests_total 0\n";
-                      add_header Content-Type text/plain;
-                  }
-              }
-          }
-          EOF
-          nginx -g "daemon off;" &
-          
-          # Keep container running
-          tail -f /dev/null
+          # Start gRPC server on port 4000
+          grpcbin --insecure-addr :4000
 
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: mock-grpc-server
-  namespace: notifi-test
-  labels:
-    app.kubernetes.io/name: grpc-server-test
-    app.kubernetes.io/component: grpc-server
-spec:
-  selector:
-    app.kubernetes.io/name: grpc-server-test
-  ports:
-  - name: grpc
-    port: 50051
-    targetPort: 50051
-  - name: grpc-alt1
-    port: 50052
-    targetPort: 50052
-  - name: grpc-alt2
-    port: 50053
-    targetPort: 50053
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
-
----
-# Mock WebSocket Server Service
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mock-websocket-server
+  name: mock-websocket-8080
   namespace: notifi-test
   labels:
-    app.kubernetes.io/name: websocket-server-test
-    app.kubernetes.io/component: websocket-server
+    app.kubernetes.io/name: mock-websocket-8080
+    app.kubernetes.io/component: websocket
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: websocket-server-test
+      app.kubernetes.io/name: mock-websocket-8080
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: websocket-server-test
-        app.kubernetes.io/component: websocket-server
+        app.kubernetes.io/name: mock-websocket-8080
+        app.kubernetes.io/component: websocket
     spec:
       containers:
       - name: websocket-server
-        image: nginx:alpine
+        image: node:18-alpine
         ports:
         - containerPort: 8080
-        - containerPort: 8081
-        - containerPort: 8082
-        - containerPort: 6000
-        - containerPort: 7000
         command: ["/bin/sh"]
         args:
         - -c
         - |
-          # Ultra-lightweight WebSocket mock using nginx
-          cat > /etc/nginx/nginx.conf << 'EOF'
-          events { worker_connections 1024; }
-          http {
-              map $http_upgrade $connection_upgrade {
-                  default upgrade;
-                  '' close;
-              }
-              
-              server {
-                  listen 8080;
-                  location / {
-                      return 200 "WebSocket mock server\n";
-                      add_header Content-Type text/plain;
-                  }
-              }
-              server {
-                  listen 6000;
-                  location /health {
-                      return 200 '{"status":"healthy","connections":0,"messages":0}\n';
-                      add_header Content-Type application/json;
-                  }
-              }
-              server {
-                  listen 7000;
-                  location /metrics {
-                      return 200 "# HELP websocket_connections_total Total WebSocket connections\n# TYPE websocket_connections_total counter\nwebsocket_connections_total 0\n# HELP websocket_messages_total Total WebSocket messages\n# TYPE websocket_messages_total counter\nwebsocket_messages_total 0\n";
-                      add_header Content-Type text/plain;
-                  }
-              }
-          }
-          EOF
-          nginx -g "daemon off;" &
+          # Create app directory and install ws package
+          mkdir -p /app
+          cd /app
+          npm init -y
+          npm install ws
           
-          # Keep container running
-          tail -f /dev/null
+          # Create WebSocket server
+          cat > /app/websocket-server.js << 'EOF'
+          const WebSocket = require('ws');
+          const http = require('http');
+          
+          const server = http.createServer();
+          const wss = new WebSocket.Server({ server });
+          
+          wss.on('connection', function connection(ws, req) {
+            console.log('WebSocket client connected from:', req.socket.remoteAddress);
+            
+            // Send welcome message
+            ws.send(JSON.stringify({
+              type: 'welcome',
+              message: 'Connected to WebSocket server!',
+              timestamp: new Date().toISOString()
+            }));
+            
+            // Handle incoming messages
+            ws.on('message', function incoming(message) {
+              console.log('Received:', message.toString());
+              
+              // Echo the message back
+              ws.send(JSON.stringify({
+                type: 'echo',
+                original: message.toString(),
+                timestamp: new Date().toISOString()
+              }));
+            });
+            
+            // Handle ping/pong
+            ws.on('ping', function() {
+              console.log('Received ping');
+              ws.pong();
+            });
+            
+            // Handle close
+            ws.on('close', function() {
+              console.log('WebSocket client disconnected');
+            });
+            
+            // Send periodic heartbeat
+            const heartbeat = setInterval(() => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  type: 'heartbeat',
+                  timestamp: new Date().toISOString()
+                }));
+              } else {
+                clearInterval(heartbeat);
+              }
+            }, 30000);
+          });
+          
+          server.listen(8080, '0.0.0.0', () => {
+            console.log('WebSocket server running on port 8080');
+          });
+          EOF
+          
+          # Start the WebSocket server
+          node /app/websocket-server.js
 
 ---
-apiVersion: v1
-kind: Service
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: mock-websocket-server
+  name: mock-http-5000
   namespace: notifi-test
   labels:
-    app.kubernetes.io/name: websocket-server-test
-    app.kubernetes.io/component: websocket-server
+    app.kubernetes.io/name: mock-http-5000
+    app.kubernetes.io/component: messenger
 spec:
+  replicas: 1
   selector:
-    app.kubernetes.io/name: websocket-server-test
-  ports:
-  - name: websocket
-    port: 8080
-    targetPort: 8080
-  - name: websocket-alt1
-    port: 8081
-    targetPort: 8081
-  - name: websocket-alt2
-    port: 8082
-    targetPort: 8082
-  - name: health
-    port: 6000
-    targetPort: 6000
-  - name: metrics
-    port: 7000
-    targetPort: 7000
-  type: ClusterIP
+    matchLabels:
+      app.kubernetes.io/name: mock-http-5000
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mock-http-5000
+        app.kubernetes.io/component: messenger
+    spec:
+      containers:
+      - name: mock-server
+        image: nginx:alpine
+        ports:
+        - containerPort: 5000
+        command: ["/bin/sh"]
+        args: 
+        - -c
+        - |
+          echo 'server {
+              listen 5000;
+              location / {
+                  return 200 "Mock HTTP Service on port 5000 (Internal)\n";
+                  add_header Content-Type text/plain;
+              }
+          }' > /etc/nginx/conf.d/default.conf &&
+          nginx -g "daemon off;"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-health-6000
+  namespace: notifi-test
+  labels:
+    app.kubernetes.io/name: mock-health-6000
+    app.kubernetes.io/component: health
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mock-health-6000
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mock-health-6000
+        app.kubernetes.io/component: health
+    spec:
+      containers:
+      - name: mock-server
+        image: nginx:alpine
+        ports:
+        - containerPort: 6000
+        command: ["/bin/sh"]
+        args: 
+        - -c
+        - |
+          echo 'server {
+              listen 6000;
+              location / {
+                  return 200 "Mock Health Check Service on port 6000\n";
+                  add_header Content-Type text/plain;
+              }
+          }' > /etc/nginx/conf.d/default.conf &&
+          nginx -g "daemon off;"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-metrics-7000
+  namespace: notifi-test
+  labels:
+    app.kubernetes.io/name: mock-metrics-7000
+    app.kubernetes.io/component: metrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mock-metrics-7000
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mock-metrics-7000
+        app.kubernetes.io/component: metrics
+    spec:
+      containers:
+      - name: mock-server
+        image: nginx:alpine
+        ports:
+        - containerPort: 7000
+        command: ["/bin/sh"]
+        args: 
+        - -c
+        - |
+          echo 'server {
+              listen 7000;
+              location / {
+                  return 200 "Mock Metrics Service on port 7000\n";
+                  add_header Content-Type text/plain;
+              }
+          }' > /etc/nginx/conf.d/default.conf &&
+          nginx -g "daemon off;"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-redis-6379
+  namespace: notifi-test
+  labels:
+    app.kubernetes.io/name: mock-redis-6379
+    app.kubernetes.io/component: cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mock-redis-6379
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mock-redis-6379
+        app.kubernetes.io/component: cache
+    spec:
+      containers:
+      - name: mock-server
+        image: nginx:alpine
+        ports:
+        - containerPort: 6379
+        command: ["/bin/sh"]
+        args: 
+        - -c
+        - |
+          echo 'server {
+              listen 6379;
+              location / {
+                  return 200 "Mock Redis Service on port 6379 (HTTP)\n";
+                  add_header Content-Type text/plain;
+              }
+          }' > /etc/nginx/conf.d/default.conf &&
+          nginx -g "daemon off;"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-rabbitmq-5672
+  namespace: notifi-test
+  labels:
+    app.kubernetes.io/name: mock-rabbitmq-5672
+    app.kubernetes.io/component: queue
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mock-rabbitmq-5672
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mock-rabbitmq-5672
+        app.kubernetes.io/component: queue
+    spec:
+      containers:
+      - name: mock-server
+        image: nginx:alpine
+        ports:
+        - containerPort: 5672
+        command: ["/bin/sh"]
+        args: 
+        - -c
+        - |
+          echo 'server {
+              listen 5672;
+              location / {
+                  return 200 "Mock RabbitMQ Service on port 5672 (HTTP)\n";
+                  add_header Content-Type text/plain;
+              }
+          }' > /etc/nginx/conf.d/default.conf &&
+          nginx -g "daemon off;"

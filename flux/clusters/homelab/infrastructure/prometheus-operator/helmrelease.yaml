@@ -61,15 +61,32 @@ spec:
       adminPassword: adminbubs # TODO: Sealed Secrets
       initChownData:
         enabled: false
+      # livenessProbe:
+      #   httpGet:
+      #     path: /api/health
+      #     port: 30003
+      #   initialDelaySeconds: 60
+      #   periodSeconds: 10
+      #   timeoutSeconds: 30
+      #   failureThreshold: 10
+      #   successThreshold: 1
+      # readinessProbe:
+      #   httpGet:
+      #     path: /api/health
+      #     port: 30003
+      #   periodSeconds: 10
+      #   timeoutSeconds: 1
+      #   failureThreshold: 3
+      #   successThreshold: 1
       containers:
         - name: grafana
           ports:
             - name: http
               containerPort: 3000
               protocol: TCP
-            - name: additional
-              containerPort: 30080
-              protocol: TCP
+            # - name: additional
+            #   containerPort: 30003
+            #   protocol: TCP
       resources:
         requests:
           cpu: 100m
@@ -111,6 +128,8 @@ spec:
         - grafana-strava-datasource
         - grafana-llm-app
       grafana.ini:
+        # server:
+        #   http_port: 30003
         unified_alerting:
           enabled: true
         provisioning:

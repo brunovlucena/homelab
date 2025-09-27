@@ -14,8 +14,11 @@ resources:
   - prometheus-operator
   - homepage # TODO: Review alerts
   - loki
+  - alloy
+  - tempo
   # - loki-mcp
   - k6-operator
   - notifi-test
+  - github-actions-runner
   
 

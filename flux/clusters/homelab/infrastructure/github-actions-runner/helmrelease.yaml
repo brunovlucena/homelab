@@ -1,0 +1,115 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: github-actions-runner
+  namespace: github-actions-runner
+  annotations:
+    fluxcd.io/automated: "true"
+spec:
+  interval: 5m
+  chart:
+    spec:
+      chart: actions-runner-controller
+      version: "0.23.8"
+      sourceRef:
+        kind: HelmRepository
+        name: actions-runner-controller
+        namespace: flux-system
+      interval: 1m
+  values:
+    # Controller configuration
+    controllerManager:
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+    
+    # Runner configuration
+    runner:
+      # Default runner image
+      image:
+        repository: summerwind/actions-runner
+        tag: "ubuntu-22.04"
+        pullPolicy: IfNotPresent
+      
+      # Resource limits for runners
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 2000m
+          memory: 4Gi
+      
+      # Security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      
+      # Environment variables for runners
+      env:
+        - name: RUNNER_WORKDIR
+          value: "/tmp/runner-work"
+        - name: RUNNER_TEMP
+          value: "/tmp/runner-temp"
+      
+      # Volume mounts for persistent storage
+      volumeMounts:
+        - name: runner-work
+          mountPath: /tmp/runner-work
+        - name: runner-temp
+          mountPath: /tmp/runner-temp
+      
+      # Volumes
+      volumes:
+        - name: runner-work
+          emptyDir: {}
+        - name: runner-temp
+          emptyDir: {}
+    
+    # Webhook server configuration (optional)
+    webhookServer:
+      enabled: false
+    
+    # Metrics configuration
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        namespace: prometheus
+        labels:
+          app.kubernetes.io/name: github-actions-runner
+          app.kubernetes.io/instance: github-actions-runner
+    
+    # RBAC configuration
+    rbac:
+      create: true
+    
+    # Service account configuration
+    serviceAccount:
+      create: true
+      annotations: {}
+    
+    # Pod security context
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+    
+    # Security context
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000

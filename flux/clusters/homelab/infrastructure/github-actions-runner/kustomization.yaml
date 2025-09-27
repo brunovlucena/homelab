@@ -1,0 +1,63 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: github-actions-runner
+  namespace: github-actions-runner
+
+resources:
+  - namespace.yaml
+  - helmrelease.yaml
+  - runnerdeployment.yaml
+  # - github-actions-runner-sealed-secret.yaml  # Uncomment after creating with create-secrets.sh
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/name: github-actions-runner
+  app.kubernetes.io/instance: github-actions-runner
+  app.kubernetes.io/version: "1.0.0"
+  app.kubernetes.io/component: ci-cd
+  app.kubernetes.io/part-of: home-infrastructure
+  app.kubernetes.io/managed-by: flux
+
+# Namespace for all resources
+namespace: github-actions-runner
+
+# Patches for customization
+patches:
+  # Patch to add repository information from secret
+  - target:
+      kind: RunnerDeployment
+      name: github-actions-runner-deployment
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/repository
+        value: "brunovlucena/home"  # Update this to your repository
+      - op: replace
+        path: /spec/template/spec/labels
+        value: "self-hosted,linux,x64,home-infrastructure"
+      - op: replace
+        path: /spec/template/spec/runnerGroup
+        value: "default"
+
+# ConfigMap for runner configuration
+configMapGenerator:
+  - name: github-actions-runner-config
+    literals:
+      - RUNNER_WORKDIR=/tmp/runner-work
+      - RUNNER_TEMP=/tmp/runner-temp
+      - RUNNER_ALLOW_RUNASROOT=false
+      - RUNNER_DISABLE_UPDATE=true
+      - RUNNER_EPHEMERAL=true
+      - RUNNER_GROUP=default
+      - RUNNER_LABELS=self-hosted,linux,x64,home-infrastructure
+
+# Secret generator for GitHub token (will be overridden by sealed secret)
+secretGenerator:
+  - name: github-actions-runner-secret
+    literals:
+      - github_token=placeholder
+      - repository=placeholder
+      - labels=placeholder
+      - runner_group=placeholder
+    type: Opaque

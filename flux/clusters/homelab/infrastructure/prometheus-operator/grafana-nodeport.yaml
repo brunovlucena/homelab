@@ -11,9 +11,9 @@ metadata:
 spec:
   type: NodePort
   ports:
-  - name: service
+  - name: aditional
     port: 80
-    targetPort: 3000
+    targetPort: 30003 # TODO: FIX IT!
     nodePort: 31080
     protocol: TCP
   selector:
