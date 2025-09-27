@@ -9,7 +9,6 @@ namespace: notifi-test
 resources:
   - namespace.yaml
   - infrastructure.yaml
-  - linkerd-policies.yaml 
-  - blockchain-rpc-alerts.yaml
-  - tests/notifi-k6-simple-test-configmap.yaml
-  - tests/notifi-k6-simple-testrun.yaml
+  - linkerd-policies.yaml
+  - tests/k6-configmap.yaml
+  - tests/k6-testrun.yaml
