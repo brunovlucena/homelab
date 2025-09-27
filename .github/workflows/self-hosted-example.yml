@@ -1,11 +1,12 @@
 name: 🏃‍♂️ Self-Hosted Runner Example
 
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+# Disabled - using self-hosted runners not ready yet
+# on:
+#   push:
+#     branches: [ main, develop ]
+#   pull_request:
+#     branches: [ main ]
+#   workflow_dispatch:
 
 env:
   # Use self-hosted runners to keep data private
