@@ -13,6 +13,7 @@ resources:
   - metrics-server
   - prometheus-operator
   - homepage # TODO: Review alerts
+  - minio # Asset storage for homepage
   - loki
   - alloy
   - tempo

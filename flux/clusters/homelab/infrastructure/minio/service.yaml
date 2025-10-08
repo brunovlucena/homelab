@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-service
+  namespace: minio
+  labels:
+    app: minio
+spec:
+  type: NodePort
+  ports:
+  - port: 9000
+    targetPort: 9000
+    nodePort: 30160
+    protocol: TCP
+    name: api
+  - port: 9001
+    targetPort: 9001
+    nodePort: 30161
+    protocol: TCP
+    name: console
+  selector:
+    app: minio
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-console
+  namespace: minio
+  labels:
+    app: minio
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9001
+    targetPort: 9001
+    protocol: TCP
+    name: console
+  selector:
+    app: minio
