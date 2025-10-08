@@ -10,5 +10,3 @@ resources:
 commonLabels:
   app: sre-agent
   version: v1.0.0
-
-namespace: default
