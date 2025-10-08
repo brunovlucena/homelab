@@ -17,11 +17,13 @@ resources:
   - alloy
   - tempo
   - k6-operator
+  - knative-operator
+  - knative-serving
+  - knative-eventing
   - agent-legacy
   - agent-sre
-  - grafana-mcp
-  - statuspage-exporter
-  - docker-mcp-gateway
+  # - grafana-mcp
+  # - statuspage-exporter
   # - notifi-test # TODO: Fix Linkerd Server conflicts
   
 
