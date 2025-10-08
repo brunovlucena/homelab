@@ -5,9 +5,7 @@ metadata:
   name: sre-agent
 
 resources:
-- deployment.yaml
-- service.yaml
-- sealed-secret.yaml
+- k8s-all.yaml
 
 commonLabels:
   app: sre-agent
