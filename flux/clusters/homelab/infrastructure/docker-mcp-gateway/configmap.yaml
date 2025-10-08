@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-gateway-config
+  namespace: mcp-gateway
+  labels:
+    app.kubernetes.io/name: mcp-gateway
+    app.kubernetes.io/component: mcp-adapter
+data:
+  # Docker MCP Catalog definition
+  docker-mcp.yaml: |
+    name: docker-mcp
+    description: Docker MCP Server Catalog
+    version: "1.0"
+    servers: []
+    # Example server configuration:
+    # servers:
+    #   - name: filesystem
+    #     description: File system operations
+    #     image: mcp/filesystem
+    #     enabled: true
+    #   - name: brave-search
+    #     description: Web search via Brave
+    #     image: mcp/brave-search
+    #     enabled: false
+
+  # Registry of enabled servers
+  registry.yaml: |
+    enabled_servers: []
+    # List of enabled server names will be stored here
+    # Example:
+    # enabled_servers:
+    #   - filesystem
+    #   - brave-search
+
+  # Per-server configuration
+  config.yaml: |
+    servers: {}
+    # Example server-specific configuration:
+    # servers:
+    #   filesystem:
+    #     root_path: "/data"
+    #     allowed_operations:
+    #       - read
+    #       - write
+    #   brave-search:
+    #     api_key: "${BRAVE_API_KEY}"
+    #     max_results: 10
+
+  # Enabled tools per server
+  tools.yaml: |
+    tools: {}
+    # Example tools configuration:
+    # tools:
+    #   filesystem:
+    #     - list_directory
+    #     - read_file
+    #     - write_file
+    #   brave-search:
+    #     - search
+    #     - suggest
+

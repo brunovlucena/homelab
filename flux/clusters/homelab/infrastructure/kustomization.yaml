@@ -21,6 +21,7 @@ resources:
   - agent-sre
   - grafana-mcp
   - statuspage-exporter
+  - docker-mcp-gateway
   # - notifi-test # TODO: Fix Linkerd Server conflicts
   
 

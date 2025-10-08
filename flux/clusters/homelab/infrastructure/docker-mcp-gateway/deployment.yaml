@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-gateway
+  namespace: mcp-gateway
+  labels:
+    app.kubernetes.io/name: mcp-gateway
+    app.kubernetes.io/component: mcp-adapter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-gateway
+      app.kubernetes.io/component: mcp-adapter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-gateway
+        app.kubernetes.io/component: mcp-adapter
+    spec:
+      initContainers:
+      - name: init-config
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          # Copy initial config files if they don't exist
+          if [ ! -f /mcp-data/docker-mcp.yaml ]; then
+            cp /config/docker-mcp.yaml /mcp-data/docker-mcp.yaml
+          fi
+          if [ ! -f /mcp-data/registry.yaml ]; then
+            cp /config/registry.yaml /mcp-data/registry.yaml
+          fi
+          if [ ! -f /mcp-data/config.yaml ]; then
+            cp /config/config.yaml /mcp-data/config.yaml
+          fi
+          if [ ! -f /mcp-data/tools.yaml ]; then
+            cp /config/tools.yaml /mcp-data/tools.yaml
+          fi
+          echo "Configuration initialized"
+        volumeMounts:
+        - name: mcp-config
+          mountPath: /config
+        - name: mcp-data
+          mountPath: /mcp-data
+      containers:
+      - name: mcp-gateway
+        image: docker/mcp-gateway:latest
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "8000"
+        - name: MCP_CONFIG_DIR
+          value: "/home/mcp/.docker/mcp"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: mcp-data
+          mountPath: /home/mcp/.docker/mcp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: mcp-data
+        persistentVolumeClaim:
+          claimName: mcp-gateway-data
+      - name: mcp-config
+        configMap:
+          name: mcp-gateway-config
+      restartPolicy: Always
+      nodeSelector:
+        role: mcp-servers
+

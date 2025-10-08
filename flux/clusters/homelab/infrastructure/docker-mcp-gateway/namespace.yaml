@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mcp-gateway
+  labels:
+    name: mcp-gateway
+    app.kubernetes.io/name: mcp-gateway
+    app.kubernetes.io/component: mcp-adapter
+
