@@ -12,6 +12,7 @@ type Config struct {
 	CORSOrigin  string
 	Port        string
 	AgentSREURL string
+	JamieURL    string // 🤖 Jamie AI-powered SRE assistant URL
 	MinIO       MinIOConfig
 	Cloudflare  CloudflareConfig
 }
@@ -41,7 +42,7 @@ func Load() *Config {
 		RedisURL:    os.Getenv("REDIS_URL"),
 		CORSOrigin:  getEnvOrDefault("CORS_ORIGIN", "*"),
 		Port:        getEnvOrDefault("PORT", "8080"),
-		AgentSREURL: getEnvOrDefault("AGENT_SRE_URL", "http://sre-agent-service.agent-sre.svc.cluster.local:8080"),
+		JamieURL:    getEnvOrDefault("JAMIE_URL", "http://jamie-slack-bot-service.jamie.svc.cluster.local:8080"),
 		MinIO: MinIOConfig{
 			Endpoint:  getEnvOrDefault("MINIO_ENDPOINT", "minio-service.minio.svc.cluster.local:9000"),
 			AccessKey: getEnvOrDefault("MINIO_ACCESS_KEY", "minioadmin"),

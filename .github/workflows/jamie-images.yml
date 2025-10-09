@@ -1,4 +1,4 @@
-name: 🤖 Jamie Slack Bot - Build & Push Images
+name: 🤖 Jamie - Build & Push Images (MCP Server + Slack Bot)
 
 on:
   push:
@@ -15,16 +15,17 @@ on:
 
 env:
   REGISTRY: ghcr.io/brunovlucena
-  IMAGE_NAME: jamie-slack-bot
   IMAGE_TAG: latest
 
 jobs:
-  build-and-push:
-    name: Build and Push Jamie Image
+  # 🔌 Build MCP Server Image
+  build-mcp-server:
+    name: Build Jamie MCP Server
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      security-events: write
 
     steps:
       - name: 📥 Checkout code
@@ -40,51 +41,149 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🏷️ Extract Metadata
+      - name: 🏷️ Extract Metadata for MCP Server
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/jamie-mcp-server
           tags: |
             type=raw,value=latest
+            type=sha,prefix=sha-
 
-      - name: 🏗️ Build and push Jamie image
+      - name: 🏗️ Build and push MCP Server image
         uses: docker/build-push-action@v5
         with:
           context: ./flux/clusters/homelab/infrastructure/jamie
-          file: ./flux/clusters/homelab/infrastructure/jamie/Dockerfile
+          file: ./flux/clusters/homelab/infrastructure/jamie/src/mcp-server/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=mcp-server
+          cache-to: type=gha,mode=max,scope=mcp-server
           platforms: linux/amd64,linux/arm64
 
-      - name: 🔒 Run Trivy Security Scan
+      - name: 🔒 Run Trivy Security Scan for MCP Server
         if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          image-ref: ${{ env.REGISTRY }}/jamie-mcp-server:${{ env.IMAGE_TAG }}
           format: 'sarif'
-          output: 'trivy-results-jamie.sarif'
+          output: 'trivy-results-mcp-server.sarif'
 
-      - name: 📊 Upload Trivy Scan Results
+      - name: 📊 Upload Trivy Scan Results for MCP Server
         if: github.event_name != 'pull_request'
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-results-jamie.sarif'
+          sarif_file: 'trivy-results-mcp-server.sarif'
 
-      - name: ✅ Image pushed successfully
+      - name: ✅ MCP Server image pushed successfully
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "🎉 Jamie MCP Server image pushed successfully!"
+          echo "📦 Registry: ${{ env.REGISTRY }}"
+          echo "🔗 Image: ${{ env.REGISTRY }}/jamie-mcp-server:${{ env.IMAGE_TAG }}"
+
+  # 🤖 Build Slack Bot Image
+  build-slack-bot:
+    name: Build Jamie Slack Bot
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📝 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Extract Metadata for Slack Bot
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/jamie-slack-bot
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-
+
+      - name: 🏗️ Build and push Slack Bot image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./flux/clusters/homelab/infrastructure/jamie
+          file: ./flux/clusters/homelab/infrastructure/jamie/src/slack-bot/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=slack-bot
+          cache-to: type=gha,mode=max,scope=slack-bot
+          platforms: linux/amd64,linux/arm64
+
+      - name: 🔒 Run Trivy Security Scan for Slack Bot
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/jamie-slack-bot:${{ env.IMAGE_TAG }}
+          format: 'sarif'
+          output: 'trivy-results-slack-bot.sarif'
+
+      - name: 📊 Upload Trivy Scan Results for Slack Bot
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results-slack-bot.sarif'
+
+      - name: ✅ Slack Bot image pushed successfully
         if: github.event_name != 'pull_request'
         run: |
           echo "🎉 Jamie Slack Bot image pushed successfully!"
           echo "📦 Registry: ${{ env.REGISTRY }}"
-          echo "🔗 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+          echo "🔗 Image: ${{ env.REGISTRY }}/jamie-slack-bot:${{ env.IMAGE_TAG }}"
+
+  # 📊 Build Summary
+  build-summary:
+    name: Build Summary
+    needs: [build-mcp-server, build-slack-bot]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: 📊 Generate Build Summary
+        run: |
+          echo "## 🤖 Jamie Images Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Status" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| MCP Server | ${{ needs.build-mcp-server.result == 'success' && '✅ Success' || needs.build-mcp-server.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Slack Bot | ${{ needs.build-slack-bot.result == 'success' && '✅ Success' || needs.build-slack-bot.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Images Built" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔌 **MCP Server**: \`${{ env.REGISTRY }}/jamie-mcp-server:${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 🤖 **Slack Bot**: \`${{ env.REGISTRY }}/jamie-slack-bot:${{ env.IMAGE_TAG }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 Flux will automatically reconcile and deploy the new images" >> $GITHUB_STEP_SUMMARY
+          echo "- 📊 Monitor deployment: \`kubectl get pods -n jamie\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔍 Check logs: \`make logs-mcp\` or \`make logs-bot\`" >> $GITHUB_STEP_SUMMARY
 
       - name: 🔄 Trigger Flux reconciliation
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         continue-on-error: true
         run: |
-          echo "🔄 Image updated. Flux will reconcile automatically."
+          echo "🔄 Images updated. Flux will reconcile automatically."
           echo "To force reconciliation, run: flux reconcile kustomization infrastructure"
 

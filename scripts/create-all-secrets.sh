@@ -60,7 +60,6 @@ log_step() {
 
 # Banner
 show_banner() {
-    clear 2>/dev/null || true
     echo -e "${BOLD}${MAGENTA}"
     cat << 'EOF'
 ╔═══════════════════════════════════════════════════════════════╗
@@ -122,23 +121,7 @@ check_dependencies() {
     log_success "All dependencies satisfied!"
 }
 
-# Show menu
-show_menu() {
-    log_header "📋 SECRET GENERATION MENU"
-    echo ""
-    echo "Select which secrets to generate:"
-    echo ""
-    echo -e "${BOLD}1)${NC} Generate ALL secrets (recommended)"
-    echo -e "${BOLD}2)${NC} Loki MinIO Secret"
-    echo -e "${BOLD}3)${NC} SRE Agent API Secret"
-    echo -e "${BOLD}4)${NC} Grafana MCP API Secret"
-    echo -e "${BOLD}5)${NC} Cloudflare Tunnel Secret"
-    echo -e "${BOLD}6)${NC} Homepage Cloudflare Secret"
-    echo -e "${BOLD}7)${NC} Homepage MinIO Secret"
-    echo -e "${BOLD}8)${NC} Jamie Slack Bot Secret"
-    echo -e "${BOLD}9)${NC} Exit"
-    echo ""
-}
+# Removed interactive menu - script now generates all secrets automatically
 
 # Create Loki MinIO Secret
 create_loki_minio_secret() {
@@ -149,22 +132,26 @@ create_loki_minio_secret() {
     local output_file="$REPO_ROOT/flux/clusters/homelab/infrastructure/loki/loki-minio-secret-sealed.yaml"
     
     echo ""
-    log_step "Enter Loki MinIO credentials:"
-    read -p "MinIO Root User [loki-user]: " minio_user
-    minio_user=${minio_user:-loki-user}
-    
-    read -sp "MinIO Root Password: " minio_password
-    echo ""
+    # Read from environment variables first
+    local minio_user="${LOKI_MINIO_USER:-loki-user}"
+    local minio_password="${LOKI_MINIO_PASSWORD}"
     
     if [ -z "$minio_password" ]; then
-        log_error "Password is required"
+        log_error "LOKI_MINIO_PASSWORD environment variable is not set"
+        log_info "Set it in ~/.zshrc: export LOKI_MINIO_PASSWORD='your-password'"
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_SECRETS+=("Loki MinIO")
         return 1
     fi
     
+    log_success "Using credentials from environment variables"
+    
     log_step "Creating namespace if needed..."
     kubectl create namespace ${namespace} --dry-run=client -o yaml | kubectl apply -f - &> /dev/null
+    
+    log_step "Fetching sealed-secrets certificate..."
+    local cert_file="/tmp/sealed-secrets-cert.pem"
+    kubectl get secret -n flux-system -l sealedsecrets.bitnami.com/sealed-secrets-key=active -o jsonpath='{.items[0].data.tls\.crt}' | base64 -d > "${cert_file}" 2>/dev/null || true
     
     log_step "Generating sealed secret..."
     kubectl create secret generic ${secret_name} \
@@ -172,9 +159,7 @@ create_loki_minio_secret() {
       --from-literal=root-password="${minio_password}" \
       --namespace="${namespace}" \
       --dry-run=client -o yaml | \
-      kubeseal --format=yaml \
-        --controller-name=sealed-secrets \
-        --controller-namespace=flux-system > "${output_file}"
+      kubeseal --format=yaml --cert="${cert_file}" > "${output_file}"
     
     log_success "Created: ${output_file}"
     CREATED_COUNT=$((CREATED_COUNT + 1))
@@ -190,28 +175,32 @@ create_sre_agent_secret() {
     local output_file="$REPO_ROOT/flux/clusters/homelab/infrastructure/agent-sre/agent-sre-secret-sealed.yaml"
     
     echo ""
-    log_step "Enter SRE Agent API credentials:"
-    read -sp "SRE API Key: " sre_api_key
-    echo ""
+    # Read from environment variable
+    local sre_api_key="${SRE_API_KEY}"
     
     if [ -z "$sre_api_key" ]; then
-        log_error "SRE API Key is required"
+        log_error "SRE_API_KEY environment variable is not set"
+        log_info "Set it in ~/.zshrc: export SRE_API_KEY='your-api-key'"
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_SECRETS+=("SRE Agent")
         return 1
     fi
     
+    log_success "Using credentials from environment variables"
+    
     log_step "Creating namespace if needed..."
     kubectl create namespace ${namespace} --dry-run=client -o yaml | kubectl apply -f - &> /dev/null
+    
+    log_step "Fetching sealed-secrets certificate..."
+    local cert_file="/tmp/sealed-secrets-cert.pem"
+    kubectl get secret -n flux-system -l sealedsecrets.bitnami.com/sealed-secrets-key=active -o jsonpath='{.items[0].data.tls\.crt}' | base64 -d > "${cert_file}" 2>/dev/null || true
     
     log_step "Generating sealed secret..."
     kubectl create secret generic ${secret_name} \
       --from-literal=sre-api-key="${sre_api_key}" \
       --namespace="${namespace}" \
       --dry-run=client -o yaml | \
-      kubeseal --format=yaml \
-        --controller-name=sealed-secrets \
-        --controller-namespace=flux-system > "${output_file}"
+      kubeseal --format=yaml --cert="${cert_file}" > "${output_file}"
     
     log_success "Created: ${output_file}"
     CREATED_COUNT=$((CREATED_COUNT + 1))
@@ -227,28 +216,32 @@ create_grafana_mcp_secret() {
     local output_file="$REPO_ROOT/flux/clusters/homelab/infrastructure/grafana-mcp/grafana-mcp-secret-sealed.yaml"
     
     echo ""
-    log_step "Enter Grafana MCP API credentials:"
-    read -sp "Grafana API Key: " grafana_api_key
-    echo ""
+    # Read from environment variable
+    local grafana_api_key="${GRAFANA_API_KEY}"
     
     if [ -z "$grafana_api_key" ]; then
-        log_error "Grafana API Key is required"
+        log_error "GRAFANA_API_KEY environment variable is not set"
+        log_info "Set it in ~/.zshrc: export GRAFANA_API_KEY='your-api-key'"
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_SECRETS+=("Grafana MCP")
         return 1
     fi
     
+    log_success "Using credentials from environment variables"
+    
     log_step "Creating namespace if needed..."
     kubectl create namespace ${namespace} --dry-run=client -o yaml | kubectl apply -f - &> /dev/null
+    
+    log_step "Fetching sealed-secrets certificate..."
+    local cert_file="/tmp/sealed-secrets-cert.pem"
+    kubectl get secret -n flux-system -l sealedsecrets.bitnami.com/sealed-secrets-key=active -o jsonpath='{.items[0].data.tls\.crt}' | base64 -d > "${cert_file}" 2>/dev/null || true
     
     log_step "Generating sealed secret..."
     kubectl create secret generic ${secret_name} \
       --from-literal=GRAFANA_API_KEY="${grafana_api_key}" \
       --namespace="${namespace}" \
       --dry-run=client -o yaml | \
-      kubeseal --format=yaml \
-        --controller-name=sealed-secrets \
-        --controller-namespace=flux-system > "${output_file}"
+      kubeseal --format=yaml --cert="${cert_file}" > "${output_file}"
     
     log_success "Created: ${output_file}"
     CREATED_COUNT=$((CREATED_COUNT + 1))
@@ -264,25 +257,31 @@ create_cloudflare_tunnel_secret() {
     local output_file="$REPO_ROOT/flux/clusters/homelab/infrastructure/cloudflare-tunnel/cloudflare-tunnel-secret-sealed.yaml"
     
     echo ""
-    log_step "Enter Cloudflare Tunnel credentials:"
-    read -sp "Cloudflare API Token: " cf_api_token
-    echo ""
+    # Read from environment variables
+    local cf_api_token="${CLOUDFLARE_API_TOKEN}"
+    local cf_account_id="${CLOUDFLARE_ACCOUNT_ID}"
     
     if [ -z "$cf_api_token" ]; then
-        log_error "API Token is required"
+        log_error "CLOUDFLARE_API_TOKEN environment variable is not set"
+        log_info "Set it in ~/.zshrc: export CLOUDFLARE_API_TOKEN='your-api-token'"
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_SECRETS+=("Cloudflare Tunnel")
         return 1
     fi
-    
-    read -p "Cloudflare Account ID: " cf_account_id
     
     if [ -z "$cf_account_id" ]; then
-        log_error "Account ID is required"
+        log_error "CLOUDFLARE_ACCOUNT_ID environment variable is not set"
+        log_info "Set it in ~/.zshrc: export CLOUDFLARE_ACCOUNT_ID='your-account-id'"
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_SECRETS+=("Cloudflare Tunnel")
         return 1
     fi
+    
+    log_success "Using credentials from environment variables"
+    
+    log_step "Fetching sealed-secrets certificate..."
+    local cert_file="/tmp/sealed-secrets-cert.pem"
+    kubectl get secret -n flux-system -l sealedsecrets.bitnami.com/sealed-secrets-key=active -o jsonpath='{.items[0].data.tls\.crt}' | base64 -d > "${cert_file}" 2>/dev/null || true
     
     log_step "Generating sealed secret..."
     kubectl create secret generic ${secret_name} \
@@ -290,9 +289,7 @@ create_cloudflare_tunnel_secret() {
       --from-literal=account-id="${cf_account_id}" \
       --namespace="${namespace}" \
       --dry-run=client -o yaml | \
-      kubeseal --format=yaml \
-        --controller-name=sealed-secrets \
-        --controller-namespace=flux-system > "${output_file}"
+      kubeseal --format=yaml --cert="${cert_file}" > "${output_file}"
     
     log_success "Created: ${output_file}"
     CREATED_COUNT=$((CREATED_COUNT + 1))
@@ -308,34 +305,36 @@ create_homepage_cloudflare_secret() {
     local output_file="$REPO_ROOT/flux/clusters/homelab/infrastructure/homepage/k8s/bruno-site-cloudflare-secret-sealed.yaml"
     
     echo ""
-    log_step "Enter Homepage Cloudflare credentials:"
-    read -p "Cloudflare Zone ID: " cf_zone_id
+    # Read from environment variables
+    local cf_zone_id="${CLOUDFLARE_ZONE_ID}"
+    local cf_api_token="${CLOUDFLARE_API_TOKEN}"
+    local cf_domain="${CLOUDFLARE_DOMAIN:-lucena.cloud}"
+    local cf_cache_ttl="${CLOUDFLARE_CACHE_TTL:-86400}"
     
     if [ -z "$cf_zone_id" ]; then
-        log_error "Zone ID is required"
+        log_error "CLOUDFLARE_ZONE_ID environment variable is not set"
+        log_info "Set it in ~/.zshrc: export CLOUDFLARE_ZONE_ID='your-zone-id'"
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_SECRETS+=("Homepage Cloudflare")
         return 1
     fi
-    
-    read -sp "Cloudflare API Token: " cf_api_token
-    echo ""
     
     if [ -z "$cf_api_token" ]; then
-        log_error "API Token is required"
+        log_error "CLOUDFLARE_API_TOKEN environment variable is not set"
+        log_info "Set it in ~/.zshrc: export CLOUDFLARE_API_TOKEN='your-api-token'"
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_SECRETS+=("Homepage Cloudflare")
         return 1
     fi
     
-    read -p "Domain [lucena.cloud]: " cf_domain
-    cf_domain=${cf_domain:-lucena.cloud}
-    
-    read -p "Cache TTL in seconds [86400]: " cf_cache_ttl
-    cf_cache_ttl=${cf_cache_ttl:-86400}
+    log_success "Using credentials from environment variables"
     
     log_step "Creating namespace if needed..."
     kubectl create namespace ${namespace} --dry-run=client -o yaml | kubectl apply -f - &> /dev/null
+    
+    log_step "Fetching sealed-secrets certificate..."
+    local cert_file="/tmp/sealed-secrets-cert.pem"
+    kubectl get secret -n flux-system -l sealedsecrets.bitnami.com/sealed-secrets-key=active -o jsonpath='{.items[0].data.tls\.crt}' | base64 -d > "${cert_file}" 2>/dev/null || true
     
     log_step "Generating sealed secret..."
     kubectl create secret generic ${secret_name} \
@@ -346,9 +345,7 @@ create_homepage_cloudflare_secret() {
       --from-literal=cache-ttl="${cf_cache_ttl}" \
       --namespace="${namespace}" \
       --dry-run=client -o yaml | \
-      kubeseal --format=yaml \
-        --controller-name=sealed-secrets \
-        --controller-namespace=flux-system > "${output_file}"
+      kubeseal --format=yaml --cert="${cert_file}" > "${output_file}"
     
     log_success "Created: ${output_file}"
     CREATED_COUNT=$((CREATED_COUNT + 1))
@@ -364,16 +361,18 @@ create_homepage_minio_secret() {
     local output_file="$REPO_ROOT/flux/clusters/homelab/infrastructure/homepage/k8s/bruno-site-minio-secret-sealed.yaml"
     
     echo ""
-    log_step "Enter Homepage MinIO credentials:"
-    read -p "MinIO Access Key [minioadmin]: " minio_access_key
-    minio_access_key=${minio_access_key:-minioadmin}
+    # Read from environment variables
+    local minio_access_key="${MINIO_ACCESS_KEY:-minioadmin}"
+    local minio_secret_key="${MINIO_SECRET_KEY:-minioadmin}"
     
-    read -sp "MinIO Secret Key [minioadmin]: " minio_secret_key
-    echo ""
-    minio_secret_key=${minio_secret_key:-minioadmin}
+    log_success "Using credentials from environment variables (or defaults)"
     
     log_step "Creating namespace if needed..."
     kubectl create namespace ${namespace} --dry-run=client -o yaml | kubectl apply -f - &> /dev/null
+    
+    log_step "Fetching sealed-secrets certificate..."
+    local cert_file="/tmp/sealed-secrets-cert.pem"
+    kubectl get secret -n flux-system -l sealedsecrets.bitnami.com/sealed-secrets-key=active -o jsonpath='{.items[0].data.tls\.crt}' | base64 -d > "${cert_file}" 2>/dev/null || true
     
     log_step "Generating sealed secret..."
     kubectl create secret generic ${secret_name} \
@@ -381,9 +380,7 @@ create_homepage_minio_secret() {
       --from-literal=secretKey="${minio_secret_key}" \
       --namespace="${namespace}" \
       --dry-run=client -o yaml | \
-      kubeseal --format=yaml \
-        --controller-name=sealed-secrets \
-        --controller-namespace=flux-system > "${output_file}"
+      kubeseal --format=yaml --cert="${cert_file}" > "${output_file}"
     
     log_success "Created: ${output_file}"
     CREATED_COUNT=$((CREATED_COUNT + 1))
@@ -394,47 +391,48 @@ create_homepage_minio_secret() {
 create_jamie_slack_secret() {
     log_header "🤖 Creating Jamie Slack Bot Sealed Secret"
     
-    local namespace="homepage"
+    local namespace="jamie"
     local secret_name="jamie-slack-secrets"
-    local output_file="$REPO_ROOT/flux/clusters/homelab/infrastructure/jamie/k8s/jamie-slack-secrets-sealed.yaml"
+    local output_file="$REPO_ROOT/flux/clusters/homelab/infrastructure/jamie/jamie-slack-secrets-sealed.yaml"
     
     echo ""
-    log_step "Enter Jamie Slack Bot credentials:"
-    log_info "Hint: Check ~/.zshrc for SLACK_BOT_JAMIE_OAUTH_TOKEN, SLACK_APP_JAMIE_APP_TOKEN, and SLACK_SIGNING_SECRET"
-    echo ""
-    
-    read -sp "Slack Bot Token (xoxb-...): " slack_bot_token
-    echo ""
+    # Read from environment variables
+    local slack_bot_token="${SLACK_BOT_JAMIE_OAUTH_TOKEN}"
+    local slack_app_token="${SLACK_APP_JAMIE_APP_TOKEN}"
+    local slack_signing_secret="${SLACK_SIGNING_SECRET}"
     
     if [ -z "$slack_bot_token" ]; then
-        log_error "Slack Bot Token is required"
+        log_error "SLACK_BOT_JAMIE_OAUTH_TOKEN environment variable is not set"
+        log_info "Set it in ~/.zshrc: export SLACK_BOT_JAMIE_OAUTH_TOKEN='xoxb-...'"
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_SECRETS+=("Jamie Slack Bot")
         return 1
     fi
-    
-    read -sp "Slack App Token (xapp-...): " slack_app_token
-    echo ""
     
     if [ -z "$slack_app_token" ]; then
-        log_error "Slack App Token is required"
+        log_error "SLACK_APP_JAMIE_APP_TOKEN environment variable is not set"
+        log_info "Set it in ~/.zshrc: export SLACK_APP_JAMIE_APP_TOKEN='xapp-...'"
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_SECRETS+=("Jamie Slack Bot")
         return 1
     fi
-    
-    read -sp "Slack Signing Secret: " slack_signing_secret
-    echo ""
     
     if [ -z "$slack_signing_secret" ]; then
-        log_error "Slack Signing Secret is required"
+        log_error "SLACK_SIGNING_SECRET environment variable is not set"
+        log_info "Set it in ~/.zshrc: export SLACK_SIGNING_SECRET='your-signing-secret'"
         FAILED_COUNT=$((FAILED_COUNT + 1))
         FAILED_SECRETS+=("Jamie Slack Bot")
         return 1
     fi
+    
+    log_success "Using credentials from environment variables"
     
     log_step "Creating namespace if needed..."
     kubectl create namespace ${namespace} --dry-run=client -o yaml | kubectl apply -f - &> /dev/null
+    
+    log_step "Fetching sealed-secrets certificate..."
+    local cert_file="/tmp/sealed-secrets-cert.pem"
+    kubectl get secret -n flux-system -l sealedsecrets.bitnami.com/sealed-secrets-key=active -o jsonpath='{.items[0].data.tls\.crt}' | base64 -d > "${cert_file}" 2>/dev/null || true
     
     log_step "Generating sealed secret..."
     kubectl create secret generic ${secret_name} \
@@ -443,9 +441,7 @@ create_jamie_slack_secret() {
       --from-literal=SLACK_SIGNING_SECRET="${slack_signing_secret}" \
       --namespace="${namespace}" \
       --dry-run=client -o yaml | \
-      kubeseal --format=yaml \
-        --controller-name=sealed-secrets \
-        --controller-namespace=flux-system > "${output_file}"
+      kubeseal --format=yaml --cert="${cert_file}" > "${output_file}"
     
     log_success "Created: ${output_file}"
     CREATED_COUNT=$((CREATED_COUNT + 1))
@@ -536,77 +532,13 @@ generate_all_secrets() {
     echo ""
 }
 
-# Main menu loop
-main_menu() {
-    while true; do
-        show_menu
-        read -p "Select an option [1-9]: " choice
-        
-        case $choice in
-            1)
-                generate_all_secrets
-                break
-                ;;
-            2)
-                create_loki_minio_secret || true
-                echo ""
-                read -p "Press Enter to continue..."
-                clear 2>/dev/null || true
-                ;;
-            3)
-                create_sre_agent_secret || true
-                echo ""
-                read -p "Press Enter to continue..."
-                clear 2>/dev/null || true
-                ;;
-            4)
-                create_grafana_mcp_secret || true
-                echo ""
-                read -p "Press Enter to continue..."
-                clear 2>/dev/null || true
-                ;;
-            5)
-                create_cloudflare_tunnel_secret || true
-                echo ""
-                read -p "Press Enter to continue..."
-                clear 2>/dev/null || true
-                ;;
-            6)
-                create_homepage_cloudflare_secret || true
-                echo ""
-                read -p "Press Enter to continue..."
-                clear 2>/dev/null || true
-                ;;
-            7)
-                create_homepage_minio_secret || true
-                echo ""
-                read -p "Press Enter to continue..."
-                clear 2>/dev/null || true
-                ;;
-            8)
-                create_jamie_slack_secret || true
-                echo ""
-                read -p "Press Enter to continue..."
-                clear 2>/dev/null || true
-                ;;
-            9)
-                log_info "Exiting..."
-                exit 0
-                ;;
-            *)
-                log_error "Invalid option. Please select 1-9."
-                sleep 2
-                clear 2>/dev/null || true
-                ;;
-        esac
-    done
-}
+# Removed main_menu - script now runs non-interactively
 
 # Main execution
 main() {
     show_banner
     check_dependencies
-    main_menu
+    generate_all_secrets
     generate_summary
     
     echo ""

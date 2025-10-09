@@ -1,19 +1,77 @@
 version: '3.8'
 
 services:
+  # 🤖 Jamie Slack Bot - Interactive Slack assistant with REST API
   jamie-slack-bot:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: src/slack-bot/Dockerfile
     container_name: jamie-slack-bot
     environment:
+      # Slack Configuration
       - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
       - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
       - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
-      - AGENT_SRE_URL=${AGENT_SRE_URL:-http://sre-agent-mcp-server-service.agent-sre:30120}
+      
+      # Agent SRE Connection (REST API port 8080)
+      - AGENT_SRE_URL=${AGENT_SRE_URL:-http://192.168.0.16:8080}
+      
+      # Ollama Configuration (using your studio server)
+      - OLLAMA_URL=${OLLAMA_URL:-http://192.168.0.16:11434}
+      - MODEL_NAME=${MODEL_NAME:-llama3.2:3b}
+      
+      # REST API Configuration
+      - API_HOST=${API_HOST:-0.0.0.0}
+      - API_PORT=${API_PORT:-8080}
+      
+      # Observability (optional)
+      - LOGFIRE_TOKEN_JAMIE=${LOGFIRE_TOKEN_JAMIE:-}
+    ports:
+      - "8081:8080"  # Jamie REST API
     restart: unless-stopped
     networks:
-      - homepage
+      - jamie-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 🔌 Jamie MCP Server - MCP protocol wrapper (calls Jamie Slack Bot API)
+  jamie-mcp-server:
+    build:
+      context: .
+      dockerfile: src/mcp-server/Dockerfile
+    container_name: jamie-mcp-server
+    environment:
+      # Jamie API Connection (calls Jamie Slack Bot REST API)
+      - JAMIE_API_URL=${JAMIE_API_URL:-http://jamie-slack-bot:8080}
+      
+      # MCP Server Configuration
+      - MCP_HOST=${MCP_HOST:-0.0.0.0}
+      - MCP_PORT=${MCP_PORT:-30121}
+      
+      # Observability (optional)
+      - LOGFIRE_TOKEN_JAMIE_MCP=${LOGFIRE_TOKEN_JAMIE_MCP:-}
+    restart: unless-stopped
+    depends_on:
+      - jamie-slack-bot
+    ports:
+      - "30121:30121"
+    networks:
+      - jamie-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:30121/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     logging:
       driver: "json-file"
       options:
@@ -21,7 +79,7 @@ services:
         max-file: "3"
 
 networks:
-  homepage:
-    external: true
-    name: homepage_default
+  jamie-network:
+    driver: bridge
+    name: jamie_network
 

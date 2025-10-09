@@ -1,308 +1,274 @@
-# 🤖 Jamie Slack Bot
+# 🤖 Jamie - Your SRE Assistant
 
-**Your SRE Companion on Slack** - Powered by Agent-SRE and MCP (Model Context Protocol)
+Jamie is a sophisticated SRE assistant that combines AI-powered intelligence with real-time infrastructure monitoring and troubleshooting capabilities. It consists of two main components:
 
-Jamie is an intelligent Slack bot that helps you monitor, troubleshoot, and manage your infrastructure directly from Slack. It communicates with the Agent-SRE service via MCP to provide real-time insights and actions.
-
-## ✨ Features
-
-- 🎯 **Golden Signals Monitoring** - Track latency, traffic, errors, and saturation
-- ☸️ **Kubernetes Operations** - Manage pods, deployments, and view logs
-- 📈 **Grafana Integration** - Access dashboards, incidents, and alerts
-- 🔍 **Log Analysis** - Intelligent log parsing and error detection
-- 🚨 **Incident Management** - Create and track incidents
-- 💬 **Conversational AI** - Natural language interactions via MCP
-- 🧠 **Context Awareness** - Remembers conversation history
+1. **Jamie Slack Bot** - Interactive Slack assistant with LLM brain
+2. **Jamie MCP Server** - Model Context Protocol server for IDE integration (Cursor)
 
 ## 🏗️ Architecture
 
+Jamie follows a modular architecture similar to agent-sre:
+
 ```
-┌─────────────┐      ┌─────────────┐      ┌─────────────────────┐
-│             │      │             │      │   Agent-SRE MCP     │
-│   Slack     │─────►│   Jamie     │─────►│   Server            │
-│   Users     │      │   Bot       │ MCP  │   (port 30120)      │
-│             │      │             │      │                     │
-└─────────────┘      └─────────────┘      └─────────────────────┘
-                            │                        │
-                            │                        │
-                            ▼                        ▼
-                     ┌─────────────┐         ┌─────────────┐
-                     │ Conversation│         │ MCP Tools   │
-                     │ Context     │         │ • Grafana   │
-                     │ Storage     │         │ • K8s       │
-                     └─────────────┘         │ • Prometheus│
-                                             │ • Custom    │
-                                             └─────────────┘
+jamie/
+├── deployments/
+│   ├── slack-bot/              # Slack Bot deployment
+│   │   ├── core.py             # Shared core with logfire
+│   │   ├── jamie_slack_bot.py  # Slack bot implementation
+│   │   ├── Dockerfile          # Bot container image
+│   │   ├── k8s-slack-bot.yaml  # K8s deployment manifest
+│   │   └── kustomization.yaml  # Kustomize configuration
+│   └── mcp-server/             # MCP Server deployment
+│       ├── core.py             # Shared core with logfire
+│       ├── mcp_server.py       # MCP server implementation
+│       ├── Dockerfile          # MCP container image
+│       ├── k8s-mcp-server.yaml # K8s deployment manifest
+│       └── kustomization.yaml  # Kustomize configuration
+├── k8s/                        # Shared K8s resources
+│   ├── namespace.yaml
+│   ├── serviceaccount.yaml
+│   └── secret.yaml
+├── pyproject.toml              # Python project configuration
+├── requirements.txt            # Python dependencies
+├── Makefile                    # Build and deployment automation
+├── kustomization.yaml          # Root kustomization
+└── README.md                   # This file
 ```
 
-**Important**: Jamie communicates with the SRE Agent **ONLY via MCP** at:
-- Service: `sre-agent-mcp-server-service.agent-sre`
-- Port: `30120`
-- Protocol: HTTP/MCP
+## ✨ Features
+
+### Jamie Slack Bot
+- 🧠 **AI-Powered** - Uses Ollama for intelligent responses
+- 🔧 **Tool Integration** - Connects to agent-sre for infrastructure operations
+- 📊 **Golden Signals** - Monitor latency, traffic, errors, saturation
+- ☸️ **Kubernetes** - Pod logs, deployments, resource management
+- 📈 **Prometheus** - Custom PromQL queries and metrics
+- 🔍 **Log Analysis** - AI-powered log analysis and insights
+- 💬 **Conversational** - Natural language interaction via Slack
+
+### Jamie MCP Server
+- 🎯 **Cursor Integration** - Use Jamie directly in your IDE via MCP protocol
+- 🌐 **Homepage Integration** - REST API for Homepage chatbot
+- 🔌 **Dual Interface** - Supports both REST API and MCP protocol
+- 🛠️ **Tool Exposure** - All SRE tools accessible via REST/MCP
+- 🤖 **AI Assistance** - Ask Jamie questions about SRE practices
+- 📡 **Real-time** - Direct connection to infrastructure
+
+## 🔧 Logfire Integration
+
+Both components integrate with [Logfire](https://logfire.pydantic.dev/) for observability:
+
+- **Request Tracing** - Track all MCP requests and Slack interactions
+- **Performance Monitoring** - Monitor response times and errors
+- **AI Instrumentation** - Track LLM calls and agent decisions
+- **Infrastructure Insights** - Correlate with infrastructure metrics
+
+### Configuration
+
+Set these environment variables for logfire:
+
+```bash
+# For Slack Bot
+export LOGFIRE_TOKEN_JAMIE="your-jamie-token"
+
+# For MCP Server
+export LOGFIRE_TOKEN_JAMIE_MCP="your-jamie-mcp-token"
+```
+
+If not set, Jamie will continue to work without logfire (graceful degradation).
 
 ## 🚀 Quick Start
 
-### Prerequisites
-
-- Kubernetes cluster
-- Slack workspace with admin access
-- Agent-SRE service running
-- ECR access for Docker images
-
-### 1. Create Slack App
-
-1. Go to [Slack API](https://api.slack.com/apps)
-2. Click "Create New App" → "From a manifest"
-3. Paste the manifest from `slack-app-manifest.yaml`
-4. Install the app to your workspace
-
-### 2. Get Slack Tokens
-
-From your Slack app settings:
-
-- **Bot Token**: OAuth & Permissions → Bot User OAuth Token (starts with `xoxb-`)
-- **App Token**: Basic Information → App-Level Tokens (starts with `xapp-`)
-- **Signing Secret**: Basic Information → Signing Secret
-
-### 3. Configure Secrets
-
-Create a secret file with your tokens:
+### 1. Build and Deploy
 
 ```bash
-cat > k8s/secret-production.yaml <<EOF
-apiVersion: v1
-kind: Secret
-metadata:
-  name: jamie-slack-secrets
-  namespace: homepage
-type: Opaque
-stringData:
-  SLACK_BOT_TOKEN: "xoxb-your-token-here"
-  SLACK_APP_TOKEN: "xapp-your-token-here"
-  SLACK_SIGNING_SECRET: "your-signing-secret-here"
-  AGENT_SRE_URL: "http://sre-agent-mcp-server-service.agent-sre:30120"
-EOF
-
-# Apply the secret
-kubectl apply -f k8s/secret-production.yaml
-
-# Add to .gitignore
-echo "k8s/secret-production.yaml" >> .gitignore
-```
-
-### 4. Build and Deploy
-
-```bash
-# Build the Docker image
+# Build both images
 make build
 
-# Push to ECR
+# Push to registry (requires GITHUB_TOKEN)
 make push
 
 # Deploy to Kubernetes
 make deploy
 
-# Check status
+# Or do everything at once
+make all
+```
+
+### 2. Check Status
+
+```bash
+# Check both components
 make status
 
-# View logs
-make logs
+# Check individual components
+make status-bot
+make status-mcp
 ```
 
-### 5. Deploy with Kustomize
+### 3. View Logs
 
 ```bash
-# Deploy using kubectl and kustomize
-kubectl apply -k k8s/
+# View Slack Bot logs
+make logs-bot
 
-# Or if using Flux (GitOps)
-# Jamie will be automatically deployed when changes are pushed to Git
-# Check deployment status
-flux get kustomizations jamie
+# View MCP Server logs
+make logs-mcp
 ```
 
-## 💬 Usage
+## 📱 Using Jamie in Slack
 
-### Mention Jamie in Channels
+### Setup
+
+1. Create a Slack App with these permissions:
+   - `app_mentions:read`
+   - `chat:write`
+   - `im:history`
+   - `im:write`
+
+2. Create secrets in Kubernetes:
+   ```bash
+   kubectl create secret generic jamie-slack-secrets \
+     --from-literal=SLACK_BOT_TOKEN="xoxb-..." \
+     --from-literal=SLACK_APP_TOKEN="xapp-..." \
+     --from-literal=SLACK_SIGNING_SECRET="..." \
+     -n jamie
+   ```
+
+3. Deploy Jamie:
+   ```bash
+   make push-bot deploy
+   ```
+
+### Usage
 
 ```
-@Jamie check the golden signals for bruno site
-@Jamie what's the error rate for the API?
-@Jamie list all pods in the default namespace
+# Ask Jamie anything
+@Jamie how do I check service health?
+
+# Check golden signals
+@Jamie check golden signals for homepage
+
+# Query Prometheus
+@Jamie query prometheus: up{job="homepage"}
+
+# Get pod logs
+@Jamie show me logs from pod homepage-xyz
+
+# Analyze logs
+@Jamie analyze these logs: [paste logs]
+
+# Get SRE advice
+@Jamie what are best practices for alerting?
 ```
 
-### Direct Messages
+## 🌐 Using Jamie from Homepage
 
-Open a DM with Jamie and just type:
+Jamie MCP Server now exposes a REST API specifically for Homepage integration!
 
-```
-Check the golden signals
-Analyze these logs: [paste logs]
-What alerts are firing?
-```
-
-### Slash Commands
-
-- `/jamie-help` - Show help and available commands
-- `/jamie-status` - Check Agent-SRE connection status
-- `/jamie-analyze-logs [logs]` - Analyze logs for errors
-
-## 🎯 Example Interactions
-
-**Golden Signals Monitoring**
-```
-You: @Jamie check the golden signals for homepage
-Jamie: 🤖 The API Response Time is 45ms, Traffic is 120 requests per minute, 
-       Error Rate is 0.1%, and CPU Saturation is 35%. Everything looks healthy!
-```
-
-**Kubernetes Operations**
-```
-You: @Jamie show me the pods in the homepage namespace
-Jamie: 🤖 I found 3 pods in the homepage namespace:
-       • homepage-api-7d6c8f9b4-x8k2p (Running)
-       • homepage-frontend-5f8d7c6b-m4n9j (Running)
-       • jamie-slack-bot-6g9h8i7j-p5q6r (Running)
-```
-
-**Log Analysis**
-```
-You: /jamie-analyze-logs ERROR: Database connection timeout after 30s
-Jamie: 🤖 Log Analysis Results
-
-       📝 Analysis: Database connection timeout indicates network or resource issues
-
-       ⚠️ Severity: high
-
-       🔧 Recommendations:
-       1. Check database pod health and resource allocation
-       2. Verify network connectivity between services
-       3. Review database connection pool settings
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SLACK_BOT_TOKEN` | Slack bot OAuth token | Required |
-| `SLACK_APP_TOKEN` | Slack app-level token | Required |
-| `SLACK_SIGNING_SECRET` | Slack signing secret | Required |
-| `AGENT_SRE_URL` | Agent-SRE MCP service URL | `http://sre-agent-mcp-server-service.agent-sre:30120` |
-
-### Resource Limits
-
-Default resource allocation:
-
-```yaml
-resources:
-  requests:
-    memory: 128Mi
-    cpu: 100m
-  limits:
-    memory: 256Mi
-    cpu: 200m
-```
-
-## 📊 Monitoring
-
-Jamie doesn't expose metrics by default but logs all interactions:
+### REST API Endpoints
 
 ```bash
-# View logs
-kubectl logs -n homepage -l app=jamie-slack-bot -f
+# Main chatbot endpoint
+POST /api/chat
+{
+  "message": "Your question here"
+}
 
-# Follow specific pod
-kubectl logs -n homepage jamie-slack-bot-xxx-yyy -f
+# Check golden signals
+POST /api/golden-signals
+{
+  "service_name": "homepage",
+  "namespace": "default"
+}
+
+# Execute PromQL query
+POST /api/prometheus/query
+{
+  "query": "up{job=\"homepage\"}"
+}
+
+# Get pod logs
+POST /api/pod-logs
+{
+  "pod_name": "homepage-xyz",
+  "namespace": "default",
+  "tail_lines": 100
+}
+
+# Analyze logs
+POST /api/analyze-logs
+{
+  "logs": "your logs here",
+  "context": "optional context"
+}
 ```
 
-## 🐛 Troubleshooting
+### Example from Homepage API (Go)
 
-### Bot not responding
-
-1. Check pod status:
-   ```bash
-   kubectl get pods -n homepage -l app=jamie-slack-bot
-   ```
-
-2. View logs for errors:
-   ```bash
-   kubectl logs -n homepage -l app=jamie-slack-bot --tail=100
-   ```
-
-3. Verify Agent-SRE is running:
-   ```bash
-   curl http://sre-agent-mcp-server-service.agent-sre:30120/health
-   ```
-
-### "Agent-SRE unavailable" errors
-
-- Ensure Agent-SRE service is running
-- Check network connectivity between pods
-- Verify `AGENT_SRE_URL` is correct
-
-### Slack connection issues
-
-- Verify tokens are correct and not expired
-- Check Socket Mode is enabled in Slack app settings
-- Ensure app is installed to the workspace
-
-## 🔐 Security
-
-### Best Practices
-
-1. **Never commit secrets** - Use Kubernetes secrets or external secret management
-2. **Use RBAC** - Limit pod permissions via ServiceAccount
-3. **Enable Socket Mode** - More secure than webhooks
-4. **Rotate tokens regularly** - Update Slack tokens periodically
-5. **Monitor logs** - Watch for suspicious activity
-
-### Production Secrets
-
-For production, use one of these secret management solutions:
-
-- **Sealed Secrets**: Encrypt secrets in Git
-- **External Secrets Operator**: Sync from AWS Secrets Manager, Vault, etc.
-- **SOPS**: Encrypt secrets with age or GPG
-
-Example with External Secrets:
-
-```yaml
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-metadata:
-  name: jamie-slack-secrets
-  namespace: homepage
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: aws-secretsmanager
-    kind: SecretStore
-  target:
-    name: jamie-slack-secrets
-  data:
-  - secretKey: SLACK_BOT_TOKEN
-    remoteRef:
-      key: slack/jamie/bot-token
+```go
+// Homepage Go API automatically proxies to Jamie via:
+// POST /api/v1/jamie/chat
+// POST /api/v1/jamie/golden-signals
+// POST /api/v1/jamie/prometheus/query
+// POST /api/v1/jamie/pod-logs
+// POST /api/v1/jamie/analyze-logs
 ```
 
-## 🚀 Development
+The Homepage API handler automatically forwards requests to Jamie MCP Server at:
+`http://jamie-mcp-server-service.jamie.svc.cluster.local:30121`
+
+## 💻 Using Jamie in Cursor
+
+### Setup
+
+1. Build and deploy MCP server:
+   ```bash
+   make setup-mcp
+   ```
+
+2. Configure Cursor (`~/.cursor/mcp.json`):
+   ```json
+   {
+     "mcpServers": {
+       "jamie": {
+         "url": "http://192.168.0.16:30121/mcp",
+         "name": "Jamie - SRE Assistant"
+       }
+     }
+   }
+   ```
+
+3. Restart Cursor
+
+### Usage
+
+```
+@jamie ask how do I check if my homepage service is healthy?
+@jamie check golden signals for homepage in default namespace
+@jamie query prometheus: up{job="homepage"}
+@jamie get logs from pod homepage-xyz in default namespace
+@jamie analyze these logs: [paste logs here]
+```
+
+See [MCP_README.md](MCP_README.md) for detailed MCP setup instructions.
+
+## 🛠️ Development
 
 ### Local Development
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Run Slack Bot locally
+make dev-bot
 
-# Set environment variables
-export SLACK_BOT_TOKEN="xoxb-..."
-export SLACK_APP_TOKEN="xapp-..."
-export SLACK_SIGNING_SECRET="..."
-export AGENT_SRE_URL="http://sre-agent-mcp-server-service.agent-sre:30120"
+# Run MCP Server locally
+make dev-mcp
 
-# Run locally
-python jamie_slack_bot.py
+# Run both with docker-compose
+make dev
+
+# Stop local development
+make dev-down
 ```
 
 ### Testing
@@ -311,83 +277,126 @@ python jamie_slack_bot.py
 # Run tests
 make test
 
-# Lint code
-black jamie_slack_bot.py
-flake8 jamie_slack_bot.py
+# Test MCP endpoints
+make test-mcp
 ```
 
-## 📝 Makefile Commands
+### Code Structure
 
-| Command | Description |
-|---------|-------------|
-| `make help` | Show all available commands |
-| `make build` | Build Docker image |
-| `make push` | Push image to ECR |
-| `make deploy` | Deploy to Kubernetes |
-| `make delete` | Delete from Kubernetes |
-| `make logs` | Show pod logs |
-| `make status` | Check deployment status |
-| `make restart` | Restart deployment |
-| `make clean` | Clean up local resources |
-| `make all` | Build, push, and deploy |
+Each deployment has:
+- `core.py` - Shared configuration and logfire setup
+- Main implementation file (bot or server)
+- `Dockerfile` - Container image definition
+- `k8s-*.yaml` - Kubernetes manifests
+- `kustomization.yaml` - Kustomize configuration
 
-## 🎨 Customization
+## 📊 Configuration
 
-### Change Bot Emoji
+### Environment Variables
 
-Edit `jamie_slack_bot.py`:
+#### Slack Bot
+- `SLACK_BOT_TOKEN` - Slack bot token (from secret)
+- `SLACK_APP_TOKEN` - Slack app token (from secret)
+- `SLACK_SIGNING_SECRET` - Slack signing secret (from secret)
+- `AGENT_SRE_URL` - Agent-SRE MCP URL (default: http://sre-agent-mcp-server-service.agent-sre:30120)
+- `OLLAMA_URL` - Ollama server URL (default: http://192.168.0.16:11434)
+- `MODEL_NAME` - Ollama model name (default: llama3.2:3b)
+- `LOGFIRE_TOKEN_JAMIE` - Logfire token for observability (optional)
 
-```python
-self.bot_emoji = "🚀"  # Change to your preferred emoji
+#### MCP Server
+- `AGENT_SRE_URL` - Agent-SRE MCP URL
+- `OLLAMA_URL` - Ollama server URL
+- `MODEL_NAME` - Ollama model name
+- `MCP_HOST` - Server host (default: 0.0.0.0)
+- `MCP_PORT` - Server port (default: 30121)
+- `LOGFIRE_TOKEN_JAMIE_MCP` - Logfire token for observability (optional)
+
+## 🔍 Troubleshooting
+
+### Slack Bot Issues
+
+```bash
+# Check logs
+make logs-bot
+
+# Check status
+make status-bot
+
+# Restart
+make restart-bot
+
+# Common issues:
+# - Check if secrets exist: kubectl get secret -n jamie
+# - Verify Ollama is accessible: curl http://192.168.0.16:11434/api/tags
+# - Verify agent-sre is running: kubectl get pods -n agent-sre
 ```
 
-### Add Custom Commands
+### MCP Server Issues
 
-Add new slash commands in `_setup_handlers()`:
+```bash
+# Check logs
+make logs-mcp
 
-```python
-@self.app.command("/jamie-custom")
-async def handle_custom_command(ack, respond, command):
-    await ack()
-    # Your custom logic here
-    await respond("Custom response")
+# Check status
+make status-mcp
+
+# Test endpoints
+make test-mcp
+
+# Common issues:
+# - Check if service is exposed: kubectl get svc -n jamie
+# - Test health: curl http://192.168.0.16:30121/health
+# - Verify agent-sre connectivity: kubectl get svc -n agent-sre
 ```
+
+## 🎯 Available Tools
+
+Both Jamie components have access to these tools via agent-sre:
+
+- **check_golden_signals** - Monitor service health metrics
+- **query_prometheus** - Execute PromQL queries
+- **get_pod_logs** - Retrieve Kubernetes pod logs
+- **analyze_logs** - AI-powered log analysis
+- **sre_chat** - General SRE consultation
+- **health_check** - Check agent status
+
+## 🏥 Health Checks
+
+### Slack Bot
+- **Liveness**: Python execution check
+- **Readiness**: Agent-SRE connectivity check
+
+### MCP Server
+- **Liveness**: HTTP `/health` endpoint
+- **Readiness**: HTTP `/ready` endpoint + Agent-SRE check
+
+## 📚 Additional Resources
+
+- [MCP_README.md](MCP_README.md) - Detailed MCP setup and usage
+- [agent-sre](../agent-sre) - Backend SRE agent
+- [Logfire Documentation](https://logfire.pydantic.dev/)
+- [LangChain Documentation](https://python.langchain.com/)
+- [Slack Bolt Framework](https://slack.dev/bolt-python/)
 
 ## 🤝 Contributing
 
-Contributions welcome! Please:
+Jamie follows the same patterns as agent-sre:
+1. Modular deployment structure
+2. Shared core modules
+3. Logfire instrumentation
+4. Kustomize for K8s management
+5. Makefile for automation
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+When adding features:
+1. Add logfire instrumentation with `@logfire.instrument()`
+2. Update both deployments if needed
+3. Update tests
+4. Update documentation
 
-## 📄 License
+## 📝 License
 
-MIT License - See LICENSE file for details
-
-## 🔗 Related Projects
-
-- [Agent-SRE](../agent-sre) - The MCP-powered SRE agent
-- [Homepage API](../api) - Backend API service
-- [Homepage Frontend](../frontend) - Web interface
-
-## 💡 Tips
-
-- Use threads for long conversations
-- Jamie remembers context within a conversation
-- Be specific with service names for better results
-- Use slash commands for quick actions
-- Check `/jamie-help` for the latest features
-
-## 📚 Resources
-
-- [Slack Bolt Documentation](https://slack.dev/bolt-python/)
-- [MCP Protocol](https://github.com/modelcontextprotocol)
-- [Kubernetes Best Practices](https://kubernetes.io/docs/concepts/)
+Same as homelab repository.
 
 ---
 
-Made with ❤️ by [Bruno Lucena](https://bruno.me)
-
+Happy SRE-ing with Jamie! 🤖✨

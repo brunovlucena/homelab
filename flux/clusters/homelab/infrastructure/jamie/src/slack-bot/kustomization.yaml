@@ -5,15 +5,12 @@ kind: Kustomization
 namespace: jamie
 
 resources:
-  - namespace.yaml
-  - serviceaccount.yaml
-  - deployment.yaml
-  # Secret is created directly in cluster (sealed-secrets controller has issues)
-  # Use scripts/create-all-secrets.sh option 8 to recreate if needed
+  - k8s-slack-bot.yaml
 
 commonLabels:
   app.kubernetes.io/managed-by: kustomize
-  app.kubernetes.io/part-of: bruno-site
+  app.kubernetes.io/part-of: jamie
+  app.kubernetes.io/component: slack-bot
 
 images:
   - name: ghcr.io/brunovlucena/jamie-slack-bot

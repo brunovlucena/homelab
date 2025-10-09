@@ -24,10 +24,12 @@ spec:
         app: sre-agent
         component: agent
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
       - name: sre-agent
         image: ghcr.io/brunovlucena/agent-sre-agent:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
           name: http

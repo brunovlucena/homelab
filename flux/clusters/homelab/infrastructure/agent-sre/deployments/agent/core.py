@@ -28,9 +28,29 @@ from langsmith import traceable
 # Logfire imports
 import logfire
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with detailed format
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
+
+# Filter to exclude health/ready check logs from aiohttp access logging
+class HealthCheckFilter(logging.Filter):
+    """Filter out health and ready endpoint access logs"""
+    def filter(self, record):
+        # Check if this is an aiohttp access log for health/ready endpoints
+        if hasattr(record, 'args') and len(record.args) >= 4:
+            # args[3] typically contains the request path in aiohttp access logs
+            request_info = str(record.args)
+            return not ("/health" in request_info or "/ready" in request_info)
+        message = record.getMessage()
+        return not ("/health" in message or "/ready" in message)
+
+# Apply filter to aiohttp access logger to reduce noise from health/ready checks
+aiohttp_access_logger = logging.getLogger('aiohttp.access')
+aiohttp_access_logger.addFilter(HealthCheckFilter())
 
 # Configuration
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://192.168.0.3:11434")
@@ -116,11 +136,15 @@ class SREAgentGraph:
     async def _analyze_node(self, state: AgentState) -> AgentState:
         """🔍 Analyze the input and extract key insights"""
         if not self.llm:
+            logger.error("❌ Ollama LLM not available in analyze node")
             state["analysis_result"] = "Error: Ollama connection not available"
             return state
         
         task_type = state.get("task_type", "general")
         messages = state.get("messages", [])
+        
+        logger.info(f"🔍 Analyze node started - task_type: {task_type}, messages: {len(messages)}")
+        logger.debug(f"🔍 Using system prompt for task type: {task_type}")
         
         # Create analysis prompt based on task type
         system_prompt = self._get_system_prompt(task_type)
@@ -132,12 +156,16 @@ class SREAgentGraph:
                 *messages
             ]
             
+            logger.debug(f"🔍 Invoking Ollama model: {MODEL_NAME}")
             response = await self.llm.ainvoke(analysis_messages)
+            logger.info(f"✅ Analysis completed - response length: {len(response.content)} chars")
+            logger.debug(f"✅ Analysis preview: {response.content[:200]}...")
+            
             state["analysis_result"] = response.content
             state["messages"] = state["messages"] + [response]
             
         except Exception as e:
-            logger.error(f"❌ Error in analysis node: {e}")
+            logger.error(f"❌ Error in analysis node: {e}", exc_info=True)
             state["analysis_result"] = f"Error during analysis: {str(e)}"
         
         return state
@@ -147,11 +175,15 @@ class SREAgentGraph:
     async def _generate_recommendations_node(self, state: AgentState) -> AgentState:
         """💡 Generate actionable recommendations"""
         if not self.llm:
+            logger.error("❌ Ollama LLM not available in recommendations node")
             state["recommendations"] = ["Error: Ollama connection not available"]
             return state
         
         analysis_result = state.get("analysis_result", "")
         task_type = state.get("task_type", "general")
+        
+        logger.info(f"💡 Recommendations node started - task_type: {task_type}")
+        logger.debug(f"💡 Analysis result length: {len(analysis_result)} chars")
         
         # Create recommendations prompt
         rec_prompt = f"""
@@ -164,6 +196,7 @@ class SREAgentGraph:
         """
         
         try:
+            logger.debug(f"💡 Generating recommendations using {MODEL_NAME}")
             response = await self.llm.ainvoke([HumanMessage(content=rec_prompt)])
             
             # Parse recommendations from response
@@ -173,11 +206,15 @@ class SREAgentGraph:
                 if line and (line[0].isdigit() or line.startswith('-') or line.startswith('•')):
                     recommendations.append(line)
             
+            logger.info(f"✅ Generated {len(recommendations)} recommendations")
+            for idx, rec in enumerate(recommendations, 1):
+                logger.debug(f"💡 Recommendation {idx}: {rec[:80]}...")
+            
             state["recommendations"] = recommendations if recommendations else [response.content]
             state["messages"] = state["messages"] + [response]
             
         except Exception as e:
-            logger.error(f"❌ Error generating recommendations: {e}")
+            logger.error(f"❌ Error generating recommendations: {e}", exc_info=True)
             state["recommendations"] = [f"Error generating recommendations: {str(e)}"]
         
         return state
@@ -187,6 +224,9 @@ class SREAgentGraph:
         """📝 Format the final response"""
         analysis = state.get("analysis_result", "No analysis available")
         recommendations = state.get("recommendations", [])
+        
+        logger.info(f"📝 Format response node started")
+        logger.debug(f"📝 Formatting {len(recommendations)} recommendations")
         
         formatted_response = f"""
 ## 🔍 Analysis
@@ -198,10 +238,14 @@ class SREAgentGraph:
 {chr(10).join(recommendations) if recommendations else 'No recommendations available'}
         """.strip()
         
+        logger.debug(f"📝 Formatted response length: {len(formatted_response)} chars")
+        
         state["messages"] = state["messages"] + [
             AIMessage(content=formatted_response)
         ]
         state["next_action"] = "complete"
+        
+        logger.info(f"✅ Format response node completed")
         
         return state
     
@@ -266,6 +310,10 @@ Your current task is performance analysis. Focus on:
     ) -> Dict[str, Any]:
         """🚀 Execute the SRE agent workflow"""
         
+        logger.info(f"🤖 Agent execution started - task_type: {task_type}, thread_id: {thread_id}")
+        logger.debug(f"🤖 Message length: {len(message)} chars")
+        logger.debug(f"🤖 Context keys: {list(context.keys()) if context else []}")
+        
         initial_state: AgentState = {
             "messages": [HumanMessage(content=message)],
             "task_type": task_type,
@@ -276,8 +324,11 @@ Your current task is performance analysis. Focus on:
         }
         
         # Execute the graph
+        logger.debug(f"🤖 Executing LangGraph workflow...")
         config = {"configurable": {"thread_id": thread_id}}
         final_state = await self.graph.ainvoke(initial_state, config)
+        
+        logger.info(f"✅ Agent execution completed - task_type: {task_type}, thread_id: {thread_id}")
         
         return {
             "analysis": final_state.get("analysis_result"),

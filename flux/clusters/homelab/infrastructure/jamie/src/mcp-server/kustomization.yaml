@@ -1,15 +1,18 @@
-# 🤖 Jamie - Main Kustomization
+# 🤖 Jamie MCP Server - Kustomization
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 namespace: jamie
 
 resources:
-  - src/slack-bot
-  - src/mcp-server
-  - jamie-slack-secrets-sealed.yaml
+  - k8s-mcp-server.yaml
 
 commonLabels:
   app.kubernetes.io/managed-by: kustomize
   app.kubernetes.io/part-of: jamie
+  app.kubernetes.io/component: mcp-server
+
+images:
+  - name: ghcr.io/brunovlucena/jamie-mcp-server
+    newTag: latest
 

@@ -1,0 +1,103 @@
+# 🤖 Jamie MCP Server - Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jamie-mcp-server
+  namespace: jamie
+  labels:
+    app: jamie-mcp-server
+    app.kubernetes.io/name: jamie-mcp-server
+    app.kubernetes.io/component: mcp-server
+    app.kubernetes.io/part-of: jamie
+  annotations:
+    pulumi.com/patchForce: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jamie-mcp-server
+  template:
+    metadata:
+      labels:
+        app: jamie-mcp-server
+        app.kubernetes.io/name: jamie-mcp-server
+        app.kubernetes.io/component: mcp-server
+      annotations:
+        prometheus.io/scrape: "false"
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      serviceAccountName: jamie-slack-bot
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: jamie-mcp-server
+        image: ghcr.io/brunovlucena/jamie-mcp-server:latest
+        imagePullPolicy: Always
+        env:
+        - name: JAMIE_API_URL
+          value: "http://jamie-slack-bot-service.jamie:8080"
+        - name: MCP_HOST
+          value: "0.0.0.0"
+        - name: MCP_PORT
+          value: "30121"
+        ports:
+        - name: mcp
+          containerPort: 30121
+          protocol: TCP
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        securityContext:
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: false
+          allowPrivilegeEscalation: false
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 30121
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 30121
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      restartPolicy: Always
+---
+# 🌐 Jamie MCP Server - Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: jamie-mcp-server-service
+  namespace: jamie
+  labels:
+    app: jamie-mcp-server
+    app.kubernetes.io/name: jamie-mcp-server
+    app.kubernetes.io/component: mcp-server
+spec:
+  type: NodePort
+  selector:
+    app: jamie-mcp-server
+  ports:
+  - name: mcp
+    port: 30121
+    targetPort: 30121
+    nodePort: 30122
+    protocol: TCP
+

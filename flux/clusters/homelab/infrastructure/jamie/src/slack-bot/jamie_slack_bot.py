@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
 🤖 Jamie Slack Bot
-A sophisticated SRE assistant with LLM brain that communicates via MCP (Model Context Protocol)
-Connects to Ollama for intelligence and agent-sre service for tool execution
+A sophisticated SRE assistant with LLM brain and REST API
+Calls Agent-SRE Agent Service REST API (port 8080) for tool execution
 """
 
 import os
 import json
 import asyncio
-import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 import aiohttp
+from aiohttp import web
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_sdk.errors import SlackApiError
@@ -24,17 +24,8 @@ from langchain_core.tools import tool
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-# Configuration
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://192.168.0.16:11434")
-MODEL_NAME = os.environ.get("MODEL_NAME", "gemma3n:e4b")
-SERVICE_NAME = "jamie-slack-bot"
+# Import from core
+from core import logger, logfire, OLLAMA_URL, MODEL_NAME, SERVICE_NAME, AGENT_SRE_URL
 
 # Initialize Ollama LLM
 try:
@@ -51,12 +42,11 @@ except Exception as e:
 
 
 class AgentSREClient:
-    """Client for interacting with Agent-SRE via MCP"""
+    """Client for interacting with Agent-SRE Agent Service REST API"""
     
-    def __init__(self, base_url: str = "http://sre-agent-mcp-server-service.agent-sre:30120"):
-        self.base_url = base_url
-        self.mcp_url = f"{base_url}/mcp"
-        self.health_url = f"{base_url}/health"
+    def __init__(self, base_url: str = None):
+        # Agent-SRE Agent Service REST API (port 8080)
+        self.base_url = base_url or AGENT_SRE_URL
         self.session = None
     
     async def __aenter__(self):
@@ -67,110 +57,143 @@ class AgentSREClient:
         if self.session:
             await self.session.close()
     
+    @logfire.instrument("agent_sre_chat")
     async def chat(self, message: str, context: Optional[Dict] = None) -> Dict:
-        """Send chat message via MCP to Agent-SRE"""
+        """Send chat message to Agent-SRE REST API"""
         if not self.session:
             raise RuntimeError("AgentSREClient not properly initialized")
         
-        # MCP protocol payload - use tools/call method
         payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {
-                "name": "sre_chat",
-                "arguments": {
-                    "message": message,
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "context": context or {}
-                }
-            }
+            "message": message,
+            "timestamp": datetime.utcnow().isoformat(),
+            "context": context or {}
         }
         
         try:
             async with self.session.post(
-                self.mcp_url,
+                f"{self.base_url}/chat",
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as response:
                 if response.status == 200:
                     result = await response.json()
-                    # Extract text from MCP response format
-                    if "result" in result and "content" in result["result"]:
-                        content = result["result"]["content"]
-                        if content and len(content) > 0 and "text" in content[0]:
-                            return {"response": content[0]["text"]}
-                    return {"response": "No response from SRE agent"}
+                    return {"response": result.get("response", "No response")}
                 else:
                     error_text = await response.text()
                     logger.error(f"Agent-SRE API error: {response.status} - {error_text}")
                     return {
-                        "response": "I'm having trouble connecting to the SRE agent. The service might be temporarily unavailable.",
+                        "response": "I'm having trouble connecting to the SRE agent.",
                         "error": True
                     }
         
-        except asyncio.TimeoutError:
-            logger.error("Agent-SRE API timeout")
-            return {
-                "response": "The SRE agent is taking longer than usual to respond. Please try again in a moment.",
-                "error": True
-            }
         except Exception as e:
             logger.error(f"Agent-SRE API error: {e}")
             return {
-                "response": "I'm experiencing technical difficulties connecting to the SRE agent. Please try again later.",
+                "response": "I'm experiencing technical difficulties connecting to the SRE agent.",
                 "error": True
             }
     
+    @logfire.instrument("agent_sre_golden_signals")
+    async def check_golden_signals(self, service_name: str, namespace: str = "default") -> Dict:
+        """Check golden signals via REST API"""
+        if not self.session:
+            raise RuntimeError("AgentSREClient not properly initialized")
+        
+        payload = {
+            "service_name": service_name,
+            "namespace": namespace
+        }
+        
+        try:
+            async with self.session.post(
+                f"{self.base_url}/golden-signals",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    return {"error": f"HTTP {response.status}"}
+        except Exception as e:
+            logger.error(f"Golden signals error: {e}")
+            return {"error": str(e)}
+    
+    @logfire.instrument("agent_sre_prometheus")
+    async def query_prometheus(self, query: str) -> Dict:
+        """Query Prometheus via REST API"""
+        if not self.session:
+            raise RuntimeError("AgentSREClient not properly initialized")
+        
+        payload = {"query": query}
+        
+        try:
+            async with self.session.post(
+                f"{self.base_url}/prometheus/query",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    return {"error": f"HTTP {response.status}"}
+        except Exception as e:
+            logger.error(f"Prometheus query error: {e}")
+            return {"error": str(e)}
+    
+    @logfire.instrument("agent_sre_pod_logs")
+    async def get_pod_logs(self, pod_name: str, namespace: str = "default", tail_lines: int = 100) -> Dict:
+        """Get pod logs via REST API"""
+        if not self.session:
+            raise RuntimeError("AgentSREClient not properly initialized")
+        
+        payload = {
+            "pod_name": pod_name,
+            "namespace": namespace,
+            "tail_lines": tail_lines
+        }
+        
+        try:
+            async with self.session.post(
+                f"{self.base_url}/kubernetes/logs",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    return {"error": f"HTTP {response.status}"}
+        except Exception as e:
+            logger.error(f"Pod logs error: {e}")
+            return {"error": str(e)}
+    
+    @logfire.instrument("agent_sre_analyze_logs")
     async def analyze_logs(self, logs: str, context: Optional[str] = None) -> Dict:
-        """Analyze logs via MCP"""
+        """Analyze logs via REST API"""
         if not self.session:
             raise RuntimeError("AgentSREClient not properly initialized")
         
         payload = {
             "logs": logs,
-            "context": context,
+            "context": context or "",
             "timestamp": datetime.utcnow().isoformat()
-        }
-        
-        # MCP protocol payload - use tools/call method
-        mcp_payload = {
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/call",
-            "params": {
-                "name": "analyze_logs",
-                "arguments": payload
-            }
         }
         
         try:
             async with self.session.post(
-                self.mcp_url,
-                json=mcp_payload,
+                f"{self.base_url}/analyze-logs",
+                json=payload,
                 timeout=aiohttp.ClientTimeout(total=45)
             ) as response:
                 if response.status == 200:
                     result = await response.json()
-                    # Extract text from MCP response format
-                    if "result" in result and "content" in result["result"]:
-                        content = result["result"]["content"]
-                        if content and len(content) > 0 and "text" in content[0]:
-                            return {"analysis": content[0]["text"]}
-                    return {"analysis": "No analysis from SRE agent"}
+                    return {"analysis": result.get("analysis", "No analysis")}
                 else:
-                    logger.error(f"Log analysis API error: {response.status}")
-                    return {
-                        "analysis": "Unable to analyze logs at this time.",
-                        "error": True
-                    }
+                    return {"analysis": "Unable to analyze logs.", "error": True}
         except Exception as e:
             logger.error(f"Log analysis error: {e}")
-            return {
-                "analysis": "Error analyzing logs.",
-                "error": True
-            }
+            return {"analysis": "Error analyzing logs.", "error": True}
     
+    @logfire.instrument("agent_sre_status")
     async def get_status(self) -> Dict:
         """Get Agent-SRE status"""
         if not self.session:
@@ -178,7 +201,7 @@ class AgentSREClient:
         
         try:
             async with self.session.get(
-                self.health_url,
+                f"{self.base_url}/health",
                 timeout=aiohttp.ClientTimeout(total=5)
             ) as response:
                 if response.status == 200:
@@ -188,45 +211,10 @@ class AgentSREClient:
         except Exception as e:
             logger.error(f"Status check error: {e}")
             return {"status": "error", "error": str(e)}
-    
-    async def _call_mcp_tool_direct(self, tool_name: str, arguments: Dict) -> str:
-        """Call MCP tool directly via JSON-RPC"""
-        if not self.session:
-            raise RuntimeError("AgentSREClient not properly initialized")
-        
-        try:
-            payload = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {
-                    "name": tool_name,
-                    "arguments": arguments
-                }
-            }
-            
-            async with self.session.post(
-                self.mcp_url,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=30)
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    if "result" in result and "content" in result["result"]:
-                        content = result["result"]["content"]
-                        if content and len(content) > 0 and "text" in content[0]:
-                            return content[0]["text"]
-                    return "No response from agent"
-                else:
-                    error_text = await response.text()
-                    return f"Error: {error_text}"
-        except Exception as e:
-            logger.error(f"❌ Error calling MCP tool {tool_name}: {e}")
-            return f"Error: {str(e)}"
 
 
 class JamieSlackBot:
-    """🤖 Jamie - Your SRE Companion on Slack with LLM Brain"""
+    """🤖 Jamie - Your SRE Companion on Slack with LLM Brain and REST API"""
     
     def __init__(self):
         # Initialize Slack app
@@ -239,18 +227,22 @@ class JamieSlackBot:
         self.bot_name = "Jamie"
         self.bot_emoji = "🤖"
         self.llm = llm  # LLM brain
-        self.agent_url = os.environ.get("AGENT_SRE_URL", "http://sre-agent-mcp-server-service.agent-sre:30120")
+        self.agent_url = AGENT_SRE_URL
         
         # User context storage (in production, use Redis or proper database)
         self.user_contexts: Dict[str, Dict] = {}
         
-        # 🔧 Create LangChain tools from MCP endpoints
+        # 🔧 Create LangChain tools that call Agent-SRE REST API
         self.tools = self._create_tools()
         
         # 🤖 Create LangChain agent with tools
         self.agent_executor = self._create_agent()
         
-        # Set up event handlers
+        # 🌐 Create aiohttp web app for REST API
+        self.web_app = web.Application()
+        self._setup_rest_api_routes()
+        
+        # Set up Slack event handlers
         self._setup_handlers()
         
         logger.info(f"🤖 Jamie Slack Bot initialized")
@@ -258,10 +250,19 @@ class JamieSlackBot:
         logger.info(f"   🔧 Agent-SRE: {self.agent_url}")
         logger.info(f"   🛠️  Loaded {len(self.tools)} tools")
     
+    def _setup_rest_api_routes(self):
+        """Setup REST API routes for Jamie API"""
+        self.web_app.router.add_post('/api/chat', self.handle_api_chat)
+        self.web_app.router.add_post('/api/golden-signals', self.handle_api_golden_signals)
+        self.web_app.router.add_post('/api/prometheus/query', self.handle_api_prometheus_query)
+        self.web_app.router.add_post('/api/pod-logs', self.handle_api_pod_logs)
+        self.web_app.router.add_post('/api/analyze-logs', self.handle_api_analyze_logs)
+        self.web_app.router.add_get('/health', self.handle_api_health)
+        self.web_app.router.add_get('/ready', self.handle_api_ready)
+    
     def _create_tools(self) -> List:
-        """🔧 Create LangChain tools from MCP endpoints"""
+        """🔧 Create LangChain tools that call Agent-SRE REST API (port 8080)"""
         
-        # Store agent_url in closure for tools
         agent_url = self.agent_url
         
         @tool
@@ -274,13 +275,11 @@ class JamieSlackBot:
                 namespace: The Kubernetes namespace (default: 'default')
             
             Returns:
-                JSON string with golden signals data including overall status and individual metrics
+                JSON string with golden signals data
             """
             async with AgentSREClient(agent_url) as agent:
-                return await agent._call_mcp_tool_direct("check_golden_signals", {
-                    "service_name": service_name,
-                    "namespace": namespace
-                })
+                result = await agent.check_golden_signals(service_name, namespace)
+                return json.dumps(result, indent=2)
         
         @tool
         async def query_prometheus(query: str) -> str:
@@ -294,7 +293,8 @@ class JamieSlackBot:
                 JSON string with query results from Prometheus
             """
             async with AgentSREClient(agent_url) as agent:
-                return await agent._call_mcp_tool_direct("query_prometheus", {"query": query})
+                result = await agent.query_prometheus(query)
+                return json.dumps(result, indent=2)
         
         @tool
         async def get_pod_logs(pod_name: str, namespace: str = "default", tail_lines: int = 100) -> str:
@@ -310,11 +310,8 @@ class JamieSlackBot:
                 Pod logs as a string
             """
             async with AgentSREClient(agent_url) as agent:
-                return await agent._call_mcp_tool_direct("get_pod_logs", {
-                    "pod_name": pod_name,
-                    "namespace": namespace,
-                    "tail_lines": tail_lines
-                })
+                result = await agent.get_pod_logs(pod_name, namespace, tail_lines)
+                return result.get("logs", "No logs")
         
         @tool
         async def sre_chat(message: str) -> str:
@@ -420,6 +417,7 @@ Always choose the most appropriate tool based on the user's request."""),
         
         return agent_executor
     
+    @logfire.instrument("process_with_brain")
     async def _process_with_brain(self, message: str, context: Optional[Dict] = None) -> str:
         """🧠 Process message using Jamie's LLM brain with LangChain agent"""
         if not self.agent_executor:
@@ -451,6 +449,161 @@ Always choose the most appropriate tool based on the user's request."""),
         except Exception as e:
             logger.error(f"❌ Error processing with agent: {e}", exc_info=True)
             return f"⚠️ I encountered an error processing that request: {str(e)}"
+    
+    # REST API Handlers
+    
+    @logfire.instrument("api_chat")
+    async def handle_api_chat(self, request):
+        """Handle POST /api/chat"""
+        try:
+            data = await request.json()
+            message = data.get("message", "")
+            
+            if not message:
+                return web.json_response(
+                    {"error": "Message is required"},
+                    status=400
+                )
+            
+            # Process with Jamie's brain
+            response = await self._process_with_brain(message)
+            
+            return web.json_response({
+                "response": response,
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        except Exception as e:
+            logger.error(f"❌ Error in API chat: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+    
+    @logfire.instrument("api_golden_signals")
+    async def handle_api_golden_signals(self, request):
+        """Handle POST /api/golden-signals"""
+        try:
+            data = await request.json()
+            service_name = data.get("service_name", "")
+            namespace = data.get("namespace", "default")
+            
+            if not service_name:
+                return web.json_response(
+                    {"error": "service_name is required"},
+                    status=400
+                )
+            
+            async with AgentSREClient(self.agent_url) as agent:
+                result = await agent.check_golden_signals(service_name, namespace)
+            
+            return web.json_response(result)
+        
+        except Exception as e:
+            logger.error(f"❌ Error in golden signals: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+    
+    @logfire.instrument("api_prometheus_query")
+    async def handle_api_prometheus_query(self, request):
+        """Handle POST /api/prometheus/query"""
+        try:
+            data = await request.json()
+            query = data.get("query", "")
+            
+            if not query:
+                return web.json_response(
+                    {"error": "query is required"},
+                    status=400
+                )
+            
+            async with AgentSREClient(self.agent_url) as agent:
+                result = await agent.query_prometheus(query)
+            
+            return web.json_response(result)
+        
+        except Exception as e:
+            logger.error(f"❌ Error in prometheus query: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+    
+    @logfire.instrument("api_pod_logs")
+    async def handle_api_pod_logs(self, request):
+        """Handle POST /api/pod-logs"""
+        try:
+            data = await request.json()
+            pod_name = data.get("pod_name", "")
+            namespace = data.get("namespace", "default")
+            tail_lines = data.get("tail_lines", 100)
+            
+            if not pod_name:
+                return web.json_response(
+                    {"error": "pod_name is required"},
+                    status=400
+                )
+            
+            async with AgentSREClient(self.agent_url) as agent:
+                result = await agent.get_pod_logs(pod_name, namespace, tail_lines)
+            
+            return web.json_response(result)
+        
+        except Exception as e:
+            logger.error(f"❌ Error in pod logs: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+    
+    @logfire.instrument("api_analyze_logs")
+    async def handle_api_analyze_logs(self, request):
+        """Handle POST /api/analyze-logs"""
+        try:
+            data = await request.json()
+            logs = data.get("logs", "")
+            context = data.get("context", "")
+            
+            if not logs:
+                return web.json_response(
+                    {"error": "logs are required"},
+                    status=400
+                )
+            
+            async with AgentSREClient(self.agent_url) as agent:
+                result = await agent.analyze_logs(logs, context)
+            
+            return web.json_response(result)
+        
+        except Exception as e:
+            logger.error(f"❌ Error in analyze logs: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+    
+    @logfire.instrument("api_health")
+    async def handle_api_health(self, request):
+        """Handle GET /health"""
+        return web.json_response({
+            "status": "healthy",
+            "service": "jamie-slack-bot",
+            "timestamp": datetime.now().isoformat(),
+            "version": "1.0.0",
+            "agent_sre_url": self.agent_url
+        })
+    
+    @logfire.instrument("api_ready")
+    async def handle_api_ready(self, request):
+        """Handle GET /ready"""
+        try:
+            async with AgentSREClient(self.agent_url) as agent:
+                status = await agent.get_status()
+            
+            if status.get("status") != "healthy":
+                return web.json_response(
+                    {"status": "not_ready", "reason": "Agent-SRE unavailable"},
+                    status=503
+                )
+            
+            return web.json_response({
+                "status": "ready",
+                "service": "jamie-slack-bot",
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        except Exception as e:
+            return web.json_response(
+                {"status": "not_ready", "error": str(e)},
+                status=503
+            )
     
     def _setup_handlers(self):
         """Set up Slack event handlers"""
@@ -542,30 +695,22 @@ Always choose the most appropriate tool based on the user's request."""),
 *Quick Commands:*
 • `/jamie-help` - Show this help message
 • `/jamie-status` - Check Agent-SRE status
-• `/jamie-analyze-logs` - Analyze logs from a file or paste
 
 *What I can help with:*
 • 📊 Golden Signals monitoring (latency, traffic, errors, saturation)
 • ☸️ Kubernetes operations (pods, deployments, logs, status)
-• 📈 Grafana operations (dashboards, incidents, alerts)
+• 📈 Prometheus queries and metrics
 • 🔍 Log analysis and error pattern detection
 • 🚨 Incident investigation and root cause analysis
 • 📉 Performance metrics and optimization
 • 🎯 Service health monitoring
 
 *Example questions:*
-• "Check the golden signals for bruno site"
+• "Check the golden signals for homepage"
 • "What's the error rate for the API?"
-• "List all pods in the default namespace"
-• "Show me the dashboard for homepage service"
+• "Show me logs from pod homepage-xyz"
 • "Analyze these logs for errors"
-• "What alerts are currently firing?"
-• "Investigate high latency in the API"
-
-*Powered by:*
-• 🧠 Agent-SRE with MCP (Model Context Protocol)
-• 🔧 Dynamic tool discovery and execution
-• 📡 Real-time infrastructure monitoring
+• "Query Prometheus: up{job=\"homepage\"}"
 
 Just ask me anything about your infrastructure! 🚀
             """
@@ -593,40 +738,6 @@ Just ask me anything about your infrastructure! 🚀
 _All systems operational!_
                 """
                 await respond(status_text)
-        
-        @self.app.command("/jamie-analyze-logs")
-        async def handle_analyze_logs_command(ack, respond, command):
-            """Handle /jamie-analyze-logs slash command"""
-            await ack()
-            
-            logs = command.get("text", "").strip()
-            if not logs:
-                await respond("Please provide logs to analyze. Example: `/jamie-analyze-logs ERROR: Connection failed`")
-                return
-            
-            # Analyze logs via MCP
-            async with AgentSREClient(self.agent_url) as agent:
-                analysis = await agent.analyze_logs(logs)
-            
-            analysis_text = analysis.get("analysis", "Unable to analyze logs.")
-            severity = analysis.get("severity", "unknown")
-            recommendations = analysis.get("recommendations", [])
-            
-            response_text = f"""
-{self.bot_emoji} *Log Analysis Results*
-
-📝 *Analysis:*
-{analysis_text}
-
-⚠️ *Severity:* {severity}
-"""
-            
-            if recommendations:
-                response_text += "\n🔧 *Recommendations:*\n"
-                for i, rec in enumerate(recommendations, 1):
-                    response_text += f"{i}. {rec}\n"
-            
-            await respond(response_text)
     
     def _get_user_context(self, user_id: str) -> Optional[Dict]:
         """Get user's conversation context"""
@@ -664,7 +775,7 @@ _All systems operational!_
         
         self.user_contexts[user_id]["last_updated"] = datetime.utcnow().isoformat()
     
-    async def run(self):
+    async def run_slack_bot(self):
         """Start the Slack bot"""
         try:
             # Get app-level token for Socket Mode
@@ -680,10 +791,33 @@ _All systems operational!_
         except Exception as e:
             logger.error(f"Failed to start bot: {e}")
             raise
+    
+    async def run_rest_api(self, host: str = "0.0.0.0", port: int = 8080):
+        """Start the REST API server"""
+        runner = web.AppRunner(self.web_app)
+        await runner.setup()
+        site = web.TCPSite(runner, host, port)
+        await site.start()
+        
+        logger.info("=" * 60)
+        logger.info("🌐 Jamie REST API Started!")
+        logger.info("=" * 60)
+        logger.info(f"🌐 Server: http://{host}:{port}")
+        logger.info(f"💬 Chat: http://localhost:{port}/api/chat")
+        logger.info(f"📊 Golden Signals: http://localhost:{port}/api/golden-signals")
+        logger.info(f"📈 Prometheus: http://localhost:{port}/api/prometheus/query")
+        logger.info(f"📝 Pod Logs: http://localhost:{port}/api/pod-logs")
+        logger.info(f"🔍 Analyze Logs: http://localhost:{port}/api/analyze-logs")
+        logger.info(f"🏥 Health: http://localhost:{port}/health")
+        logger.info(f"✅ Ready: http://localhost:{port}/ready")
+        logger.info(f"🔗 Agent-SRE: {self.agent_url}")
+        logger.info("=" * 60)
+        
+        return runner
 
 
 async def main():
-    """Main function"""
+    """Main function - runs both Slack bot and REST API"""
     # Check required environment variables
     required_vars = ["SLACK_BOT_TOKEN", "SLACK_SIGNING_SECRET", "SLACK_APP_TOKEN"]
     missing_vars = [var for var in required_vars if not os.environ.get(var)]
@@ -695,11 +829,17 @@ async def main():
             logger.error(f"  export {var}=your_value_here")
         return
     
-    # Create and run the bot
+    # Create Jamie bot
     bot = JamieSlackBot()
-    await bot.run()
+    
+    # Start REST API server
+    api_host = os.getenv("API_HOST", "0.0.0.0")
+    api_port = int(os.getenv("API_PORT", "8080"))
+    api_runner = await bot.run_rest_api(api_host, api_port)
+    
+    # Start Slack bot
+    await bot.run_slack_bot()
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-

@@ -39,6 +39,11 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 		ServiceURL: cfg.AgentSREURL, // Get from config, fallback to default
 	})
 
+	// 🤖 Initialize Jamie handler (AI-powered SRE assistant)
+	jamieHandler := handlers.NewJamieHandler(handlers.JamieConfig{
+		ServiceURL: cfg.JamieURL, // Get from config, fallback to default
+	})
+
 	// Compression middleware (Golden Rule #6: Payload Compression)
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
 
@@ -137,6 +142,23 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 			// Log analysis endpoints
 			agentSRE.POST("/analyze-logs", agentSREHandler.AnalyzeLogs)
 			agentSRE.POST("/mcp/analyze-logs", agentSREHandler.MCPAnalyzeLogs)
+		}
+
+		// 🤖 Jamie (AI-powered SRE assistant) proxy routes
+		jamie := api.Group("/jamie")
+		{
+			// Health and status endpoints
+			jamie.GET("/health", jamieHandler.Health)
+			jamie.GET("/ready", jamieHandler.Ready)
+
+			// 💬 Main chatbot endpoint for Homepage
+			jamie.POST("/chat", jamieHandler.Chat)
+
+			// 📊 SRE operations via Jamie
+			jamie.POST("/golden-signals", jamieHandler.CheckGoldenSignals)
+			jamie.POST("/prometheus/query", jamieHandler.QueryPrometheus)
+			jamie.POST("/pod-logs", jamieHandler.GetPodLogs)
+			jamie.POST("/analyze-logs", jamieHandler.AnalyzeLogs)
 		}
 	}
 

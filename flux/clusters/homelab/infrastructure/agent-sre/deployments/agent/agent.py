@@ -16,17 +16,48 @@ from aiohttp.web import Request, Response
 # Import the SRE agent from local core
 from core import agent, logger
 
+
 class SREAgentService:
     """Standalone SRE Agent Service."""
     
     def __init__(self):
         self.sre_agent = agent
-        self.app = web.Application()
+        # Create app with custom logging to filter out health/ready check noise
+        # Disable aiohttp access logging completely
+        import aiohttp
+        self.app = web.Application(
+            middlewares=[self._logging_middleware],
+            logger=None,
+            access_log=None
+        )
         self.mcp_server_url = os.getenv("MCP_SERVER_URL", "http://sre-agent-mcp-server-service:30120")
         # Grafana MCP server configuration
         self.grafana_mcp_url = os.getenv("GRAFANA_MCP_URL", "http://grafana-mcp.grafana-mcp:8000")
         self.prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus-operated.prometheus:9090")
         self._setup_routes()
+    
+    @web.middleware
+    async def _logging_middleware(self, request: Request, handler):
+        """Middleware to log all requests except health checks"""
+        path = request.path
+        method = request.method
+        
+        # Skip logging for health and ready endpoints
+        if path not in ['/health', '/ready']:
+            logger.info(f"📥 {method} {path} - Client: {request.remote}")
+            logger.debug(f"📥 Headers: {dict(request.headers)}")
+        
+        try:
+            response = await handler(request)
+            
+            # Skip logging for health and ready endpoints
+            if path not in ['/health', '/ready']:
+                logger.info(f"📤 {method} {path} - Status: {response.status}")
+            
+            return response
+        except Exception as e:
+            logger.error(f"❌ {method} {path} - Error: {e}", exc_info=True)
+            raise
     
     def _setup_routes(self):
         """Setup HTTP routes."""
@@ -681,18 +712,42 @@ Please provide:
     
     async def start_server(self, host: str = "0.0.0.0", port: int = 8080):
         """Start the agent server."""
+        # Start server with default access logging
         runner = web.AppRunner(self.app)
         await runner.setup()
         site = web.TCPSite(runner, host, port)
         await site.start()
         
         logger.info(f"🌐 SRE Agent started on {host}:{port}")
+        
+        # Apply health check filter to aiohttp access logger AFTER server starts
+        try:
+            class HealthCheckFilter(logging.Filter):
+                """Filter out health and ready endpoint access logs"""
+                def filter(self, record):
+                    message = record.getMessage()
+                    should_keep = not ("/health" in message or "/ready" in message)
+                    return should_keep
+            
+            access_logger = logging.getLogger('aiohttp.access')
+            health_filter = HealthCheckFilter()
+            access_logger.addFilter(health_filter)
+            # Also add to all handlers
+            handler_count = 0
+            for handler in access_logger.handlers:
+                handler.addFilter(health_filter)
+                handler_count += 1
+            
+            logger.info(f"🔇 Applied HealthCheckFilter to aiohttp.access logger ({handler_count} handlers)")
+        except Exception as e:
+            logger.error(f"❌ Failed to apply HealthCheckFilter: {e}", exc_info=True)
         logger.info(f"🏥 Health endpoint: http://localhost:{port}/health")
         logger.info(f"✅ Readiness endpoint: http://localhost:{port}/ready")
         logger.info(f"💬 Chat endpoint: http://localhost:{port}/chat")
         logger.info(f"📊 MCP Chat endpoint: http://localhost:{port}/mcp/chat")
         logger.info(f"📈 Status endpoint: http://localhost:{port}/status")
         logger.info(f"🚨 Alertmanager webhook: http://localhost:{port}/webhook/alert")
+        logger.info(f"🔇 Health/ready check logs filtered for cleaner output")
         
         return runner
 
