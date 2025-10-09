@@ -10,7 +10,3 @@ resources:
   - serviceaccount.yaml
   - knative-service.yaml
 
-commonLabels:
-  app: prometheus-mcp
-  managed-by: flux
-
