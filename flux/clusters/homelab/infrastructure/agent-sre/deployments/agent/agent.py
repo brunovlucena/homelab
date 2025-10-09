@@ -23,12 +23,8 @@ class SREAgentService:
     def __init__(self):
         self.sre_agent = agent
         # Create app with custom logging to filter out health/ready check noise
-        # Disable aiohttp access logging completely
-        import aiohttp
         self.app = web.Application(
-            middlewares=[self._logging_middleware],
-            logger=None,
-            access_log=None
+            middlewares=[self._logging_middleware]
         )
         self.mcp_server_url = os.getenv("MCP_SERVER_URL", "http://sre-agent-mcp-server-service:30120")
         # Grafana MCP server configuration

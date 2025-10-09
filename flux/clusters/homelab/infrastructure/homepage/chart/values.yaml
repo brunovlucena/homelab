@@ -39,10 +39,10 @@ api:
       cpu: 500m       # Higher CPU request
       memory: 512Mi   # Higher memory request
 
-# Agent-SRE Configuration
-agentSRE:
+# 🤖 Jamie Configuration (AI-powered SRE assistant)
+jamie:
   enabled: true
-  url: "http://sre-agent-service.agent-sre.svc.cluster.local:8080"
+  url: "http://jamie-slack-bot-service.jamie.svc.cluster.local:8080"
 
 # Ollama Configuration
 ollama:

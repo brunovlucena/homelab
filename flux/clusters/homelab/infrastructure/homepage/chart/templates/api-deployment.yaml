@@ -161,6 +161,10 @@ spec:
             - name: AGENT_SRE_URL
               value: "{{ .Values.agentSRE.url }}"
             {{- end }}
+            {{- if .Values.jamie.enabled }}
+            - name: JAMIE_URL
+              value: "{{ .Values.jamie.url }}"
+            {{- end }}
             - name: PGPASSWORD
               {{- if .Values.database.existingSecret }}
               valueFrom:

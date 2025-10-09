@@ -40,6 +40,29 @@ type JamieHandler struct {
 	client *http.Client
 }
 
+// CheckHealth implements DependencyChecker interface
+// 🏥 Verifies that Jamie service is reachable and healthy
+func (h *JamieHandler) CheckHealth() error {
+	req, err := http.NewRequest(http.MethodGet, h.config.ServiceURL+"/health", nil)
+	if err != nil {
+		return err
+	}
+
+	// Use a shorter timeout for health checks
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return http.ErrServerClosed
+	}
+
+	return nil
+}
+
 // proxyRequest is a helper function to proxy requests to jamie
 func (h *JamieHandler) proxyRequest(c *gin.Context, path string, method string) {
 	// Build target URL

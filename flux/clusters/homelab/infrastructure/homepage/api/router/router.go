@@ -44,6 +44,9 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 		ServiceURL: cfg.JamieURL, // Get from config, fallback to default
 	})
 
+	// 🏥 Register Jamie as a dependency for health checks
+	handlers.SetJamieChecker(jamieHandler)
+
 	// Compression middleware (Golden Rule #6: Payload Compression)
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
 
