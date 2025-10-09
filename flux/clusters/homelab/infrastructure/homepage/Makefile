@@ -92,21 +92,20 @@ build-dev:
 	@echo "✅ Images built successfully"
 
 # Build and push images to registry (latest tag only)
-build-push-dev:
+build-push-latest:
 	@echo "🏗️ Building and pushing Docker images..."
-	@echo "Environment: $(ENV)"
 	@echo "Registry: $(REGISTRY)"
-	@echo "Tag: ${ENV}"
+	@echo "Tag: latest"
 	@echo "🏗️ Building images..."
-	@docker build -t $(REGISTRY)/homepage-api:${ENV} -f api/Dockerfile api/
-	@docker build -t $(REGISTRY)/homepage-frontend:${ENV} -f frontend/Dockerfile frontend/
+	@docker build -t $(REGISTRY)/homepage-api:latest -f api/Dockerfile api/
+	@docker build -t $(REGISTRY)/homepage-frontend:latest -f frontend/Dockerfile frontend/
 	@echo "🚀 Pushing images to registry..."
-	@docker push $(REGISTRY)/homepage-api:${ENV}
-	@docker push $(REGISTRY)/homepage-frontend:${ENV}
+	@docker push $(REGISTRY)/homepage-api:latest
+	@docker push $(REGISTRY)/homepage-frontend:latest
 	@echo "✅ Images built and pushed successfully!"
 	@echo "📋 Pushed images:"
-	@echo "  API: $(REGISTRY)/homepage-api:${ENV}"
-	@echo "  Frontend: $(REGISTRY)/homepage-frontend:${ENV}"
+	@echo "  API: $(REGISTRY)/homepage-api:latest"
+	@echo "  Frontend: $(REGISTRY)/homepage-frontend:latest"
 
 # Show logs from all services
 logs:
