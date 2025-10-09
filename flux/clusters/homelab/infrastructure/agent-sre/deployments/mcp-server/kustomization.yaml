@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - k8s-mcp-server.yaml
+
+commonLabels:
+  component: mcp-server
+  app.kubernetes.io/name: sre-agent-mcp-server
+  app.kubernetes.io/component: mcp-server
+  app.kubernetes.io/part-of: sre-agent-system
+
+namespace: agent-sre
+

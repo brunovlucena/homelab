@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # MCP Server Service
+  sre-agent-mcp-server:
+    build:
+      context: .
+      dockerfile: deployments/mcp-server/Dockerfile
+    container_name: sre-agent-mcp-server
+    ports:
+      - "30120:30120"
+    environment:
+      - MCP_PORT=30120
+      - MCP_HOST=0.0.0.0
+      - OLLAMA_URL=http://192.168.0.12:11434
+      - MODEL_NAME=bruno-sre:latest
+      - SERVICE_NAME=sre-agent-mcp-server
+      - LOGFIRE_TOKEN_SRE_AGENT=${LOGFIRE_TOKEN_SRE_AGENT}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:30120/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - sre-network
+
+  # SRE Agent Service
+  sre-agent:
+    build:
+      context: .
+      dockerfile: deployments/agent/Dockerfile
+    container_name: sre-agent
+    ports:
+      - "8080:8080"
+    environment:
+      - AGENT_PORT=8080
+      - AGENT_HOST=0.0.0.0
+      - MCP_SERVER_URL=http://sre-agent-mcp-server:30120
+      - OLLAMA_URL=http://192.168.0.12:11434
+      - MODEL_NAME=bruno-sre:latest
+      - SERVICE_NAME=sre-agent
+      - LOGFIRE_TOKEN_SRE_AGENT=${LOGFIRE_TOKEN_SRE_AGENT}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
+    depends_on:
+      sre-agent-mcp-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - sre-network
+
+networks:
+  sre-network:
+    driver: bridge
+
+# Optional: Add a reverse proxy for easier access
+  nginx:
+    image: nginx:alpine
+    container_name: sre-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - sre-agent-mcp-server
+      - sre-agent
+    restart: unless-stopped
+    networks:
+      - sre-network

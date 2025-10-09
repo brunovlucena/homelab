@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Simple Working MCP Server
-No external dependencies beyond what's already available
+MCP Server - Thin Protocol Layer for SRE Agent
+Handles MCP protocol communication and forwards requests to agent service
 """
 
 import os
@@ -10,47 +10,58 @@ import asyncio
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from aiohttp import web
+from aiohttp import web, ClientSession
 from aiohttp.web import Request, Response
 
-# Import the SRE agent from main.py
-from main import agent, logger
+# Import the core module for shared functionality
+from core import logger, logfire
 
-class SimpleMCPServer:
-    """Simple MCP Server that actually works."""
+class MCPServer:
+    """Thin MCP Server that forwards requests to agent service."""
     
     def __init__(self):
-        self.sre_agent = agent
         self.app = web.Application()
+        self.agent_service_url = os.getenv("AGENT_SERVICE_URL", "http://sre-agent-service:8080")
         self._setup_routes()
     
     def _setup_routes(self):
         """Setup HTTP routes."""
-        # Add routes with and without query parameters
+        # MCP protocol endpoints
         self.app.router.add_post('/mcp', self.handle_mcp_request)
         self.app.router.add_get('/mcp', self.handle_mcp_info)
-        self.app.router.add_get('/health', self.handle_health)
-        self.app.router.add_get('/ready', self.handle_readiness)
-        self.app.router.add_get('/sse', self.handle_sse)
-        
-        # Add route for mcp with query parameters (for mcp-remote compatibility)
         self.app.router.add_post('/mcp/', self.handle_mcp_request)
         self.app.router.add_get('/mcp/', self.handle_mcp_info)
+        
+        # Health and readiness endpoints
+        self.app.router.add_get('/health', self.handle_health)
+        self.app.router.add_get('/ready', self.handle_readiness)
+        
+        # SSE endpoint for real-time communication
+        self.app.router.add_get('/sse', self.handle_sse)
     
+    @logfire.instrument("mcp_info")
     async def handle_mcp_info(self, request: Request) -> Response:
-        """Handle GET requests."""
+        """Handle GET requests - MCP server information."""
         return web.json_response({
-            "name": "sre-agent-simple-mcp",
+            "name": "sre-agent-mcp-server",
             "version": "1.0.0",
-            "description": "Simple SRE Agent MCP Server",
+            "description": "SRE Agent MCP Server - Thin protocol layer",
             "protocol": "mcp",
             "capabilities": {
                 "tools": True,
                 "resources": False,
                 "prompts": False
-            }
+            },
+            "endpoints": {
+                "mcp": "/mcp",
+                "health": "/health",
+                "ready": "/ready",
+                "sse": "/sse"
+            },
+            "agent_service": self.agent_service_url
         })
     
+    @logfire.instrument("mcp_request")
     async def handle_mcp_request(self, request: Request) -> Response:
         """Handle MCP JSON-RPC 2.0 requests."""
         try:
@@ -79,7 +90,7 @@ class SimpleMCPServer:
                                 "tools": {}
                             },
                             "serverInfo": {
-                                "name": "sre-agent-simple-mcp",
+                                "name": "sre-agent-mcp-server",
                                 "version": "1.0.0"
                             }
                         }
@@ -116,6 +127,34 @@ class SimpleMCPServer:
                             }
                         },
                         {
+                            "name": "incident_response",
+                            "description": "Get incident response guidance",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "incident": {
+                                        "type": "string",
+                                        "description": "Incident description"
+                                    }
+                                },
+                                "required": ["incident"]
+                            }
+                        },
+                        {
+                            "name": "monitoring_advice",
+                            "description": "Get monitoring and alerting advice",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "system": {
+                                        "type": "string",
+                                        "description": "System description"
+                                    }
+                                },
+                                "required": ["system"]
+                            }
+                        },
+                        {
                             "name": "health_check",
                             "description": "Check the health status",
                             "inputSchema": {
@@ -147,7 +186,7 @@ class SimpleMCPServer:
                             }
                         })
                     
-                    result = await self._execute_tool(tool_name, arguments)
+                    result = await self._forward_to_agent(tool_name, arguments)
                     return web.json_response({
                         "jsonrpc": "2.0",
                         "id": request_id,
@@ -190,45 +229,89 @@ class SimpleMCPServer:
                 }
             }, status=500)
     
-    async def _execute_tool(self, name: str, arguments: Dict[str, Any]) -> str:
-        """Execute the specified SRE tool."""
+    @logfire.instrument("forward_to_agent")
+    async def _forward_to_agent(self, tool_name: str, arguments: Dict[str, Any]) -> str:
+        """Forward tool execution to the agent service."""
         try:
-            if name == "sre_chat":
-                message = arguments.get("message", "")
-                if not message:
-                    return "Error: Message is required for sre_chat"
-                response = await self.sre_agent.chat(message)
-                return response
-            
-            elif name == "analyze_logs":
-                logs = arguments.get("logs", "")
-                if not logs:
-                    return "Error: Logs are required for analyze_logs"
-                analysis = await self.sre_agent.analyze_logs(logs)
-                return analysis
-            
-            elif name == "health_check":
-                health = await self.sre_agent.health_check()
-                return json.dumps(health, indent=2)
-            
-            else:
-                return f"❌ Unknown tool: {name}"
+            async with ClientSession() as session:
+                # Map MCP tool names to agent service endpoints
+                endpoint_map = {
+                    "sre_chat": "/chat",
+                    "analyze_logs": "/analyze-logs", 
+                    "incident_response": "/incident-response",
+                    "monitoring_advice": "/monitoring-advice",
+                    "health_check": "/health"
+                }
+                
+                endpoint = endpoint_map.get(tool_name)
+                if not endpoint:
+                    return f"❌ Unknown tool: {tool_name}"
+                
+                # Prepare request data
+                if tool_name == "sre_chat":
+                    request_data = {"message": arguments.get("message", "")}
+                elif tool_name == "analyze_logs":
+                    request_data = {"logs": arguments.get("logs", "")}
+                elif tool_name == "incident_response":
+                    request_data = {"incident": arguments.get("incident", "")}
+                elif tool_name == "monitoring_advice":
+                    request_data = {"system": arguments.get("system", "")}
+                elif tool_name == "health_check":
+                    request_data = {}
+                else:
+                    return f"❌ Unknown tool: {tool_name}"
+                
+                # Make request to agent service
+                url = f"{self.agent_service_url}{endpoint}"
+                
+                if tool_name == "health_check":
+                    # Health check is a GET request
+                    async with session.get(url, timeout=10) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            return json.dumps(data, indent=2)
+                        else:
+                            return f"Error: HTTP {response.status}"
+                else:
+                    # Other tools are POST requests
+                    async with session.post(url, json=request_data, timeout=30) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            # Extract the response based on the endpoint
+                            if tool_name == "sre_chat":
+                                return data.get("response", "No response")
+                            elif tool_name == "analyze_logs":
+                                return data.get("analysis", "No analysis")
+                            elif tool_name == "incident_response":
+                                return data.get("response", "No response")
+                            elif tool_name == "monitoring_advice":
+                                return data.get("advice", "No advice")
+                            else:
+                                return json.dumps(data, indent=2)
+                        else:
+                            error_text = await response.text()
+                            return f"Error: HTTP {response.status} - {error_text}"
         
         except Exception as e:
-            logger.error(f"Error executing tool {name}: {e}")
-            return f"Error executing tool {name}: {str(e)}"
+            logger.error(f"Error forwarding to agent service: {e}")
+            return f"Error forwarding to agent service: {str(e)}"
     
+    @logfire.instrument("mcp_health")
     async def handle_health(self, request: Request) -> Response:
         """Liveness probe endpoint - checks if the service is alive."""
         try:
-            # Basic health check - just verify the service is responding
             health_status = {
                 "status": "healthy",
-                "service": "sre-agent-mcp",
+                "service": "sre-agent-mcp-server",
                 "timestamp": datetime.now().isoformat(),
                 "uptime": "running",
-                "version": "1.0.0"
+                "version": "1.0.0",
+                "deployment": "thin-mcp-server",
+                "agent_service_url": self.agent_service_url
             }
+            # Only log health checks in debug mode
+            if os.getenv("DEBUG", "false").lower() == "true":
+                logger.debug(f"Health check: {health_status}")
             return web.json_response(health_status)
         except Exception as e:
             logger.error(f"Health check failed: {e}")
@@ -237,33 +320,30 @@ class SimpleMCPServer:
                 status=503
             )
     
+    @logfire.instrument("mcp_readiness")
     async def handle_readiness(self, request: Request) -> Response:
         """Readiness probe endpoint - checks if the service is ready to serve traffic."""
         try:
-            # Check if the SRE agent is properly initialized
-            if not self.sre_agent or not self.sre_agent.llm:
-                return web.json_response(
-                    {"status": "not_ready", "reason": "SRE agent not initialized"}, 
-                    status=503
-                )
+            # Check if agent service is reachable
+            agent_status = await self._check_agent_service()
             
-            # Perform a more comprehensive readiness check
-            health_status = await self.sre_agent.health_check()
-            
-            # Check if Ollama connection is working
-            if not health_status.get("llm_connected", False):
+            if agent_status.get("status") != "connected":
                 return web.json_response(
-                    {"status": "not_ready", "reason": "Ollama connection not available"}, 
+                    {"status": "not_ready", "reason": "Agent service not available", "agent_status": agent_status}, 
                     status=503
                 )
             
             readiness_status = {
                 "status": "ready",
-                "service": "sre-agent-mcp",
+                "service": "sre-agent-mcp-server",
                 "timestamp": datetime.now().isoformat(),
-                "agent_status": health_status,
-                "mcp_endpoints": ["/mcp", "/health", "/ready", "/sse"]
+                "agent_service_status": agent_status,
+                "mcp_endpoints": ["/mcp", "/health", "/ready", "/sse"],
+                "deployment": "thin-mcp-server"
             }
+            # Only log readiness checks in debug mode
+            if os.getenv("DEBUG", "false").lower() == "true":
+                logger.debug(f"Readiness check: {readiness_status}")
             return web.json_response(readiness_status)
             
         except Exception as e:
@@ -273,25 +353,54 @@ class SimpleMCPServer:
                 status=503
             )
     
+    @logfire.instrument("check_agent_service")
+    async def _check_agent_service(self) -> Dict[str, Any]:
+        """Check agent service connectivity."""
+        try:
+            async with ClientSession() as session:
+                async with session.get(f"{self.agent_service_url}/health", timeout=5) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return {
+                            "status": "connected",
+                            "url": self.agent_service_url,
+                            "health": data
+                        }
+                    else:
+                        return {
+                            "status": "error",
+                            "url": self.agent_service_url,
+                            "error": f"HTTP {response.status}"
+                        }
+        except Exception as e:
+            return {
+                "status": "disconnected",
+                "url": self.agent_service_url,
+                "error": str(e)
+            }
+    
+    @logfire.instrument("mcp_sse")
     async def handle_sse(self, request: Request) -> Response:
-        """Simple SSE endpoint."""
+        """Server-Sent Events endpoint for real-time communication."""
         response = web.StreamResponse()
         response.headers['Content-Type'] = 'text/event-stream'
         response.headers['Cache-Control'] = 'no-cache'
         response.headers['Connection'] = 'keep-alive'
+        response.headers['Access-Control-Allow-Origin'] = '*'
         
         await response.prepare(request)
         
         try:
-            # Send initial event
-            await response.write(b"data: {\"type\": \"connected\", \"timestamp\": \"" + 
+            # Send initial connection event
+            await response.write(b"data: {\"type\": \"connected\", \"service\": \"sre-agent-mcp-server\", \"timestamp\": \"" + 
                                datetime.now().isoformat().encode() + b"\"}\n\n")
             
-            # Send heartbeat every 5 seconds
-            for i in range(10):  # Send 10 heartbeats
-                await asyncio.sleep(5)
+            # Send heartbeat every 10 seconds
+            for i in range(100):  # Send heartbeats for ~16 minutes
+                await asyncio.sleep(10)
                 await response.write(b"data: {\"type\": \"heartbeat\", \"count\": " + 
-                                   str(i).encode() + b"}\n\n")
+                                   str(i).encode() + b", \"timestamp\": \"" + 
+                                   datetime.now().isoformat().encode() + b"\"}\n\n")
                 
         except Exception as e:
             logger.error(f"SSE error: {e}")
@@ -307,30 +416,31 @@ class SimpleMCPServer:
         site = web.TCPSite(runner, host, port)
         await site.start()
         
-        logger.info(f"🌐 Simple MCP Server started on {host}:{port}")
+        logger.info(f"🌐 MCP Server started on {host}:{port}")
         logger.info(f"📋 MCP endpoint: http://localhost:{port}/mcp")
         logger.info(f"🏥 Health endpoint: http://localhost:{port}/health")
         logger.info(f"✅ Readiness endpoint: http://localhost:{port}/ready")
         logger.info(f"📡 SSE endpoint: http://localhost:{port}/sse")
+        logger.info(f"🔗 Agent service: {self.agent_service_url}")
         
         return runner
 
 async def main():
-    """Main entry point."""
-    logger.info("🚀 Starting Simple SRE Agent MCP Server")
+    """Main entry point for MCP Server."""
+    logger.info("🚀 Starting SRE Agent MCP Server (Thin Layer)")
     
     # Configure server options
     host = os.getenv("MCP_HOST", "0.0.0.0")
     port = int(os.getenv("MCP_PORT", "30120"))
     
-    server = SimpleMCPServer()
+    server = MCPServer()
     runner = await server.start_server(host, port)
     
     try:
-        logger.info("🏁 Simple MCP Server is running...")
+        logger.info("🏁 MCP Server is running...")
         await asyncio.Event().wait()  # Run forever
     except KeyboardInterrupt:
-        logger.info("🛑 Shutting down...")
+        logger.info("🛑 Shutting down MCP Server...")
     finally:
         await runner.cleanup()
 

@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-sre
+  labels:
+    name: agent-sre
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sre-agent-mcp-server
+  namespace: agent-sre
+  labels:
+    app: sre-agent-mcp-server
+    component: mcp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sre-agent-mcp-server
+  template:
+    metadata:
+      labels:
+        app: sre-agent-mcp-server
+        component: mcp-server
+    spec:
+      containers:
+      - name: sre-agent-mcp-server
+        image: ghcr.io/brunovlucena/agent-sre-mcp-server:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 30120
+          name: http
+        env:
+        - name: MCP_PORT
+          value: "30120"
+        - name: MCP_HOST
+          value: "0.0.0.0"
+        - name: OLLAMA_URL
+          value: "http://192.168.0.12:11434"
+        - name: MODEL_NAME
+          value: "bruno-sre:latest"
+        - name: SERVICE_NAME
+          value: "sre-agent-mcp-server"
+        - name: LOGFIRE_TOKEN_SRE_AGENT
+          valueFrom:
+            secretKeyRef:
+              name: ai-secrets
+              key: LOGFIRE_TOKEN_SRE_AGENT
+        - name: LANGSMITH_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ai-secrets
+              key: LANGSMITH_API_KEY
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 30120
+          initialDelaySeconds: 30
+          periodSeconds: 60
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 30120
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
+          successThreshold: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sre-agent-mcp-server-service
+  namespace: agent-sre
+  labels:
+    app: sre-agent-mcp-server
+    component: mcp-server
+spec:
+  type: ClusterIP
+  ports:
+  - port: 30120
+    targetPort: 30120
+    protocol: TCP
+    name: http
+  selector:
+    app: sre-agent-mcp-server
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sre-agent-mcp-server-nodeport
+  namespace: agent-sre
+  labels:
+    app: sre-agent-mcp-server
+    component: mcp-server
+spec:
+  type: NodePort
+  ports:
+  - port: 30120
+    targetPort: 30120
+    nodePort: 31160
+    protocol: TCP
+    name: http
+  selector:
+    app: sre-agent-mcp-server

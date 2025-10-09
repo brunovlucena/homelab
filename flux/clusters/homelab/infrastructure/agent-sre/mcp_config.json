@@ -18,23 +18,5 @@
         "MCP_PORT": "30121"
       }
     },
-    "grafana-mcp": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-e",
-        "GRAFANA_URL",
-        "-e",
-        "GRAFANA_API_KEY",
-        "mcp/grafana",
-        "--transport=stdio"
-      ],
-      "env": {
-        "GRAFANA_URL": "https://grafana.lucena.cloud",
-        "GRAFANA_API_KEY": "GLSA_LyBkhKFTGoCxmQXAcMNLZDOfc8SSVMmf_4671bfea"
-      }
-    }
   }
 }

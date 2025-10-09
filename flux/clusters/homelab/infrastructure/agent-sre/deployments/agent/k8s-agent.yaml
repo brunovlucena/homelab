@@ -8,32 +8,36 @@ metadata:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sre-agent-mcp
+  name: sre-agent
   namespace: agent-sre
   labels:
-    app: sre-agent-mcp
+    app: sre-agent
+    component: agent
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: sre-agent-mcp
+      app: sre-agent
   template:
     metadata:
       labels:
-        app: sre-agent-mcp
+        app: sre-agent
+        component: agent
     spec:
       containers:
-      - name: sre-agent-mcp
-        image: ghcr.io/brunovlucena/agent-sre:latest
+      - name: sre-agent
+        image: ghcr.io/brunovlucena/agent-sre-agent:latest
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 30121
+        - containerPort: 8080
           name: http
         env:
-        - name: MCP_PORT
-          value: "30121"
-        - name: MCP_HOST
+        - name: AGENT_PORT
+          value: "8080"
+        - name: AGENT_HOST
           value: "0.0.0.0"
+        - name: MCP_SERVER_URL
+          value: "http://sre-agent-mcp-server-service:30120"
         - name: OLLAMA_URL
           value: "http://192.168.0.12:11434"
         - name: MODEL_NAME
@@ -60,18 +64,18 @@ spec:
         livenessProbe:
           httpGet:
             path: /health
-            port: 30121
+            port: 8080
           initialDelaySeconds: 30
-          periodSeconds: 10
+          periodSeconds: 60
           timeoutSeconds: 5
           failureThreshold: 3
           successThreshold: 1
         readinessProbe:
           httpGet:
             path: /ready
-            port: 30121
+            port: 8080
           initialDelaySeconds: 10
-          periodSeconds: 5
+          periodSeconds: 30
           timeoutSeconds: 3
           failureThreshold: 3
           successThreshold: 1
@@ -79,17 +83,36 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: sre-agent-mcp-service
+  name: sre-agent-service
   namespace: agent-sre
   labels:
-    app: sre-agent-mcp
+    app: sre-agent
+    component: agent
 spec:
-  type: NodePort
+  type: ClusterIP
   ports:
-  - port: 30121
-    targetPort: 30121
-    nodePort: 31121
+  - port: 8080
+    targetPort: 8080
     protocol: TCP
     name: http
   selector:
-    app: sre-agent-mcp
+    app: sre-agent
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sre-agent-nodeport
+  namespace: agent-sre
+  labels:
+    app: sre-agent
+    component: agent
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 31081
+    protocol: TCP
+    name: http
+  selector:
+    app: sre-agent

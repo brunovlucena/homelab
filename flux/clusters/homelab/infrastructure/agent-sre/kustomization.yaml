@@ -5,8 +5,12 @@ metadata:
   name: sre-agent
 
 resources:
-- k8s-all.yaml
+  - deployments/agent
+  - deployments/mcp-server
 
 commonLabels:
   app: sre-agent
-  version: v1.0.0
+  version: v0.2.0
+  managed-by: flux
+
+namespace: agent-sre
