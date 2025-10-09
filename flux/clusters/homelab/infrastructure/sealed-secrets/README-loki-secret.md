@@ -16,7 +16,7 @@ If the script fails due to connectivity issues with sealed-secrets, you can use 
 
 ```bash
 # 1. Port-forward to sealed-secrets
-kubectl port-forward -n flux-system svc/sealed-secrets 8080:8080 &
+kubectl port-forward -n sealed-secrets svc/sealed-secrets 8080:8080 &
 PF_PID=$!
 
 # 2. Wait for port-forward to be ready
