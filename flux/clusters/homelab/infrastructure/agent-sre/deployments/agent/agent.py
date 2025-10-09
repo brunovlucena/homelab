@@ -27,8 +27,12 @@ class SREAgentService:
             middlewares=[self._logging_middleware]
         )
         self.mcp_server_url = os.getenv("MCP_SERVER_URL", "http://sre-agent-mcp-server-service:30120")
-        # Grafana MCP server configuration
-        self.grafana_mcp_url = os.getenv("GRAFANA_MCP_URL", "http://grafana-mcp.grafana-mcp:8000")
+        # MCP servers running on same pod
+        # self.grafana_mcp_url = os.getenv("GRAFANA_MCP_URL", "http://localhost:8001")
+        # self.prometheus_mcp_url = os.getenv("PROMETHEUS_MCP_URL", "http://prometheus-mcp.prometheus-mcp.svc.cluster.local")
+        self.func_mcp_url = os.getenv("FUNC_MCP_URL", "http://localhost:8003")
+        # Direct service URLs
+        self.grafana_url = os.getenv("GRAFANA_URL", "http://grafana.grafana:3000")
         self.prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus-operated.prometheus:9090")
         self._setup_routes()
     
@@ -82,8 +86,14 @@ class SREAgentService:
         
         # 📊 Monitoring and observability endpoints
         self.app.router.add_post('/golden-signals', self.handle_golden_signals)
-        self.app.router.add_post('/prometheus/query', self.handle_prometheus_query)
-        self.app.router.add_post('/kubernetes/logs', self.handle_kubernetes_logs)
+        self.app.router.add_post('/api/prometheus/query', self.handle_prometheus_query)
+        self.app.router.add_post('/api/grafana/query', self.handle_grafana_query)
+        self.app.router.add_post('/api/pod-logs', self.handle_pod_logs)
+        
+        # 🔌 MCP proxy endpoints to other MCP servers
+        self.app.router.add_post('/mcp/grafana_mcp', self.handle_grafana_mcp_proxy)
+        self.app.router.add_post('/mcp/prometheus_mcp', self.handle_prometheus_mcp_proxy)
+        self.app.router.add_post('/mcp/func_mcp', self.handle_func_mcp_proxy)
     
     async def handle_health(self, request: Request) -> Response:
         """Liveness probe endpoint."""
@@ -616,7 +626,7 @@ Please provide:
                 status=500
             )
     
-    async def handle_kubernetes_logs(self, request: Request) -> Response:
+    async def handle_pod_logs(self, request: Request) -> Response:
         """📜 Get logs from a Kubernetes pod"""
         try:
             data = await request.json()
@@ -648,6 +658,117 @@ Please provide:
                 {"error": str(e)},
                 status=500
             )
+    
+    async def handle_grafana_query(self, request: Request) -> Response:
+        """📊 Execute a Grafana query"""
+        try:
+            data = await request.json()
+            query = data.get("query", "")
+            dashboard_id = data.get("dashboard_id")
+            panel_id = data.get("panel_id")
+            
+            if not query:
+                return web.json_response(
+                    {"error": "Query is required"},
+                    status=400
+                )
+            
+            logger.info(f"📊 Executing Grafana query: {query}")
+            
+            # TODO: Implement actual Grafana API call
+            # For now, return a placeholder
+            return web.json_response({
+                "query": query,
+                "dashboard_id": dashboard_id,
+                "panel_id": panel_id,
+                "result": "Grafana query not yet implemented. Use Grafana UI directly.",
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        except Exception as e:
+            logger.error(f"❌ Error executing Grafana query: {e}")
+            return web.json_response(
+                {"error": str(e)},
+                status=500
+            )
+    
+    async def handle_grafana_mcp_proxy(self, request: Request) -> Response:
+        """🔌 Proxy MCP requests to Grafana MCP server"""
+        try:
+            data = await request.json()
+            
+            logger.info(f"🔌 Proxying request to Grafana MCP server")
+            
+            async with ClientSession() as session:
+                async with session.post(
+                    f"{self.grafana_mcp_url}/mcp",
+                    json=data,
+                    timeout=30
+                ) as response:
+                    result = await response.json()
+                    return web.json_response(result, status=response.status)
+        
+        except Exception as e:
+            logger.error(f"❌ Error proxying to Grafana MCP: {e}")
+            return web.json_response({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32603,
+                    "message": f"Error connecting to Grafana MCP server: {str(e)}"
+                }
+            }, status=500)
+    
+    async def handle_prometheus_mcp_proxy(self, request: Request) -> Response:
+        """🔌 Proxy MCP requests to Prometheus MCP server"""
+        try:
+            data = await request.json()
+            
+            logger.info(f"🔌 Proxying request to Prometheus MCP server")
+            
+            async with ClientSession() as session:
+                async with session.post(
+                    f"{self.prometheus_mcp_url}/mcp",
+                    json=data,
+                    timeout=30
+                ) as response:
+                    result = await response.json()
+                    return web.json_response(result, status=response.status)
+        
+        except Exception as e:
+            logger.error(f"❌ Error proxying to Prometheus MCP: {e}")
+            return web.json_response({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32603,
+                    "message": f"Error connecting to Prometheus MCP server: {str(e)}"
+                }
+            }, status=500)
+    
+    async def handle_func_mcp_proxy(self, request: Request) -> Response:
+        """🚀 Proxy MCP requests to Knative Func MCP server"""
+        try:
+            data = await request.json()
+            
+            logger.info(f"🚀 Proxying request to Func MCP server")
+            
+            async with ClientSession() as session:
+                async with session.post(
+                    f"{self.func_mcp_url}/mcp",
+                    json=data,
+                    timeout=30
+                ) as response:
+                    result = await response.json()
+                    return web.json_response(result, status=response.status)
+        
+        except Exception as e:
+            logger.error(f"❌ Error proxying to Func MCP: {e}")
+            return web.json_response({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32603,
+                    "message": f"Error connecting to Func MCP server: {str(e)}"
+                }
+            }, status=500)
     
     async def _check_mcp_server(self) -> Dict[str, Any]:
         """Check MCP server connectivity."""
