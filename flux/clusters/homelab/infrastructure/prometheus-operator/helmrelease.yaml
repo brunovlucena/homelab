@@ -269,6 +269,11 @@ spec:
           repeat_interval: 1h
           receiver: 'slack-default'
           routes:
+          # 🤖 Send all alerts to AI agent for analysis
+          - receiver: 'ai-agent-webhook'
+            matchers:
+            - severity =~ "warning|critical"
+            continue: true  # Continue to other receivers
           - match:
               severity: critical
             receiver: 'pagerduty-critical'
@@ -330,6 +335,14 @@ spec:
             title: 'ℹ️ Info: {{ .GroupLabels.alertname }}'
             text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
             send_resolved: true
+        # 🤖 AI Agent Webhook - Intelligent alert analysis
+        - name: 'ai-agent-webhook'
+          webhook_configs:
+          - url: 'http://sre-agent-service.agent-sre.svc.cluster.local:8080/webhook/alert'
+            send_resolved: true
+            http_config:
+              follow_redirects: true
+            max_alerts: 0  # No limit on alerts per notification
         inhibit_rules:
         - target_match:
             severity: warning

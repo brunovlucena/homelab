@@ -23,6 +23,9 @@ class SREAgentService:
         self.sre_agent = agent
         self.app = web.Application()
         self.mcp_server_url = os.getenv("MCP_SERVER_URL", "http://sre-agent-mcp-server-service:30120")
+        # Grafana MCP server configuration
+        self.grafana_mcp_url = os.getenv("GRAFANA_MCP_URL", "http://grafana-mcp.grafana-mcp:8000")
+        self.prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus-operated.prometheus:9090")
         self._setup_routes()
     
     def _setup_routes(self):
@@ -46,6 +49,14 @@ class SREAgentService:
         # Status and info endpoints
         self.app.router.add_get('/status', self.handle_status)
         self.app.router.add_get('/mcp/status', self.handle_mcp_status)
+        
+        # 🚨 Alertmanager webhook endpoint
+        self.app.router.add_post('/webhook/alert', self.handle_alertmanager_webhook)
+        
+        # 📊 Monitoring and observability endpoints
+        self.app.router.add_post('/golden-signals', self.handle_golden_signals)
+        self.app.router.add_post('/prometheus/query', self.handle_prometheus_query)
+        self.app.router.add_post('/kubernetes/logs', self.handle_kubernetes_logs)
     
     async def handle_health(self, request: Request) -> Response:
         """Liveness probe endpoint."""
@@ -352,6 +363,265 @@ class SREAgentService:
                 status=500
             )
     
+    async def handle_alertmanager_webhook(self, request: Request) -> Response:
+        """🚨 Alertmanager webhook handler - receives alerts from Alertmanager."""
+        try:
+            data = await request.json()
+            
+            # Alertmanager sends alerts in this format
+            alerts = data.get("alerts", [])
+            
+            if not alerts:
+                logger.warning("⚠️  No alerts in webhook payload")
+                return web.json_response(
+                    {"message": "No alerts to process"},
+                    status=200
+                )
+            
+            # Process each alert
+            results = []
+            for alert in alerts:
+                alert_name = alert.get("labels", {}).get("alertname", "Unknown")
+                severity = alert.get("labels", {}).get("severity", "unknown")
+                status = alert.get("status", "unknown")  # firing or resolved
+                
+                logger.info(f"🔔 Received alert: {alert_name} (severity={severity}, status={status})")
+                
+                # Only process firing alerts (skip resolved for now)
+                if status == "firing":
+                    # Build investigation context
+                    annotations = alert.get("annotations", {})
+                    labels = alert.get("labels", {})
+                    
+                    investigation_message = f"""
+🚨 ALERT INVESTIGATION REQUIRED
+
+Alert: {alert_name}
+Severity: {severity}
+Status: {status}
+
+Labels:
+{chr(10).join([f"  - {k}: {v}" for k, v in labels.items()])}
+
+Annotations:
+{chr(10).join([f"  - {k}: {v}" for k, v in annotations.items()])}
+
+Starts At: {alert.get("startsAt", "N/A")}
+Generator URL: {alert.get("generatorURL", "N/A")}
+
+Please provide:
+1. Root cause analysis
+2. Impact assessment  
+3. Immediate mitigation steps
+4. Recommended investigation queries (PromQL, LogQL)
+5. Prevention recommendations
+                    """.strip()
+                    
+                    # Execute incident analysis using the local agent
+                    analysis = await self.sre_agent.incident_response(investigation_message)
+                    
+                    results.append({
+                        "alert_name": alert_name,
+                        "severity": severity,
+                        "analysis": analysis,
+                        "fingerprint": alert.get("fingerprint", "")
+                    })
+                    
+                    logger.info(f"✅ Completed investigation for alert: {alert_name}")
+            
+            return web.json_response({
+                "message": f"Processed {len(results)} alerts",
+                "results": results,
+                "service": "sre-agent",
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        except Exception as e:
+            logger.error(f"❌ Error in alertmanager webhook handler: {e}", exc_info=True)
+            return web.json_response(
+                {"error": str(e)},
+                status=500
+            )
+    
+    async def handle_golden_signals(self, request: Request) -> Response:
+        """📊 Check golden signals for a service via Prometheus"""
+        try:
+            data = await request.json()
+            service_name = data.get("service_name", "")
+            namespace = data.get("namespace", "default")
+            
+            if not service_name:
+                return web.json_response(
+                    {"error": "Service name is required"},
+                    status=400
+                )
+            
+            logger.info(f"📊 Checking golden signals for service: {service_name} in namespace: {namespace}")
+            
+            # Build PromQL queries for golden signals
+            job_label = f"{service_name}"
+            queries = {
+                "latency": f'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{{job="{job_label}"}}[5m])) * 1000',
+                "traffic": f'rate(http_requests_total{{job="{job_label}"}}[5m]) * 60',
+                "errors": f'rate(http_requests_total{{job="{job_label}",code=~"5.."}}[5m]) / rate(http_requests_total{{job="{job_label}"}}[5m]) * 100',
+                "saturation": f'avg(rate(container_cpu_usage_seconds_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[5m])) * 100'
+            }
+            
+            # Execute queries and collect results
+            results = {}
+            async with ClientSession() as session:
+                for signal_name, query in queries.items():
+                    try:
+                        async with session.get(
+                            f"{self.prometheus_url}/api/v1/query",
+                            params={"query": query},
+                            timeout=10
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                result = data.get("data", {}).get("result", [])
+                                value = float(result[0].get("value", [0, "0"])[1]) if result else 0
+                                
+                                # Determine status based on thresholds
+                                status = "healthy"
+                                if signal_name == "latency" and value >= 500:
+                                    status = "critical"
+                                elif signal_name == "latency" and value >= 100:
+                                    status = "warning"
+                                elif signal_name == "traffic" and value >= 5000:
+                                    status = "critical"
+                                elif signal_name == "traffic" and value >= 1000:
+                                    status = "warning"
+                                elif signal_name == "errors" and value >= 5.0:
+                                    status = "critical"
+                                elif signal_name == "errors" and value >= 1.0:
+                                    status = "warning"
+                                elif signal_name == "saturation" and value >= 90:
+                                    status = "critical"
+                                elif signal_name == "saturation" and value >= 70:
+                                    status = "warning"
+                                
+                                results[signal_name] = {
+                                    "value": value,
+                                    "status": status,
+                                    "query": query
+                                }
+                            else:
+                                results[signal_name] = {
+                                    "value": 0,
+                                    "status": "unknown",
+                                    "query": query,
+                                    "error": f"HTTP {response.status}"
+                                }
+                    except Exception as e:
+                        logger.error(f"Error querying {signal_name}: {e}")
+                        results[signal_name] = {
+                            "value": 0,
+                            "status": "error",
+                            "query": query,
+                            "error": str(e)
+                        }
+            
+            # Determine overall status
+            statuses = [r.get("status") for r in results.values()]
+            if "critical" in statuses:
+                overall_status = "critical"
+            elif "warning" in statuses:
+                overall_status = "warning"
+            elif "error" in statuses or "unknown" in statuses:
+                overall_status = "degraded"
+            else:
+                overall_status = "healthy"
+            
+            return web.json_response({
+                "service_name": service_name,
+                "namespace": namespace,
+                "overall_status": overall_status,
+                "signals": results,
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        except Exception as e:
+            logger.error(f"❌ Error checking golden signals: {e}")
+            return web.json_response(
+                {"error": str(e)},
+                status=500
+            )
+    
+    async def handle_prometheus_query(self, request: Request) -> Response:
+        """🔍 Execute a PromQL query"""
+        try:
+            data = await request.json()
+            query = data.get("query", "")
+            
+            if not query:
+                return web.json_response(
+                    {"error": "Query is required"},
+                    status=400
+                )
+            
+            logger.info(f"🔍 Executing Prometheus query: {query}")
+            
+            async with ClientSession() as session:
+                async with session.get(
+                    f"{self.prometheus_url}/api/v1/query",
+                    params={"query": query},
+                    timeout=10
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        return web.json_response({
+                            "query": query,
+                            "result": result,
+                            "timestamp": datetime.now().isoformat()
+                        })
+                    else:
+                        error_text = await response.text()
+                        return web.json_response(
+                            {"error": f"Prometheus error: {error_text}"},
+                            status=response.status
+                        )
+        
+        except Exception as e:
+            logger.error(f"❌ Error executing Prometheus query: {e}")
+            return web.json_response(
+                {"error": str(e)},
+                status=500
+            )
+    
+    async def handle_kubernetes_logs(self, request: Request) -> Response:
+        """📜 Get logs from a Kubernetes pod"""
+        try:
+            data = await request.json()
+            pod_name = data.get("pod_name", "")
+            namespace = data.get("namespace", "default")
+            tail_lines = data.get("tail_lines", 100)
+            
+            if not pod_name:
+                return web.json_response(
+                    {"error": "Pod name is required"},
+                    status=400
+                )
+            
+            logger.info(f"📜 Getting logs for pod: {pod_name} in namespace: {namespace}")
+            
+            # TODO: Implement actual Kubernetes API call to get pod logs
+            # For now, return a placeholder
+            return web.json_response({
+                "pod_name": pod_name,
+                "namespace": namespace,
+                "logs": "Log fetching not yet implemented. Please use kubectl logs directly.",
+                "tail_lines": tail_lines,
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        except Exception as e:
+            logger.error(f"❌ Error getting pod logs: {e}")
+            return web.json_response(
+                {"error": str(e)},
+                status=500
+            )
+    
     async def _check_mcp_server(self) -> Dict[str, Any]:
         """Check MCP server connectivity."""
         try:
@@ -422,6 +692,7 @@ class SREAgentService:
         logger.info(f"💬 Chat endpoint: http://localhost:{port}/chat")
         logger.info(f"📊 MCP Chat endpoint: http://localhost:{port}/mcp/chat")
         logger.info(f"📈 Status endpoint: http://localhost:{port}/status")
+        logger.info(f"🚨 Alertmanager webhook: http://localhost:{port}/webhook/alert")
         
         return runner
 

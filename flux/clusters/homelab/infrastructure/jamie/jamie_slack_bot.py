@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 🤖 Jamie Slack Bot
-A sophisticated SRE assistant that communicates via MCP (Model Context Protocol)
-Connects to agent-sre service for intelligent infrastructure management
+A sophisticated SRE assistant with LLM brain that communicates via MCP (Model Context Protocol)
+Connects to Ollama for intelligence and agent-sre service for tool execution
 """
 
 import os
@@ -17,6 +17,10 @@ from slack_bolt.async_app import AsyncApp
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from slack_sdk.errors import SlackApiError
 
+# LangChain imports
+from langchain_ollama import ChatOllama
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -24,15 +28,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Configuration
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://192.168.0.16:11434")
+MODEL_NAME = os.environ.get("MODEL_NAME", "bruno-sre:latest")
+SERVICE_NAME = "jamie-slack-bot"
+
+# Initialize Ollama LLM
+try:
+    llm = ChatOllama(
+        model=MODEL_NAME,
+        base_url=OLLAMA_URL,
+        temperature=0.7,
+        num_ctx=8192,
+    )
+    logger.info(f"✅ Ollama connection established: {OLLAMA_URL} using model {MODEL_NAME}")
+except Exception as e:
+    logger.error(f"❌ Error connecting to Ollama: {e}")
+    llm = None
+
 
 class AgentSREClient:
     """Client for interacting with Agent-SRE via MCP"""
     
     def __init__(self, base_url: str = "http://sre-agent-mcp-server-service.agent-sre:30120"):
         self.base_url = base_url
-        self.mcp_chat_url = f"{base_url}/api/v1/agent-sre/mcp/chat"
-        self.mcp_analyze_logs_url = f"{base_url}/api/v1/agent-sre/mcp/analyze-logs"
-        self.status_url = f"{base_url}/api/v1/agent-sre/status"
+        self.mcp_url = f"{base_url}/mcp"
+        self.health_url = f"{base_url}/health"
         self.session = None
     
     async def __aenter__(self):
@@ -48,21 +69,35 @@ class AgentSREClient:
         if not self.session:
             raise RuntimeError("AgentSREClient not properly initialized")
         
+        # MCP protocol payload - use tools/call method
         payload = {
-            "message": message,
-            "timestamp": datetime.utcnow().isoformat(),
-            "context": context or {}
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "sre_chat",
+                "arguments": {
+                    "message": message,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "context": context or {}
+                }
+            }
         }
         
         try:
             async with self.session.post(
-                self.mcp_chat_url,
+                self.mcp_url,
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=30)
             ) as response:
                 if response.status == 200:
                     result = await response.json()
-                    return result
+                    # Extract text from MCP response format
+                    if "result" in result and "content" in result["result"]:
+                        content = result["result"]["content"]
+                        if content and len(content) > 0 and "text" in content[0]:
+                            return {"response": content[0]["text"]}
+                    return {"response": "No response from SRE agent"}
                 else:
                     error_text = await response.text()
                     logger.error(f"Agent-SRE API error: {response.status} - {error_text}")
@@ -95,14 +130,31 @@ class AgentSREClient:
             "timestamp": datetime.utcnow().isoformat()
         }
         
+        # MCP protocol payload - use tools/call method
+        mcp_payload = {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "analyze_logs",
+                "arguments": payload
+            }
+        }
+        
         try:
             async with self.session.post(
-                self.mcp_analyze_logs_url,
-                json=payload,
+                self.mcp_url,
+                json=mcp_payload,
                 timeout=aiohttp.ClientTimeout(total=45)
             ) as response:
                 if response.status == 200:
-                    return await response.json()
+                    result = await response.json()
+                    # Extract text from MCP response format
+                    if "result" in result and "content" in result["result"]:
+                        content = result["result"]["content"]
+                        if content and len(content) > 0 and "text" in content[0]:
+                            return {"analysis": content[0]["text"]}
+                    return {"analysis": "No analysis from SRE agent"}
                 else:
                     logger.error(f"Log analysis API error: {response.status}")
                     return {
@@ -123,7 +175,7 @@ class AgentSREClient:
         
         try:
             async with self.session.get(
-                self.status_url,
+                self.health_url,
                 timeout=aiohttp.ClientTimeout(total=5)
             ) as response:
                 if response.status == 200:
@@ -136,7 +188,7 @@ class AgentSREClient:
 
 
 class JamieSlackBot:
-    """🤖 Jamie - Your SRE Companion on Slack"""
+    """🤖 Jamie - Your SRE Companion on Slack with LLM Brain"""
     
     def __init__(self):
         # Initialize Slack app
@@ -148,7 +200,25 @@ class JamieSlackBot:
         # Bot configuration
         self.bot_name = "Jamie"
         self.bot_emoji = "🤖"
+        self.llm = llm  # LLM brain
         self.agent_url = os.environ.get("AGENT_SRE_URL", "http://sre-agent-mcp-server-service.agent-sre:30120")
+        
+        # System prompt for Jamie
+        self.system_prompt = """You are Jamie, an expert SRE (Site Reliability Engineering) assistant.
+You help with monitoring, troubleshooting, incident response, and maintaining system reliability.
+You provide clear, actionable insights based on SRE best practices and observability principles.
+
+Your expertise includes:
+- 📊 Golden Signals monitoring (latency, traffic, errors, saturation)
+- ☸️ Kubernetes operations and troubleshooting
+- 📈 Grafana dashboards and alerts
+- 🔍 Log analysis and error pattern detection
+- 🚨 Incident investigation and root cause analysis
+- 📉 Performance metrics and optimization
+- 🎯 Service health monitoring
+
+You are friendly, helpful, and concise. Use emojis to make responses engaging.
+When you need to execute infrastructure tasks, you have access to agent-sre MCP tools."""
         
         # User context storage (in production, use Redis or proper database)
         self.user_contexts: Dict[str, Dict] = {}
@@ -156,7 +226,182 @@ class JamieSlackBot:
         # Set up event handlers
         self._setup_handlers()
         
-        logger.info(f"🤖 Jamie Slack Bot initialized with Agent-SRE at {self.agent_url}")
+        logger.info(f"🤖 Jamie Slack Bot initialized")
+        logger.info(f"   🧠 LLM: {MODEL_NAME} @ {OLLAMA_URL}")
+        logger.info(f"   🔧 Agent-SRE: {self.agent_url}")
+    
+    async def _process_with_brain(self, message: str, context: Optional[Dict] = None) -> str:
+        """🧠 Process message using Jamie's LLM brain with MCP tool calling"""
+        if not self.llm:
+            return "⚠️ My brain is temporarily offline. Please try again later."
+        
+        try:
+            # 🔍 First, check if message requires MCP tool execution
+            tool_result = await self._detect_and_execute_tool(message)
+            
+            if tool_result:
+                # Tool was executed, now ask LLM to format the result
+                format_prompt = f"""The user asked: "{message}"
+
+I executed a tool and got this result:
+{tool_result}
+
+Please provide a friendly, concise response to the user based on this data. Use emojis and be conversational."""
+                
+                messages = [
+                    SystemMessage(content=self.system_prompt),
+                    HumanMessage(content=format_prompt)
+                ]
+                
+                response = await self.llm.ainvoke(messages)
+                return response.content
+            
+            # No tool needed, just regular LLM response
+            messages = [SystemMessage(content=self.system_prompt)]
+            
+            # Add conversation history if available
+            if context and context.get("conversation_history"):
+                for msg in context["conversation_history"]:
+                    if msg["role"] == "user":
+                        messages.append(HumanMessage(content=msg["content"]))
+                    elif msg["role"] == "assistant":
+                        messages.append(AIMessage(content=msg["content"]))
+            
+            # Add current message
+            messages.append(HumanMessage(content=message))
+            
+            # Invoke LLM
+            logger.info(f"🧠 Processing with LLM: {message[:100]}...")
+            response = await self.llm.ainvoke(messages)
+            
+            return response.content
+        
+        except Exception as e:
+            logger.error(f"❌ Error processing with LLM: {e}")
+            return f"⚠️ I encountered an error processing that request: {str(e)}"
+    
+    async def _detect_and_execute_tool(self, message: str) -> Optional[str]:
+        """🔍 Detect if message requires MCP tool and execute it"""
+        message_lower = message.lower()
+        
+        try:
+            # 📊 Golden Signals Detection
+            if any(keyword in message_lower for keyword in ["golden signal", "golden signals", "check signals", "service health", "service status"]):
+                # Extract service name
+                service_name = self._extract_service_name(message)
+                if service_name:
+                    logger.info(f"📊 Detected golden signals request for: {service_name}")
+                    async with AgentSREClient(self.agent_url) as agent:
+                        result = await self._call_mcp_tool(agent, "check_golden_signals", {
+                            "service_name": service_name,
+                            "namespace": "default"
+                        })
+                        return result
+            
+            # 🔍 Prometheus Query Detection
+            if "query prometheus" in message_lower or "promql" in message_lower:
+                # Extract query (simple heuristic - text after "query:" or in quotes)
+                import re
+                query_match = re.search(r'query[:\s]+(.+)', message, re.IGNORECASE)
+                if query_match:
+                    query = query_match.group(1).strip()
+                    logger.info(f"🔍 Detected Prometheus query: {query}")
+                    async with AgentSREClient(self.agent_url) as agent:
+                        result = await self._call_mcp_tool(agent, "query_prometheus", {"query": query})
+                        return result
+            
+            # 📜 Pod Logs Detection
+            if "pod log" in message_lower or "logs for pod" in message_lower or "get logs" in message_lower:
+                # Extract pod name
+                pod_name = self._extract_pod_name(message)
+                if pod_name:
+                    logger.info(f"📜 Detected pod logs request for: {pod_name}")
+                    async with AgentSREClient(self.agent_url) as agent:
+                        result = await self._call_mcp_tool(agent, "get_pod_logs", {
+                            "pod_name": pod_name,
+                            "namespace": "default"
+                        })
+                        return result
+            
+            # No tool detected
+            return None
+        
+        except Exception as e:
+            logger.error(f"❌ Error detecting/executing tool: {e}")
+            return None
+    
+    async def _call_mcp_tool(self, agent: 'AgentSREClient', tool_name: str, arguments: Dict) -> str:
+        """Call MCP tool via agent-sre"""
+        try:
+            payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": tool_name,
+                    "arguments": arguments
+                }
+            }
+            
+            async with agent.session.post(
+                agent.mcp_url,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    if "result" in result and "content" in result["result"]:
+                        content = result["result"]["content"]
+                        if content and len(content) > 0 and "text" in content[0]:
+                            return content[0]["text"]
+                    return "No response from agent"
+                else:
+                    error_text = await response.text()
+                    return f"Error: {error_text}"
+        except Exception as e:
+            logger.error(f"❌ Error calling MCP tool {tool_name}: {e}")
+            return f"Error: {str(e)}"
+    
+    def _extract_service_name(self, message: str) -> Optional[str]:
+        """Extract service name from message"""
+        import re
+        # Look for patterns like "for <service>" or "of <service>" or "@<service>"
+        patterns = [
+            r'for\s+(\w+[-\w]*)',
+            r'of\s+(\w+[-\w]*)',
+            r'@(\w+[-\w]*)',
+            r'service[:\s]+(\w+[-\w]*)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        
+        # Default to common services
+        common_services = ["homepage", "api", "frontend", "backend", "web"]
+        for service in common_services:
+            if service in message.lower():
+                return service
+        
+        return None
+    
+    def _extract_pod_name(self, message: str) -> Optional[str]:
+        """Extract pod name from message"""
+        import re
+        # Look for patterns like "pod <name>" or "pod: <name>"
+        patterns = [
+            r'pod[:\s]+([a-z0-9-]+)',
+            r'for pod ([a-z0-9-]+)',
+            r'from ([a-z0-9-]+)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, message, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        
+        return None
     
     def _setup_handlers(self):
         """Set up Slack event handlers"""
@@ -188,25 +433,14 @@ class JamieSlackBot:
             # Get user context
             context = self._get_user_context(user_id)
             
-            # Send to Agent-SRE via MCP
-            async with AgentSREClient(self.agent_url) as agent:
-                response = await agent.chat(question, context)
+            # Process with Jamie's brain (LLM)
+            response_text = await self._process_with_brain(question, context)
             
             # Update user context
-            self._update_user_context(user_id, question, response.get("response", ""))
+            self._update_user_context(user_id, question, response_text)
             
-            # Format response with sources if available
-            response_text = response.get("response", "I couldn't process that request.")
-            sources = response.get("sources", [])
-            model = response.get("model", "")
-            
+            # Format response
             formatted_response = f"{self.bot_emoji} {response_text}"
-            
-            if sources:
-                formatted_response += f"\n\n_Sources: {', '.join(sources)}_"
-            
-            if model:
-                formatted_response += f"\n_Model: {model}_"
             
             # Send response
             await say(formatted_response)
@@ -231,21 +465,14 @@ class JamieSlackBot:
             # Get user context
             context = self._get_user_context(user_id)
             
-            # Send to Agent-SRE via MCP
-            async with AgentSREClient(self.agent_url) as agent:
-                response = await agent.chat(text, context)
+            # Process with Jamie's brain (LLM)
+            response_text = await self._process_with_brain(text, context)
             
             # Update user context
-            self._update_user_context(user_id, text, response.get("response", ""))
+            self._update_user_context(user_id, text, response_text)
             
             # Format response
-            response_text = response.get("response", "I couldn't process that request.")
-            sources = response.get("sources", [])
-            
             formatted_response = f"{self.bot_emoji} {response_text}"
-            
-            if sources:
-                formatted_response += f"\n\n_Sources: {', '.join(sources)}_"
             
             # Send response
             await say(formatted_response)

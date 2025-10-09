@@ -161,6 +161,60 @@ class MCPServer:
                                 "type": "object",
                                 "properties": {}
                             }
+                        },
+                        {
+                            "name": "check_golden_signals",
+                            "description": "Check golden signals (latency, traffic, errors, saturation) for a service",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "service_name": {
+                                        "type": "string",
+                                        "description": "Service name to check (e.g., homepage, api, frontend)"
+                                    },
+                                    "namespace": {
+                                        "type": "string",
+                                        "description": "Kubernetes namespace (optional, defaults to 'default')"
+                                    }
+                                },
+                                "required": ["service_name"]
+                            }
+                        },
+                        {
+                            "name": "query_prometheus",
+                            "description": "Execute a PromQL query against Prometheus",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "query": {
+                                        "type": "string",
+                                        "description": "PromQL query to execute"
+                                    }
+                                },
+                                "required": ["query"]
+                            }
+                        },
+                        {
+                            "name": "get_pod_logs",
+                            "description": "Get logs from a Kubernetes pod",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "pod_name": {
+                                        "type": "string",
+                                        "description": "Pod name"
+                                    },
+                                    "namespace": {
+                                        "type": "string",
+                                        "description": "Namespace (optional, defaults to 'default')"
+                                    },
+                                    "tail_lines": {
+                                        "type": "number",
+                                        "description": "Number of lines to tail (optional, defaults to 100)"
+                                    }
+                                },
+                                "required": ["pod_name"]
+                            }
                         }
                     ]
                     
@@ -240,7 +294,10 @@ class MCPServer:
                     "analyze_logs": "/analyze-logs", 
                     "incident_response": "/incident-response",
                     "monitoring_advice": "/monitoring-advice",
-                    "health_check": "/health"
+                    "health_check": "/health",
+                    "check_golden_signals": "/golden-signals",
+                    "query_prometheus": "/prometheus/query",
+                    "get_pod_logs": "/kubernetes/logs"
                 }
                 
                 endpoint = endpoint_map.get(tool_name)
@@ -258,6 +315,19 @@ class MCPServer:
                     request_data = {"system": arguments.get("system", "")}
                 elif tool_name == "health_check":
                     request_data = {}
+                elif tool_name == "check_golden_signals":
+                    request_data = {
+                        "service_name": arguments.get("service_name", ""),
+                        "namespace": arguments.get("namespace", "default")
+                    }
+                elif tool_name == "query_prometheus":
+                    request_data = {"query": arguments.get("query", "")}
+                elif tool_name == "get_pod_logs":
+                    request_data = {
+                        "pod_name": arguments.get("pod_name", ""),
+                        "namespace": arguments.get("namespace", "default"),
+                        "tail_lines": arguments.get("tail_lines", 100)
+                    }
                 else:
                     return f"❌ Unknown tool: {tool_name}"
                 
@@ -286,6 +356,13 @@ class MCPServer:
                                 return data.get("response", "No response")
                             elif tool_name == "monitoring_advice":
                                 return data.get("advice", "No advice")
+                            elif tool_name == "check_golden_signals":
+                                # Return formatted golden signals data
+                                return json.dumps(data, indent=2)
+                            elif tool_name == "query_prometheus":
+                                return json.dumps(data, indent=2)
+                            elif tool_name == "get_pod_logs":
+                                return data.get("logs", "No logs")
                             else:
                                 return json.dumps(data, indent=2)
                         else:

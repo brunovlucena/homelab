@@ -5,7 +5,7 @@ IMAGE_NAME := jamie-slack-bot
 REGISTRY := ghcr.io/brunovlucena
 TAG := latest
 IMAGE := $(REGISTRY)/$(IMAGE_NAME):$(TAG)
-NAMESPACE := homepage
+NAMESPACE := jamie
 
 help: ## 📖 Show this help message
 	@echo "🤖 Jamie Slack Bot - Makefile Commands"

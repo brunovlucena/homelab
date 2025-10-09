@@ -54,13 +54,17 @@ spec:
               key: SLACK_SIGNING_SECRET
         - name: AGENT_SRE_URL
           value: "http://sre-agent-mcp-server-service.agent-sre:30120"
+        - name: OLLAMA_URL
+          value: "http://192.168.0.16:11434"
+        - name: MODEL_NAME
+          value: "bruno-sre:latest"
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
             memory: "256Mi"
             cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
         securityContext:
           capabilities:
             drop:
