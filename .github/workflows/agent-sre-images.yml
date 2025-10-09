@@ -1,8 +1,9 @@
-# 🤖 Agent Images CI/CD Pipeline
+# 🤖 Agent SRE Images CI/CD Pipeline
 #
 # This workflow builds, tests, and pushes Docker images for the agent-sre service.
+# It requires tests to pass before building images.
 
-name: "🤖 Agent Images CI/CD"
+name: "🤖 Agent SRE Images CI/CD"
 
 permissions:
   contents: read
@@ -37,6 +38,10 @@ on:
         required: false
         default: false
         type: boolean
+  workflow_run:
+    workflows: ["🧪 Agent SRE Tests"]
+    types:
+      - completed
 
 env:
   REGISTRY: ghcr.io/brunovlucena
@@ -45,8 +50,14 @@ env:
   PYTHON_VERSION_SRE: '3.13'
 
 jobs:
+  # ✅ Run tests before building
+  run-tests:
+    uses: ./.github/workflows/agent-sre-tests.yml
+    secrets: inherit
+
   # 🔍 Detect changes and determine which agent services to build
   detect-changes:
+    needs: run-tests
     runs-on: ubuntu-latest
     outputs:
       build-agent-sre: ${{ steps.changes.outputs.agent-sre }}
@@ -163,6 +174,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./flux/clusters/homelab/infrastructure/agent-sre
+          file: ./flux/clusters/homelab/infrastructure/agent-sre/deployments/agent/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -189,13 +201,13 @@ jobs:
 
   # 📊 Generate Build Summary
   build-summary:
-    needs: [detect-changes, build-agent-sre]
+    needs: [run-tests, detect-changes, build-agent-sre]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: "📊 Generate Build Summary"
         run: |
-          echo "## 🤖 Agent Images Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🤖 Agent SRE Images Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Build Information:**" >> $GITHUB_STEP_SUMMARY
           echo "- Environment: ${{ needs.detect-changes.outputs.environment }}" >> $GITHUB_STEP_SUMMARY

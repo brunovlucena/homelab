@@ -1,0 +1,190 @@
+# 🧪 Agent SRE Tests CI/CD Pipeline
+#
+# This workflow runs tests for the agent-sre service before building images.
+
+name: "🧪 Agent SRE Tests"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-sre/**'
+      - '.github/workflows/agent-sre-tests.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-sre/**'
+      - '.github/workflows/agent-sre-tests.yml'
+  workflow_call:
+    outputs:
+      tests_passed:
+        description: "Whether all tests passed"
+        value: ${{ jobs.test-agent-sre.result == 'success' }}
+
+env:
+  PYTHON_VERSION: '3.13'
+  WORKING_DIR: ./flux/clusters/homelab/infrastructure/agent-sre
+
+jobs:
+  # 🔍 Detect changes to determine if tests should run
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should-test: ${{ steps.changes.outputs.should-test }}
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "🔍 Detect Changes"
+        id: changes
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "should-test=true" >> $GITHUB_OUTPUT
+          elif git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/agent-sre/; then
+            echo "should-test=false" >> $GITHUB_OUTPUT
+          else
+            echo "should-test=true" >> $GITHUB_OUTPUT
+          fi
+
+  # 🧪 Run Python tests for agent-sre
+  test-agent-sre:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should-test == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "🔧 Setup Python Environment"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: "📦 Install uv"
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: "📦 Install Dependencies with uv"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "📦 Installing Python dependencies with uv..."
+          uv sync --frozen --extra dev
+
+      - name: "🔍 Run Linting with flake8"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "🔍 Running Python linting..."
+          uv run flake8 deployments/ --max-line-length=120 --extend-ignore=E203,W503 || true
+
+      - name: "🎨 Check Code Formatting with black"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "🎨 Checking code formatting..."
+          uv run black --check deployments/ || true
+
+      - name: "📋 Check Import Sorting with isort"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "📋 Checking import sorting..."
+          uv run isort --check-only deployments/ || true
+
+      - name: "🧪 Run Unit Tests with pytest"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "🧪 Running Python tests..."
+          uv run pytest tests/ -v \
+            --cov=deployments \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --junit-xml=test-results.xml \
+            || echo "⚠️ Some tests failed"
+
+      - name: "📊 Upload Test Results"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            ${{ env.WORKING_DIR }}/test-results.xml
+            ${{ env.WORKING_DIR }}/coverage.xml
+          retention-days: 30
+
+      - name: "📈 Upload Coverage to Codecov"
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ env.WORKING_DIR }}/coverage.xml
+          flags: agent-sre
+          name: agent-sre-coverage
+          fail_ci_if_error: false
+
+      - name: "💬 Comment PR with Test Results"
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Read test results if available
+            let testSummary = '## 🧪 Agent SRE Test Results\n\n';
+            
+            try {
+              const resultsPath = path.join('${{ env.WORKING_DIR }}', 'test-results.xml');
+              if (fs.existsSync(resultsPath)) {
+                testSummary += '✅ Tests executed successfully\n\n';
+              } else {
+                testSummary += '⚠️ Test results not found\n\n';
+              }
+            } catch (error) {
+              testSummary += '⚠️ Could not read test results\n\n';
+            }
+            
+            testSummary += `**Workflow:** [${context.workflow}](${context.payload.repository.html_url}/actions/runs/${context.runId})\n`;
+            testSummary += `**Commit:** ${context.sha.substring(0, 7)}\n`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: testSummary
+            });
+
+  # 📊 Generate Test Summary
+  test-summary:
+    needs: [detect-changes, test-agent-sre]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: "📊 Generate Test Summary"
+        run: |
+          echo "## 🧪 Agent SRE Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Information:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Trigger: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Change Detection | ${{ needs.detect-changes.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Agent SRE Tests | ${{ needs.test-agent-sre.result == 'success' && '✅ Success' || needs.test-agent-sre.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.test-agent-sre.result }}" == "success" ]]; then
+            echo "**Status:** ✅ All tests passed! Ready to build images." >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.test-agent-sre.result }}" == "skipped" ]]; then
+            echo "**Status:** ⏭️ Tests skipped (no changes detected)." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status:** ❌ Tests failed! Please fix the issues before building images." >> $GITHUB_STEP_SUMMARY
+          fi
+

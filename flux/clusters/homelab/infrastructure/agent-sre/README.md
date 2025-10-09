@@ -1,343 +1,260 @@
-# 🤖 SRE Agent with LangGraph
+# 🤖 Agent SRE - Site Reliability Engineering Agent
 
-Production-ready SRE Agent with LangGraph state management and MCP Server capabilities for distributed AI-powered operations.
+A comprehensive SRE (Site Reliability Engineering) agent service built with LangGraph and LangChain, designed to provide intelligent assistance for monitoring, incident response, log analysis, and system reliability tasks.
 
-## 🚀 Quick Start
+## 📋 Overview
 
-### Local Development
+The Agent SRE service consists of two main components:
 
-```bash
-# Start all services with docker-compose
-docker-compose up -d
+1. **Agent Service** - The core SRE agent with LangGraph state management
+2. **MCP Server** - A thin protocol layer for Model Context Protocol communication
 
-# Or start individual services
-cd deployments/agent && python agent.py
-cd deployments/mcp-server && python mcp_server.py
-```
-
-### Production Deployment
-
-```bash
-# Build and push images
-make build-agent
-make build-mcp-server
-
-# Deploy to Kubernetes
-kubectl apply -f deployments/agent/k8s-agent.yaml
-kubectl apply -f deployments/mcp-server/k8s-mcp-server.yaml
-```
+Both services work together to provide a robust, scalable SRE assistant that can be integrated into various workflows and tools.
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      MCP Server (Port 30120)                │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  MCP Protocol Handler (JSON-RPC 2.0)                │   │
-│  │  - initialize, tools/list, tools/call               │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                           ↓                                 │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Tool Forwarding Layer                              │   │
-│  │  Maps MCP tools → Agent API endpoints              │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────────┐
-│                   SRE Agent (Port 8080)                     │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │         LangGraph State Management                  │   │
-│  │  ┌──────────────────────────────────────────────┐  │   │
-│  │  │  1. Analyze Node (LLM Analysis)              │  │   │
-│  │  │  2. Generate Recommendations Node            │  │   │
-│  │  │  3. Format Response Node                     │  │   │
-│  │  └──────────────────────────────────────────────┘  │   │
-│  │                     ↓                               │   │
-│  │         Memory Checkpointer (Thread State)          │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                           ↓                                 │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Ollama LLM (ChatOllama)                            │   │
-│  │  Model: bruno-sre:latest                            │   │
-│  │  URL: http://192.168.0.3:11434                      │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────┐
+│   MCP Client    │  (Claude Desktop, IDEs, etc.)
+└────────┬────────┘
+         │ MCP Protocol
+         ↓
+┌─────────────────┐
+│   MCP Server    │  (Port 30120)
+│   Thin Layer    │
+└────────┬────────┘
+         │ HTTP API
+         ↓
+┌─────────────────┐
+│  Agent Service  │  (Port 8080)
+│   LangGraph     │
+│   + Ollama      │
+└─────────────────┘
 ```
 
 ## ✨ Features
 
-### LangGraph State Management
-- **State-based Workflows**: Structured agent execution with clear state transitions
-- **Memory Checkpointer**: Conversation history and context preservation
-- **Multi-Node Processing**: Analyze → Recommend → Format pipeline
-- **Thread Management**: Isolated sessions with unique thread IDs
+- **🔍 Log Analysis**: Intelligent analysis of system logs with pattern detection and root cause identification
+- **🚨 Incident Response**: Guided incident response with best practices and communication templates
+- **📊 Monitoring Advice**: Recommendations for monitoring strategies, metrics, and alerting
+- **💬 General SRE Chat**: Interactive consultation on SRE topics and best practices
+- **🏥 Health Checks**: Built-in health and readiness probes for Kubernetes
+- **📈 Observability**: Integrated with Logfire and LangSmith for tracing and monitoring
+- **🔄 State Management**: LangGraph-based workflow for complex reasoning and decision-making
 
-### MCP Server
-- **Decoupled Architecture**: Thin protocol layer separate from agent logic
-- **JSON-RPC 2.0**: Standard MCP protocol implementation
-- **Tool Registry**: Expose agent capabilities as MCP tools
-- **Health Monitoring**: Liveness and readiness probes
+## 🚀 Quick Start
 
-### SRE Capabilities
-- **Log Analysis**: Parse and analyze logs with AI insights
-- **Incident Response**: Guided incident management and remediation
-- **Monitoring Advice**: Observability and alerting recommendations
-- **Performance Analysis**: Bottleneck identification and optimization
+### Running Locally with Docker Compose
 
-## 📦 Components
-
-### 1. SRE Agent (`deployments/agent/`)
-- **core.py**: LangGraph agent implementation with state management
-- **agent.py**: HTTP API server for direct agent access
-- **Dockerfile**: Container image for agent service
-- **k8s-agent.yaml**: Kubernetes deployment manifests
-
-### 2. MCP Server (`deployments/mcp-server/`)
-- **mcp_server.py**: MCP protocol handler and tool forwarding
-- **core.py**: Shared logging and utilities
-- **Dockerfile**: Container image for MCP server
-- **k8s-mcp-server.yaml**: Kubernetes deployment manifests
-
-## 🛠️ Technology Stack
-
-**AI Framework:**
-- LangGraph 0.2+ (State management)
-- LangChain 0.3+ (LLM orchestration)
-- ChatOllama (LLM interface)
-- LangSmith (Tracing and monitoring)
-
-**Observability:**
-- Logfire (Distributed tracing)
-- Prometheus (Metrics)
-- Custom ServiceMonitors
-
-**Infrastructure:**
-- Kubernetes (Container orchestration)
-- Docker (Containerization)
-- Flux CD (GitOps deployment)
-
-## 🔧 Configuration
+```bash
+cd flux/clusters/homelab/infrastructure/agent-sre
+docker-compose up -d
+```
 
 ### Environment Variables
 
-**Agent Service:**
-```bash
-OLLAMA_URL=http://192.168.0.3:11434
-MODEL_NAME=bruno-sre:latest
-SERVICE_NAME=sre-agent
-AGENT_HOST=0.0.0.0
-AGENT_PORT=8080
-LOGFIRE_TOKEN_SRE_AGENT=<token>
-LANGSMITH_API_KEY=<key>
-```
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OLLAMA_URL` | URL to Ollama server | `http://192.168.0.3:11434` |
+| `MODEL_NAME` | LLM model to use | `bruno-sre:latest` |
+| `AGENT_HOST` | Agent service host | `0.0.0.0` |
+| `AGENT_PORT` | Agent service port | `8080` |
+| `MCP_HOST` | MCP server host | `0.0.0.0` |
+| `MCP_PORT` | MCP server port | `30120` |
+| `LOGFIRE_TOKEN_SRE_AGENT` | Logfire token (optional) | - |
+| `LANGSMITH_API_KEY` | LangSmith API key (optional) | - |
 
-**MCP Server:**
-```bash
-MCP_HOST=0.0.0.0
-MCP_PORT=30120
-AGENT_SERVICE_URL=http://sre-agent-service:8080
-```
-
-## 📊 API Endpoints
+## 📚 API Endpoints
 
 ### Agent Service (Port 8080)
 
-**Health & Status:**
+#### Health & Status
 - `GET /health` - Liveness probe
 - `GET /ready` - Readiness probe
-- `GET /status` - Detailed status
+- `GET /status` - Detailed agent status
 
-**SRE Operations:**
+#### Direct Agent API
 - `POST /chat` - General SRE chat
-- `POST /analyze-logs` - Log analysis
-- `POST /incident-response` - Incident guidance
+- `POST /analyze-logs` - Analyze logs
+- `POST /incident-response` - Incident response guidance
 - `POST /monitoring-advice` - Monitoring recommendations
+
+#### MCP Forwarding
+- `POST /mcp/chat` - Chat via MCP server
+- `POST /mcp/analyze-logs` - Log analysis via MCP
+- `POST /mcp/incident-response` - Incident response via MCP
+- `POST /mcp/monitoring-advice` - Monitoring advice via MCP
 
 ### MCP Server (Port 30120)
 
-**MCP Protocol:**
-- `GET /mcp` - Server info
-- `POST /mcp` - JSON-RPC 2.0 requests
-- `GET /sse` - Server-Sent Events
-
-**Health:**
-- `GET /health` - Liveness probe
-- `GET /ready` - Readiness probe (checks agent connectivity)
+- `POST /mcp` - MCP JSON-RPC 2.0 endpoint
+- `GET /mcp` - Server information
+- `GET /health` - Health check
+- `GET /ready` - Readiness check
+- `GET /sse` - Server-Sent Events for real-time updates
 
 ## 🧪 Testing
 
-### Test Agent Service
+### Running Tests Locally
 
 ```bash
-# Health check
-curl http://localhost:8080/health
+# Install dependencies with uv
+uv sync --frozen --extra dev
 
-# Chat with agent
-curl -X POST http://localhost:8080/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "How do I monitor Kubernetes pods?", "thread_id": "test-1"}'
+# Run all tests
+uv run pytest tests/ -v
 
-# Analyze logs
-curl -X POST http://localhost:8080/analyze-logs \
-  -H "Content-Type: application/json" \
-  -d '{"logs": "ERROR: Connection timeout...", "thread_id": "log-1"}'
+# Run with coverage
+uv run pytest tests/ --cov=deployments --cov-report=term-missing
+
+# Run specific test file
+uv run pytest tests/test_agent_core.py -v
+
+# Run linting
+uv run flake8 deployments/ --max-line-length=120
+uv run black --check deployments/
+uv run isort --check-only deployments/
 ```
 
-### Test MCP Server
+### Test Structure
 
-```bash
-# Initialize MCP session
-curl -X POST http://localhost:30120/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "initialize",
-    "params": {
-      "protocolVersion": "2024-11-05",
-      "capabilities": {},
-      "clientInfo": {"name": "test", "version": "1.0"}
-    }
-  }'
-
-# List available tools
-curl -X POST http://localhost:30120/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}'
-
-# Call a tool
-curl -X POST http://localhost:30120/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 3,
-    "method": "tools/call",
-    "params": {
-      "name": "sre_chat",
-      "arguments": {"message": "How do I debug pod crashes?"}
-    }
-  }'
+```
+tests/
+├── __init__.py
+├── conftest.py              # Shared fixtures and configuration
+├── test_agent_core.py       # Core LangGraph agent tests
+├── test_agent_service.py    # HTTP API service tests
+└── test_mcp_server.py       # MCP server protocol tests
 ```
 
-## 📈 Monitoring
+## 🔄 CI/CD Pipeline
 
-### Kubernetes Resources
+The Agent SRE service uses a two-stage CI/CD pipeline:
+
+### Stage 1: Tests (agent-sre-tests.yml)
+- ✅ Runs linting (flake8, black, isort)
+- ✅ Runs unit tests with pytest
+- ✅ Generates coverage reports
+- ✅ Comments on PRs with test results
+
+### Stage 2: Images (agent-sre-images.yml)
+- ✅ Waits for tests to pass
+- ✅ Builds Docker images
+- ✅ Pushes to GitHub Container Registry
+- ✅ Runs security scans with Trivy
+- ✅ Supports multi-arch (amd64, arm64)
+
+### Workflow Status
+
+[![🧪 Agent SRE Tests](https://github.com/brunovlucena/homelab/actions/workflows/agent-sre-tests.yml/badge.svg)](https://github.com/brunovlucena/homelab/actions/workflows/agent-sre-tests.yml)
+[![🤖 Agent SRE Images CI/CD](https://github.com/brunovlucena/homelab/actions/workflows/agent-sre-images.yml/badge.svg)](https://github.com/brunovlucena/homelab/actions/workflows/agent-sre-images.yml)
+
+## 🐳 Docker Images
+
+Images are automatically built and pushed to GitHub Container Registry:
+
+- **Development**: `ghcr.io/brunovlucena/agent-sre:dev`
+- **Production**: `ghcr.io/brunovlucena/agent-sre:latest`
+
+## 📦 Dependencies
+
+Main dependencies:
+- `langchain >= 0.3.0` - LangChain framework
+- `langchain-ollama >= 0.2.0` - Ollama integration
+- `langgraph >= 0.2.0` - State management
+- `langsmith >= 0.1.0` - Tracing and monitoring
+- `logfire >= 0.1.0` - Observability
+- `aiohttp >= 3.9.0` - Async HTTP server
+- `pydantic >= 2.0.0` - Data validation
+
+Dev dependencies:
+- `pytest >= 7.0.0` - Testing framework
+- `pytest-cov >= 4.0.0` - Coverage reporting
+- `flake8 >= 6.0.0` - Linting
+- `black >= 23.0.0` - Code formatting
+- `isort >= 5.12.0` - Import sorting
+
+## 🔧 Development
+
+### Code Style
+
+This project follows these code style guidelines:
+- **Line length**: 120 characters
+- **Python version**: 3.11+
+- **Formatter**: Black
+- **Linter**: Flake8
+- **Import sorter**: isort
+
+### Pre-commit Setup
 
 ```bash
-# Check agent status
-kubectl get pods -n agent-sre -l app=sre-agent
+# Format code
+uv run black deployments/
 
-# Check MCP server status
-kubectl get pods -n agent-sre -l app=sre-agent-mcp-server
+# Sort imports
+uv run isort deployments/
 
-# View agent logs
-kubectl logs -n agent-sre -l app=sre-agent --tail=100 -f
-
-# View MCP server logs
-kubectl logs -n agent-sre -l app=sre-agent-mcp-server --tail=100 -f
+# Run linter
+uv run flake8 deployments/ --max-line-length=120
 ```
 
-### Service Endpoints
+## 🚢 Deployment
+
+### Kubernetes
+
+The service is deployed to Kubernetes using Kustomize:
 
 ```bash
-# Agent via NodePort
-curl http://<node-ip>:31150/health
+# Deploy to Kubernetes
+kubectl apply -k deployments/agent/
 
-# MCP Server via NodePort
-curl http://<node-ip>:31160/health
-```
-
-## 🔐 Security
-
-- **Sealed Secrets**: API keys and tokens managed via sealed-secrets
-- **Network Policies**: Service-to-service communication restrictions
-- **RBAC**: Kubernetes role-based access control
-- **No Direct Exposure**: MCP server accessed through controlled endpoints
-
-## 📝 Development
-
-### Build Images Locally
-
-```bash
-# Build agent image
-cd deployments/agent
-docker build -t agent-sre:dev .
-
-# Build MCP server image
-cd deployments/mcp-server
-docker build -t agent-sre-mcp-server:dev .
-```
-
-### Run with Docker Compose
-
-```bash
-# Start all services
-docker-compose up -d
+# Check deployment status
+kubectl get pods -n agent-sre
 
 # View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
+kubectl logs -n agent-sre -l app=sre-agent
 ```
 
-## 🎯 Use Cases
+### Configuration
 
-1. **Automated Log Analysis**: Feed logs to the agent for AI-powered insights
-2. **Incident Management**: Get step-by-step incident response guidance
-3. **Monitoring Setup**: Receive recommendations for observability stack
-4. **Performance Debugging**: Analyze system performance bottlenecks
-5. **Knowledge Base**: Query SRE best practices and solutions
+See the Kubernetes manifests in:
+- `deployments/agent/k8s-agent.yaml`
+- `deployments/mcp-server/k8s-mcp-server.yaml`
 
-## 🤝 Integration
+## 📈 Monitoring & Observability
 
-### Homepage Integration
+The service integrates with:
+- **Logfire**: Distributed tracing and logging
+- **LangSmith**: LLM call tracing and debugging
+- **Prometheus**: Metrics collection (via ServiceMonitor)
+- **Grafana**: Dashboards and visualization
 
-The homepage API integrates with the agent via:
-- Direct API calls to agent service
-- MCP protocol for tool-based access
-- Automatic fallback handling
-- Health check monitoring
+## 🤝 Contributing
 
-### Cursor IDE Integration
+1. Create a feature branch
+2. Make your changes
+3. Run tests locally: `uv run pytest tests/ -v`
+4. Ensure linting passes: `uv run flake8 deployments/`
+5. Submit a pull request
 
-Configure MCP server in `mcp_config.json`:
-```json
-{
-  "mcpServers": {
-    "sre-agent": {
-      "command": "mcp-remote",
-      "args": ["http://127.0.0.1:31160/mcp/"],
-      "env": {}
-    }
-  }
-}
-```
+The CI/CD pipeline will automatically:
+- Run tests on your PR
+- Comment with test results
+- Build images if tests pass
+- Deploy to dev environment
 
-## 📚 Documentation
+## 📄 License
 
-- **LangGraph**: https://langchain-ai.github.io/langgraph/
-- **LangChain**: https://python.langchain.com/
-- **MCP Protocol**: https://modelcontextprotocol.io/
-- **Ollama**: https://ollama.ai/
+This project is part of the homelab infrastructure.
 
-## 🚀 Roadmap
+## 🔗 Related Documentation
 
-- [ ] Add more SRE tools (kubectl, Prometheus queries, etc.)
-- [ ] Implement streaming responses via SSE
-- [ ] Add RAG for documentation lookup
-- [ ] Integrate with Prometheus for real-time metrics
-- [ ] Add custom model fine-tuning capabilities
-- [ ] Multi-agent collaboration workflows
-
-## 📞 Support
-
-- **Issues**: Report bugs and feature requests via GitHub Issues
-- **Logs**: Check Logfire dashboard for distributed traces
-- **Metrics**: View Prometheus/Grafana for service metrics
+- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
+- [LangChain Documentation](https://python.langchain.com/)
+- [Ollama Documentation](https://ollama.ai/docs)
+- [MCP Protocol Specification](https://modelcontextprotocol.io/)
 
 ---
 
-**Version:** 0.2.0  
-**Status:** ✅ Production Ready with LangGraph  
-**Last Updated:** 2025-10-09
+**Maintained by**: Bruno Lucena  
+**Last Updated**: 2025-10-09
