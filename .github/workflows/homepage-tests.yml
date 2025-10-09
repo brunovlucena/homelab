@@ -96,9 +96,22 @@ jobs:
         working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
         run: |
           echo "📦 Installing npm dependencies..."
-          npm ci --legacy-peer-deps --no-audit --no-fund || {
+          # Clear npm cache to avoid stale data
+          npm cache clean --force
+          
+          # Try npm ci first, then fallback to npm install
+          npm ci --legacy-peer-deps --no-audit --no-fund --prefer-offline || {
             echo "❌ npm ci failed, trying npm install..."
+            # Remove node_modules and package-lock.json for clean install
+            rm -rf node_modules package-lock.json
             npm install --legacy-peer-deps --no-audit --no-fund
+          }
+          
+          # Verify jest-util is available
+          echo "🔍 Verifying jest-util installation..."
+          npm list jest-util || {
+            echo "❌ jest-util not found, installing explicitly..."
+            npm install jest-util@^29.7.0 --save-dev
           }
 
       - name: 🧪 Run unit tests
@@ -164,7 +177,15 @@ jobs:
       - name: 🏗️ Build frontend
         working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
         run: |
-          npm ci --legacy-peer-deps --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund
+          echo "📦 Installing dependencies for build..."
+          npm cache clean --force
+          npm ci --legacy-peer-deps --no-audit --no-fund --prefer-offline || {
+            echo "❌ npm ci failed, trying npm install..."
+            rm -rf node_modules package-lock.json
+            npm install --legacy-peer-deps --no-audit --no-fund
+          }
+          
+          echo "🏗️ Building frontend..."
           npm run build
 
       - name: ✅ Verify builds

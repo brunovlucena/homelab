@@ -58,8 +58,8 @@ class ChatbotService {
     // Determine agent URL based on environment
     // In production, use internal cluster service
     // In development, use NodePort or localhost proxy
-    const isProduction = import.meta.env.PROD
-    const apiUrl = import.meta.env.VITE_API_URL || '/api/v1'
+    const isProduction = process.env.NODE_ENV === 'production'
+    const apiUrl = process.env.VITE_API_URL || '/api/v1'
     
     // Use API proxy for agent-sre in production, direct NodePort in dev
     this.agentBaseUrl = isProduction 

@@ -3,7 +3,8 @@
   "compilerOptions": {
     "types": ["jest", "node"],
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "isolatedModules": true
   },
   "include": [
     "src/**/*.test.ts",

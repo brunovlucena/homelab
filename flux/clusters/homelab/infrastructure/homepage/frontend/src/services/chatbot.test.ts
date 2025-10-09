@@ -1,18 +1,25 @@
+// Mock axios before importing anything
+jest.mock('axios', () => ({
+  create: jest.fn(() => ({
+    post: jest.fn(),
+    get: jest.fn(),
+    interceptors: {
+      request: { use: jest.fn() },
+      response: { use: jest.fn() },
+    },
+  })),
+}))
+
 import axios from 'axios'
 import chatbotService, { ChatbotService } from './chatbot'
 
-// Mock axios
-jest.mock('axios')
 const mockedAxios = axios as jest.Mocked<typeof axios>
 
 describe('ChatbotService', () => {
   let service: ChatbotService
 
-  beforeEach(() => {
-    // Create a fresh instance for each test
-    service = new ChatbotService()
-    
-    // Mock axios.create to return a mocked instance
+  beforeAll(() => {
+    // Ensure the mock is properly set up
     const mockAxiosInstance = {
       post: jest.fn(),
       get: jest.fn(),
@@ -22,6 +29,13 @@ describe('ChatbotService', () => {
       },
     }
     mockedAxios.create.mockReturnValue(mockAxiosInstance as any)
+  })
+
+  beforeEach(() => {
+    // Clear all mocks before each test
+    jest.clearAllMocks()
+    // Create a fresh instance for each test
+    service = new ChatbotService()
   })
 
   afterEach(() => {
