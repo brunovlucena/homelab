@@ -1,4 +1,4 @@
-.PHONY: help build push deploy delete logs test clean
+.PHONY: help build push deploy delete logs test clean docker-login
 
 # 🎨 Configuration
 IMAGE_NAME := jamie-slack-bot
@@ -6,6 +6,7 @@ REGISTRY := 565265565115.dkr.ecr.us-west-2.amazonaws.com
 TAG := dev
 IMAGE := $(REGISTRY)/$(IMAGE_NAME):$(TAG)
 NAMESPACE := homepage
+AWS_REGION := us-west-2
 
 help: ## 📖 Show this help message
 	@echo "🤖 Jamie Slack Bot - Makefile Commands"
@@ -14,19 +15,35 @@ help: ## 📖 Show this help message
 
 build: ## 🏗️ Build Docker image
 	@echo "🏗️ Building Jamie Slack Bot image..."
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(IMAGE) --load .
+	@echo "✅ Build complete: $(IMAGE)"
+
+build-local: ## 🏗️ Build Docker image for local platform only
+	@echo "🏗️ Building Jamie Slack Bot image (local platform)..."
 	docker build -t $(IMAGE) .
 	@echo "✅ Build complete: $(IMAGE)"
 
-push: build ## 📤 Push image to ECR
+docker-login: ## 🔑 Login to ECR
+	@echo "🔑 Logging into ECR..."
+	@aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(REGISTRY)
+	@echo "✅ Login successful"
+
+push: docker-login build-local ## 📤 Push image to ECR
 	@echo "📤 Pushing image to ECR..."
-	aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $(REGISTRY)
 	docker push $(IMAGE)
 	@echo "✅ Push complete: $(IMAGE)"
+	@echo "🔄 Trigger Flux reconciliation with: flux reconcile kustomization infrastructure"
 
 deploy: ## 🚀 Deploy to Kubernetes
 	@echo "🚀 Deploying Jamie Slack Bot to Kubernetes..."
-	kubectl apply -f k8s/
+	kubectl apply -k k8s/
 	@echo "✅ Deployment complete"
+
+flux-reconcile: ## 🔄 Trigger Flux reconciliation
+	@echo "🔄 Reconciling Flux..."
+	flux reconcile source git homelab
+	flux reconcile kustomization infrastructure
+	@echo "✅ Flux reconciliation triggered"
 
 delete: ## 🗑️ Delete from Kubernetes
 	@echo "🗑️ Deleting Jamie Slack Bot from Kubernetes..."
@@ -44,9 +61,9 @@ restart: ## 🔄 Restart deployment
 
 status: ## 📊 Check deployment status
 	@echo "📊 Checking Jamie Slack Bot status..."
-	kubectl get pods -n $(NAMESPACE) -l app=jamie-slack-bot
-	kubectl get deployment -n $(NAMESPACE) jamie-slack-bot
-	kubectl get service -n $(NAMESPACE) jamie-slack-bot
+	@kubectl get pods -n $(NAMESPACE) -l app=jamie-slack-bot
+	@kubectl get deployment -n $(NAMESPACE) jamie-slack-bot 2>/dev/null || echo "⚠️  Deployment not found"
+	@kubectl get secret -n $(NAMESPACE) jamie-slack-secrets 2>/dev/null || echo "⚠️  Secret not found"
 
 test: ## 🧪 Run local tests
 	@echo "🧪 Running tests..."
@@ -66,6 +83,8 @@ dev-down: ## 🛑 Stop local development
 	@echo "🛑 Stopping local development..."
 	docker-compose down
 
-all: clean build push deploy ## 🎯 Build, push, and deploy
+all: clean push flux-reconcile ## 🎯 Build, push, and let Flux deploy
 	@echo "✅ All steps complete!"
+	@echo "⏳ Wait for Flux to reconcile and deploy..."
+	@echo "📊 Check status with: make status"
 

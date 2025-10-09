@@ -1,0 +1,81 @@
+name: 🤖 Jamie Slack Bot - Build & Push Images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'flux/clusters/homelab/infrastructure/jamie/**'
+      - '.github/workflows/jamie-images.yml'
+  pull_request:
+    paths:
+      - 'flux/clusters/homelab/infrastructure/jamie/**'
+      - '.github/workflows/jamie-images.yml'
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REGISTRY: 565265565115.dkr.ecr.us-west-2.amazonaws.com
+  ECR_REPOSITORY: jamie-slack-bot
+
+jobs:
+  build-and-push:
+    name: Build and Push Jamie Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔐 Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 🔑 Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 📝 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🏷️ Generate image tags
+        id: meta
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          if [ "$BRANCH_NAME" = "main" ]; then
+            echo "tags=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:dev,${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:latest" >> $GITHUB_OUTPUT
+          else
+            SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9._-]/-/g')
+            echo "tags=${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${SAFE_BRANCH}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🏗️ Build and push Jamie image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./flux/clusters/homelab/infrastructure/jamie
+          file: ./flux/clusters/homelab/infrastructure/jamie/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: ✅ Image pushed successfully
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "🎉 Jamie Slack Bot image pushed successfully!"
+          echo "📦 Tags: ${{ steps.meta.outputs.tags }}"
+          echo "🔗 Image URI: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:dev"
+
+      - name: 🔄 Trigger Flux reconciliation
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        run: |
+          echo "🔄 Image updated. Flux will reconcile automatically."
+          echo "To force reconciliation, run: flux reconcile kustomization jamie"
+
