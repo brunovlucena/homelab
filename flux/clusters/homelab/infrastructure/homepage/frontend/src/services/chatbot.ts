@@ -15,17 +15,12 @@ export interface ChatResponse {
   timestamp: string
   model?: string
   sources?: string[]
-  mode?: 'direct' | 'mcp'
 }
 
 export interface AgentStatus {
   status: string
   service: string
   timestamp: string
-  mcp_server?: {
-    status: string
-    url: string
-  }
 }
 
 export interface LogAnalysisRequest {
@@ -56,10 +51,7 @@ class ChatbotService {
   private initialized: boolean = false
 
   constructor() {
-    // Always use the API proxy path for agent-sre
-    // In development: Vite proxy forwards /api/* to the API service
-    // In production: Nginx forwards /api/* to the API service
-    // API service then proxies to agent-sre service
+    // Use the API path for agent-sre
     const apiUrl = env.API_URL
     this.agentBaseUrl = `${apiUrl}/agent-sre`
 
@@ -119,7 +111,7 @@ class ChatbotService {
   // =============================================================================
 
   /**
-   * Send a chat message using direct agent communication
+   * Send a chat message to the agent
    */
   async chat(message: string): Promise<ChatResponse> {
     const request: ChatMessage = {
@@ -128,64 +120,28 @@ class ChatbotService {
     }
 
     const response: AxiosResponse<ChatResponse> = await this.client.post('/chat', request)
-    return {
-      ...response.data,
-      mode: 'direct',
-    }
+    return response.data
   }
 
   /**
-   * Send a chat message using MCP protocol
-   */
-  async mcpChat(message: string): Promise<ChatResponse> {
-    const request: ChatMessage = {
-      message,
-      timestamp: new Date().toISOString(),
-    }
-
-    const response: AxiosResponse<ChatResponse> = await this.client.post('/mcp/chat', request)
-    return {
-      ...response.data,
-      mode: 'mcp',
-    }
-  }
-
-  /**
-   * Process a chat message with fallback strategy
-   * Tries MCP first, falls back to direct if MCP fails
+   * Process a chat message
    */
   async processMessage(message: string): Promise<{ text: string; sources?: string[] }> {
     try {
-      // Try MCP chat first (preferred for complex queries)
-      console.log('🤖 [ChatbotService] Attempting MCP chat...')
-      const mcpResponse = await this.mcpChat(message)
-      console.log('🤖 [ChatbotService] MCP chat successful')
+      console.log('🤖 [ChatbotService] Sending message to agent-sre...')
+      const response = await this.chat(message)
+      console.log('🤖 [ChatbotService] Message sent successfully')
       
       return {
-        text: mcpResponse.response,
-        sources: mcpResponse.sources || ['Agent-SRE (MCP)'],
+        text: response.response,
+        sources: response.sources || ['Agent-SRE'],
       }
-    } catch (mcpError) {
-      console.warn('🤖 [ChatbotService] MCP chat failed, falling back to direct chat:', mcpError)
+    } catch (error) {
+      console.error('🤖 [ChatbotService] Chat failed:', error)
       
-      try {
-        // Fallback to direct chat
-        console.log('🤖 [ChatbotService] Attempting direct chat...')
-        const directResponse = await this.chat(message)
-        console.log('🤖 [ChatbotService] Direct chat successful')
-        
-        return {
-          text: directResponse.response,
-          sources: directResponse.sources || ['Agent-SRE (Direct)'],
-        }
-      } catch (directError) {
-        console.error('🤖 [ChatbotService] All chat methods failed:', directError)
-        
-        // Return a helpful error message
-        return {
-          text: 'Sorry, I\'m currently unavailable. The SRE agent service might be down. Please try again later.',
-          sources: ['Error Handler'],
-        }
+      return {
+        text: 'Sorry, I\'m currently unavailable. The SRE agent service might be down. Please try again later.',
+        sources: ['Error Handler'],
       }
     }
   }
@@ -195,28 +151,15 @@ class ChatbotService {
   // =============================================================================
 
   /**
-   * Analyze logs using direct agent communication
+   * Analyze logs
    */
-  async analyzeLogsDirect(logs: string, context?: string): Promise<LogAnalysisResponse> {
+  async analyzeLogs(logs: string, context?: string): Promise<LogAnalysisResponse> {
     const request: LogAnalysisRequest = {
       logs,
       context,
     }
 
     const response: AxiosResponse<LogAnalysisResponse> = await this.client.post('/analyze-logs', request)
-    return response.data
-  }
-
-  /**
-   * Analyze logs using MCP protocol
-   */
-  async analyzeLogsMCP(logs: string, context?: string): Promise<LogAnalysisResponse> {
-    const request: LogAnalysisRequest = {
-      logs,
-      context,
-    }
-
-    const response: AxiosResponse<LogAnalysisResponse> = await this.client.post('/mcp/analyze-logs', request)
     return response.data
   }
 
