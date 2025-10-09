@@ -877,8 +877,8 @@ main {
 }
 
 .about-image {
-    width: 500px;
-    height: 500px;
+    width: 250px;
+    height: 250px;
     border-radius: 50%;
     object-fit: cover;
     border: 8px solid var(--secondary-color);
@@ -887,7 +887,6 @@ main {
 }
 
 .about-image:hover {
-    transform: scale(1.05);
     box-shadow: 0 16px 56px rgba(124, 58, 237, 0.4);
     border-color: #a855f7;
 }
