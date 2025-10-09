@@ -40,6 +40,8 @@ spec:
           value: "0.0.0.0"
         - name: MCP_SERVER_URL
           value: "http://sre-agent-mcp-server-service:30120"
+        - name: GRAFANA_MCP_URL
+          value: "http://localhost:8081"
         - name: OLLAMA_URL
           value: "http://192.168.0.16:11434"
         - name: MODEL_NAME
@@ -81,6 +83,52 @@ spec:
           timeoutSeconds: 3
           failureThreshold: 3
           successThreshold: 1
+      # 📊 Grafana MCP sidecar container
+      # Provides MCP (Model Context Protocol) access to Grafana for the SRE agent
+      # The agent can query dashboards, alerts, and metrics through this MCP server
+      # Authentication: Uses Grafana Service Account Token (glsa_*)
+      # - name: grafana-mcp
+      #   image: mcp/grafana:latest
+      #   imagePullPolicy: IfNotPresent
+      #   ports:
+      #   - containerPort: 8081
+      #     name: mcp-http
+      #   env:
+      #   - name: GRAFANA_URL
+      #     value: "https://grafana.lucena.cloud"
+      #   # Service Account Token from Grafana (Admin → Service Accounts)
+      #   # - name: GRAFANA_API_KEY
+      #   #   valueFrom:
+      #   #     secretKeyRef:
+      #   #       name: ai-secrets
+      #   #       key: GRAFANA_SERVICE_ACCOUNT_TOKEN
+      #   - name: PORT
+      #     value: "8081"
+      #   resources:
+      #     requests:
+      #       memory: "128Mi"
+      #       cpu: "100m"
+      #     limits:
+      #       memory: "256Mi"
+      #       cpu: "200m"
+      #   livenessProbe:
+      #     httpGet:
+      #       path: /health
+      #       port: 8081
+      #     initialDelaySeconds: 30
+      #     periodSeconds: 30
+      #     timeoutSeconds: 5
+      #     failureThreshold: 3
+      #     successThreshold: 1
+      #   readinessProbe:
+      #     httpGet:
+      #       path: /health
+      #       port: 8081
+      #     initialDelaySeconds: 10
+      #     periodSeconds: 30
+      #     timeoutSeconds: 3
+      #     failureThreshold: 3
+      #     successThreshold: 1
 ---
 apiVersion: v1
 kind: Service
@@ -97,6 +145,10 @@ spec:
     targetPort: 8080
     protocol: TCP
     name: http
+  - port: 8081
+    targetPort: 8081
+    protocol: TCP
+    name: grafana-mcp
   selector:
     app: sre-agent
 ---
@@ -116,5 +168,10 @@ spec:
     nodePort: 31081
     protocol: TCP
     name: http
+  - port: 8081
+    targetPort: 8081
+    nodePort: 31082
+    protocol: TCP
+    name: grafana-mcp
   selector:
     app: sre-agent
