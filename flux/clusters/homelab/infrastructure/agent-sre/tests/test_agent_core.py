@@ -186,32 +186,32 @@ class TestSREAgentGraph:
             assert result["task_type"] == "logs"
 
     @pytest.mark.asyncio
-    async def test_chat_legacy_method(self, agent_graph):
-        """Test legacy chat method forwards to execute"""
+    async def test_chat_method(self, agent_graph):
+        """Test chat method forwards to execute"""
         with patch.object(agent_graph, 'execute', AsyncMock(return_value={"full_response": "Chat response"})):
             result = await agent_graph.chat("Hello")
             
             assert result == "Chat response"
 
     @pytest.mark.asyncio
-    async def test_analyze_logs_legacy_method(self, agent_graph):
-        """Test legacy analyze_logs method forwards to execute"""
+    async def test_analyze_logs_method(self, agent_graph):
+        """Test analyze_logs method forwards to execute"""
         with patch.object(agent_graph, 'execute', AsyncMock(return_value={"full_response": "Log analysis"})):
             result = await agent_graph.analyze_logs("Test logs")
             
             assert result == "Log analysis"
 
     @pytest.mark.asyncio
-    async def test_incident_response_legacy_method(self, agent_graph):
-        """Test legacy incident_response method forwards to execute"""
+    async def test_incident_response_method(self, agent_graph):
+        """Test incident_response method forwards to execute"""
         with patch.object(agent_graph, 'execute', AsyncMock(return_value={"full_response": "Incident response"})):
             result = await agent_graph.incident_response("Critical incident")
             
             assert result == "Incident response"
 
     @pytest.mark.asyncio
-    async def test_monitoring_advice_legacy_method(self, agent_graph):
-        """Test legacy monitoring_advice method forwards to execute"""
+    async def test_monitoring_advice_method(self, agent_graph):
+        """Test monitoring_advice method forwards to execute"""
         with patch.object(agent_graph, 'execute', AsyncMock(return_value={"full_response": "Monitoring advice"})):
             result = await agent_graph.monitoring_advice("Web application")
             

@@ -352,33 +352,33 @@ Your current task is performance analysis. Focus on:
             "langgraph_enabled": True,
         }
     
-    # Legacy methods for backward compatibility
-    @traceable(name="sre_chat_legacy", run_type="chain")
-    @logfire.instrument("chat_legacy")
+    # Convenience methods for common tasks
+    @traceable(name="sre_chat", run_type="chain")
+    @logfire.instrument("chat")
     async def chat(self, message: str) -> str:
-        """💬 Legacy chat method - forwards to LangGraph"""
+        """💬 Chat method - forwards to LangGraph"""
         result = await self.execute(message=message, task_type="general")
         return result.get("full_response", "No response")
     
-    @traceable(name="sre_analyze_logs_legacy", run_type="chain")
-    @logfire.instrument("analyze_logs_legacy")
+    @traceable(name="sre_analyze_logs", run_type="chain")
+    @logfire.instrument("analyze_logs")
     async def analyze_logs(self, logs: str) -> str:
-        """📊 Legacy log analysis method - forwards to LangGraph"""
+        """📊 Log analysis method - forwards to LangGraph"""
         message = f"Analyze these logs and provide insights:\n\n{logs}"
         result = await self.execute(message=message, task_type="logs")
         return result.get("full_response", "No analysis")
     
-    @traceable(name="sre_incident_response_legacy", run_type="chain")
-    @logfire.instrument("incident_response_legacy")
+    @traceable(name="sre_incident_response", run_type="chain")
+    @logfire.instrument("incident_response")
     async def incident_response(self, incident: str) -> str:
-        """🚨 Legacy incident response method - forwards to LangGraph"""
+        """🚨 Incident response method - forwards to LangGraph"""
         result = await self.execute(message=incident, task_type="incident")
         return result.get("full_response", "No response")
     
-    @traceable(name="sre_monitoring_advice_legacy", run_type="chain")
-    @logfire.instrument("monitoring_advice_legacy")
+    @traceable(name="sre_monitoring_advice", run_type="chain")
+    @logfire.instrument("monitoring_advice")
     async def monitoring_advice(self, system: str) -> str:
-        """📈 Legacy monitoring advice method - forwards to LangGraph"""
+        """📈 Monitoring advice method - forwards to LangGraph"""
         message = f"Provide monitoring and observability advice for: {system}"
         result = await self.execute(message=message, task_type="monitoring")
         return result.get("full_response", "No advice")
