@@ -23,6 +23,8 @@ spec:
       annotations:
         prometheus.io/scrape: "false"
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       serviceAccountName: jamie-slack-bot
       securityContext:
         runAsNonRoot: true
