@@ -75,6 +75,34 @@ spec:
         description: "PostgreSQL database has {{`{{ $value }}`}} deadlocks in the last 5 minutes."
         runbook_url: "https://github.com/brunovlucena/bruno-site/docs/runbooks/database-connection-issues.md"
 
+    - alert: BrunoSiteExperienceDataLoadFailure
+      expr: rate(bruno_site_experience_load_errors_total{error_type="database_query_error"}[5m]) > 0.1
+      for: 2m
+      labels:
+        severity: critical
+        service: api
+        component: bruno-site
+        data_type: experience
+      annotations:
+        summary: "Bruno Site experience data loading is failing"
+        description: "Experience data API is failing with {{`{{ $value }}`}} errors per second for the last 5 minutes. Users cannot view resume/experience page."
+        runbook_url: "https://github.com/brunovlucena/bruno-site/docs/runbooks/experience-data-load-failure.md"
+
+    - alert: BrunoSiteExperienceDataHighErrorRate
+      expr: |
+        (rate(bruno_site_experience_load_errors_total[5m]) / 
+        (rate(bruno_site_experience_load_errors_total[5m]) + rate(bruno_site_experience_load_success_total[5m]))) > 0.5
+      for: 3m
+      labels:
+        severity: critical
+        service: api
+        component: bruno-site
+        data_type: experience
+      annotations:
+        summary: "Bruno Site experience data has high error rate"
+        description: "Experience data error rate is {{`{{ $value | humanizePercentage }}`}} for the last 5 minutes. This affects the resume page display."
+        runbook_url: "https://github.com/brunovlucena/bruno-site/docs/runbooks/experience-data-high-error-rate.md"
+
   # =============================================================================
   # ⚠️ WARNING ALERTS - ATTENTION NEEDED SOON
   # =============================================================================
@@ -140,6 +168,32 @@ spec:
         description: "Redis memory usage is {{`{{ $value }}`}} of max memory for the last 5 minutes."
         runbook_url: "https://github.com/brunovlucena/bruno-site/docs/runbooks/redis-high-memory.md"
 
+    - alert: BrunoSiteExperienceDataSlowLoad
+      expr: histogram_quantile(0.95, rate(bruno_site_experience_load_duration_seconds_bucket[5m])) > 0.5
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: bruno-site
+        data_type: experience
+      annotations:
+        summary: "Bruno Site experience data loading is slow"
+        description: "Experience data 95th percentile load time is {{`{{ $value }}`}}s for the last 5 minutes. Expected < 0.5s."
+        runbook_url: "https://github.com/brunovlucena/bruno-site/docs/runbooks/experience-data-slow-load.md"
+
+    - alert: BrunoSiteExperienceDatabaseUnavailable
+      expr: increase(bruno_site_experience_load_errors_total{error_type="database_unavailable"}[5m]) > 5
+      for: 1m
+      labels:
+        severity: warning
+        service: database
+        component: bruno-site
+        data_type: experience
+      annotations:
+        summary: "Bruno Site database unavailable for experience data"
+        description: "Database is unavailable for experience data loading with {{`{{ $value }}`}} errors in the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/bruno-site/docs/runbooks/experience-database-unavailable.md"
+
     - alert: BrunoSiteLLMServiceDown
       expr: up{job="bruno-site-ollama"} == 0
       for: 5m
@@ -157,6 +211,36 @@ spec:
   # =============================================================================
   - name: bruno-site.business
     rules:
+    - alert: BrunoSiteProjectsLoadFailed
+      expr: rate(bruno_site_projects_load_errors_total[5m]) > 0.01
+      for: 2m
+      labels:
+        severity: critical
+        service: api
+        component: bruno-site
+        feature: projects
+      annotations:
+        summary: "Bruno Site failed to load projects"
+        description: "Failed to load projects from database with {{`{{ $value | printf \"%.2f\" }}`}} errors per second for the last 5 minutes. Error type: {{`{{ $labels.error_type }}`}}"
+        impact: "Critical - Homepage cannot display projects, affecting user experience"
+        runbook_url: "https://github.com/brunovlucena/bruno-site/docs/runbooks/projects-load-failed.md"
+        action: "1. Check database connectivity\n2. Verify database schema\n3. Review application logs\n4. Check for database locks or deadlocks"
+
+    - alert: BrunoSiteProjectsLoadSlowQueries
+      expr: histogram_quantile(0.95, rate(bruno_site_projects_load_duration_seconds_bucket[5m])) > 1.0
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: bruno-site
+        feature: projects
+      annotations:
+        summary: "Bruno Site projects loading slowly"
+        description: "Projects load time 95th percentile is {{`{{ $value | printf \"%.2f\" }}`}}s, which is above 1s threshold."
+        impact: "Medium - Slow page load times affecting user experience"
+        runbook_url: "https://github.com/brunovlucena/bruno-site/docs/runbooks/projects-slow-load.md"
+        action: "1. Check database performance\n2. Review query execution plans\n3. Consider adding indexes\n4. Check for N+1 query issues"
+
     - alert: BrunoSiteHighProjectViewErrors
       expr: rate(http_requests_total{job="bruno-site-api",handler="/api/projects",code=~"4..|5.."}[10m]) > 0.1
       for: 5m

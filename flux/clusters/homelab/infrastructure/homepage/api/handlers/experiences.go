@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"net/http"
+	"time"
+
+	"bruno-site/metrics"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
@@ -30,7 +33,10 @@ func (Experience) TableName() string {
 // GetExperiences returns all active experiences ordered by order
 func GetExperiences(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		start := time.Now()
+
 		if db == nil {
+			metrics.RecordExperienceLoadError("database_unavailable")
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
 			return
 		}
@@ -39,9 +45,16 @@ func GetExperiences(db *gorm.DB) gin.HandlerFunc {
 		if err := db.Where("active = ?", true).
 			Order("\"order\" DESC, id DESC").
 			Find(&experiences).Error; err != nil {
+			// Record metrics for error
+			metrics.RecordExperienceLoadError("database_query_error")
+			metrics.RecordDatabaseError("select", "experience")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
+		// Record success metrics
+		metrics.RecordExperienceLoadSuccess()
+		metrics.ExperienceLoadDuration.Observe(time.Since(start).Seconds())
 
 		c.JSON(http.StatusOK, experiences)
 	}
@@ -50,7 +63,10 @@ func GetExperiences(db *gorm.DB) gin.HandlerFunc {
 // GetExperience returns a single experience by ID
 func GetExperience(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		start := time.Now()
+
 		if db == nil {
+			metrics.RecordExperienceLoadError("database_unavailable")
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
 			return
 		}
@@ -58,9 +74,19 @@ func GetExperience(db *gorm.DB) gin.HandlerFunc {
 		id := c.Param("id")
 		var experience Experience
 		if err := db.Where("active = ?", true).First(&experience, id).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				metrics.RecordExperienceLoadError("not_found")
+			} else {
+				metrics.RecordExperienceLoadError("database_query_error")
+				metrics.RecordDatabaseError("select", "experience")
+			}
 			c.JSON(http.StatusNotFound, gin.H{"error": "experience not found"})
 			return
 		}
+
+		// Record success metrics
+		metrics.RecordExperienceLoadSuccess()
+		metrics.ExperienceLoadDuration.Observe(time.Since(start).Seconds())
 
 		c.JSON(http.StatusOK, experience)
 	}
