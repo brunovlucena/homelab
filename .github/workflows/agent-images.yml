@@ -1,7 +1,6 @@
 # 🤖 Agent Images CI/CD Pipeline
 #
-# This workflow builds, tests, and pushes Docker images for agent services
-# including agent-legacy and agent-sre components.
+# This workflow builds, tests, and pushes Docker images for the agent-sre service.
 
 name: "🤖 Agent Images CI/CD"
 
@@ -15,12 +14,10 @@ on:
   push:
     branches: [main, master]
     paths:
-      - 'flux/clusters/homelab/infrastructure/agent-legacy/**'
       - 'flux/clusters/homelab/infrastructure/agent-sre/**'
   pull_request:
     branches: [main, master]
     paths:
-      - 'flux/clusters/homelab/infrastructure/agent-legacy/**'
       - 'flux/clusters/homelab/infrastructure/agent-sre/**'
   schedule:
     # Run daily at 3 AM UTC to check for updates
@@ -36,7 +33,7 @@ on:
           - dev
           - prd
       force_rebuild:
-        description: 'Force rebuild all agent images'
+        description: 'Force rebuild agent-sre image'
         required: false
         default: false
         type: boolean
@@ -45,7 +42,6 @@ env:
   REGISTRY: ghcr.io/brunovlucena
   IMAGE_TAG_DEV: dev
   IMAGE_TAG_PRD: latest
-  PYTHON_VERSION_LEGACY: '3.11'
   PYTHON_VERSION_SRE: '3.13'
 
 jobs:
@@ -53,7 +49,6 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      build-agent-legacy: ${{ steps.changes.outputs.agent-legacy }}
       build-agent-sre: ${{ steps.changes.outputs.agent-sre }}
       build-all: ${{ steps.changes.outputs.build-all }}
       environment: ${{ steps.env.outputs.environment }}
@@ -66,13 +61,6 @@ jobs:
       - name: "🔍 Detect Changes"
         id: changes
         run: |
-          # Check for changes in agent-legacy
-          if git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/agent-legacy/; then
-            echo "agent-legacy=false" >> $GITHUB_OUTPUT
-          else
-            echo "agent-legacy=true" >> $GITHUB_OUTPUT
-          fi
-          
           # Check for changes in agent-sre
           if git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/agent-sre/; then
             echo "agent-sre=false" >> $GITHUB_OUTPUT
@@ -98,87 +86,6 @@ jobs:
             echo "environment=dev" >> $GITHUB_OUTPUT
           fi
 
-  # 🏗️ Build Agent Legacy (Python 3.11)
-  build-agent-legacy:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.build-agent-legacy == 'true' || needs.detect-changes.outputs.build-all == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: "📥 Checkout Repository"
-        uses: actions/checkout@v4
-
-      - name: "🔧 Setup Python Environment"
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION_LEGACY }}
-          cache: 'pip'
-
-      - name: "📦 Install Dependencies"
-        working-directory: ./flux/clusters/homelab/infrastructure/agent-legacy
-        run: |
-          echo "📦 Installing Python dependencies with optimized pip..."
-          pip install --no-cache-dir --upgrade pip
-          pip install --no-cache-dir -r requirements.txt
-          pip install --no-cache-dir pytest pytest-cov flake8
-
-      - name: "🧪 Run Tests"
-        working-directory: ./flux/clusters/homelab/infrastructure/agent-legacy
-        run: |
-          echo "🧪 Running Python tests..."
-          pytest --cov=app --cov-report=xml || echo "⚠️ Tests failed, but continuing build"
-
-      - name: "🔍 Run Linting"
-        working-directory: ./flux/clusters/homelab/infrastructure/agent-legacy
-        run: |
-          echo "🔍 Running Python linting..."
-          flake8 app.py --max-line-length=120 || echo "⚠️ Linting issues found, but continuing build"
-
-      - name: "🐳 Set up Docker Buildx"
-        uses: docker/setup-buildx-action@v3
-
-      - name: "🔐 Login to GitHub Container Registry"
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: "🏷️ Extract Metadata"
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/agent-legacy
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=raw,value=${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
-            type=sha,prefix={{branch}}-
-
-      - name: "🏗️ Build and Push Agent Legacy Image"
-        uses: docker/build-push-action@v5
-        with:
-          context: ./flux/clusters/homelab/infrastructure/agent-legacy
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=agent-legacy
-          cache-to: type=gha,mode=max,scope=agent-legacy
-          platforms: linux/amd64,linux/arm64
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
-
-      - name: "🔒 Run Trivy Security Scan"
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.REGISTRY }}/agent-legacy:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
-          format: 'sarif'
-          output: 'trivy-results-agent-legacy.sarif'
-
-      - name: "📊 Upload Trivy Scan Results"
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: 'trivy-results-agent-legacy.sarif'
-
   # 🏗️ Build Agent SRE (Python 3.13 with uv)
   build-agent-sre:
     needs: detect-changes
@@ -189,7 +96,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: "🔧 Setup Python Environment"
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION_SRE }}
 
@@ -197,6 +104,7 @@ jobs:
         uses: astral-sh/setup-uv@v3
         with:
           version: "latest"
+          enable-cache: true
 
       - name: "📦 Install Dependencies with uv"
         working-directory: ./flux/clusters/homelab/infrastructure/agent-sre
@@ -281,7 +189,7 @@ jobs:
 
   # 📊 Generate Build Summary
   build-summary:
-    needs: [detect-changes, build-agent-legacy, build-agent-sre]
+    needs: [detect-changes, build-agent-sre]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -298,12 +206,10 @@ jobs:
           echo "**Services Built:**" >> $GITHUB_STEP_SUMMARY
           echo "| Service | Status | Image Tag |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|--------|-----------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Agent Legacy | ${{ needs.build-agent-legacy.result == 'success' && '✅ Success' || needs.build-agent-legacy.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.detect-changes.outputs.environment == 'dev' && 'dev' || 'latest' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Agent SRE | ${{ needs.build-agent-sre.result == 'success' && '✅ Success' || needs.build-agent-sre.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.detect-changes.outputs.environment == 'dev' && 'dev' || 'latest' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Registry Images:**" >> $GITHUB_STEP_SUMMARY
           echo "- Registry: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Agent Legacy: \`${{ env.REGISTRY }}/agent-legacy:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- Agent SRE: \`${{ env.REGISTRY }}/agent-sre:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY

@@ -39,7 +39,7 @@ spec:
         - name: MCP_SERVER_URL
           value: "http://sre-agent-mcp-server-service:30120"
         - name: OLLAMA_URL
-          value: "http://192.168.0.12:11434"
+          value: "http://192.168.0.16:11434"
         - name: MODEL_NAME
           value: "bruno-sre:latest"
         - name: SERVICE_NAME
