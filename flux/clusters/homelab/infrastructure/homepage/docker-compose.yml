@@ -112,7 +112,7 @@ services:
     container_name: bruno-frontend
     environment:
       # 🌐 Frontend API base URL - configures where the React app makes API calls to the backend
-      - VITE_API_URL=/api
+      - VITE_API_URL=/api/v1
       - VITE_APP_ENV=development
     ports:
       - "0.0.0.0:3000:8080"

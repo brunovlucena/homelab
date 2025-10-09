@@ -47,7 +47,7 @@ spec:
               protocol: TCP
           env:
             - name: VITE_API_URL
-              value: "/api"
+              value: "{{ .Values.frontend.apiUrl | default "/api" }}"
             - name: VITE_APP_ENV
               value: "{{ .Values.frontend.appEnv }}"
           livenessProbe:

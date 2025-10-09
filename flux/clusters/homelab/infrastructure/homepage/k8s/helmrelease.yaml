@@ -23,3 +23,5 @@ spec:
     ollama:
       url: "http://ollama:11434"  # Use internal service
       enabled: true  # Enable Ollama with external service
+    frontend:
+      apiUrl: "/api/v1"

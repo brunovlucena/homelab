@@ -67,6 +67,7 @@ frontend:
     type: ClusterIP
     port: 80
   appEnv: "production"
+  apiUrl: "/api/v1"
   resources:
     limits:
       cpu: 1000m     # Higher CPU limit for Mac Studio
