@@ -10,6 +10,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -52,6 +53,9 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 
 	// Health check
 	r.GET("/health", handlers.HealthCheck)
+
+	// 📊 Prometheus metrics endpoint
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// API routes
 	api := r.Group("/api/v1")

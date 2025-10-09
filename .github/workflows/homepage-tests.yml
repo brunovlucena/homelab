@@ -44,7 +44,7 @@ jobs:
       - name: 🧪 Run unit tests
         working-directory: ${{ env.HOMEPAGE_PATH }}/api
         run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./handlers/
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: 📊 Generate coverage report
         working-directory: ${{ env.HOMEPAGE_PATH }}/api

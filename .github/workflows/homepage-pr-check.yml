@@ -89,10 +89,15 @@ jobs:
       - name: 🧪 Run tests with race detection
         working-directory: ${{ env.HOMEPAGE_PATH }}/api
         run: |
-          go test -v -race -coverprofile=coverage.out ./handlers/
+          go test -v -race -coverprofile=coverage.out ./...
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
           echo "### Backend Test Coverage" >> $GITHUB_STEP_SUMMARY
           echo "Coverage: $COVERAGE" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Package Coverage Details" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.out | grep -E "(handlers|metrics)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: 🔍 Run go vet
         working-directory: ${{ env.HOMEPAGE_PATH }}/api

@@ -39,11 +39,6 @@ api:
       cpu: 500m       # Higher CPU request
       memory: 512Mi   # Higher memory request
 
-# Ollama Configuration
-ollama:
-  url: "http://ollama.bruno.svc.cluster.local:11434"  # External Ollama server
-  enabled: true
-
 # Agent-SRE Configuration
 agentSRE:
   enabled: true

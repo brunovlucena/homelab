@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"net/http"
+	"time"
+
+	"bruno-site/metrics"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
@@ -23,16 +26,35 @@ type Project struct {
 // GetProjects returns all projects
 func GetProjects(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 📊 Start timing for metrics
+		start := time.Now()
+
+		// 💾 Check database availability
 		if db == nil {
+			metrics.RecordProjectsLoadError("database_unavailable")
+			metrics.RecordDatabaseConnectionError()
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
 			return
 		}
 
+		// 🔍 Fetch projects from database
 		var projects []Project
 		if err := db.Find(&projects).Error; err != nil {
+			// 🚨 Record error metrics with detailed error type
+			errorType := "query_error"
+			if err == gorm.ErrRecordNotFound {
+				errorType = "not_found"
+			}
+			metrics.RecordProjectsLoadError(errorType)
+			metrics.RecordDatabaseError("select", "projects")
+
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
+		// ✅ Record success metrics
+		metrics.RecordProjectsLoadSuccess()
+		metrics.ProjectsLoadDuration.Observe(time.Since(start).Seconds())
 
 		c.JSON(http.StatusOK, projects)
 	}

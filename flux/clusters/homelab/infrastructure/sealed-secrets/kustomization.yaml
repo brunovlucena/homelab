@@ -11,6 +11,4 @@ resources:
   - cloudflare.yaml
   - ghcr-secret.yaml
   - ghcr-secret-agent-sre.yaml
-  - ghcr-secret-agent-legacy.yaml
   - ai-secrets-agent-sre.yaml
-  - ai-secrets-agent-legacy.yaml

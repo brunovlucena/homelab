@@ -73,8 +73,6 @@ services:
       - REDIS_URL=redis://redis:6379
       - PORT=8080
       - CORS_ORIGIN=http://localhost:3000
-      - GEMMA_MODEL=gemma3n:e4b
-      - OLLAMA_URL=http://192.168.0.3:11434
       - METRICS_USERNAME=${METRICS_USERNAME:-admin}
       - METRICS_PASSWORD=${METRICS_PASSWORD:-secure_password_change_me}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-10.96.16.210:9000}
