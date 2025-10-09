@@ -186,14 +186,31 @@ spec:
         args:
           - -c
           - |
+            set -e
+            echo "📦 Installing func CLI..."
+            
             # Install func CLI from GitHub releases
             FUNC_VERSION="v1.15.1"
-            wget -q https://github.com/knative/func/releases/download/${FUNC_VERSION}/func_linux_amd64 -O /tmp/func
+            DOWNLOAD_URL="https://github.com/knative/func/releases/download/${FUNC_VERSION}/func_linux_amd64"
+            
+            echo "Downloading from: ${DOWNLOAD_URL}"
+            curl -L -o /tmp/func "${DOWNLOAD_URL}" || {
+              echo "❌ Download failed! Trying alternative method..."
+              # Try with wget as fallback
+              wget -O /tmp/func "${DOWNLOAD_URL}" || {
+                echo "❌ Both curl and wget failed!"
+                exit 1
+              }
+            }
+            
+            echo "✓ Download complete"
+            ls -lh /tmp/func
+            
             chmod +x /tmp/func
             mv /tmp/func /usr/local/bin/func
             
             # Run func as MCP server
-            echo "Starting func MCP server on port 8003..."
+            echo "🚀 Starting func MCP server on port 8003..."
             func version
             exec func mcp
         ports:
