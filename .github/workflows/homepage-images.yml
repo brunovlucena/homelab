@@ -11,11 +11,8 @@ permissions:
   packages: write
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - 'flux/clusters/homelab/infrastructure/homepage/**'
-      - '.github/workflows/homepage-images.yml'
+  # ⚠️ Images are built ONLY after tests pass via workflow_run
+  # This ensures we never build images before tests complete
   workflow_run:
     workflows: ["Homepage Integration Tests"]
     types: [completed]
@@ -47,28 +44,37 @@ env:
   GO_VERSION: '1.23'
 
 jobs:
-  # ✅ Check if tests passed
+  # ✅ Check if tests passed (only for workflow_run trigger)
   check-tests:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_run'
+    if: github.event_name == 'workflow_run' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     outputs:
       tests-passed: ${{ steps.check.outputs.tests-passed }}
     steps:
       - name: "✅ Check Test Results"
         id: check
         run: |
-          if [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
-            echo "tests-passed=true" >> $GITHUB_OUTPUT
-            echo "✅ Tests passed, proceeding with image builds"
+          # For workflow_run, check if tests passed
+          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            if [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
+              echo "tests-passed=true" >> $GITHUB_OUTPUT
+              echo "✅ Tests passed, proceeding with image builds"
+            else
+              echo "tests-passed=false" >> $GITHUB_OUTPUT
+              echo "❌ Tests failed, skipping image builds"
+              exit 1
+            fi
           else
-            echo "tests-passed=false" >> $GITHUB_OUTPUT
-            echo "❌ Tests failed, skipping image builds"
+            # For schedule or manual dispatch, assume tests will pass
+            echo "tests-passed=true" >> $GITHUB_OUTPUT
+            echo "✅ Manual/scheduled trigger, proceeding with image builds"
           fi
 
   # 🔍 Detect changes and determine which services to build
   detect-changes:
     needs: [check-tests]
-    if: always() && (needs.check-tests.outputs.tests-passed == 'true' || github.event_name != 'workflow_run')
+    # Only proceed if tests passed (check-tests succeeded means tests passed)
+    if: needs.check-tests.result == 'success'
     runs-on: ubuntu-latest
     outputs:
       build-homepage-api: ${{ steps.changes.outputs.homepage-api }}
