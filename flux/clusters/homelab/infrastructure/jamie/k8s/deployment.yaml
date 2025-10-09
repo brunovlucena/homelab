@@ -28,6 +28,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: jamie-slack-bot
         image: ghcr.io/brunovlucena/jamie-slack-bot:latest
