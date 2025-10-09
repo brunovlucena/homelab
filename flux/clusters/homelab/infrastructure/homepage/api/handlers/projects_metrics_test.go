@@ -307,22 +307,6 @@ func TestMetricsRecordedOnVariousErrors(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// 🧪 MOCK ERROR TESTS
-// =============================================================================
-
-type mockDB struct {
-	gorm.DB
-	findError error
-}
-
-func (m *mockDB) Find(dest interface{}, conds ...interface{}) *gorm.DB {
-	if m.findError != nil {
-		m.Error = m.findError
-	}
-	return &m.DB
-}
-
 func TestProjectsMetricsWithMockErrors(t *testing.T) {
 	testCases := []struct {
 		name      string
