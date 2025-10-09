@@ -21,8 +21,7 @@ resources:
   - knative-operator
   - knative-serving
   - knative-eventing
-  - agent-legacy
-  - agent-sre
+  - agent-sre # Updated with LangGraph state management
   # - grafana-mcp
   # - statuspage-exporter
   # - notifi-test # TODO: Fix Linkerd Server conflicts
