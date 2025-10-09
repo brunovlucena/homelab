@@ -41,7 +41,7 @@ spec:
         - name: OLLAMA_URL
           value: "http://192.168.0.16:11434"
         - name: MODEL_NAME
-          value: "gemma3n:e4b"
+          value: "llama3.2:3b"
         - name: SERVICE_NAME
           value: "sre-agent"
         - name: LOGFIRE_TOKEN_SRE_AGENT
