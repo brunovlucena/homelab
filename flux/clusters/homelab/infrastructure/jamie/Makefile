@@ -2,11 +2,10 @@
 
 # 🎨 Configuration
 IMAGE_NAME := jamie-slack-bot
-REGISTRY := 565265565115.dkr.ecr.us-west-2.amazonaws.com
+REGISTRY := ghcr.io/brunovlucena
 TAG := dev
 IMAGE := $(REGISTRY)/$(IMAGE_NAME):$(TAG)
 NAMESPACE := homepage
-AWS_REGION := us-west-2
 
 help: ## 📖 Show this help message
 	@echo "🤖 Jamie Slack Bot - Makefile Commands"
@@ -23,13 +22,14 @@ build-local: ## 🏗️ Build Docker image for local platform only
 	docker build -t $(IMAGE) .
 	@echo "✅ Build complete: $(IMAGE)"
 
-docker-login: ## 🔑 Login to ECR
-	@echo "🔑 Logging into ECR..."
-	@aws ecr get-login-password --region $(AWS_REGION) | docker login --username AWS --password-stdin $(REGISTRY)
+docker-login: ## 🔑 Login to GitHub Container Registry
+	@echo "🔑 Logging into GitHub Container Registry..."
+	@echo $(GITHUB_TOKEN) | docker login ghcr.io -u $(GITHUB_USER) --password-stdin
 	@echo "✅ Login successful"
 
-push: docker-login build-local ## 📤 Push image to ECR
-	@echo "📤 Pushing image to ECR..."
+push: build-local ## 📤 Push image to GitHub Container Registry
+	@echo "📤 Pushing image to GHCR..."
+	@echo "⚠️  Make sure you're logged in: echo \$$GITHUB_TOKEN | docker login ghcr.io -u brunovlucena --password-stdin"
 	docker push $(IMAGE)
 	@echo "✅ Push complete: $(IMAGE)"
 	@echo "🔄 Trigger Flux reconciliation with: flux reconcile kustomization infrastructure"

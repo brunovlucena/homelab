@@ -2,7 +2,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: homepage
+namespace: jamie
 
 resources:
   - namespace.yaml
@@ -16,6 +16,6 @@ commonLabels:
   app.kubernetes.io/part-of: bruno-site
 
 images:
-  - name: 565265565115.dkr.ecr.us-west-2.amazonaws.com/jamie-slack-bot
+  - name: ghcr.io/brunovlucena/jamie-slack-bot
     newTag: dev
 

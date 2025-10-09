@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: jamie-slack-bot
-  namespace: homepage
+  namespace: jamie
   labels:
     app: jamie-slack-bot
     app.kubernetes.io/name: jamie-slack-bot
@@ -30,7 +30,7 @@ spec:
         fsGroup: 1000
       containers:
       - name: jamie-slack-bot
-        image: 565265565115.dkr.ecr.us-west-2.amazonaws.com/jamie-slack-bot:dev
+        image: ghcr.io/brunovlucena/jamie-slack-bot:dev
         imagePullPolicy: Always
         env:
         - name: SLACK_BOT_TOKEN
