@@ -3,7 +3,7 @@
 # 🎨 Configuration
 IMAGE_NAME := jamie-slack-bot
 REGISTRY := ghcr.io/brunovlucena
-TAG := dev
+TAG := latest
 IMAGE := $(REGISTRY)/$(IMAGE_NAME):$(TAG)
 NAMESPACE := homepage
 

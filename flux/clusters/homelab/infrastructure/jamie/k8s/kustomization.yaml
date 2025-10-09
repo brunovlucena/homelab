@@ -17,5 +17,5 @@ commonLabels:
 
 images:
   - name: ghcr.io/brunovlucena/jamie-slack-bot
-    newTag: dev
+    newTag: latest
 

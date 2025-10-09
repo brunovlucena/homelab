@@ -1,9 +1,8 @@
-# 🤖 Jamie Slack Bot - Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: jamie-slack-bot
-  namespace: jamie
+  namespace: homepage
   labels:
     app: jamie-slack-bot
     app.kubernetes.io/name: jamie-slack-bot
@@ -24,32 +23,13 @@ spec:
         prometheus.io/scrape: "false"
     spec:
       serviceAccountName: jamie-slack-bot
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
       containers:
       - name: jamie-slack-bot
-        image: ghcr.io/brunovlucena/jamie-slack-bot:latest
+        image: 565265565115.dkr.ecr.us-west-2.amazonaws.com/jamie-slack-bot:dev
         imagePullPolicy: Always
-        env:
-        - name: SLACK_BOT_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: jamie-slack-secrets
-              key: SLACK_BOT_TOKEN
-        - name: SLACK_APP_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: jamie-slack-secrets
-              key: SLACK_APP_TOKEN
-        - name: SLACK_SIGNING_SECRET
-          valueFrom:
-            secretKeyRef:
-              name: jamie-slack-secrets
-              key: SLACK_SIGNING_SECRET
-        - name: AGENT_SRE_URL
-          value: "http://sre-agent-mcp-server-service.agent-sre:30120"
+        envFrom:
+        - secretRef:
+            name: jamie-slack-secrets
         resources:
           requests:
             memory: "128Mi"
@@ -57,12 +37,6 @@ spec:
           limits:
             memory: "256Mi"
             cpu: "200m"
-        securityContext:
-          capabilities:
-            drop:
-              - ALL
-          readOnlyRootFilesystem: false
-          allowPrivilegeEscalation: false
         livenessProbe:
           exec:
             command:
@@ -84,4 +58,3 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
       restartPolicy: Always
-

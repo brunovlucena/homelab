@@ -16,8 +16,7 @@ on:
 env:
   REGISTRY: ghcr.io/brunovlucena
   IMAGE_NAME: jamie-slack-bot
-  IMAGE_TAG_DEV: dev
-  IMAGE_TAG_PRD: latest
+  IMAGE_TAG: latest
 
 jobs:
   build-and-push:
@@ -47,10 +46,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=raw,value=${{ github.ref == 'refs/heads/main' && env.IMAGE_TAG_DEV || github.ref_name }}
-            type=sha,prefix={{branch}}-
+            type=raw,value=latest
 
       - name: 🏗️ Build and push Jamie image
         uses: docker/build-push-action@v5
@@ -68,7 +64,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG_DEV }}
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           format: 'sarif'
           output: 'trivy-results-jamie.sarif'
 
@@ -83,7 +79,7 @@ jobs:
         run: |
           echo "🎉 Jamie Slack Bot image pushed successfully!"
           echo "📦 Registry: ${{ env.REGISTRY }}"
-          echo "🔗 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG_DEV }}"
+          echo "🔗 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
       - name: 🔄 Trigger Flux reconciliation
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
