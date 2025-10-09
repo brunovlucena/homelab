@@ -99,7 +99,7 @@ corsOrigin: "https://lucena.cloud"
 
 # Cloudflare Configuration
 cloudflare:
-  enabled: true
+  enabled: false  # Disabled until sealed secret is created
   zoneId: ""  # Set via Kubernetes secret bruno-site-cloudflare-secret
   apiToken: ""  # Set via Kubernetes secret bruno-site-cloudflare-secret
   domain: "lucena.cloud"
