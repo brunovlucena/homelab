@@ -60,12 +60,12 @@ jobs:
           
           # Homepage API
           if [ -f "flux/clusters/homelab/infrastructure/homepage/api/Dockerfile" ]; then
-            images+=("bruno-site-api")
+            images+=("homelab/homepage-api")
           fi
           
           # Homepage Frontend
           if [ -f "flux/clusters/homelab/infrastructure/homepage/frontend/Dockerfile" ]; then
-            images+=("bruno-site-frontend")
+            images+=("homelab/homepage-frontend")
           fi
           
           # Agent Legacy
