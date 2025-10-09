@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
+import { env } from '../utils/env'
 
 // =============================================================================
 // 📋 TYPES
@@ -59,7 +60,7 @@ class ChatbotService {
     // In development: Vite proxy forwards /api/* to the API service
     // In production: Nginx forwards /api/* to the API service
     // API service then proxies to agent-sre service
-    const apiUrl = import.meta.env.VITE_API_URL || '/api/v1'
+    const apiUrl = env.API_URL
     this.agentBaseUrl = `${apiUrl}/agent-sre`
 
     this.client = axios.create({

@@ -1,6 +1,9 @@
 // Jest setup file
 // This file is run before each test file
 
+// Mock the env module to avoid import.meta.env issues
+jest.mock('./utils/env')
+
 // Mock console methods to reduce noise in tests
 global.console = {
   ...console,

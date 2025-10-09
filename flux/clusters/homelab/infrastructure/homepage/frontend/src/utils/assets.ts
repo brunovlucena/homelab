@@ -5,11 +5,13 @@
  * This allows the browser to fetch assets from MinIO without direct internet access to MinIO
  */
 
+import { env } from './env'
+
 /**
  * Get the base API URL from environment or default to '/api/v1'
  */
 const getApiBaseUrl = (): string => {
-  return import.meta.env.VITE_API_URL || '/api/v1'
+  return env.API_URL
 }
 
 /**
@@ -34,7 +36,7 @@ export const getAssetUrl = (assetPath: string): string => {
  * Check if we're in development mode
  */
 export const isDevelopment = (): boolean => {
-  return import.meta.env.DEV || import.meta.env.MODE === 'development'
+  return env.APP_ENV === 'development'
 }
 
 /**

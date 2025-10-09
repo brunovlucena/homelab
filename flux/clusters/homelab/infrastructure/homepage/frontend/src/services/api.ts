@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios'
+import { env } from '../utils/env'
 
 // =============================================================================
 // 📋 TYPES
@@ -71,7 +72,7 @@ class ApiClient {
 
   constructor() {
     this.client = axios.create({
-      baseURL: import.meta.env.VITE_API_URL || '/api/v1',
+      baseURL: env.API_URL,
       timeout: 10000,
       headers: {
         'Content-Type': 'application/json',

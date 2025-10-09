@@ -9,7 +9,10 @@ module.exports = {
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {
       tsconfig: 'tsconfig.test.json',
-      useESM: false
+      useESM: false,
+      diagnostics: {
+        ignoreCodes: [1343]
+      }
     }],
   },
   collectCoverageFrom: [
