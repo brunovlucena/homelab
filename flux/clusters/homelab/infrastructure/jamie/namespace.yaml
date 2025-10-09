@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jamie
+  labels:
+    name: jamie
+    app.kubernetes.io/name: jamie
+    app.kubernetes.io/part-of: bruno-site
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+
