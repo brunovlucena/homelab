@@ -29,10 +29,6 @@ spec:
           value: "30120"
         - name: MCP_HOST
           value: "0.0.0.0"
-        - name: OLLAMA_URL
-          value: "http://192.168.0.12:11434"
-        - name: MODEL_NAME
-          value: "bruno-sre:latest"
         - name: SERVICE_NAME
           value: "sre-agent-mcp-server"
         - name: LOGFIRE_TOKEN_SRE_AGENT

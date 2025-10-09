@@ -100,6 +100,13 @@ jobs:
       matrix:
         image: ${{ fromJson(needs.detect-images.outputs.images) }}
     steps:
+      - name: "🔑 Login to GitHub Container Registry"
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: "🔒 Run Trivy Vulnerability Scan"
         uses: aquasecurity/trivy-action@master
         with:
@@ -107,6 +114,8 @@ jobs:
           format: 'sarif'
           output: 'trivy-results-${{ matrix.image }}.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM'
+          skip-version-check: 'true'
+          exit-code: '0'
 
       - name: "📊 Upload Trivy Scan Results"
         uses: github/codeql-action/upload-sarif@v2
@@ -133,6 +142,13 @@ jobs:
       matrix:
         image: ${{ fromJson(needs.detect-images.outputs.images) }}
     steps:
+      - name: "🔑 Login to GitHub Container Registry"
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: "🛡️ Run Trivy Compliance Scan"
         uses: aquasecurity/trivy-action@master
         with:
@@ -140,6 +156,8 @@ jobs:
           format: 'json'
           output: 'compliance-results-${{ matrix.image }}.json'
           scanners: 'config,secret'
+          skip-version-check: 'true'
+          exit-code: '0'
 
       - name: "📋 Generate Compliance Report"
         run: |
