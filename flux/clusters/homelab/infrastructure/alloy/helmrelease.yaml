@@ -41,6 +41,15 @@ spec:
         varlog: false
         dockercontainers: false
 
+      # 🔥 Environment variables for Logfire integration
+      extraEnv:
+      - name: LOGFIRE_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: logfire-secrets
+            key: token
+            optional: true  # Set to false once you create the secret
+
       configMap:
         create: true
         content: |
@@ -279,6 +288,23 @@ spec:
               }
             }
 
+            // 🔥 NEW: Logfire Exporter (optional, only if you want to use Logfire SaaS)
+            // Documentation: https://grafana.com/docs/alloy/latest/reference/components/otelcol.exporter.otlp/
+            otelcol.exporter.otlp "logfire" {
+              client {
+                  // Note: Verify actual Logfire OTLP endpoint from https://logfire.pydantic.dev/docs
+                  endpoint = "logfire-api.pydantic.dev:443"
+
+                  tls {
+                      insecure = false
+                  }
+
+                  headers = {
+                      "Authorization" = env("LOGFIRE_TOKEN"),
+                  }
+              }
+            }
+
             otelcol.receiver.otlp "otlp" {
               grpc {
                 endpoint = "0.0.0.0:4317"
@@ -346,7 +372,11 @@ spec:
               metadata_cardinality_limit = 1000
               timeout = "5s"
               output {
-                traces  = [otelcol.exporter.otlp.tempo.input]
+                // 🔥 Forward traces to BOTH Tempo (local) AND Logfire (SaaS)
+                traces  = [
+                  otelcol.exporter.otlp.tempo.input,
+                  otelcol.exporter.otlp.logfire.input,  // Comment out to disable Logfire
+                ]
               }
             }
 

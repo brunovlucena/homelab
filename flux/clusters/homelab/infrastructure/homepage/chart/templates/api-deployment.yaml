@@ -56,6 +56,12 @@ spec:
               value: "{{ .Values.database.user }}"
             - name: DATABASE_NAME
               value: "{{ .Values.database.name }}"
+            - name: DATABASE_URL
+              {{- if .Values.secrets.postgresPassword }}
+              value: "postgresql://{{ .Values.database.user }}:{{ .Values.secrets.postgresPassword }}@{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}?sslmode=disable"
+              {{- else }}
+              value: "postgresql://{{ .Values.database.user }}:@{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}?sslmode=disable"
+              {{- end }}
             - name: REDIS_URL
               value: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}"
             - name: REDIS_PASSWORD
@@ -78,6 +84,87 @@ spec:
             {{- if .Values.ollama.enabled }}
             - name: OLLAMA_URL
               value: "{{ .Values.ollama.url | default "http://192.168.0.3:11434" }}"
+            {{- end }}
+            {{- if .Values.minio.enabled }}
+            - name: MINIO_ENDPOINT
+              value: "{{ .Values.minio.endpoint }}"
+            - name: MINIO_ACCESS_KEY
+              {{- if .Values.minio.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minio.existingSecret }}
+                  key: accessKey
+              {{- else if .Values.secrets.minioAccessKey }}
+              value: {{ .Values.secrets.minioAccessKey | quote }}
+              {{- else }}
+              value: "minioadmin"
+              {{- end }}
+            - name: MINIO_SECRET_KEY
+              {{- if .Values.minio.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.minio.existingSecret }}
+                  key: secretKey
+              {{- else if .Values.secrets.minioSecretKey }}
+              value: {{ .Values.secrets.minioSecretKey | quote }}
+              {{- else }}
+              value: "minioadmin"
+              {{- end }}
+            - name: MINIO_USE_SSL
+              value: "{{ .Values.minio.useSSL }}"
+            - name: MINIO_BUCKET
+              value: "{{ .Values.minio.bucket }}"
+            {{- end }}
+            {{- if .Values.cloudflare.enabled }}
+            - name: CLOUDFLARE_ENABLED
+              {{- if .Values.cloudflare.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cloudflare.existingSecret }}
+                  key: enabled
+              {{- else }}
+              value: {{ .Values.cloudflare.enabled | quote }}
+              {{- end }}
+            - name: CLOUDFLARE_ZONE_ID
+              {{- if .Values.cloudflare.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cloudflare.existingSecret }}
+                  key: zone-id
+              {{- else }}
+              value: {{ .Values.cloudflare.zoneId | quote }}
+              {{- end }}
+            - name: CLOUDFLARE_API_TOKEN
+              {{- if .Values.cloudflare.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cloudflare.existingSecret }}
+                  key: api-token
+              {{- else }}
+              value: {{ .Values.cloudflare.apiToken | quote }}
+              {{- end }}
+            - name: CLOUDFLARE_DOMAIN
+              {{- if .Values.cloudflare.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cloudflare.existingSecret }}
+                  key: domain
+              {{- else }}
+              value: {{ .Values.cloudflare.domain | quote }}
+              {{- end }}
+            - name: CLOUDFLARE_CACHE_TTL
+              {{- if .Values.cloudflare.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.cloudflare.existingSecret }}
+                  key: cache-ttl
+              {{- else }}
+              value: {{ .Values.cloudflare.cacheTtl | quote }}
+              {{- end }}
+            {{- end }}
+            {{- if .Values.agentSRE.enabled }}
+            - name: AGENT_SRE_URL
+              value: "{{ .Values.agentSRE.url }}"
             {{- end }}
             - name: PGPASSWORD
               {{- if .Values.database.existingSecret }}

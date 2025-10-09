@@ -1,0 +1,5 @@
+# Never commit actual secrets!
+logfire-secret.yaml
+*-sealed-secret.yaml
+*.token
+

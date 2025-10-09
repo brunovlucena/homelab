@@ -77,6 +77,17 @@ services:
       - OLLAMA_URL=http://192.168.0.3:11434
       - METRICS_USERNAME=${METRICS_USERNAME:-admin}
       - METRICS_PASSWORD=${METRICS_PASSWORD:-secure_password_change_me}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-10.96.16.210:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_USE_SSL=false
+      - MINIO_BUCKET=homepage-assets
+      - CLOUDFLARE_ENABLED=${CLOUDFLARE_ENABLED:-false}
+      - CLOUDFLARE_ZONE_ID=${CLOUDFLARE_ZONE_ID:-}
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+      - CLOUDFLARE_DOMAIN=${CLOUDFLARE_DOMAIN:-lucena.cloud}
+      - CLOUDFLARE_CACHE_TTL=${CLOUDFLARE_CACHE_TTL:-86400}
+      - AGENT_SRE_URL=${AGENT_SRE_URL:-http://host.docker.internal:31081}
     ports:
       - "0.0.0.0:8080:8080"
     depends_on:

@@ -1,0 +1,76 @@
+package config
+
+import (
+	"os"
+	"strconv"
+)
+
+// Config holds application configuration
+type Config struct {
+	DatabaseURL string
+	RedisURL    string
+	CORSOrigin  string
+	Port        string
+	AgentSREURL string
+	MinIO       MinIOConfig
+	Cloudflare  CloudflareConfig
+}
+
+// MinIOConfig holds MinIO configuration
+type MinIOConfig struct {
+	Endpoint  string
+	AccessKey string
+	SecretKey string
+	UseSSL    bool
+	Bucket    string
+}
+
+// CloudflareConfig holds Cloudflare configuration
+type CloudflareConfig struct {
+	ZoneID   string
+	APIToken string
+	Domain   string
+	Enabled  bool
+	CacheTTL int
+}
+
+// Load loads configuration from environment variables
+func Load() *Config {
+	return &Config{
+		DatabaseURL: os.Getenv("DATABASE_URL"),
+		RedisURL:    os.Getenv("REDIS_URL"),
+		CORSOrigin:  getEnvOrDefault("CORS_ORIGIN", "*"),
+		Port:        getEnvOrDefault("PORT", "8080"),
+		AgentSREURL: getEnvOrDefault("AGENT_SRE_URL", "http://sre-agent-service.agent-sre.svc.cluster.local:8080"),
+		MinIO: MinIOConfig{
+			Endpoint:  getEnvOrDefault("MINIO_ENDPOINT", "minio-service.minio.svc.cluster.local:9000"),
+			AccessKey: getEnvOrDefault("MINIO_ACCESS_KEY", "minioadmin"),
+			SecretKey: getEnvOrDefault("MINIO_SECRET_KEY", "minioadmin"),
+			UseSSL:    getEnvOrDefault("MINIO_USE_SSL", "false") == "true",
+			Bucket:    getEnvOrDefault("MINIO_BUCKET", "homepage-assets"),
+		},
+		Cloudflare: CloudflareConfig{
+			ZoneID:   getEnvOrDefault("CLOUDFLARE_ZONE_ID", ""),
+			APIToken: getEnvOrDefault("CLOUDFLARE_API_TOKEN", ""),
+			Domain:   getEnvOrDefault("CLOUDFLARE_DOMAIN", "lucena.cloud"),
+			Enabled:  getEnvOrDefault("CLOUDFLARE_ENABLED", "false") == "true",
+			CacheTTL: parseIntOrDefault("CLOUDFLARE_CACHE_TTL", 86400), // 24 hours default
+		},
+	}
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func parseIntOrDefault(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil {
+			return parsed
+		}
+	}
+	return defaultValue
+}

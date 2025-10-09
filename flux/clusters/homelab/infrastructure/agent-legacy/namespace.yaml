@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: agent-legacy
-  labels:
-    name: agent-legacy
-    app.kubernetes.io/name: agent-legacy
-    app.kubernetes.io/component: ai-agent

@@ -1,0 +1,261 @@
+name: Homepage Integration Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/homepage/**'
+      - '.github/workflows/homepage-tests.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/homepage/**'
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.23.0'
+  NODE_VERSION: '18'
+  HOMEPAGE_PATH: 'flux/clusters/homelab/infrastructure/homepage'
+
+jobs:
+  # ============================================================================
+  # Backend Tests (Go)
+  # ============================================================================
+  backend-tests:
+    name: Backend Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ${{ env.HOMEPAGE_PATH }}/api/go.sum
+
+      - name: 📦 Install dependencies
+        working-directory: ${{ env.HOMEPAGE_PATH }}/api
+        run: |
+          go mod download
+          go mod verify
+
+      - name: 🧪 Run unit tests
+        working-directory: ${{ env.HOMEPAGE_PATH }}/api
+        run: |
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./handlers/
+
+      - name: 📊 Generate coverage report
+        working-directory: ${{ env.HOMEPAGE_PATH }}/api
+        run: |
+          go tool cover -func=coverage.out
+          echo "### Test Coverage" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.out >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: 📈 Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ env.HOMEPAGE_PATH }}/api/coverage.out
+          flags: backend
+          name: backend-coverage
+          fail_ci_if_error: false
+
+      - name: 🔍 Run go vet
+        working-directory: ${{ env.HOMEPAGE_PATH }}/api
+        run: go vet ./...
+
+      - name: 🔍 Run staticcheck
+        working-directory: ${{ env.HOMEPAGE_PATH }}/api
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+
+  # ============================================================================
+  # Frontend Tests (TypeScript)
+  # ============================================================================
+  frontend-tests:
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ${{ env.HOMEPAGE_PATH }}/frontend/package-lock.json
+
+      - name: 📦 Install dependencies
+        working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
+        run: npm ci
+
+      - name: 🧪 Run unit tests
+        working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
+        run: npm test -- --coverage --watchAll=false --passWithNoTests
+        env:
+          CI: true
+
+      - name: 📊 Generate coverage report
+        if: always()
+        working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
+        run: |
+          if [ -f coverage/lcov.info ]; then
+            echo "### Frontend Test Coverage" >> $GITHUB_STEP_SUMMARY
+            echo "Coverage report generated successfully" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📈 Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ env.HOMEPAGE_PATH }}/frontend/coverage/lcov.info
+          flags: frontend
+          name: frontend-coverage
+          fail_ci_if_error: false
+
+      - name: 🔍 Run TypeScript check
+        working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
+        run: npm run build
+
+      - name: 🔍 Run ESLint
+        working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
+        run: npm run lint || true
+        continue-on-error: true
+
+  # ============================================================================
+  # Build Verification
+  # ============================================================================
+  build-verification:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests]
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🏗️ Build backend
+        working-directory: ${{ env.HOMEPAGE_PATH }}/api
+        run: |
+          go mod download
+          go build -v -o bruno-site-api .
+
+      - name: 🏗️ Build frontend
+        working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: ✅ Verify builds
+        run: |
+          echo "### Build Verification" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Backend binary created" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Frontend assets built" >> $GITHUB_STEP_SUMMARY
+          ls -lh ${{ env.HOMEPAGE_PATH }}/api/bruno-site-api
+          ls -lh ${{ env.HOMEPAGE_PATH }}/frontend/dist/
+
+  # ============================================================================
+  # Integration Tests (requires services)
+  # ============================================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests]
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    
+    services:
+      # Mock agent-sre service for testing
+      agent-sre:
+        image: ghcr.io/brunovlucena/agent-sre-agent:latest
+        ports:
+          - 8080:8080
+        env:
+          OLLAMA_URL: http://mock-ollama:11434
+          MODEL_NAME: bruno-sre:latest
+        options: >-
+          --health-cmd "curl -f http://localhost:8080/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl jq
+
+      - name: 🚀 Start homepage services
+        working-directory: ${{ env.HOMEPAGE_PATH }}
+        run: |
+          docker-compose up -d postgres redis
+          sleep 10
+
+      - name: 🧪 Run integration tests
+        working-directory: ${{ env.HOMEPAGE_PATH }}/tests/integration
+        run: |
+          chmod +x *.sh
+          
+          # Run tests with mock services
+          API_BASE_URL=http://localhost:8080 \
+          AGENT_DIRECT_URL=http://localhost:8080 \
+          ./test-agent-sre-integration.sh || true
+        continue-on-error: true
+
+      - name: 📋 Test summary
+        if: always()
+        run: |
+          echo "### Integration Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "Integration tests completed" >> $GITHUB_STEP_SUMMARY
+          echo "_Note: Full integration tests require live services_" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Test Summary
+  # ============================================================================
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests, build-verification]
+    if: always()
+    
+    steps:
+      - name: 📊 Generate summary
+        run: |
+          echo "# 🧪 Homepage Integration Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Tests | ${{ needs.backend-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Tests | ${{ needs.frontend-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Verification | ${{ needs.build-verification.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.backend-tests.result }}" == "success" ] && \
+             [ "${{ needs.frontend-tests.result }}" == "success" ] && \
+             [ "${{ needs.build-verification.result }}" == "success" ]; then
+            echo "### ✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Some tests failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: ❌ Fail if tests failed
+        if: needs.backend-tests.result != 'success' || needs.frontend-tests.result != 'success' || needs.build-verification.result != 'success'
+        run: exit 1
+

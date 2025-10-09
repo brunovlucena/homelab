@@ -33,16 +33,29 @@ api:
     port: 8080
   resources:
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 2000m      # Higher CPU limit for Mac Studio (Golden Rule #8: Vertical Scaling)
+      memory: 2Gi     # More memory for better performance
     requests:
-      cpu: 250m
-      memory: 256Mi
+      cpu: 500m       # Higher CPU request
+      memory: 512Mi   # Higher memory request
 
 # Ollama Configuration
 ollama:
   url: "http://ollama.bruno.svc.cluster.local:11434"  # External Ollama server
   enabled: true
+
+# Agent-SRE Configuration
+agentSRE:
+  enabled: true
+  url: "http://sre-agent-service.agent-sre.svc.cluster.local:8080"
+
+# MinIO Configuration
+minio:
+  enabled: true
+  endpoint: "minio-service.minio.svc.cluster.local:9000"
+  useSSL: false
+  bucket: "homepage-assets"
+  existingSecret: "bruno-site-minio-secret"  # Created by Sealed Secrets
 
 # Frontend Configuration
 frontend:
@@ -56,11 +69,11 @@ frontend:
   appEnv: "production"
   resources:
     limits:
-      cpu: 300m
-      memory: 256Mi
+      cpu: 1000m     # Higher CPU limit for Mac Studio
+      memory: 1Gi    # More memory for frontend
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 200m      # Higher CPU request
+      memory: 256Mi  # Higher memory request
 
 ingress:
   enabled: false
@@ -69,9 +82,9 @@ ingress:
     - host: lucena.cloud
 
 autoscaling:
-  enabled: true
-  minReplicas: 1 
-  maxReplicas: 10
+  enabled: false  # Disabled for Mac Studio - single node setup
+  minReplicas: 1  # Single replica for Mac Studio
+  maxReplicas: 3  # Limited scaling for Mac Studio
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
@@ -83,6 +96,15 @@ affinity: {}
 
 # CORS Configuration
 corsOrigin: "https://lucena.cloud"
+
+# Cloudflare Configuration
+cloudflare:
+  enabled: true
+  zoneId: ""  # Set via Kubernetes secret bruno-site-cloudflare-secret
+  apiToken: ""  # Set via Kubernetes secret bruno-site-cloudflare-secret
+  domain: "lucena.cloud"
+  cacheTtl: 86400  # 24 hours
+  existingSecret: "bruno-site-cloudflare-secret"  # Created by Sealed Secrets
 
 # Database configuration
 database:
@@ -102,14 +124,14 @@ database:
 postgres:
   resources:
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 1500m    # Higher CPU limit for Mac Studio database performance
+      memory: 1Gi   # More memory for database caching
     requests:
-      cpu: 250m
-      memory: 256Mi
+      cpu: 500m     # Higher CPU request
+      memory: 512Mi # Higher memory request
   persistence:
     enabled: true
-    size: 8Gi
+    size: 20Gi      # Larger storage for Mac Studio
     storageClass: ""
 
 # Redis configuration
@@ -121,21 +143,23 @@ redis:
   existingSecret: "bruno-site-redis-secret"  # Created by Sealed Secrets
   resources:
     limits:
-      cpu: 200m
-      memory: 256Mi
+      cpu: 500m     # Higher CPU limit for Mac Studio Redis performance
+      memory: 512Mi # More memory for Redis caching
     requests:
-      cpu: 100m
-      memory: 128Mi
+      cpu: 200m     # Higher CPU request
+      memory: 256Mi # Higher memory request
   persistence:
     enabled: true
-    size: 2Gi
+    size: 5Gi       # Larger Redis storage for Mac Studio
     storageClass: ""
 
 # Secrets - These should be provided via external secret management
 # DO NOT set actual passwords here - use Kubernetes secrets instead
 secrets:
-  databasePassword: ""  # Set via Kubernetes secret
-  redisPassword: ""     # Set via Kubernetes secret
+  databasePassword: ""    # Set via Kubernetes secret
+  redisPassword: ""       # Set via Kubernetes secret
+  minioAccessKey: ""      # Set via Kubernetes secret
+  minioSecretKey: ""      # Set via Kubernetes secret
 
 # K6 Load Testing Configuration
 k6:

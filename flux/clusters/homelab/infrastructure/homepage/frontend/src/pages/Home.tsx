@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { apiClient } from '../services/api'
 import { Project, Skill } from '../types'
+import { getAssetUrl } from '../utils/assets'
 import { 
   SiReact, 
   SiTypescript, 
@@ -179,11 +180,11 @@ const Home: React.FC = () => {
               <div className="about-image-container">
                 <picture>
                   <source 
-                    srcSet="./assets/eu.webp" 
+                    srcSet={getAssetUrl('eu.webp')} 
                     type="image/webp" 
                   />
                   <img 
-                    src="./assets/eu.png" 
+                    src={getAssetUrl('eu.webp')} 
                     alt="Bruno Lucena" 
                     className="about-image"
                     loading="eager"
