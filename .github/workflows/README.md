@@ -13,9 +13,12 @@ This directory contains CI/CD workflows for the homelab project, with specific f
 **Jobs:**
 - ✅ **Backend Tests (Go)** - Unit tests for API handlers
 - ✅ **Frontend Tests (TypeScript)** - Jest tests for chatbot service
+- ✅ **Metrics Tests** - Prometheus metrics and endpoint verification
 - ✅ **Build Verification** - Verify both API and frontend build successfully
 - ✅ **Integration Tests** - Full integration testing (on-demand)
 - ✅ **Test Summary** - Aggregate results
+
+**Note:** This workflow must pass before image builds are triggered.
 
 **Usage:**
 ```bash
@@ -24,7 +27,28 @@ This directory contains CI/CD workflows for the homelab project, with specific f
 gh workflow run homepage-tests.yml
 ```
 
-### 2. Homepage PR Checks
+### 2. Homepage Images CI/CD
+
+**File:** `homepage-images.yml`  
+**Triggers:** After successful test runs, Scheduled (weekly), Manual dispatch  
+**Purpose:** Build and push Docker images only after tests pass
+
+**Jobs:**
+- ✅ **Test Validation** - Verify tests passed before building
+- 🔍 **Change Detection** - Only build if code changed
+- 🏗️ **API Image Build** - Build Go API Docker image
+- 🏗️ **Frontend Image Build** - Build React frontend Docker image
+- 🔒 **Security Scans** - Trivy vulnerability scanning
+- 📊 **Build Summary** - Consolidated results
+
+**Features:**
+- Tests must pass before builds
+- Smart change detection (no unnecessary builds)
+- Multi-platform builds (amd64/arm64)
+- Security scanning
+- Automatic image tagging
+
+### 3. Homepage PR Checks
 
 **File:** `homepage-pr-check.yml`  
 **Triggers:** Pull Requests only  
@@ -44,7 +68,7 @@ gh workflow run homepage-tests.yml
 - Bundle size monitoring
 - TODO/FIXME detection
 
-### 3. Homepage Nightly Tests
+### 4. Homepage Nightly Tests
 
 **File:** `homepage-nightly-tests.yml`  
 **Triggers:** Daily at 2 AM UTC, Manual dispatch  

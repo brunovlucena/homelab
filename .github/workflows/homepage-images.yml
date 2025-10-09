@@ -6,14 +6,10 @@
 name: "🏠 Homepage Images CI/CD"
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Homepage Integration Tests"]
+    types: [completed]
     branches: [main, master]
-    paths:
-      - 'flux/clusters/homelab/infrastructure/homepage/**'
-  pull_request:
-    branches: [main, master]
-    paths:
-      - 'flux/clusters/homelab/infrastructure/homepage/**'
   schedule:
     # Run weekly on Sundays at 2 AM UTC to ensure images stay fresh
     - cron: '0 2 * * 0'
@@ -41,14 +37,35 @@ env:
   GO_VERSION: '1.21'
 
 jobs:
+  # ✅ Check if tests passed
+  check-tests:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_run'
+    outputs:
+      tests-passed: ${{ steps.check.outputs.tests-passed }}
+    steps:
+      - name: "✅ Check Test Results"
+        id: check
+        run: |
+          if [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
+            echo "tests-passed=true" >> $GITHUB_OUTPUT
+            echo "✅ Tests passed, proceeding with image builds"
+          else
+            echo "tests-passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Tests failed, skipping image builds"
+          fi
+
   # 🔍 Detect changes and determine which services to build
   detect-changes:
+    needs: [check-tests]
+    if: always() && (needs.check-tests.outputs.tests-passed == 'true' || github.event_name != 'workflow_run')
     runs-on: ubuntu-latest
     outputs:
       build-homepage-api: ${{ steps.changes.outputs.homepage-api }}
       build-homepage-frontend: ${{ steps.changes.outputs.homepage-frontend }}
       build-all: ${{ steps.changes.outputs.build-all }}
       environment: ${{ steps.env.outputs.environment }}
+      has-changes: ${{ steps.changes.outputs.has-changes }}
     steps:
       - name: "📥 Checkout Repository"
         uses: actions/checkout@v4
@@ -59,25 +76,39 @@ jobs:
         id: changes
         run: |
           # Check for changes in homepage API
-          if git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/homepage/api/; then
-            echo "homepage-api=false" >> $GITHUB_OUTPUT
-          else
-            echo "homepage-api=true" >> $GITHUB_OUTPUT
+          API_CHANGED=false
+          if ! git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/homepage/api/; then
+            API_CHANGED=true
           fi
           
           # Check for changes in homepage frontend
-          if git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/homepage/frontend/; then
-            echo "homepage-frontend=false" >> $GITHUB_OUTPUT
-          else
-            echo "homepage-frontend=true" >> $GITHUB_OUTPUT
+          FRONTEND_CHANGED=false
+          if ! git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/homepage/frontend/; then
+            FRONTEND_CHANGED=true
           fi
           
           # For scheduled runs or manual triggers, build all
+          BUILD_ALL=false
           if [[ "${{ github.event_name }}" == "schedule" ]] || [[ "${{ github.event.inputs.force_rebuild }}" == "true" ]]; then
-            echo "build-all=true" >> $GITHUB_OUTPUT
-          else
-            echo "build-all=false" >> $GITHUB_OUTPUT
+            BUILD_ALL=true
           fi
+          
+          # Check if any changes detected
+          HAS_CHANGES=false
+          if [[ "$API_CHANGED" == "true" ]] || [[ "$FRONTEND_CHANGED" == "true" ]] || [[ "$BUILD_ALL" == "true" ]]; then
+            HAS_CHANGES=true
+          fi
+          
+          echo "homepage-api=$API_CHANGED" >> $GITHUB_OUTPUT
+          echo "homepage-frontend=$FRONTEND_CHANGED" >> $GITHUB_OUTPUT
+          echo "build-all=$BUILD_ALL" >> $GITHUB_OUTPUT
+          echo "has-changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
+          
+          echo "🔍 Change Detection Results:"
+          echo "  API changed: $API_CHANGED"
+          echo "  Frontend changed: $FRONTEND_CHANGED"
+          echo "  Build all: $BUILD_ALL"
+          echo "  Has changes: $HAS_CHANGES"
 
       - name: "🌍 Set Environment"
         id: env
@@ -92,8 +123,8 @@ jobs:
 
   # 🏗️ Build Homepage API (Go)
   build-homepage-api:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.build-homepage-api == 'true' || needs.detect-changes.outputs.build-all == 'true'
+    needs: [check-tests, detect-changes]
+    if: always() && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && (needs.detect-changes.outputs.build-homepage-api == 'true' || needs.detect-changes.outputs.build-all == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: "📥 Checkout Repository"
@@ -160,8 +191,8 @@ jobs:
 
   # 🏗️ Build Homepage Frontend (React)
   build-homepage-frontend:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.build-homepage-frontend == 'true' || needs.detect-changes.outputs.build-all == 'true'
+    needs: [check-tests, detect-changes]
+    if: always() && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && (needs.detect-changes.outputs.build-homepage-frontend == 'true' || needs.detect-changes.outputs.build-all == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: "📥 Checkout Repository"
@@ -238,7 +269,7 @@ jobs:
 
   # 📊 Generate Build Summary
   build-summary:
-    needs: [detect-changes, build-homepage-api, build-homepage-frontend]
+    needs: [check-tests, detect-changes, build-homepage-api, build-homepage-frontend]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -251,6 +282,7 @@ jobs:
           echo "- Trigger: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Tests Status: ${{ needs.check-tests.outputs.tests-passed == 'true' && '✅ Passed' || '❌ Failed/Skipped' }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Services Built:**" >> $GITHUB_STEP_SUMMARY
           echo "| Service | Status | Image Tag |" >> $GITHUB_STEP_SUMMARY
