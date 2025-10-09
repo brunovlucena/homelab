@@ -9,7 +9,7 @@ import os
 import json
 import asyncio
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 
 import aiohttp
@@ -19,7 +19,10 @@ from slack_sdk.errors import SlackApiError
 
 # LangChain imports
 from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
+from langchain_core.tools import tool
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 # Configure logging
 logging.basicConfig(
@@ -185,6 +188,41 @@ class AgentSREClient:
         except Exception as e:
             logger.error(f"Status check error: {e}")
             return {"status": "error", "error": str(e)}
+    
+    async def _call_mcp_tool_direct(self, tool_name: str, arguments: Dict) -> str:
+        """Call MCP tool directly via JSON-RPC"""
+        if not self.session:
+            raise RuntimeError("AgentSREClient not properly initialized")
+        
+        try:
+            payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": tool_name,
+                    "arguments": arguments
+                }
+            }
+            
+            async with self.session.post(
+                self.mcp_url,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    if "result" in result and "content" in result["result"]:
+                        content = result["result"]["content"]
+                        if content and len(content) > 0 and "text" in content[0]:
+                            return content[0]["text"]
+                    return "No response from agent"
+                else:
+                    error_text = await response.text()
+                    return f"Error: {error_text}"
+        except Exception as e:
+            logger.error(f"❌ Error calling MCP tool {tool_name}: {e}")
+            return f"Error: {str(e)}"
 
 
 class JamieSlackBot:
@@ -203,8 +241,142 @@ class JamieSlackBot:
         self.llm = llm  # LLM brain
         self.agent_url = os.environ.get("AGENT_SRE_URL", "http://sre-agent-mcp-server-service.agent-sre:30120")
         
-        # System prompt for Jamie
-        self.system_prompt = """You are Jamie, an expert SRE (Site Reliability Engineering) assistant.
+        # User context storage (in production, use Redis or proper database)
+        self.user_contexts: Dict[str, Dict] = {}
+        
+        # 🔧 Create LangChain tools from MCP endpoints
+        self.tools = self._create_tools()
+        
+        # 🤖 Create LangChain agent with tools
+        self.agent_executor = self._create_agent()
+        
+        # Set up event handlers
+        self._setup_handlers()
+        
+        logger.info(f"🤖 Jamie Slack Bot initialized")
+        logger.info(f"   🧠 LLM: {MODEL_NAME} @ {OLLAMA_URL}")
+        logger.info(f"   🔧 Agent-SRE: {self.agent_url}")
+        logger.info(f"   🛠️  Loaded {len(self.tools)} tools")
+    
+    def _create_tools(self) -> List:
+        """🔧 Create LangChain tools from MCP endpoints"""
+        
+        # Store agent_url in closure for tools
+        agent_url = self.agent_url
+        
+        @tool
+        async def check_golden_signals(service_name: str, namespace: str = "default") -> str:
+            """Check golden signals (latency, traffic, errors, saturation) for a service.
+            Use this when users ask about service health, status, or golden signals.
+            
+            Args:
+                service_name: The name of the service to check (e.g., 'homepage', 'api', 'frontend')
+                namespace: The Kubernetes namespace (default: 'default')
+            
+            Returns:
+                JSON string with golden signals data including overall status and individual metrics
+            """
+            async with AgentSREClient(agent_url) as agent:
+                return await agent._call_mcp_tool_direct("check_golden_signals", {
+                    "service_name": service_name,
+                    "namespace": namespace
+                })
+        
+        @tool
+        async def query_prometheus(query: str) -> str:
+            """Execute a PromQL query against Prometheus.
+            Use this when users want to query metrics or run custom PromQL queries.
+            
+            Args:
+                query: The PromQL query to execute (e.g., 'up', 'rate(http_requests_total[5m])')
+            
+            Returns:
+                JSON string with query results from Prometheus
+            """
+            async with AgentSREClient(agent_url) as agent:
+                return await agent._call_mcp_tool_direct("query_prometheus", {"query": query})
+        
+        @tool
+        async def get_pod_logs(pod_name: str, namespace: str = "default", tail_lines: int = 100) -> str:
+            """Get logs from a Kubernetes pod.
+            Use this when users ask for pod logs or want to see what's happening in a pod.
+            
+            Args:
+                pod_name: The name of the pod
+                namespace: The Kubernetes namespace (default: 'default')
+                tail_lines: Number of log lines to return (default: 100)
+            
+            Returns:
+                Pod logs as a string
+            """
+            async with AgentSREClient(agent_url) as agent:
+                return await agent._call_mcp_tool_direct("get_pod_logs", {
+                    "pod_name": pod_name,
+                    "namespace": namespace,
+                    "tail_lines": tail_lines
+                })
+        
+        @tool
+        async def sre_chat(message: str) -> str:
+            """General SRE consultation and advice using AI.
+            Use this for general SRE questions, best practices, or when no specific tool applies.
+            
+            Args:
+                message: The SRE question or request
+            
+            Returns:
+                AI-generated response with SRE insights
+            """
+            async with AgentSREClient(agent_url) as agent:
+                result = await agent.chat(message)
+                return result.get("response", "No response")
+        
+        @tool
+        async def analyze_logs(logs: str, context: str = None) -> str:
+            """Analyze logs for errors, patterns, and insights.
+            Use this when users provide logs and want them analyzed.
+            
+            Args:
+                logs: The log data to analyze
+                context: Optional context about the logs
+            
+            Returns:
+                Analysis of the logs with insights and recommendations
+            """
+            async with AgentSREClient(agent_url) as agent:
+                result = await agent.analyze_logs(logs, context)
+                return result.get("analysis", "No analysis available")
+        
+        @tool
+        async def get_agent_status() -> str:
+            """Check the status of the SRE agent service.
+            Use this when users ask about the agent's health or availability.
+            
+            Returns:
+                JSON string with agent status information
+            """
+            async with AgentSREClient(agent_url) as agent:
+                status = await agent.get_status()
+                return json.dumps(status, indent=2)
+        
+        return [
+            check_golden_signals,
+            query_prometheus,
+            get_pod_logs,
+            sre_chat,
+            analyze_logs,
+            get_agent_status
+        ]
+    
+    def _create_agent(self) -> AgentExecutor:
+        """🤖 Create LangChain agent with tools"""
+        if not self.llm:
+            logger.error("Cannot create agent: LLM not initialized")
+            return None
+        
+        # Create prompt template for the agent
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are Jamie, an expert SRE (Site Reliability Engineering) assistant.
 You help with monitoring, troubleshooting, incident response, and maintaining system reliability.
 You provide clear, actionable insights based on SRE best practices and observability principles.
 
@@ -218,190 +390,67 @@ Your expertise includes:
 - 🎯 Service health monitoring
 
 You are friendly, helpful, and concise. Use emojis to make responses engaging.
-When you need to execute infrastructure tasks, you have access to agent-sre MCP tools."""
+
+You have access to powerful SRE tools. Use them when needed:
+- Use check_golden_signals when users ask about service health or status
+- Use query_prometheus for custom metric queries
+- Use get_pod_logs to retrieve pod logs
+- Use sre_chat for general SRE advice
+- Use analyze_logs when logs are provided
+- Use get_agent_status to check the agent's health
+
+Always choose the most appropriate tool based on the user's request."""),
+            MessagesPlaceholder(variable_name="chat_history", optional=True),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ])
         
-        # User context storage (in production, use Redis or proper database)
-        self.user_contexts: Dict[str, Dict] = {}
+        # Create the agent
+        agent = create_tool_calling_agent(self.llm, self.tools, prompt)
         
-        # Set up event handlers
-        self._setup_handlers()
+        # Create agent executor
+        agent_executor = AgentExecutor(
+            agent=agent,
+            tools=self.tools,
+            verbose=True,
+            handle_parsing_errors=True,
+            max_iterations=5,
+            return_intermediate_steps=False
+        )
         
-        logger.info(f"🤖 Jamie Slack Bot initialized")
-        logger.info(f"   🧠 LLM: {MODEL_NAME} @ {OLLAMA_URL}")
-        logger.info(f"   🔧 Agent-SRE: {self.agent_url}")
+        return agent_executor
     
     async def _process_with_brain(self, message: str, context: Optional[Dict] = None) -> str:
-        """🧠 Process message using Jamie's LLM brain with MCP tool calling"""
-        if not self.llm:
+        """🧠 Process message using Jamie's LLM brain with LangChain agent"""
+        if not self.agent_executor:
             return "⚠️ My brain is temporarily offline. Please try again later."
         
         try:
-            # 🔍 First, check if message requires MCP tool execution
-            tool_result = await self._detect_and_execute_tool(message)
-            
-            if tool_result:
-                # Tool was executed, now ask LLM to format the result
-                format_prompt = f"""The user asked: "{message}"
-
-I executed a tool and got this result:
-{tool_result}
-
-Please provide a friendly, concise response to the user based on this data. Use emojis and be conversational."""
-                
-                messages = [
-                    SystemMessage(content=self.system_prompt),
-                    HumanMessage(content=format_prompt)
-                ]
-                
-                response = await self.llm.ainvoke(messages)
-                return response.content
-            
-            # No tool needed, just regular LLM response
-            messages = [SystemMessage(content=self.system_prompt)]
-            
-            # Add conversation history if available
+            # Build chat history for context
+            chat_history = []
             if context and context.get("conversation_history"):
                 for msg in context["conversation_history"]:
                     if msg["role"] == "user":
-                        messages.append(HumanMessage(content=msg["content"]))
+                        chat_history.append(HumanMessage(content=msg["content"]))
                     elif msg["role"] == "assistant":
-                        messages.append(AIMessage(content=msg["content"]))
+                        chat_history.append(AIMessage(content=msg["content"]))
             
-            # Add current message
-            messages.append(HumanMessage(content=message))
+            # Invoke the agent with the message
+            logger.info(f"🧠 Processing with agent: {message[:100]}...")
             
-            # Invoke LLM
-            logger.info(f"🧠 Processing with LLM: {message[:100]}...")
-            response = await self.llm.ainvoke(messages)
+            result = await self.agent_executor.ainvoke({
+                "input": message,
+                "chat_history": chat_history
+            })
             
-            return response.content
+            # Extract the output
+            output = result.get("output", "I'm not sure how to respond to that.")
+            
+            return output
         
         except Exception as e:
-            logger.error(f"❌ Error processing with LLM: {e}")
+            logger.error(f"❌ Error processing with agent: {e}", exc_info=True)
             return f"⚠️ I encountered an error processing that request: {str(e)}"
-    
-    async def _detect_and_execute_tool(self, message: str) -> Optional[str]:
-        """🔍 Detect if message requires MCP tool and execute it"""
-        message_lower = message.lower()
-        
-        try:
-            # 📊 Golden Signals Detection
-            if any(keyword in message_lower for keyword in ["golden signal", "golden signals", "check signals", "service health", "service status"]):
-                # Extract service name
-                service_name = self._extract_service_name(message)
-                if service_name:
-                    logger.info(f"📊 Detected golden signals request for: {service_name}")
-                    async with AgentSREClient(self.agent_url) as agent:
-                        result = await self._call_mcp_tool(agent, "check_golden_signals", {
-                            "service_name": service_name,
-                            "namespace": "default"
-                        })
-                        return result
-            
-            # 🔍 Prometheus Query Detection
-            if "query prometheus" in message_lower or "promql" in message_lower:
-                # Extract query (simple heuristic - text after "query:" or in quotes)
-                import re
-                query_match = re.search(r'query[:\s]+(.+)', message, re.IGNORECASE)
-                if query_match:
-                    query = query_match.group(1).strip()
-                    logger.info(f"🔍 Detected Prometheus query: {query}")
-                    async with AgentSREClient(self.agent_url) as agent:
-                        result = await self._call_mcp_tool(agent, "query_prometheus", {"query": query})
-                        return result
-            
-            # 📜 Pod Logs Detection
-            if "pod log" in message_lower or "logs for pod" in message_lower or "get logs" in message_lower:
-                # Extract pod name
-                pod_name = self._extract_pod_name(message)
-                if pod_name:
-                    logger.info(f"📜 Detected pod logs request for: {pod_name}")
-                    async with AgentSREClient(self.agent_url) as agent:
-                        result = await self._call_mcp_tool(agent, "get_pod_logs", {
-                            "pod_name": pod_name,
-                            "namespace": "default"
-                        })
-                        return result
-            
-            # No tool detected
-            return None
-        
-        except Exception as e:
-            logger.error(f"❌ Error detecting/executing tool: {e}")
-            return None
-    
-    async def _call_mcp_tool(self, agent: 'AgentSREClient', tool_name: str, arguments: Dict) -> str:
-        """Call MCP tool via agent-sre"""
-        try:
-            payload = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "tools/call",
-                "params": {
-                    "name": tool_name,
-                    "arguments": arguments
-                }
-            }
-            
-            async with agent.session.post(
-                agent.mcp_url,
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=30)
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    if "result" in result and "content" in result["result"]:
-                        content = result["result"]["content"]
-                        if content and len(content) > 0 and "text" in content[0]:
-                            return content[0]["text"]
-                    return "No response from agent"
-                else:
-                    error_text = await response.text()
-                    return f"Error: {error_text}"
-        except Exception as e:
-            logger.error(f"❌ Error calling MCP tool {tool_name}: {e}")
-            return f"Error: {str(e)}"
-    
-    def _extract_service_name(self, message: str) -> Optional[str]:
-        """Extract service name from message"""
-        import re
-        # Look for patterns like "for <service>" or "of <service>" or "@<service>"
-        patterns = [
-            r'for\s+(\w+[-\w]*)',
-            r'of\s+(\w+[-\w]*)',
-            r'@(\w+[-\w]*)',
-            r'service[:\s]+(\w+[-\w]*)'
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, message, re.IGNORECASE)
-            if match:
-                return match.group(1)
-        
-        # Default to common services
-        common_services = ["homepage", "api", "frontend", "backend", "web"]
-        for service in common_services:
-            if service in message.lower():
-                return service
-        
-        return None
-    
-    def _extract_pod_name(self, message: str) -> Optional[str]:
-        """Extract pod name from message"""
-        import re
-        # Look for patterns like "pod <name>" or "pod: <name>"
-        patterns = [
-            r'pod[:\s]+([a-z0-9-]+)',
-            r'for pod ([a-z0-9-]+)',
-            r'from ([a-z0-9-]+)'
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, message, re.IGNORECASE)
-            if match:
-                return match.group(1)
-        
-        return None
     
     def _setup_handlers(self):
         """Set up Slack event handlers"""
