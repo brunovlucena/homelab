@@ -1,0 +1,87 @@
+# 🤖 Jamie Slack Bot - Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jamie-slack-bot
+  namespace: homepage
+  labels:
+    app: jamie-slack-bot
+    app.kubernetes.io/name: jamie-slack-bot
+    app.kubernetes.io/component: chatbot
+    app.kubernetes.io/part-of: bruno-site
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jamie-slack-bot
+  template:
+    metadata:
+      labels:
+        app: jamie-slack-bot
+        app.kubernetes.io/name: jamie-slack-bot
+        app.kubernetes.io/component: chatbot
+      annotations:
+        prometheus.io/scrape: "false"
+    spec:
+      serviceAccountName: jamie-slack-bot
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: jamie-slack-bot
+        image: 565265565115.dkr.ecr.us-west-2.amazonaws.com/jamie-slack-bot:dev
+        imagePullPolicy: Always
+        env:
+        - name: SLACK_BOT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: jamie-slack-secrets
+              key: SLACK_BOT_TOKEN
+        - name: SLACK_APP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: jamie-slack-secrets
+              key: SLACK_APP_TOKEN
+        - name: SLACK_SIGNING_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: jamie-slack-secrets
+              key: SLACK_SIGNING_SECRET
+        - name: AGENT_SRE_URL
+          value: "http://sre-agent-mcp-server-service.agent-sre:30120"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        securityContext:
+          capabilities:
+            drop:
+              - ALL
+          readOnlyRootFilesystem: false
+          allowPrivilegeEscalation: false
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      restartPolicy: Always
+

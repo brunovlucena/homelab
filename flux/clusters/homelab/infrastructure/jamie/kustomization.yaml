@@ -1,0 +1,7 @@
+# 🤖 Jamie Slack Bot - Main Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - k8s
+

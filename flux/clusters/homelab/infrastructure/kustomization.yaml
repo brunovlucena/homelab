@@ -13,6 +13,7 @@ resources:
   - metrics-server
   - prometheus-operator
   - homepage # TODO: Review alerts
+  - jamie # 🤖 Jamie Slack Bot (Kustomize-based)
   - minio # Asset storage for homepage
   - loki
   - alloy

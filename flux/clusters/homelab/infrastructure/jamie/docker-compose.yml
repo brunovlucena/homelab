@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  jamie-slack-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jamie-slack-bot
+    environment:
+      - SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}
+      - SLACK_APP_TOKEN=${SLACK_APP_TOKEN}
+      - SLACK_SIGNING_SECRET=${SLACK_SIGNING_SECRET}
+      - AGENT_SRE_URL=${AGENT_SRE_URL:-http://sre-agent-mcp-server-service.agent-sre:30120}
+    restart: unless-stopped
+    networks:
+      - homepage
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  homepage:
+    external: true
+    name: homepage_default
+

@@ -135,7 +135,8 @@ show_menu() {
     echo -e "${BOLD}5)${NC} Cloudflare Tunnel Secret"
     echo -e "${BOLD}6)${NC} Homepage Cloudflare Secret"
     echo -e "${BOLD}7)${NC} Homepage MinIO Secret"
-    echo -e "${BOLD}8)${NC} Exit"
+    echo -e "${BOLD}8)${NC} Jamie Slack Bot Secret"
+    echo -e "${BOLD}9)${NC} Exit"
     echo ""
 }
 
@@ -389,6 +390,68 @@ create_homepage_minio_secret() {
     CREATED_SECRETS+=("Homepage MinIO")
 }
 
+# Create Jamie Slack Bot Secret
+create_jamie_slack_secret() {
+    log_header "🤖 Creating Jamie Slack Bot Sealed Secret"
+    
+    local namespace="homepage"
+    local secret_name="jamie-slack-secrets"
+    local output_file="$REPO_ROOT/flux/clusters/homelab/infrastructure/jamie/k8s/jamie-slack-secrets-sealed.yaml"
+    
+    echo ""
+    log_step "Enter Jamie Slack Bot credentials:"
+    log_info "Hint: Check ~/.zshrc for SLACK_BOT_JAMIE_OAUTH_TOKEN, SLACK_APP_JAMIE_APP_TOKEN, and SLACK_SIGNING_SECRET"
+    echo ""
+    
+    read -sp "Slack Bot Token (xoxb-...): " slack_bot_token
+    echo ""
+    
+    if [ -z "$slack_bot_token" ]; then
+        log_error "Slack Bot Token is required"
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+        FAILED_SECRETS+=("Jamie Slack Bot")
+        return 1
+    fi
+    
+    read -sp "Slack App Token (xapp-...): " slack_app_token
+    echo ""
+    
+    if [ -z "$slack_app_token" ]; then
+        log_error "Slack App Token is required"
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+        FAILED_SECRETS+=("Jamie Slack Bot")
+        return 1
+    fi
+    
+    read -sp "Slack Signing Secret: " slack_signing_secret
+    echo ""
+    
+    if [ -z "$slack_signing_secret" ]; then
+        log_error "Slack Signing Secret is required"
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+        FAILED_SECRETS+=("Jamie Slack Bot")
+        return 1
+    fi
+    
+    log_step "Creating namespace if needed..."
+    kubectl create namespace ${namespace} --dry-run=client -o yaml | kubectl apply -f - &> /dev/null
+    
+    log_step "Generating sealed secret..."
+    kubectl create secret generic ${secret_name} \
+      --from-literal=SLACK_BOT_TOKEN="${slack_bot_token}" \
+      --from-literal=SLACK_APP_TOKEN="${slack_app_token}" \
+      --from-literal=SLACK_SIGNING_SECRET="${slack_signing_secret}" \
+      --namespace="${namespace}" \
+      --dry-run=client -o yaml | \
+      kubeseal --format=yaml \
+        --controller-name=sealed-secrets \
+        --controller-namespace=flux-system > "${output_file}"
+    
+    log_success "Created: ${output_file}"
+    CREATED_COUNT=$((CREATED_COUNT + 1))
+    CREATED_SECRETS+=("Jamie Slack Bot")
+}
+
 # Generate summary
 generate_summary() {
     log_header "📊 GENERATION SUMMARY"
@@ -432,7 +495,7 @@ generate_summary() {
     echo "4. Flux will automatically reconcile and create the secrets"
     echo ""
     echo "To verify secrets were created:"
-    echo "  kubectl get secrets -A | grep -E '(loki|agent-sre|grafana-mcp|cloudflare|bruno)'"
+    echo "  kubectl get secrets -A | grep -E '(loki|agent-sre|grafana-mcp|cloudflare|bruno|jamie)'"
     echo ""
     echo "To view Flux reconciliation:"
     echo "  flux logs --all-namespaces --follow"
@@ -468,13 +531,16 @@ generate_all_secrets() {
     
     create_homepage_minio_secret || true
     echo ""
+    
+    create_jamie_slack_secret || true
+    echo ""
 }
 
 # Main menu loop
 main_menu() {
     while true; do
         show_menu
-        read -p "Select an option [1-8]: " choice
+        read -p "Select an option [1-9]: " choice
         
         case $choice in
             1)
@@ -518,11 +584,17 @@ main_menu() {
                 clear 2>/dev/null || true
                 ;;
             8)
+                create_jamie_slack_secret || true
+                echo ""
+                read -p "Press Enter to continue..."
+                clear 2>/dev/null || true
+                ;;
+            9)
                 log_info "Exiting..."
                 exit 0
                 ;;
             *)
-                log_error "Invalid option. Please select 1-8."
+                log_error "Invalid option. Please select 1-9."
                 sleep 2
                 clear 2>/dev/null || true
                 ;;

@@ -1,0 +1,13 @@
+# 📦 Homepage Namespace (shared with Jamie)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homepage
+  labels:
+    name: homepage
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/part-of: bruno-site
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+

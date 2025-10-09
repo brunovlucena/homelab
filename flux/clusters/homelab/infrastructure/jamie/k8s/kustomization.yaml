@@ -1,0 +1,21 @@
+# 🤖 Jamie Slack Bot - Kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: homepage
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - deployment.yaml
+  # Secret is created directly in cluster (sealed-secrets controller has issues)
+  # Use scripts/create-all-secrets.sh option 8 to recreate if needed
+
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: bruno-site
+
+images:
+  - name: 565265565115.dkr.ecr.us-west-2.amazonaws.com/jamie-slack-bot
+    newTag: dev
+
