@@ -176,7 +176,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/bruno-site-api
+          images: ${{ env.REGISTRY }}/homelab/homepage-api
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -197,7 +197,7 @@ jobs:
       - name: "🔒 Run Trivy Security Scan"
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/bruno-site-api:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
+          image-ref: ${{ env.REGISTRY }}/homelab/homepage-api:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
           format: 'sarif'
           output: 'trivy-results-api.sarif'
 
@@ -257,7 +257,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/bruno-site-frontend
+          images: ${{ env.REGISTRY }}/homelab/homepage-frontend
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -278,7 +278,7 @@ jobs:
       - name: "🔒 Run Trivy Security Scan"
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/bruno-site-frontend:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
+          image-ref: ${{ env.REGISTRY }}/homelab/homepage-frontend:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
           format: 'sarif'
           output: 'trivy-results-frontend.sarif'
 
@@ -312,8 +312,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Registry Images:**" >> $GITHUB_STEP_SUMMARY
           echo "- Registry: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
-          echo "- API: \`${{ env.REGISTRY }}/bruno-site-api:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Frontend: \`${{ env.REGISTRY }}/bruno-site-frontend:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- API: \`${{ env.REGISTRY }}/homelab/homepage-api:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: \`${{ env.REGISTRY }}/homelab/homepage-frontend:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
           echo "- Images are automatically available in the registry" >> $GITHUB_STEP_SUMMARY

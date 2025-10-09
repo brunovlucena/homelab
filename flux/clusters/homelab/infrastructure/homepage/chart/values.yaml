@@ -25,7 +25,7 @@ securityContext: {}
 # API Configuration
 api:
   image:
-    repository: ghcr.io/brunovlucena/bruno-site/api
+    repository: ghcr.io/brunovlucena/homelab/homepage-api
     pullPolicy: Always
     tag: "latest"
   service:
@@ -60,7 +60,7 @@ minio:
 # Frontend Configuration
 frontend:
   image:
-    repository: ghcr.io/brunovlucena/bruno-site/frontend
+    repository: ghcr.io/brunovlucena/homelab/homepage-frontend
     pullPolicy: Always
     tag: "latest"
   service:
