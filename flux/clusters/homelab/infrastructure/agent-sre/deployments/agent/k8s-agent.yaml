@@ -178,19 +178,23 @@ spec:
       # Provides access to the Knative func binary for function management
       # The agent can use this to deploy, list, and manage Knative functions
       - name: func
-        image: ghcr.io/knative/func:latest
+        image: bitnami/kubectl:latest
         imagePullPolicy: IfNotPresent
         command: ["/bin/sh"]
         args:
           - -c
           - |
-            # Keep container running and provide func CLI access
+            # Install func CLI from GitHub releases
+            FUNC_VERSION="v1.15.1"
+            wget -q https://github.com/knative/func/releases/download/${FUNC_VERSION}/func_linux_amd64 -O /tmp/func
+            chmod +x /tmp/func
+            mv /tmp/func /usr/local/bin/func
+            
+            # Keep container running
+            echo "func CLI installed: $(func version)"
             while true; do
               sleep 3600
             done
-        env:
-        - name: KUBECONFIG
-          value: "/var/run/secrets/kubernetes.io/serviceaccount/token"
         resources:
           requests:
             memory: "64Mi"
