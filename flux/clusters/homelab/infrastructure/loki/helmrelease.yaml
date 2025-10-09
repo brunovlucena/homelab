@@ -15,6 +15,11 @@ spec:
         kind: HelmRepository
         name: grafana
         namespace: flux-system
+  valuesFrom:
+    - kind: Secret
+      name: loki-minio-secret
+      valuesKey: root-password
+      targetPath: storage.s3.secret_access_key
   values:
     auth_enabled: false
     storage:
@@ -24,7 +29,6 @@ spec:
         region: us-east-1
         bucket_name: loki
         access_key_id: root-user
-        secret_access_key: supersecretpassword
         s3forcepathstyle: true
         insecure: true
     loki:
@@ -57,7 +61,7 @@ spec:
       enabled: true
       auth:
         rootUser: root-user
-        rootPassword: "supersecretpassword"
+        existingSecret: loki-minio-secret
       buckets:
         - name: loki
           policy: none

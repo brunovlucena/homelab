@@ -75,11 +75,6 @@ spec:
   selector:
     app: grafana-mcp-server
 ---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: grafana-mcp-secrets
-  namespace: grafana-mcp
-type: Opaque
-stringData:
-  GRAFANA_API_KEY: "GLSA_LyBkhKFTGoCxmQXAcMNLZDOfc8SSVMmf_4671bfea"
+# Secret is now managed by Sealed Secrets
+# Create using: ../../../scripts/create-grafana-mcp-sealed-secret.sh
+# The sealed secret file will be: grafana-mcp-secret-sealed.yaml

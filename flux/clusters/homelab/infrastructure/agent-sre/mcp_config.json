@@ -3,7 +3,7 @@
     "sre-agent": {
       "command": "mcp-remote",
       "args": [
-        "http://127.0.0.1:30121/mcp/?sreApiKey=sre-dev-your-key"
+        "http://127.0.0.1:30121/mcp/?sreApiKey=${SRE_API_KEY}"
       ],
       "env": {}
     },
@@ -13,10 +13,10 @@
         "mcp_server_proper.py"
       ],
       "env": {
-        "SRE_API_KEY": "sre-dev-your-key",
+        "SRE_API_KEY": "${SRE_API_KEY}",
         "MCP_HOST": "0.0.0.0",
         "MCP_PORT": "30121"
       }
-    },
+    }
   }
 }

@@ -44,6 +44,11 @@ agentSRE:
   enabled: true
   url: "http://sre-agent-service.agent-sre.svc.cluster.local:8080"
 
+# Ollama Configuration
+ollama:
+  enabled: true
+  url: "http://ollama:11434"
+
 # MinIO Configuration
 minio:
   enabled: true

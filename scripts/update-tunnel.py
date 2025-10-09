@@ -8,6 +8,7 @@ import requests
 import json
 import subprocess
 import sys
+import os
 
 def get_service_ips():
     """Get current service IPs from Kubernetes"""
@@ -121,10 +122,22 @@ def main():
     print("🔧 Cloudflare Tunnel Route Updater")
     print("=" * 40)
     
-    # Configuration
-    API_TOKEN = "tP3kBAHW393AZzcZbnW5pdlIj5tWHf9kkcuO8OnN"
-    ACCOUNT_ID = "a2862058e1cc276aa01de068d23f6e1f"
-    TUNNEL_NAME = "homelab"
+    # Configuration - Read from environment variables or Kubernetes secret
+    API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN")
+    ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+    TUNNEL_NAME = os.environ.get("CLOUDFLARE_TUNNEL_NAME", "homelab")
+    
+    if not API_TOKEN:
+        print("❌ CLOUDFLARE_API_TOKEN environment variable is required")
+        print("💡 Set it with: export CLOUDFLARE_API_TOKEN='your-token'")
+        print("💡 Or read from Kubernetes secret:")
+        print("   kubectl get secret cloudflare-tunnel-secret -n default -o jsonpath='{.data.api-token}' | base64 -d")
+        sys.exit(1)
+    
+    if not ACCOUNT_ID:
+        print("❌ CLOUDFLARE_ACCOUNT_ID environment variable is required")
+        print("💡 Set it with: export CLOUDFLARE_ACCOUNT_ID='your-account-id'")
+        sys.exit(1)
     
     # Get current service IPs
     print("📡 Getting current service IPs...")
