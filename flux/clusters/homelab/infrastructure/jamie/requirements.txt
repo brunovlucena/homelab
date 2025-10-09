@@ -1,5 +1,24 @@
-slack-bolt==1.18.0
-slack-sdk==3.26.1
-aiohttp==3.9.1
+# Slack dependencies
+slack-bolt==1.21.2
+slack-sdk==3.33.5
+
+# LangChain and LLM dependencies
+langchain>=0.3.0
+langchain-ollama>=0.2.0
+langgraph>=0.2.0
+langsmith>=0.1.0
+
+# HTTP and async support
+aiohttp>=3.9.1
+httpx>=0.25.0
+
+# Data handling
+pydantic>=2.0.0
 python-dotenv==1.0.0
+
+# Logging
+structlog>=23.0.0
+
+# Optional observability
+logfire>=0.1.0
 
