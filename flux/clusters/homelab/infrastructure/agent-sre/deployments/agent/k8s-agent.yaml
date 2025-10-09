@@ -51,12 +51,12 @@ spec:
         - name: LOGFIRE_TOKEN_SRE_AGENT
           valueFrom:
             secretKeyRef:
-              name: ai-secrets
+              name: agent-sre-secrets
               key: LOGFIRE_TOKEN_SRE_AGENT
         - name: LANGSMITH_API_KEY
           valueFrom:
             secretKeyRef:
-              name: ai-secrets
+              name: agent-sre-secrets
               key: LANGSMITH_API_KEY
         resources:
           requests:
@@ -100,7 +100,7 @@ spec:
       #   # - name: GRAFANA_API_KEY
       #   #   valueFrom:
       #   #     secretKeyRef:
-      #   #       name: ai-secrets
+      #   #       name: agent-sre-secrets
       #   #       key: GRAFANA_SERVICE_ACCOUNT_TOKEN
       #   - name: PORT
       #     value: "8081"
