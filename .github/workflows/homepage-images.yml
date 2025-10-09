@@ -5,6 +5,11 @@
 
 name: "🏠 Homepage Images CI/CD"
 
+# 🔐 Required permissions for pushing to GitHub Container Registry
+permissions:
+  contents: read
+  packages: write
+
 on:
   workflow_run:
     workflows: ["Homepage Integration Tests"]
