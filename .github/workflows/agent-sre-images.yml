@@ -10,6 +10,7 @@ permissions:
   packages: write
   security-events: write
   id-token: write
+  pull-requests: write
 
 on:
   push:
@@ -54,6 +55,9 @@ jobs:
   run-tests:
     uses: ./.github/workflows/agent-sre-tests.yml
     secrets: inherit
+    permissions:
+      contents: read
+      pull-requests: write
 
   # 🔍 Detect changes and determine which agent services to build
   detect-changes:
