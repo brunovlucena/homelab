@@ -9,6 +9,8 @@ metadata:
     app.kubernetes.io/name: jamie-slack-bot
     app.kubernetes.io/component: chatbot
     app.kubernetes.io/part-of: bruno-site
+  annotations:
+    pulumi.com/patchForce: "true"
 spec:
   replicas: 1
   selector:
@@ -57,7 +59,7 @@ spec:
         - name: OLLAMA_URL
           value: "http://192.168.0.16:11434"
         - name: MODEL_NAME
-          value: "bruno-sre:latest"
+          value: "gemma3n:e4b"
         resources:
           requests:
             memory: "256Mi"

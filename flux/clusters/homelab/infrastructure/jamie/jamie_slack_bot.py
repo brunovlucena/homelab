@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://192.168.0.16:11434")
-MODEL_NAME = os.environ.get("MODEL_NAME", "bruno-sre:latest")
+MODEL_NAME = os.environ.get("MODEL_NAME", "gemma3n:e4b")
 SERVICE_NAME = "jamie-slack-bot"
 
 # Initialize Ollama LLM
