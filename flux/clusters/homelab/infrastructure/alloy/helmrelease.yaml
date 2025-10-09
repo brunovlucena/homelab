@@ -6,6 +6,7 @@ metadata:
   namespace: alloy
   annotations:
     fluxcd.io/reconcile: "2025-09-26T00:00:00Z"
+    pulumi.com/patchForce: "true"  # Force Pulumi to take ownership on conflicts
 spec:
   interval: 5m
   timeout: 10m
