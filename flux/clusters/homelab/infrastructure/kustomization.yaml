@@ -8,10 +8,12 @@ metadata:
 resources:
   - repositories
   - sealed-secrets
+  - secrets # Consolidated sealed secrets
   - cert-manager # TODO: Alerts
   - cloudflare-tunnel # TODO Alerts - temporarily disabled due to deployment issues
   - metrics-server
   - prometheus-operator
+  - prometheus-mcp # 📊 Prometheus MCP Server (Knative Serving)
   - homepage # TODO: Review alerts
   - jamie # 🤖 Jamie Slack Bot (Kustomize-based)
   - minio # Asset storage for homepage
@@ -23,8 +25,5 @@ resources:
   - knative-serving
   - knative-eventing
   - agent-sre # Updated with LangGraph state management
-  # - grafana-mcp
-  # - statuspage-exporter
-  # - notifi-test # TODO: Fix Linkerd Server conflicts
   
 

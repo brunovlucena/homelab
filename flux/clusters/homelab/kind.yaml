@@ -57,7 +57,7 @@ nodes:
   - containerPort: 30130 # flux
     hostPort: 31130
     protocol: TCP
-  - containerPort: 30140 # extra
+  - containerPort: 30140 # prometheus-mcp (optional NodePort)
     hostPort: 31140
     protocol: TCP
   - containerPort: 30150 # extra
