@@ -4,7 +4,7 @@
 # Environment configuration
 ENV ?= dev
 DOCKER_COMPOSE_FILE = docker-compose.yml
-REGISTRY ?= ghcr.io/brunovlucena/bruno-site
+REGISTRY ?= ghcr.io/brunovlucena/homelab
 
 .PHONY: help start stop restart build build-push logs clean status api-logs frontend-logs db-logs psql redis-cli api-shell frontend-shell frontend-dev migrate migrate-k8s test-api test-api-unit test-frontend-unit test-e2e test-load test-coverage update-deps format lint pf-api pf-redis pf-postgres tp-intercept tp-intercept-with-mounts tp-stop tp-connect tp-disconnect tp-status tp-list restart-fresh reconcile optimize-images
 
@@ -97,13 +97,16 @@ build-push-dev:
 	@echo "Environment: $(ENV)"
 	@echo "Registry: $(REGISTRY)"
 	@echo "Tag: ${ENV}"
+	@echo "🏗️ Building images..."
+	@docker build -t $(REGISTRY)/homepage-api:${ENV} -f api/Dockerfile api/
+	@docker build -t $(REGISTRY)/homepage-frontend:${ENV} -f frontend/Dockerfile frontend/
 	@echo "🚀 Pushing images to registry..."
-	@docker push $(REGISTRY)/api:${ENV}
-	@docker push $(REGISTRY)/frontend:${ENV}
+	@docker push $(REGISTRY)/homepage-api:${ENV}
+	@docker push $(REGISTRY)/homepage-frontend:${ENV}
 	@echo "✅ Images built and pushed successfully!"
 	@echo "📋 Pushed images:"
-	@echo "  API: $(REGISTRY)/api:${ENV}"
-	@echo "  Frontend: $(REGISTRY)/frontend:${ENV}"
+	@echo "  API: $(REGISTRY)/homepage-api:${ENV}"
+	@echo "  Frontend: $(REGISTRY)/homepage-frontend:${ENV}"
 
 # Show logs from all services
 logs:

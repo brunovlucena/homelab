@@ -4,16 +4,21 @@ This directory contains automation scripts and security tools for managing the h
 
 ## 🔐 Security & Secrets Management
 
-### Sealed Secret Generation Scripts
+### Sealed Secret Generation Script
 
-All secrets are now managed using **Sealed Secrets** for secure GitOps workflows. The following scripts help generate encrypted secrets:
+All secrets are now managed using **Sealed Secrets** for secure GitOps workflows.
 
-| Script | Purpose | Namespace | Documentation |
-|--------|---------|-----------|---------------|
-| `create-cloudflare-tunnel-sealed-secret.sh` | Cloudflare API credentials | `default` | [SECRETS_MANAGEMENT.md](SECRETS_MANAGEMENT.md) |
-| `create-loki-minio-sealed-secret.sh` | Loki MinIO storage | `loki` | [SECRETS_MANAGEMENT.md](SECRETS_MANAGEMENT.md) |
-| `create-sre-agent-sealed-secret.sh` | SRE Agent API | `agent-sre` | [SECRETS_MANAGEMENT.md](SECRETS_MANAGEMENT.md) |
-| `create-grafana-mcp-sealed-secret.sh` | Grafana MCP API | `grafana-mcp` | [SECRETS_MANAGEMENT.md](SECRETS_MANAGEMENT.md) |
+| Script | Purpose | Documentation |
+|--------|---------|---------------|
+| **`create-all-secrets.sh`** | **🔐 ONE SCRIPT TO RULE THEM ALL - Generates ALL secrets interactively with beautiful menu** | [SECRETS_MANAGEMENT.md](SECRETS_MANAGEMENT.md) |
+
+This master script replaces all previous individual secret generation scripts. It handles:
+- 🔐 Loki MinIO credentials (`loki` namespace)
+- 🤖 SRE Agent API keys (`agent-sre` namespace)
+- 📊 Grafana MCP API keys (`grafana-mcp` namespace)
+- ☁️ Cloudflare Tunnel credentials (`default` namespace)
+- 🌐 Homepage Cloudflare settings (`bruno` namespace)
+- 🗄️ Homepage MinIO credentials (`bruno` namespace)
 
 ### Security Documentation
 
@@ -27,18 +32,20 @@ All secrets are now managed using **Sealed Secrets** for secure GitOps workflows
 
 ## 🚀 Quick Start
 
-### First Time Setup
+### 🔥 ONE SCRIPT TO RULE THEM ALL 🔥
 ```bash
 # 1. Install kubeseal
 brew install kubeseal
 
-# 2. Create all sealed secrets
-./create-cloudflare-tunnel-sealed-secret.sh
-./create-loki-minio-sealed-secret.sh
-./create-sre-agent-sealed-secret.sh
-./create-grafana-mcp-sealed-secret.sh
+# 2. Run the master script (generates ALL secrets)
+./create-all-secrets.sh
 
-# 3. Verify
+# 3. Follow the interactive menu:
+#    - Option 1: Generate ALL secrets at once (recommended)
+#    - Options 2-7: Generate individual secrets
+#    - Option 8: Exit
+
+# 4. Verify
 find ../flux/clusters/homelab/infrastructure -name "*-sealed.yaml"
 ```
 
@@ -129,6 +136,23 @@ When adding new secrets:
 ---
 
 **Last Updated**: October 9, 2025  
-**Scripts**: 8 total (4 sealed secret generators + 4 infrastructure scripts)  
+**Scripts**: 7 total (1 MASTER SECRET GENERATOR + 6 infrastructure/utility scripts)  
 **Documentation**: 5 comprehensive guides
+
+## 🎯 TL;DR - Just Get Started
+
+```bash
+# Install prerequisites
+brew install kubeseal
+
+# Run ONE script to generate ALL secrets
+cd scripts
+./create-all-secrets.sh
+
+# Follow the interactive prompts
+# Select option 1 to generate all secrets at once
+# Or pick individual secrets from the menu
+
+# Done! 🎉
+```
 
