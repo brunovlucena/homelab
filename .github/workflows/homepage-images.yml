@@ -34,7 +34,7 @@ env:
   IMAGE_TAG_DEV: dev
   IMAGE_TAG_PRD: latest
   NODE_VERSION: '24'
-  GO_VERSION: '1.21'
+  GO_VERSION: '1.23'
 
 jobs:
   # ✅ Check if tests passed
@@ -209,7 +209,10 @@ jobs:
         working-directory: ./flux/clusters/homelab/infrastructure/homepage/frontend
         run: |
           echo "📦 Installing npm dependencies..."
-          npm ci
+          npm ci --legacy-peer-deps --no-audit --no-fund || {
+            echo "❌ npm ci failed, trying npm install..."
+            npm install --legacy-peer-deps --no-audit --no-fund
+          }
 
       - name: "🧪 Run Tests"
         working-directory: ./flux/clusters/homelab/infrastructure/homepage/frontend

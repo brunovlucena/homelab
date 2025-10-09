@@ -15,7 +15,7 @@ on:
 
 env:
   GO_VERSION: '1.23.0'
-  NODE_VERSION: '18'
+  NODE_VERSION: '24'
   HOMEPAGE_PATH: 'flux/clusters/homelab/infrastructure/homepage'
 
 jobs:
@@ -94,7 +94,12 @@ jobs:
 
       - name: 📦 Install dependencies
         working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
-        run: npm ci
+        run: |
+          echo "📦 Installing npm dependencies..."
+          npm ci --legacy-peer-deps --no-audit --no-fund || {
+            echo "❌ npm ci failed, trying npm install..."
+            npm install --legacy-peer-deps --no-audit --no-fund
+          }
 
       - name: 🧪 Run unit tests
         working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
@@ -159,7 +164,7 @@ jobs:
       - name: 🏗️ Build frontend
         working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
         run: |
-          npm ci
+          npm ci --legacy-peer-deps --no-audit --no-fund || npm install --legacy-peer-deps --no-audit --no-fund
           npm run build
 
       - name: ✅ Verify builds
