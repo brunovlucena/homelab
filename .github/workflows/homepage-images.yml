@@ -151,6 +151,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+          cache-dependency-path: './flux/clusters/homelab/infrastructure/homepage/api/go.sum'
 
       - name: "🏗️ Build Go Application"
         working-directory: ./flux/clusters/homelab/infrastructure/homepage/api
