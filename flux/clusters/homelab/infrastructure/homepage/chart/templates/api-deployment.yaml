@@ -57,11 +57,10 @@ spec:
             - name: DATABASE_NAME
               value: "{{ .Values.database.name }}"
             - name: DATABASE_URL
-              {{- if .Values.secrets.postgresPassword }}
-              value: "postgresql://{{ .Values.database.user }}:{{ .Values.secrets.postgresPassword }}@{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}?sslmode=disable"
-              {{- else }}
-              value: "postgresql://{{ .Values.database.user }}:@{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}?sslmode=disable"
-              {{- end }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: database-url
             - name: REDIS_URL
               value: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}"
             - name: REDIS_PASSWORD

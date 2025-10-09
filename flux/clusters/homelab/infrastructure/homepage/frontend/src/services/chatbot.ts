@@ -55,16 +55,12 @@ class ChatbotService {
   private initialized: boolean = false
 
   constructor() {
-    // Determine agent URL based on environment
-    // In production, use internal cluster service
-    // In development, use NodePort or localhost proxy
-    const isProduction = process.env.NODE_ENV === 'production'
-    const apiUrl = process.env.VITE_API_URL || '/api/v1'
-    
-    // Use API proxy for agent-sre in production, direct NodePort in dev
-    this.agentBaseUrl = isProduction 
-      ? `${apiUrl}/agent-sre`  // Proxy through homepage API
-      : 'http://localhost:31081' // Direct NodePort access
+    // Always use the API proxy path for agent-sre
+    // In development: Vite proxy forwards /api/* to the API service
+    // In production: Nginx forwards /api/* to the API service
+    // API service then proxies to agent-sre service
+    const apiUrl = import.meta.env.VITE_API_URL || '/api/v1'
+    this.agentBaseUrl = `${apiUrl}/agent-sre`
 
     this.client = axios.create({
       baseURL: this.agentBaseUrl,

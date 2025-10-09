@@ -10,7 +10,7 @@ spec:
   chart:
     spec:
       chart: ./flux/clusters/homelab/infrastructure/homepage/chart
-      version: 0.1.15
+      version: 0.1.16
       sourceRef:
         kind: GitRepository
         name: homelab

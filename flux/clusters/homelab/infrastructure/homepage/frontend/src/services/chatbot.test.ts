@@ -17,10 +17,11 @@ const mockedAxios = axios as jest.Mocked<typeof axios>
 
 describe('ChatbotService', () => {
   let service: ChatbotService
+  let mockAxiosInstance: any
 
   beforeAll(() => {
-    // Ensure the mock is properly set up
-    const mockAxiosInstance = {
+    // Set up mock axios instance
+    mockAxiosInstance = {
       post: jest.fn(),
       get: jest.fn(),
       interceptors: {
@@ -28,12 +29,15 @@ describe('ChatbotService', () => {
         response: { use: jest.fn() },
       },
     }
-    mockedAxios.create.mockReturnValue(mockAxiosInstance as any)
+    mockedAxios.create.mockReturnValue(mockAxiosInstance)
   })
 
   beforeEach(() => {
     // Clear all mocks before each test
     jest.clearAllMocks()
+    mockAxiosInstance.post.mockClear()
+    mockAxiosInstance.get.mockClear()
+    
     // Create a fresh instance for each test
     service = new ChatbotService()
   })
@@ -65,12 +69,11 @@ describe('ChatbotService', () => {
         },
       }
 
-      const mockPost = jest.fn().mockResolvedValue(mockResponse)
-      ;(service as any).client.post = mockPost
+      mockAxiosInstance.post.mockResolvedValue(mockResponse)
 
       const result = await service.chat('How do I debug a pod?')
 
-      expect(mockPost).toHaveBeenCalledWith('/chat', {
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/chat', {
         message: 'How do I debug a pod?',
         timestamp: expect.any(String),
       })
@@ -79,8 +82,7 @@ describe('ChatbotService', () => {
     })
 
     it('should handle errors in direct chat', async () => {
-      const mockPost = jest.fn().mockRejectedValue(new Error('Network error'))
-      ;(service as any).client.post = mockPost
+      mockAxiosInstance.post.mockRejectedValue(new Error('Network error'))
 
       await expect(service.chat('test')).rejects.toThrow('Network error')
     })
@@ -96,12 +98,11 @@ describe('ChatbotService', () => {
         },
       }
 
-      const mockPost = jest.fn().mockResolvedValue(mockResponse)
-      ;(service as any).client.post = mockPost
+      mockAxiosInstance.post.mockResolvedValue(mockResponse)
 
       const result = await service.mcpChat('Tell me about monitoring')
 
-      expect(mockPost).toHaveBeenCalledWith('/mcp/chat', {
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/mcp/chat', {
         message: 'Tell me about monitoring',
         timestamp: expect.any(String),
       })
@@ -120,18 +121,17 @@ describe('ChatbotService', () => {
         },
       }
 
-      const mockPost = jest.fn().mockResolvedValue(mockResponse)
-      ;(service as any).client.post = mockPost
+      mockAxiosInstance.post.mockResolvedValue(mockResponse)
 
       const result = await service.processMessage('test question')
 
-      expect(mockPost).toHaveBeenCalledWith('/mcp/chat', expect.any(Object))
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/mcp/chat', expect.any(Object))
       expect(result.text).toBe('MCP response')
       expect(result.sources).toContain('Agent-SRE (MCP)')
     })
 
     it('should fallback to direct chat when MCP fails', async () => {
-      const mockPost = jest.fn()
+      mockAxiosInstance.post
         .mockRejectedValueOnce(new Error('MCP unavailable'))
         .mockResolvedValueOnce({
           data: {
@@ -139,22 +139,20 @@ describe('ChatbotService', () => {
             timestamp: '2025-10-08T12:00:00Z',
           },
         })
-      ;(service as any).client.post = mockPost
 
       const result = await service.processMessage('test question')
 
-      expect(mockPost).toHaveBeenCalledTimes(2)
-      expect(mockPost).toHaveBeenNthCalledWith(1, '/mcp/chat', expect.any(Object))
-      expect(mockPost).toHaveBeenNthCalledWith(2, '/chat', expect.any(Object))
+      expect(mockAxiosInstance.post).toHaveBeenCalledTimes(2)
+      expect(mockAxiosInstance.post).toHaveBeenNthCalledWith(1, '/mcp/chat', expect.any(Object))
+      expect(mockAxiosInstance.post).toHaveBeenNthCalledWith(2, '/chat', expect.any(Object))
       expect(result.text).toBe('Direct response')
       expect(result.sources).toContain('Agent-SRE (Direct)')
     })
 
     it('should return error message when both MCP and direct fail', async () => {
-      const mockPost = jest.fn()
+      mockAxiosInstance.post
         .mockRejectedValueOnce(new Error('MCP unavailable'))
         .mockRejectedValueOnce(new Error('Direct unavailable'))
-      ;(service as any).client.post = mockPost
 
       const result = await service.processMessage('test question')
 
@@ -177,15 +175,14 @@ describe('ChatbotService', () => {
         },
       }
 
-      const mockPost = jest.fn().mockResolvedValue(mockResponse)
-      ;(service as any).client.post = mockPost
+      mockAxiosInstance.post.mockResolvedValue(mockResponse)
 
       const result = await service.analyzeLogsDirect(
         'ERROR: Connection timeout',
         'Production API'
       )
 
-      expect(mockPost).toHaveBeenCalledWith('/analyze-logs', {
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/analyze-logs', {
         logs: 'ERROR: Connection timeout',
         context: 'Production API',
       })
@@ -205,12 +202,11 @@ describe('ChatbotService', () => {
         },
       }
 
-      const mockPost = jest.fn().mockResolvedValue(mockResponse)
-      ;(service as any).client.post = mockPost
+      mockAxiosInstance.post.mockResolvedValue(mockResponse)
 
       const result = await service.analyzeLogsMCP('WARN: High memory usage')
 
-      expect(mockPost).toHaveBeenCalledWith('/mcp/analyze-logs', {
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/mcp/analyze-logs', {
         logs: 'WARN: High memory usage',
         context: undefined,
       })
@@ -224,18 +220,16 @@ describe('ChatbotService', () => {
         data: { status: 'healthy' },
       }
 
-      const mockGet = jest.fn().mockResolvedValue(mockResponse)
-      ;(service as any).client.get = mockGet
+      mockAxiosInstance.get.mockResolvedValue(mockResponse)
 
       const result = await service.healthCheck()
 
-      expect(mockGet).toHaveBeenCalledWith('/health')
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/health')
       expect(result.status).toBe('healthy')
     })
 
     it('should handle health check errors', async () => {
-      const mockGet = jest.fn().mockRejectedValue(new Error('Service down'))
-      ;(service as any).client.get = mockGet
+      mockAxiosInstance.get.mockRejectedValue(new Error('Service down'))
 
       await expect(service.healthCheck()).rejects.toThrow('Service down')
     })
@@ -255,12 +249,11 @@ describe('ChatbotService', () => {
         },
       }
 
-      const mockGet = jest.fn().mockResolvedValue(mockResponse)
-      ;(service as any).client.get = mockGet
+      mockAxiosInstance.get.mockResolvedValue(mockResponse)
 
       const result = await service.getStatus()
 
-      expect(mockGet).toHaveBeenCalledWith('/status')
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith('/status')
       expect(result.status).toBe('healthy')
       expect(result.mcp_server?.status).toBe('healthy')
     })
@@ -276,8 +269,7 @@ describe('ChatbotService', () => {
         },
       }
 
-      const mockGet = jest.fn().mockResolvedValue(mockResponse)
-      ;(service as any).client.get = mockGet
+      mockAxiosInstance.get.mockResolvedValue(mockResponse)
 
       const result = await service.getLLMStatus()
 
@@ -286,8 +278,7 @@ describe('ChatbotService', () => {
     })
 
     it('should return error status when service is down', async () => {
-      const mockGet = jest.fn().mockRejectedValue(new Error('Connection refused'))
-      ;(service as any).client.get = mockGet
+      mockAxiosInstance.get.mockRejectedValue(new Error('Connection refused'))
 
       const result = await service.getLLMStatus()
 
@@ -298,8 +289,7 @@ describe('ChatbotService', () => {
 
   describe('isAvailable', () => {
     it('should return true when service is available', async () => {
-      const mockGet = jest.fn().mockResolvedValue({ data: { status: 'healthy' } })
-      ;(service as any).client.get = mockGet
+      mockAxiosInstance.get.mockResolvedValue({ data: { status: 'healthy' } })
 
       const result = await service.isAvailable()
 
@@ -307,8 +297,7 @@ describe('ChatbotService', () => {
     })
 
     it('should return false when service is unavailable', async () => {
-      const mockGet = jest.fn().mockRejectedValue(new Error('Service down'))
-      ;(service as any).client.get = mockGet
+      mockAxiosInstance.get.mockRejectedValue(new Error('Service down'))
 
       const result = await service.isAvailable()
 
