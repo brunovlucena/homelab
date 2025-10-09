@@ -11,6 +11,11 @@ permissions:
   packages: write
 
 on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/homepage/**'
+      - '.github/workflows/homepage-images.yml'
   workflow_run:
     workflows: ["Homepage Integration Tests"]
     types: [completed]
