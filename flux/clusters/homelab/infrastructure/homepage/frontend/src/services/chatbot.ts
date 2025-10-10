@@ -51,13 +51,13 @@ class ChatbotService {
   private initialized: boolean = false
 
   constructor() {
-    // Use the API path for agent-sre
+    // 🤖 Use the API path for Jamie (AI-powered SRE assistant)
     const apiUrl = env.API_URL
-    this.agentBaseUrl = `${apiUrl}/agent-sre`
+    this.agentBaseUrl = `${apiUrl}/jamie`
 
     this.client = axios.create({
       baseURL: this.agentBaseUrl,
-      timeout: 30000, // 30 seconds for AI responses
+      timeout: 60000, // 60 seconds for AI responses (Jamie may take longer for complex queries)
       headers: {
         'Content-Type': 'application/json',
       },
@@ -66,7 +66,7 @@ class ChatbotService {
     // Request interceptor
     this.client.interceptors.request.use(
       (config) => {
-        console.log(`🤖 [ChatbotService] Request to ${config.url}`)
+        console.log(`🤖 [ChatbotService] Request to Jamie: ${config.url}`)
         return config
       },
       (error) => {
@@ -78,13 +78,13 @@ class ChatbotService {
     // Response interceptor
     this.client.interceptors.response.use(
       (response) => {
-        console.log('🤖 [ChatbotService] Response received:', response.status)
+        console.log('🤖 [ChatbotService] Response from Jamie:', response.status)
         return response
       },
       (error) => {
         console.error('🤖 [ChatbotService] Response error:', error)
         if (error.response?.status === 503) {
-          console.warn('🤖 [ChatbotService] Agent-SRE service unavailable')
+          console.warn('🤖 [ChatbotService] Jamie service unavailable')
         }
         return Promise.reject(error)
       }
@@ -101,8 +101,8 @@ class ChatbotService {
       return
     }
 
-    console.log('🤖 [ChatbotService] Initializing...')
-    console.log(`🤖 [ChatbotService] Agent URL: ${this.agentBaseUrl}`)
+    console.log('🤖 [ChatbotService] Initializing Jamie connection...')
+    console.log(`🤖 [ChatbotService] Jamie URL: ${this.agentBaseUrl}`)
     this.initialized = true
   }
 
@@ -128,19 +128,19 @@ class ChatbotService {
    */
   async processMessage(message: string): Promise<{ text: string; sources?: string[] }> {
     try {
-      console.log('🤖 [ChatbotService] Sending message to agent-sre...')
+      console.log('🤖 [ChatbotService] Sending message to Jamie...')
       const response = await this.chat(message)
       console.log('🤖 [ChatbotService] Message sent successfully')
       
       return {
         text: response.response,
-        sources: response.sources || ['Agent-SRE'],
+        sources: response.sources || ['Jamie'],
       }
     } catch (error) {
       console.error('🤖 [ChatbotService] Chat failed:', error)
       
       return {
-        text: 'Sorry, I\'m currently unavailable. The SRE agent service might be down. Please try again later.',
+        text: 'Sorry, I\'m currently unavailable. Jamie\'s AI services might be temporarily down. Please try again later.',
         sources: ['Error Handler'],
       }
     }
@@ -202,10 +202,10 @@ class ChatbotService {
         agent_status: status,
       }
     } catch (error) {
-      console.error('🤖 [ChatbotService] Failed to get LLM status:', error)
+      console.error('🤖 [ChatbotService] Failed to get Jamie status:', error)
       return {
         status: 'error',
-        error: 'Agent-SRE service is unavailable',
+        error: 'Jamie AI service is unavailable',
       }
     }
   }
