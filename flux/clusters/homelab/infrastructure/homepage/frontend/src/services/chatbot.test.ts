@@ -60,7 +60,7 @@ describe('ChatbotService', () => {
   })
 
   describe('chat', () => {
-    it('should send a direct chat message successfully', async () => {
+    it('should send a chat message successfully', async () => {
       const mockResponse = {
         data: {
           response: 'To debug a pod, use kubectl logs',
@@ -78,45 +78,21 @@ describe('ChatbotService', () => {
         timestamp: expect.any(String),
       })
       expect(result.response).toBe('To debug a pod, use kubectl logs')
-      expect(result.mode).toBe('direct')
+      // Note: 'mode' field no longer exists in Jamie implementation
     })
 
-    it('should handle errors in direct chat', async () => {
+    it('should handle errors in chat', async () => {
       mockAxiosInstance.post.mockRejectedValue(new Error('Network error'))
 
       await expect(service.chat('test')).rejects.toThrow('Network error')
     })
   })
 
-  describe('mcpChat', () => {
-    it('should send an MCP chat message successfully', async () => {
-      const mockResponse = {
-        data: {
-          response: 'Monitoring best practices include...',
-          timestamp: '2025-10-08T12:00:00Z',
-          sources: ['MCP Server', 'Knowledge Base'],
-        },
-      }
-
-      mockAxiosInstance.post.mockResolvedValue(mockResponse)
-
-      const result = await service.mcpChat('Tell me about monitoring')
-
-      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/mcp/chat', {
-        message: 'Tell me about monitoring',
-        timestamp: expect.any(String),
-      })
-      expect(result.response).toBe('Monitoring best practices include...')
-      expect(result.mode).toBe('mcp')
-      expect(result.sources).toContain('MCP Server')
-    })
-  })
-
   describe('processMessage', () => {
-    it('should use MCP chat when available', async () => {
+    it('should process message successfully', async () => {
       const mockResponse = {
         data: {
-          response: 'MCP response',
+          response: 'Jamie response',
           timestamp: '2025-10-08T12:00:00Z',
         },
       }
@@ -125,44 +101,24 @@ describe('ChatbotService', () => {
 
       const result = await service.processMessage('test question')
 
-      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/mcp/chat', expect.any(Object))
-      expect(result.text).toBe('MCP response')
-      expect(result.sources).toContain('Agent-SRE (MCP)')
+      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/chat', expect.any(Object))
+      expect(result.text).toBe('Jamie response')
+      expect(result.sources).toContain('Jamie')
     })
 
-    it('should fallback to direct chat when MCP fails', async () => {
-      mockAxiosInstance.post
-        .mockRejectedValueOnce(new Error('MCP unavailable'))
-        .mockResolvedValueOnce({
-          data: {
-            response: 'Direct response',
-            timestamp: '2025-10-08T12:00:00Z',
-          },
-        })
-
-      const result = await service.processMessage('test question')
-
-      expect(mockAxiosInstance.post).toHaveBeenCalledTimes(2)
-      expect(mockAxiosInstance.post).toHaveBeenNthCalledWith(1, '/mcp/chat', expect.any(Object))
-      expect(mockAxiosInstance.post).toHaveBeenNthCalledWith(2, '/chat', expect.any(Object))
-      expect(result.text).toBe('Direct response')
-      expect(result.sources).toContain('Agent-SRE (Direct)')
-    })
-
-    it('should return error message when both MCP and direct fail', async () => {
-      mockAxiosInstance.post
-        .mockRejectedValueOnce(new Error('MCP unavailable'))
-        .mockRejectedValueOnce(new Error('Direct unavailable'))
+    it('should return error message when chat fails', async () => {
+      mockAxiosInstance.post.mockRejectedValue(new Error('Service unavailable'))
 
       const result = await service.processMessage('test question')
 
       expect(result.text).toContain('currently unavailable')
+      expect(result.text).toContain('Jamie')
       expect(result.sources).toContain('Error Handler')
     })
   })
 
-  describe('analyzeLogsDirect', () => {
-    it('should analyze logs using direct mode', async () => {
+  describe('analyzeLogs', () => {
+    it('should analyze logs successfully', async () => {
       const mockResponse = {
         data: {
           analysis: 'The error indicates a database connection issue',
@@ -177,7 +133,7 @@ describe('ChatbotService', () => {
 
       mockAxiosInstance.post.mockResolvedValue(mockResponse)
 
-      const result = await service.analyzeLogsDirect(
+      const result = await service.analyzeLogs(
         'ERROR: Connection timeout',
         'Production API'
       )
@@ -189,28 +145,11 @@ describe('ChatbotService', () => {
       expect(result.severity).toBe('high')
       expect(result.recommendations).toHaveLength(2)
     })
-  })
 
-  describe('analyzeLogsMCP', () => {
-    it('should analyze logs using MCP mode', async () => {
-      const mockResponse = {
-        data: {
-          analysis: 'Memory pressure detected',
-          severity: 'medium',
-          recommendations: ['Increase memory limits'],
-          timestamp: '2025-10-08T12:00:00Z',
-        },
-      }
+    it('should handle log analysis errors', async () => {
+      mockAxiosInstance.post.mockRejectedValue(new Error('Analysis failed'))
 
-      mockAxiosInstance.post.mockResolvedValue(mockResponse)
-
-      const result = await service.analyzeLogsMCP('WARN: High memory usage')
-
-      expect(mockAxiosInstance.post).toHaveBeenCalledWith('/mcp/analyze-logs', {
-        logs: 'WARN: High memory usage',
-        context: undefined,
-      })
-      expect(result.analysis).toBe('Memory pressure detected')
+      await expect(service.analyzeLogs('WARN: High memory usage')).rejects.toThrow('Analysis failed')
     })
   })
 
@@ -240,12 +179,8 @@ describe('ChatbotService', () => {
       const mockResponse = {
         data: {
           status: 'healthy',
-          service: 'sre-agent',
+          service: 'jamie',
           timestamp: '2025-10-08T12:00:00Z',
-          mcp_server: {
-            status: 'healthy',
-            url: 'http://mcp-server:30120',
-          },
         },
       }
 
@@ -255,7 +190,7 @@ describe('ChatbotService', () => {
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith('/status')
       expect(result.status).toBe('healthy')
-      expect(result.mcp_server?.status).toBe('healthy')
+      expect(result.service).toBe('jamie')
     })
   })
 
@@ -264,7 +199,7 @@ describe('ChatbotService', () => {
       const mockResponse = {
         data: {
           status: 'healthy',
-          service: 'sre-agent',
+          service: 'jamie',
           timestamp: '2025-10-08T12:00:00Z',
         },
       }
@@ -283,7 +218,7 @@ describe('ChatbotService', () => {
       const result = await service.getLLMStatus()
 
       expect(result.status).toBe('error')
-      expect(result.error).toBe('Agent-SRE service is unavailable')
+      expect(result.error).toBe('Jamie AI service is unavailable')
     })
   })
 
@@ -314,6 +249,11 @@ describe('ChatbotService', () => {
       expect(typeof info.baseUrl).toBe('string')
       expect(typeof info.initialized).toBe('boolean')
     })
+
+    it('should include Jamie endpoint in baseUrl', () => {
+      const info = service.getAgentInfo()
+      
+      expect(info.baseUrl).toContain('jamie')
+    })
   })
 })
-
