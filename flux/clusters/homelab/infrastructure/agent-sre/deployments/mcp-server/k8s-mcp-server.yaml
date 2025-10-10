@@ -1,109 +1,120 @@
+---
+# 🔐 ConfigMap for MCP Server Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-sre-mcp-config
+  namespace: agent-sre
+  labels:
+    app: agent-sre-mcp-server
+data:
+  PROMETHEUS_URL: "http://prometheus-operator-kube-p-prometheus.prometheus.svc.cluster.local:9090"
+  GRAFANA_URL: "http://prometheus-operator-grafana.prometheus.svc.cluster.local:80"
+
+---
+# 🚀 Deployment for MCP Server
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: sre-agent-mcp-server
+  name: agent-sre-mcp-server
   namespace: agent-sre
   labels:
-    app: sre-agent-mcp-server
+    app: agent-sre-mcp-server
     component: mcp-server
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: sre-agent-mcp-server
+      app: agent-sre-mcp-server
   template:
     metadata:
       labels:
-        app: sre-agent-mcp-server
+        app: agent-sre-mcp-server
         component: mcp-server
+      annotations:
+        prometheus.io/scrape: "false"  # MCP server doesn't expose metrics
     spec:
+      serviceAccountName: agent-sre
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
-      - name: sre-agent-mcp-server
+      - name: mcp-server
         image: ghcr.io/brunovlucena/agent-sre-mcp-server:latest
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         ports:
-        - containerPort: 30120
-          name: http
+        - containerPort: 3000
+          name: mcp
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: agent-sre-mcp-config
         env:
-        - name: MCP_PORT
-          value: "30120"
-        - name: MCP_HOST
-          value: "0.0.0.0"
-        - name: OLLAMA_URL
-          value: "http://192.168.0.16:11434"
-        - name: MODEL_NAME
-          value: "llama3.2:3b"
-        - name: SERVICE_NAME
-          value: "sre-agent-mcp-server"
-        - name: LOGFIRE_TOKEN_SRE_AGENT
+        - name: GRAFANA_API_KEY
           valueFrom:
             secretKeyRef:
               name: agent-sre-secrets
-              key: LOGFIRE_TOKEN_SRE_AGENT
-        - name: LANGSMITH_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: agent-sre-secrets
-              key: LANGSMITH_API_KEY
+              key: GRAFANA_API_KEY
+              optional: true
         resources:
           requests:
-            memory: "512Mi"
-            cpu: "250m"
+            memory: "128Mi"
+            cpu: "100m"
           limits:
-            memory: "1Gi"
+            memory: "512Mi"
             cpu: "500m"
         livenessProbe:
           httpGet:
             path: /health
-            port: 30120
-          initialDelaySeconds: 30
-          periodSeconds: 60
-          timeoutSeconds: 5
-          failureThreshold: 3
-          successThreshold: 1
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 30120
+            port: 3000
           initialDelaySeconds: 10
           periodSeconds: 30
-          timeoutSeconds: 3
+          timeoutSeconds: 5
           failureThreshold: 3
-          successThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+
 ---
+# 🌐 Service for MCP Server
 apiVersion: v1
 kind: Service
 metadata:
-  name: sre-agent-mcp-server-service
+  name: agent-sre-mcp-server
   namespace: agent-sre
   labels:
-    app: sre-agent-mcp-server
+    app: agent-sre-mcp-server
     component: mcp-server
 spec:
   type: ClusterIP
-  ports:
-  - port: 30120
-    targetPort: 30120
-    protocol: TCP
-    name: http
   selector:
-    app: sre-agent-mcp-server
+    app: sre-agent
+    component: mcp-server
+  ports:
+  - name: mcp
+    port: 3000
+    targetPort: 3000
+    protocol: TCP
+
 ---
+# 🔐 ServiceAccount for MCP Server
 apiVersion: v1
-kind: Service
+kind: ServiceAccount
 metadata:
-  name: sre-agent-mcp-server-nodeport
+  name: agent-sre
   namespace: agent-sre
   labels:
-    app: sre-agent-mcp-server
-    component: mcp-server
-spec:
-  type: NodePort
-  ports:
-  - port: 30120
-    targetPort: 30120
-    nodePort: 31160
-    protocol: TCP
-    name: http
-  selector:
-    app: sre-agent-mcp-server
+    app: agent-sre-mcp-server
+
