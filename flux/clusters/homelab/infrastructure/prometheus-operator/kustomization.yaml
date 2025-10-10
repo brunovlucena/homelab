@@ -5,9 +5,3 @@ resources:
   - namespace.yaml 
   - prometheus-nodeport.yaml
   - grafana-nodeport.yaml
-  # - gateway.yaml  # Disabled - istio not enabled
-  # - virtualservice.yaml  # Disabled - istio not enabled
-  - pagerduty.yaml
-  - grafana-admin-sealed-secret.yaml
-  - slack.yaml
-  - strava.yaml

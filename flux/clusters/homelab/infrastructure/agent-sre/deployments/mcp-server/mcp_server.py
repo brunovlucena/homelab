@@ -1,525 +1,435 @@
 #!/usr/bin/env python3
 """
-MCP Server - Thin Protocol Layer for SRE Agent
-Handles MCP protocol communication and forwards requests to agent service
+🔌 Agent-SRE MCP Server
+Exposes Prometheus and Grafana query tools via MCP protocol
 """
 
 import os
 import json
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
-from aiohttp import web, ClientSession
-from aiohttp.web import Request, Response
 
-# Import the core module for shared functionality
-from core import logger, logfire
+import aiohttp
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
+from mcp.types import Tool, TextContent, ImageContent, EmbeddedResource
 
-class MCPServer:
-    """Thin MCP Server that forwards requests to agent service."""
-    
-    def __init__(self):
-        self.app = web.Application()
-        self.agent_service_url = os.getenv("AGENT_SERVICE_URL", "http://sre-agent-service:8080")
-        self._setup_routes()
-    
-    def _setup_routes(self):
-        """Setup HTTP routes."""
-        # MCP protocol endpoints
-        self.app.router.add_post('/mcp', self.handle_mcp_request)
-        self.app.router.add_get('/mcp', self.handle_mcp_info)
-        self.app.router.add_post('/mcp/', self.handle_mcp_request)
-        self.app.router.add_get('/mcp/', self.handle_mcp_info)
-        
-        # Health and readiness endpoints
-        self.app.router.add_get('/health', self.handle_health)
-        self.app.router.add_get('/ready', self.handle_readiness)
-        
-        # SSE endpoint for real-time communication
-        self.app.router.add_get('/sse', self.handle_sse)
-    
-    @logfire.instrument("mcp_info")
-    async def handle_mcp_info(self, request: Request) -> Response:
-        """Handle GET requests - MCP server information."""
-        return web.json_response({
-            "name": "sre-agent-mcp-server",
-            "version": "1.0.0",
-            "description": "SRE Agent MCP Server - Thin protocol layer",
-            "protocol": "mcp",
-            "capabilities": {
-                "tools": True,
-                "resources": False,
-                "prompts": False
-            },
-            "endpoints": {
-                "mcp": "/mcp",
-                "health": "/health",
-                "ready": "/ready",
-                "sse": "/sse"
-            },
-            "agent_service": self.agent_service_url
-        })
-    
-    @logfire.instrument("mcp_request")
-    async def handle_mcp_request(self, request: Request) -> Response:
-        """Handle MCP JSON-RPC 2.0 requests."""
-        try:
-            data = await request.json()
-            
-            # Handle notifications (no id field)
-            if 'method' in data and 'id' not in data:
-                method = data.get('method')
-                if method == 'notifications/initialized':
-                    return web.json_response({})  # Empty response for notifications
-                else:
-                    return web.json_response({})  # Empty response for other notifications
-            
-            if 'method' in data and 'id' in data:
-                method = data.get('method')
-                params = data.get('params', {})
-                request_id = data.get('id')
-                
-                if method == 'initialize':
-                    return web.json_response({
-                        "jsonrpc": "2.0",
-                        "id": request_id,
-                        "result": {
-                            "protocolVersion": "2024-11-05",
-                            "capabilities": {
-                                "tools": {}
-                            },
-                            "serverInfo": {
-                                "name": "sre-agent-mcp-server",
-                                "version": "1.0.0"
-                            }
-                        }
-                    })
-                
-                elif method == 'tools/list':
-                    tools = [
-                        {
-                            "name": "sre_chat",
-                            "description": "General SRE chat and consultation",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "message": {
-                                        "type": "string",
-                                        "description": "Your SRE question or request"
-                                    }
-                                },
-                                "required": ["message"]
-                            }
-                        },
-                        {
-                            "name": "analyze_logs",
-                            "description": "Analyze logs for SRE insights",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "logs": {
-                                        "type": "string",
-                                        "description": "Log data to analyze"
-                                    }
-                                },
-                                "required": ["logs"]
-                            }
-                        },
-                        {
-                            "name": "incident_response",
-                            "description": "Get incident response guidance",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "incident": {
-                                        "type": "string",
-                                        "description": "Incident description"
-                                    }
-                                },
-                                "required": ["incident"]
-                            }
-                        },
-                        {
-                            "name": "monitoring_advice",
-                            "description": "Get monitoring and alerting advice",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "system": {
-                                        "type": "string",
-                                        "description": "System description"
-                                    }
-                                },
-                                "required": ["system"]
-                            }
-                        },
-                        {
-                            "name": "health_check",
-                            "description": "Check the health status",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {}
-                            }
-                        },
-                        {
-                            "name": "check_golden_signals",
-                            "description": "Check golden signals (latency, traffic, errors, saturation) for a service",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "service_name": {
-                                        "type": "string",
-                                        "description": "Service name to check (e.g., homepage, api, frontend)"
-                                    },
-                                    "namespace": {
-                                        "type": "string",
-                                        "description": "Kubernetes namespace (optional, defaults to 'default')"
-                                    }
-                                },
-                                "required": ["service_name"]
-                            }
-                        },
-                        {
-                            "name": "query_prometheus",
-                            "description": "Execute a PromQL query against Prometheus",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "query": {
-                                        "type": "string",
-                                        "description": "PromQL query to execute"
-                                    }
-                                },
-                                "required": ["query"]
-                            }
-                        },
-                        {
-                            "name": "get_pod_logs",
-                            "description": "Get logs from a Kubernetes pod",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "pod_name": {
-                                        "type": "string",
-                                        "description": "Pod name"
-                                    },
-                                    "namespace": {
-                                        "type": "string",
-                                        "description": "Namespace (optional, defaults to 'default')"
-                                    },
-                                    "tail_lines": {
-                                        "type": "number",
-                                        "description": "Number of lines to tail (optional, defaults to 100)"
-                                    }
-                                },
-                                "required": ["pod_name"]
-                            }
-                        }
-                    ]
-                    
-                    return web.json_response({
-                        "jsonrpc": "2.0",
-                        "id": request_id,
-                        "result": {
-                            "tools": tools
-                        }
-                    })
-                
-                elif method == 'tools/call':
-                    tool_name = params.get('name')
-                    arguments = params.get('arguments', {})
-                    
-                    if not tool_name:
-                        return web.json_response({
-                            "jsonrpc": "2.0",
-                            "id": request_id,
-                            "error": {
-                                "code": -32602,
-                                "message": "Tool name is required"
-                            }
-                        })
-                    
-                    result = await self._forward_to_agent(tool_name, arguments)
-                    return web.json_response({
-                        "jsonrpc": "2.0",
-                        "id": request_id,
-                        "result": {
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": result
-                                }
-                            ]
-                        }
-                    })
-                
-                else:
-                    return web.json_response({
-                        "jsonrpc": "2.0",
-                        "id": request_id,
-                        "error": {
-                            "code": -32601,
-                            "message": f"Unknown method: {method}"
-                        }
-                    })
-            
-            else:
-                return web.json_response({
-                    "jsonrpc": "2.0",
-                    "error": {
-                        "code": -32700,
-                        "message": "Parse error"
-                    }
-                }, status=400)
-                
-        except Exception as e:
-            logger.error(f"Error handling MCP request: {e}")
-            return web.json_response({
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32603,
-                    "message": str(e)
-                }
-            }, status=500)
-    
-    @logfire.instrument("forward_to_agent")
-    async def _forward_to_agent(self, tool_name: str, arguments: Dict[str, Any]) -> str:
-        """Forward tool execution to the agent service."""
-        try:
-            async with ClientSession() as session:
-                # Map MCP tool names to agent service endpoints
-                endpoint_map = {
-                    "sre_chat": "/chat",
-                    "analyze_logs": "/analyze-logs", 
-                    "incident_response": "/incident-response",
-                    "monitoring_advice": "/monitoring-advice",
-                    "health_check": "/health",
-                    "check_golden_signals": "/golden-signals",
-                    "query_prometheus": "/prometheus/query",
-                    "get_pod_logs": "/kubernetes/logs"
-                }
-                
-                endpoint = endpoint_map.get(tool_name)
-                if not endpoint:
-                    return f"❌ Unknown tool: {tool_name}"
-                
-                # Prepare request data
-                if tool_name == "sre_chat":
-                    request_data = {"message": arguments.get("message", "")}
-                elif tool_name == "analyze_logs":
-                    request_data = {"logs": arguments.get("logs", "")}
-                elif tool_name == "incident_response":
-                    request_data = {"incident": arguments.get("incident", "")}
-                elif tool_name == "monitoring_advice":
-                    request_data = {"system": arguments.get("system", "")}
-                elif tool_name == "health_check":
-                    request_data = {}
-                elif tool_name == "check_golden_signals":
-                    request_data = {
-                        "service_name": arguments.get("service_name", ""),
-                        "namespace": arguments.get("namespace", "default")
-                    }
-                elif tool_name == "query_prometheus":
-                    request_data = {"query": arguments.get("query", "")}
-                elif tool_name == "get_pod_logs":
-                    request_data = {
-                        "pod_name": arguments.get("pod_name", ""),
-                        "namespace": arguments.get("namespace", "default"),
-                        "tail_lines": arguments.get("tail_lines", 100)
-                    }
-                else:
-                    return f"❌ Unknown tool: {tool_name}"
-                
-                # Make request to agent service
-                url = f"{self.agent_service_url}{endpoint}"
-                
-                if tool_name == "health_check":
-                    # Health check is a GET request
-                    async with session.get(url, timeout=10) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            return json.dumps(data, indent=2)
-                        else:
-                            return f"Error: HTTP {response.status}"
-                else:
-                    # Other tools are POST requests
-                    async with session.post(url, json=request_data, timeout=30) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            # Extract the response based on the endpoint
-                            if tool_name == "sre_chat":
-                                return data.get("response", "No response")
-                            elif tool_name == "analyze_logs":
-                                return data.get("analysis", "No analysis")
-                            elif tool_name == "incident_response":
-                                return data.get("response", "No response")
-                            elif tool_name == "monitoring_advice":
-                                return data.get("advice", "No advice")
-                            elif tool_name == "check_golden_signals":
-                                # Return formatted golden signals data
-                                return json.dumps(data, indent=2)
-                            elif tool_name == "query_prometheus":
-                                return json.dumps(data, indent=2)
-                            elif tool_name == "get_pod_logs":
-                                return data.get("logs", "No logs")
-                            else:
-                                return json.dumps(data, indent=2)
-                        else:
-                            error_text = await response.text()
-                            return f"Error: HTTP {response.status} - {error_text}"
-        
-        except Exception as e:
-            logger.error(f"Error forwarding to agent service: {e}")
-            return f"Error forwarding to agent service: {str(e)}"
-    
-    @logfire.instrument("mcp_health")
-    async def handle_health(self, request: Request) -> Response:
-        """Liveness probe endpoint - checks if the service is alive."""
-        try:
-            health_status = {
-                "status": "healthy",
-                "service": "sre-agent-mcp-server",
-                "timestamp": datetime.now().isoformat(),
-                "uptime": "running",
-                "version": "1.0.0",
-                "deployment": "thin-mcp-server",
-                "agent_service_url": self.agent_service_url
-            }
-            # Only log health checks in debug mode
-            if os.getenv("DEBUG", "false").lower() == "true":
-                logger.debug(f"Health check: {health_status}")
-            return web.json_response(health_status)
-        except Exception as e:
-            logger.error(f"Health check failed: {e}")
-            return web.json_response(
-                {"status": "unhealthy", "error": str(e)}, 
-                status=503
-            )
-    
-    @logfire.instrument("mcp_readiness")
-    async def handle_readiness(self, request: Request) -> Response:
-        """Readiness probe endpoint - checks if the service is ready to serve traffic."""
-        try:
-            # Check if agent service is reachable
-            agent_status = await self._check_agent_service()
-            
-            if agent_status.get("status") != "connected":
-                return web.json_response(
-                    {"status": "not_ready", "reason": "Agent service not available", "agent_status": agent_status}, 
-                    status=503
-                )
-            
-            readiness_status = {
-                "status": "ready",
-                "service": "sre-agent-mcp-server",
-                "timestamp": datetime.now().isoformat(),
-                "agent_service_status": agent_status,
-                "mcp_endpoints": ["/mcp", "/health", "/ready", "/sse"],
-                "deployment": "thin-mcp-server"
-            }
-            # Only log readiness checks in debug mode
-            if os.getenv("DEBUG", "false").lower() == "true":
-                logger.debug(f"Readiness check: {readiness_status}")
-            return web.json_response(readiness_status)
-            
-        except Exception as e:
-            logger.error(f"Readiness check failed: {e}")
-            return web.json_response(
-                {"status": "not_ready", "error": str(e)}, 
-                status=503
-            )
-    
-    @logfire.instrument("check_agent_service")
-    async def _check_agent_service(self) -> Dict[str, Any]:
-        """Check agent service connectivity."""
-        try:
-            async with ClientSession() as session:
-                async with session.get(f"{self.agent_service_url}/health", timeout=5) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return {
-                            "status": "connected",
-                            "url": self.agent_service_url,
-                            "health": data
-                        }
-                    else:
-                        return {
-                            "status": "error",
-                            "url": self.agent_service_url,
-                            "error": f"HTTP {response.status}"
-                        }
-        except Exception as e:
-            return {
-                "status": "disconnected",
-                "url": self.agent_service_url,
-                "error": str(e)
-            }
-    
-    @logfire.instrument("mcp_sse")
-    async def handle_sse(self, request: Request) -> Response:
-        """Server-Sent Events endpoint for real-time communication."""
-        response = web.StreamResponse()
-        response.headers['Content-Type'] = 'text/event-stream'
-        response.headers['Cache-Control'] = 'no-cache'
-        response.headers['Connection'] = 'keep-alive'
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        
-        await response.prepare(request)
-        
-        try:
-            # Send initial connection event
-            await response.write(b"data: {\"type\": \"connected\", \"service\": \"sre-agent-mcp-server\", \"timestamp\": \"" + 
-                               datetime.now().isoformat().encode() + b"\"}\n\n")
-            
-            # Send heartbeat every 10 seconds
-            for i in range(100):  # Send heartbeats for ~16 minutes
-                await asyncio.sleep(10)
-                await response.write(b"data: {\"type\": \"heartbeat\", \"count\": " + 
-                                   str(i).encode() + b", \"timestamp\": \"" + 
-                                   datetime.now().isoformat().encode() + b"\"}\n\n")
-                
-        except Exception as e:
-            logger.error(f"SSE error: {e}")
-        finally:
-            await response.write_eof()
-        
-        return response
-    
-    async def start_server(self, host: str = "0.0.0.0", port: int = 30120):
-        """Start the MCP server."""
-        runner = web.AppRunner(self.app)
-        await runner.setup()
-        site = web.TCPSite(runner, host, port)
-        await site.start()
-        
-        logger.info(f"🌐 MCP Server started on {host}:{port}")
-        logger.info(f"📋 MCP endpoint: http://localhost:{port}/mcp")
-        logger.info(f"🏥 Health endpoint: http://localhost:{port}/health")
-        logger.info(f"✅ Readiness endpoint: http://localhost:{port}/ready")
-        logger.info(f"📡 SSE endpoint: http://localhost:{port}/sse")
-        logger.info(f"🔗 Agent service: {self.agent_service_url}")
-        
-        return runner
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-async def main():
-    """Main entry point for MCP Server."""
-    logger.info("🚀 Starting SRE Agent MCP Server (Thin Layer)")
+# Configuration
+PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://prometheus-operator-kube-p-prometheus.prometheus.svc.cluster.local:9090")
+GRAFANA_URL = os.getenv("GRAFANA_URL", "http://prometheus-operator-grafana.prometheus.svc.cluster.local:80")
+GRAFANA_API_KEY = os.getenv("GRAFANA_API_KEY", "")
+
+# Create MCP server instance
+mcp_server = Server("agent-sre-mcp-server")
+
+
+@mcp_server.list_tools()
+async def list_tools() -> List[Tool]:
+    """📋 List available MCP tools"""
+    return [
+        Tool(
+            name="prometheus_query",
+            description="""🔍 Execute a PromQL query against Prometheus.
+            
+Use this tool to query metrics from Prometheus. You can query:
+- Current values: rate(http_requests_total[5m])
+- Time series data: node_memory_usage_bytes
+- Aggregations: sum(rate(container_cpu_usage_seconds_total[5m])) by (namespace)
+- Alerts: ALERTS{alertname="HighMemoryUsage"}
+
+The query should be a valid PromQL expression.
+            """,
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "PromQL query to execute (e.g., 'up', 'rate(http_requests_total[5m])')"
+                    },
+                    "time": {
+                        "type": "string",
+                        "description": "Optional RFC3339 or Unix timestamp for query evaluation"
+                    },
+                    "timeout": {
+                        "type": "string",
+                        "description": "Optional timeout for the query (e.g., '30s')"
+                    }
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="grafana_query",
+            description="""📊 Query data from Grafana dashboards or datasources.
+            
+Use this tool to:
+- Get dashboard information by UID or ID
+- Query datasources directly
+- Retrieve panel data
+- Search dashboards
+
+This is useful for getting visualization data and dashboard states.
+            """,
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query_type": {
+                        "type": "string",
+                        "description": "Type of query: 'dashboard', 'datasource', 'search', 'panel'",
+                        "enum": ["dashboard", "datasource", "search", "panel"]
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Query string or identifier (dashboard UID, search term, etc.)"
+                    },
+                    "dashboard_id": {
+                        "type": "string",
+                        "description": "Optional dashboard UID for panel queries"
+                    },
+                    "panel_id": {
+                        "type": "integer",
+                        "description": "Optional panel ID within the dashboard"
+                    },
+                    "from_time": {
+                        "type": "string",
+                        "description": "Optional start time (RFC3339 or Unix timestamp)"
+                    },
+                    "to_time": {
+                        "type": "string",
+                        "description": "Optional end time (RFC3339 or Unix timestamp)"
+                    }
+                },
+                "required": ["query_type", "query"]
+            }
+        ),
+        Tool(
+            name="prometheus_query_range",
+            description="""📈 Execute a range query against Prometheus to get time series data.
+            
+Use this tool to query metrics over a time range:
+- Memory usage over the last hour
+- CPU trends for the past day
+- Request rate patterns over time
+
+Returns time series data with timestamps and values.
+            """,
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "PromQL query to execute"
+                    },
+                    "start": {
+                        "type": "string",
+                        "description": "Start timestamp (RFC3339 or Unix timestamp)"
+                    },
+                    "end": {
+                        "type": "string",
+                        "description": "End timestamp (RFC3339 or Unix timestamp)"
+                    },
+                    "step": {
+                        "type": "string",
+                        "description": "Query resolution step width (e.g., '15s', '1m', '5m')"
+                    },
+                    "timeout": {
+                        "type": "string",
+                        "description": "Optional timeout for the query (e.g., '30s')"
+                    }
+                },
+                "required": ["query", "start", "end", "step"]
+            }
+        )
+    ]
+
+
+@mcp_server.call_tool()
+async def call_tool(name: str, arguments: Any) -> List[TextContent]:
+    """🔧 Execute an MCP tool"""
     
-    # Configure server options
-    host = os.getenv("MCP_HOST", "0.0.0.0")
-    port = int(os.getenv("MCP_PORT", "30120"))
-    
-    server = MCPServer()
-    runner = await server.start_server(host, port)
+    logger.info(f"🔧 Tool called: {name} with arguments: {arguments}")
     
     try:
-        logger.info("🏁 MCP Server is running...")
-        await asyncio.Event().wait()  # Run forever
-    except KeyboardInterrupt:
-        logger.info("🛑 Shutting down MCP Server...")
-    finally:
-        await runner.cleanup()
+        if name == "prometheus_query":
+            result = await execute_prometheus_query(arguments)
+        elif name == "prometheus_query_range":
+            result = await execute_prometheus_query_range(arguments)
+        elif name == "grafana_query":
+            result = await execute_grafana_query(arguments)
+        else:
+            result = {"error": f"Unknown tool: {name}"}
+        
+        # Format the result as MCP TextContent
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(result, indent=2, default=str)
+            )
+        ]
+    
+    except Exception as e:
+        logger.error(f"❌ Error executing tool {name}: {e}", exc_info=True)
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps({
+                    "error": str(e),
+                    "tool": name,
+                    "timestamp": datetime.now().isoformat()
+                }, indent=2)
+            )
+        ]
+
+
+async def execute_prometheus_query(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """🔍 Execute a Prometheus instant query"""
+    
+    query = arguments.get("query", "")
+    if not query:
+        return {"error": "Query parameter is required"}
+    
+    params = {"query": query}
+    
+    # Optional parameters
+    if "time" in arguments:
+        params["time"] = arguments["time"]
+    if "timeout" in arguments:
+        params["timeout"] = arguments["timeout"]
+    
+    logger.info(f"🔍 Executing Prometheus query: {query}")
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(
+                f"{PROMETHEUS_URL}/api/v1/query",
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    return {
+                        "status": "success",
+                        "query": query,
+                        "result": data.get("data", {}),
+                        "timestamp": datetime.now().isoformat(),
+                        "prometheus_url": PROMETHEUS_URL
+                    }
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Prometheus error: {response.status} - {error_text}")
+                    return {
+                        "status": "error",
+                        "query": query,
+                        "error": f"HTTP {response.status}: {error_text}",
+                        "timestamp": datetime.now().isoformat()
+                    }
+        
+        except asyncio.TimeoutError:
+            logger.error(f"❌ Prometheus query timeout: {query}")
+            return {
+                "status": "error",
+                "query": query,
+                "error": "Query timeout",
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"❌ Prometheus query error: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "query": query,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+
+
+async def execute_prometheus_query_range(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """📈 Execute a Prometheus range query"""
+    
+    query = arguments.get("query", "")
+    start = arguments.get("start", "")
+    end = arguments.get("end", "")
+    step = arguments.get("step", "15s")
+    
+    if not query or not start or not end:
+        return {"error": "Query, start, and end parameters are required"}
+    
+    params = {
+        "query": query,
+        "start": start,
+        "end": end,
+        "step": step
+    }
+    
+    # Optional parameters
+    if "timeout" in arguments:
+        params["timeout"] = arguments["timeout"]
+    
+    logger.info(f"📈 Executing Prometheus range query: {query} from {start} to {end}")
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(
+                f"{PROMETHEUS_URL}/api/v1/query_range",
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=60)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    return {
+                        "status": "success",
+                        "query": query,
+                        "start": start,
+                        "end": end,
+                        "step": step,
+                        "result": data.get("data", {}),
+                        "timestamp": datetime.now().isoformat(),
+                        "prometheus_url": PROMETHEUS_URL
+                    }
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Prometheus range query error: {response.status} - {error_text}")
+                    return {
+                        "status": "error",
+                        "query": query,
+                        "error": f"HTTP {response.status}: {error_text}",
+                        "timestamp": datetime.now().isoformat()
+                    }
+        
+        except asyncio.TimeoutError:
+            logger.error(f"❌ Prometheus range query timeout: {query}")
+            return {
+                "status": "error",
+                "query": query,
+                "error": "Query timeout",
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"❌ Prometheus range query error: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "query": query,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+
+
+async def execute_grafana_query(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """📊 Execute a Grafana query"""
+    
+    query_type = arguments.get("query_type", "")
+    query = arguments.get("query", "")
+    
+    if not query_type or not query:
+        return {"error": "query_type and query parameters are required"}
+    
+    logger.info(f"📊 Executing Grafana query: type={query_type}, query={query}")
+    
+    # Build headers
+    headers = {}
+    if GRAFANA_API_KEY:
+        headers["Authorization"] = f"Bearer {GRAFANA_API_KEY}"
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            # Handle different query types
+            if query_type == "dashboard":
+                url = f"{GRAFANA_URL}/api/dashboards/uid/{query}"
+            elif query_type == "search":
+                url = f"{GRAFANA_URL}/api/search?query={query}"
+            elif query_type == "datasource":
+                url = f"{GRAFANA_URL}/api/datasources/name/{query}"
+            elif query_type == "panel":
+                dashboard_id = arguments.get("dashboard_id", "")
+                panel_id = arguments.get("panel_id", 0)
+                if not dashboard_id:
+                    return {"error": "dashboard_id required for panel queries"}
+                url = f"{GRAFANA_URL}/api/dashboards/uid/{dashboard_id}"
+            else:
+                return {"error": f"Unknown query type: {query_type}"}
+            
+            logger.info(f"📊 Grafana URL: {url}")
+            
+            async with session.get(
+                url,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=30)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    
+                    return {
+                        "status": "success",
+                        "query_type": query_type,
+                        "query": query,
+                        "result": data,
+                        "timestamp": datetime.now().isoformat(),
+                        "grafana_url": GRAFANA_URL
+                    }
+                elif response.status == 404:
+                    return {
+                        "status": "not_found",
+                        "query_type": query_type,
+                        "query": query,
+                        "error": f"Resource not found: {query}",
+                        "timestamp": datetime.now().isoformat()
+                    }
+                else:
+                    error_text = await response.text()
+                    logger.error(f"❌ Grafana error: {response.status} - {error_text}")
+                    return {
+                        "status": "error",
+                        "query_type": query_type,
+                        "query": query,
+                        "error": f"HTTP {response.status}: {error_text}",
+                        "timestamp": datetime.now().isoformat()
+                    }
+        
+        except asyncio.TimeoutError:
+            logger.error(f"❌ Grafana query timeout: {query}")
+            return {
+                "status": "error",
+                "query_type": query_type,
+                "query": query,
+                "error": "Query timeout",
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"❌ Grafana query error: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "query_type": query_type,
+                "query": query,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+
+
+async def main():
+    """🚀 Main entry point for MCP server"""
+    logger.info("🚀 Starting Agent-SRE MCP Server")
+    logger.info(f"📊 Prometheus URL: {PROMETHEUS_URL}")
+    logger.info(f"📈 Grafana URL: {GRAFANA_URL}")
+    logger.info(f"🔐 Grafana API Key: {'configured' if GRAFANA_API_KEY else 'not configured'}")
+    
+    async with stdio_server() as (read_stream, write_stream):
+        await mcp_server.run(
+            read_stream,
+            write_stream,
+            mcp_server.create_initialization_options()
+        )
+
 
 if __name__ == "__main__":
     asyncio.run(main())
+

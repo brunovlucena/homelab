@@ -1,36 +1,29 @@
-FROM python:3.11-slim
+# 🐳 Agent-SRE MCP Server Dockerfile
+FROM python:3.12-slim
 
-# Set working directory
+# 📦 Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# 📥 Copy dependency files
+COPY pyproject.toml ./
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+# 🔧 Install uv for fast package management
+RUN pip install --no-cache-dir uv
 
-# Copy uv configuration files
-COPY pyproject.toml uv.lock ./
+# 📦 Install dependencies using uv
+RUN uv pip install --system --no-cache -e .
 
-# Copy MCP server specific code
+# 📄 Copy application code
 COPY deployments/mcp-server/mcp_server.py ./
-COPY deployments/mcp-server/core.py ./
+COPY deployments/mcp-server/mcp_http_wrapper.py ./
 
-# Install Python dependencies with uv
-RUN uv sync --frozen --no-dev
-
-# Create non-root user
+# 🔐 Run as non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
-EXPOSE 30120
+# 🌐 Expose port for HTTP wrapper
+EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:30120/health || exit 1
+# 🚀 Run MCP HTTP wrapper (wraps MCP tools in HTTP API)
+CMD ["python", "-u", "mcp_http_wrapper.py"]
 
-# Run the MCP server using uv
-CMD ["uv", "run", "python", "mcp_server.py"]

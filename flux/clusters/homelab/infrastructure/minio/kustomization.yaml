@@ -3,7 +3,7 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
-  - sealed-secret.yaml
+  # - sealed-secret.yaml  # Consolidated into minio-secrets.yaml in infrastructure/secrets/
   - pvc.yaml
   - deployment.yaml
   - service.yaml

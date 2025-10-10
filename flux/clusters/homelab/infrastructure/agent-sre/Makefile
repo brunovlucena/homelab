@@ -1,19 +1,20 @@
 # SRE Agent Refactored - Makefile
 # Separate MCP Server and Agent deployments
 
-.PHONY: help build-mcp build-agent build-all deploy-mcp deploy-agent deploy-all start stop clean test health logs
+# Variables
+REGISTRY := ghcr.io/brunovlucena
+
+.PHONY: help build-agent build-all deploy-agent deploy-all start stop clean test health logs push-agent push-all scale-agent urls monitor
 
 # Default target
 help:
 	@echo "🚀 SRE Agent Refactored - Available Commands:"
 	@echo ""
 	@echo "  📦 Build Commands:"
-	@echo "    make build-mcp          - Build MCP server Docker image"
 	@echo "    make build-agent         - Build Agent Docker image"
 	@echo "    make build-all           - Build both images"
 	@echo ""
 	@echo "  🚀 Deploy Commands:"
-	@echo "    make deploy-mcp          - Deploy MCP server to Kubernetes"
 	@echo "    make deploy-agent        - Deploy Agent to Kubernetes"
 	@echo "    make deploy-all          - Deploy both services"
 	@echo ""
@@ -30,27 +31,15 @@ help:
 	@echo "    make clean               - Clean up resources"
 	@echo ""
 
-# Build MCP Server
-build-mcp:
-	@echo "🔨 Building MCP Server Docker image..."
-	docker build -f deployments/mcp-server/Dockerfile -t ghcr.io/brunovlucena/agent-sre-mcp-server:latest .
-	@echo "✅ MCP Server image built successfully"
-
 # Build Agent
 build-agent:
 	@echo "🔨 Building Agent Docker image..."
-	docker build -f deployments/agent/Dockerfile -t ghcr.io/brunovlucena/agent-sre-agent:latest .
+	docker build -f deployments/agent/Dockerfile -t $(REGISTRY)/agent-sre-agent:latest .
 	@echo "✅ Agent image built successfully"
 
 # Build all images
-build-all: build-mcp build-agent
+build-all: build-agent build-mcp-server
 	@echo "✅ All images built successfully"
-
-# Deploy MCP Server to Kubernetes
-deploy-mcp:
-	@echo "🚀 Deploying MCP Server to Kubernetes..."
-	kubectl apply -f deployments/mcp-server/k8s-mcp-server.yaml
-	@echo "✅ MCP Server deployed successfully"
 
 # Deploy Agent to Kubernetes
 deploy-agent:
@@ -59,7 +48,7 @@ deploy-agent:
 	@echo "✅ Agent deployed successfully"
 
 # Deploy all services
-deploy-all: deploy-mcp deploy-agent
+deploy-all: deploy-agent
 	@echo "✅ All services deployed successfully"
 
 # Start services with docker-compose
@@ -67,10 +56,8 @@ start:
 	@echo "🐳 Starting services with docker-compose..."
 	docker-compose up -d
 	@echo "✅ Services started successfully"
-	@echo "🌐 MCP Server: http://localhost:30120"
 	@echo "🌐 Agent: http://localhost:8080"
-	@echo "🌐 Nginx: http://localhost:80"
-
+	
 # Stop services
 stop:
 	@echo "🛑 Stopping services..."
@@ -117,19 +104,6 @@ clean:
 	docker system prune -f
 	@echo "✅ Cleanup completed"
 
-# Test MCP communication
-test-mcp:
-	@echo "🧪 Testing MCP communication..."
-	@echo "Testing MCP chat..."
-	curl -X POST http://localhost:8080/mcp/chat \
-		-H "Content-Type: application/json" \
-		-d '{"message": "How do I monitor Kubernetes pods?"}' | jq .
-	@echo ""
-	@echo "Testing MCP log analysis..."
-	curl -X POST http://localhost:8080/mcp/analyze-logs \
-		-H "Content-Type: application/json" \
-		-d '{"logs": "ERROR: Database connection failed"}' | jq .
-
 # Test direct agent communication
 test-agent:
 	@echo "🧪 Testing direct agent communication..."
@@ -143,43 +117,49 @@ test-agent:
 		-H "Content-Type: application/json" \
 		-d '{"logs": "ERROR: Database connection failed"}' | jq .
 
-# Push images to registry
-push-mcp:
-	@echo "📤 Pushing MCP Server image to registry..."
-	docker push ghcr.io/brunovlucena/agent-sre-mcp-server:latest
-	@echo "✅ MCP Server image pushed successfully"
-
 push-agent:
 	@echo "📤 Pushing Agent image to registry..."
-	docker push ghcr.io/brunovlucena/agent-sre-agent:latest
+	docker push $(REGISTRY)/agent-sre-agent:latest
 	@echo "✅ Agent image pushed successfully"
 
-push-all: push-mcp push-agent
+push-all: push-agent push-mcp-server
 	@echo "✅ All images pushed successfully"
 
-# Scale services
-scale-mcp:
-	@echo "📈 Scaling MCP Server..."
-	kubectl scale deployment sre-agent-mcp-server --replicas=3 -n agent-sre
-	@echo "✅ MCP Server scaled to 3 replicas"
+# ============================================================================
+# MCP Server Targets
+# ============================================================================
 
-scale-agent:
-	@echo "📈 Scaling Agent..."
-	kubectl scale deployment sre-agent --replicas=3 -n agent-sre
-	@echo "✅ Agent scaled to 3 replicas"
+build-mcp-server:
+	@echo "🔨 Building MCP server Docker image..."
+	docker buildx build --platform linux/amd64,linux/arm64 -f deployments/mcp-server/Dockerfile -t ghcr.io/brunovlucena/agent-sre-mcp-server:latest .
+	@echo "✅ MCP server image built successfully"
 
-# Get service URLs
-urls:
-	@echo "🌐 Service URLs:"
-	@echo "MCP Server: http://localhost:30120"
-	@echo "Agent: http://localhost:8080"
-	@echo "Nginx: http://localhost:80"
+push-mcp-server:
+	@echo "📤 Building and pushing MCP server Docker image..."
+	docker buildx build --platform linux/amd64,linux/arm64 -f deployments/mcp-server/Dockerfile -t ghcr.io/brunovlucena/agent-sre-mcp-server:latest --push .
+	@echo "✅ MCP server image pushed successfully"
+
+deploy-mcp-server:
+	@echo "🚀 Deploying MCP server to Kubernetes..."
+	kubectl apply -k deployments/mcp-server/
+	@echo "✅ MCP server deployed successfully"
+
+restart-mcp-server:
+	@echo "🔄 Restarting MCP server..."
+	kubectl rollout restart deployment/agent-sre-mcp-server -n agent-sre
+	@echo "✅ MCP server restarted successfully"
+
+logs-mcp-server:
+	@echo "📋 Viewing MCP server logs..."
+	kubectl logs -f -l app=agent-sre-mcp-server -n agent-sre --tail=100
+
+test-mcp-server:
+	@echo "🧪 Testing MCP server..."
+	@echo "Testing health endpoint..."
+	kubectl run curl-test --image=curlimages/curl:latest --rm -i --restart=Never -- \
+		curl -f http://agent-sre-mcp-server.agent-sre:3000/health
 	@echo ""
-	@echo "Kubernetes NodePort URLs:"
-	@echo "MCP Server: http://localhost:31120"
-	@echo "Agent: http://localhost:31080"
-
-# Monitor services
-monitor:
-	@echo "📊 Monitoring services..."
-	watch -n 5 'curl -s http://localhost:30120/health | jq .status && curl -s http://localhost:8080/health | jq .status'
+	@echo "Testing tools list..."
+	kubectl run curl-test --image=curlimages/curl:latest --rm -i --restart=Never -- \
+		curl -f http://agent-sre-mcp-server.agent-sre:3000/tools
+	@echo "✅ MCP server tests completed"

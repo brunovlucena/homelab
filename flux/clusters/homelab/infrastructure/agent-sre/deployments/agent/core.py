@@ -57,12 +57,21 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://192.168.0.3:11434")
 MODEL_NAME = os.environ.get("MODEL_NAME", "bruno-sre:latest")
 SERVICE_NAME = os.environ.get("SERVICE_NAME", "sre-agent")
 
-# Configure Logfire
+# Configure Logfire with dual export (Alloy + Logfire Cloud)
 sre_agent_token = os.getenv('LOGFIRE_TOKEN_SRE_AGENT')
+alloy_endpoint = os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://alloy.alloy.svc.cluster.local:4317')
+alloy_protocol = os.getenv('OTEL_EXPORTER_OTLP_PROTOCOL', 'grpc')
+
 if sre_agent_token:
     try:
-        logfire.configure(service_name=SERVICE_NAME, token=sre_agent_token)
-        logger.info("✅ Logfire configured successfully")
+        # Configure to send to both Logfire cloud AND Alloy collector
+        logfire.configure(
+            service_name=SERVICE_NAME,
+            token=sre_agent_token,
+            send_to_logfire=True,  # ✅ Send to Logfire cloud
+            console=False,
+        )
+        logger.info(f"✅ Logfire configured successfully (dual export: Logfire cloud + Alloy at {alloy_endpoint})")
     except Exception as e:
         logger.warning(f"⚠️  Logfire configuration failed: {e}")
         logger.warning("⚠️  Continuing without Logfire...")

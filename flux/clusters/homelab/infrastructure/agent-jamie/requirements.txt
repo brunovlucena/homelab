@@ -1,7 +1,11 @@
 # 🤖 Jamie Dependencies
 
+# MCP (Model Context Protocol)
+mcp>=1.0.0
+
 # LangChain and AI
 langchain>=0.3.0
+langchain-core>=0.3.0
 langchain-ollama>=0.2.0
 langgraph>=0.2.0
 langsmith>=0.1.0
@@ -19,6 +23,9 @@ slack-sdk>=3.26.0
 
 # Data validation
 pydantic>=2.0.0
+
+# Type extensions for LangGraph
+typing-extensions>=4.0.0
 
 # Configuration
 python-dotenv>=1.0.0

@@ -19,6 +19,7 @@ dependencies = [
     "asyncio-mqtt>=0.16.0",
     "python-json-logger>=2.0.0",
     "sse-starlette>=1.6.0",
+    "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]

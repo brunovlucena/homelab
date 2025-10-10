@@ -5,6 +5,7 @@ metadata:
   name: sre-agent
 
 resources:
+  - namespace.yaml
   - deployments/agent
   - deployments/mcp-server
 

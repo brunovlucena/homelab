@@ -128,7 +128,7 @@ make logs-mcp
 
 2. Create secrets in Kubernetes:
    ```bash
-   kubectl create secret generic jamie-slack-secrets \
+   kubectl create secret generic jamie-secrets \
      --from-literal=SLACK_BOT_TOKEN="xoxb-..." \
      --from-literal=SLACK_APP_TOKEN="xapp-..." \
      --from-literal=SLACK_SIGNING_SECRET="..." \
@@ -298,7 +298,7 @@ Each deployment has:
 - `SLACK_BOT_TOKEN` - Slack bot token (from secret)
 - `SLACK_APP_TOKEN` - Slack app token (from secret)
 - `SLACK_SIGNING_SECRET` - Slack signing secret (from secret)
-- `AGENT_SRE_URL` - Agent-SRE MCP URL (default: http://sre-agent-mcp-server-service.agent-sre:30120)
+- `AGENT_SRE_URL` - Agent-SRE Service URL (default: http://sre-agent-service.agent-sre:8080)
 - `OLLAMA_URL` - Ollama server URL (default: http://192.168.0.16:11434)
 - `MODEL_NAME` - Ollama model name (default: llama3.2:3b)
 - `LOGFIRE_TOKEN_JAMIE` - Logfire token for observability (optional)

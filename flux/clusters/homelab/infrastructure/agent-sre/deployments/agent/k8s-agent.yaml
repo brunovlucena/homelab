@@ -1,10 +1,3 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: agent-sre
-  labels:
-    name: agent-sre
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -38,14 +31,6 @@ spec:
           value: "8080"
         - name: AGENT_HOST
           value: "0.0.0.0"
-        - name: MCP_SERVER_URL
-          value: "http://sre-agent-mcp-server-service:30120"
-        # - name: GRAFANA_MCP_URL
-        #   value: "http://localhost:8001"
-        - name: PROMETHEUS_MCP_URL
-          value: "http://prometheus-mcp.prometheus-mcp.svc.cluster.local"
-        - name: FUNC_MCP_URL
-          value: "http://localhost:8003"
         - name: OLLAMA_URL
           value: "http://192.168.0.16:11434"
         - name: MODEL_NAME
@@ -62,6 +47,13 @@ spec:
             secretKeyRef:
               name: agent-sre-secrets
               key: LANGSMITH_API_KEY
+        # OpenTelemetry configuration for Alloy collector (dual export)
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://alloy.alloy.svc.cluster.local:4317"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "grpc"
+        - name: OTEL_EXPORTER_OTLP_INSECURE
+          value: "true"
         resources:
           requests:
             memory: "512Mi"
@@ -87,145 +79,6 @@ spec:
           timeoutSeconds: 3
           failureThreshold: 3
           successThreshold: 1
-      # # 📊 Grafana MCP sidecar container
-      # # Provides MCP (Model Context Protocol) access to Grafana for the SRE agent
-      # # The agent can query dashboards, alerts, and metrics through this MCP server
-      # # Authentication: Uses Grafana Service Account Token (glsa_*)
-      # - name: grafana-mcp
-      #   image: mcp/grafana:latest
-      #   imagePullPolicy: IfNotPresent
-      #   ports:
-      #   - containerPort: 8001
-      #     name: mcp-http
-      #   env:
-      #   - name: GRAFANA_URL
-      #     value: "https://grafana.lucena.cloud"
-      #   # Service Account Token from Grafana (Admin → Service Accounts)
-      #   - name: GRAFANA_API_KEY
-      #     valueFrom:
-      #       secretKeyRef:
-      #         name: agent-sre-secrets
-      #         key: GRAFANA_SERVICE_ACCOUNT_TOKEN
-      #   - name: PORT
-      #     value: "8001"
-      #   resources:
-      #     requests:
-      #       memory: "128Mi"
-      #       cpu: "100m"
-      #     limits:
-      #       memory: "256Mi"
-      #       cpu: "200m"
-      #   livenessProbe:
-      #     httpGet:
-      #       path: /health
-      #       port: 8001
-      #     initialDelaySeconds: 30
-      #     periodSeconds: 30
-      #     timeoutSeconds: 5
-      #     failureThreshold: 3
-      #     successThreshold: 1
-      #   readinessProbe:
-      #     httpGet:
-      #       path: /health
-      #       port: 8001
-      #     initialDelaySeconds: 10
-      #     periodSeconds: 30
-      #     timeoutSeconds: 3
-      #     failureThreshold: 3
-      #     successThreshold: 1
-      # 📈 Prometheus MCP sidecar container
-      # Provides MCP (Model Context Protocol) access to Prometheus for the SRE agent
-      # The agent can query metrics and create advanced PromQL queries through this MCP server
-      # - name: prometheus-mcp
-      #   image: ghcr.io/pab1it0/prometheus-mcp-server:latest
-      #   imagePullPolicy: IfNotPresent
-      #   ports:
-      #   - containerPort: 8002
-      #     name: mcp-http
-      #   env:
-      #   - name: PROMETHEUS_URL
-      #     value: "http://prometheus-operated.prometheus:9090"
-      #   - name: PROMETHEUS_MCP_SERVER_TRANSPORT
-      #     value: "http"
-      #   - name: PROMETHEUS_MCP_BIND_HOST
-      #     value: "0.0.0.0"
-      #   - name: PROMETHEUS_MCP_BIND_PORT
-      #     value: "8002"
-      #   resources:
-      #     requests:
-      #       memory: "128Mi"
-      #       cpu: "100m"
-      #     limits:
-      #       memory: "256Mi"
-      #       cpu: "200m"
-      #   livenessProbe:
-      #     httpGet:
-      #       path: /health
-      #       port: 8002
-      #     initialDelaySeconds: 30
-      #     periodSeconds: 30
-      #     timeoutSeconds: 5
-      #     failureThreshold: 3
-      #     successThreshold: 1
-      #   readinessProbe:
-      #     httpGet:
-      #       path: /health
-      #       port: 8002
-      #     initialDelaySeconds: 10
-      #     periodSeconds: 30
-      #     timeoutSeconds: 3
-      #     failureThreshold: 3
-      #     successThreshold: 1
-      # 🚀 Knative Func MCP Server
-      # Exposes Knative func CLI as an MCP server
-      # The agent can use this to deploy, list, and manage Knative functions via MCP
-      - name: func-mcp
-        image: bitnami/kubectl:latest
-        imagePullPolicy: IfNotPresent
-        command: ["/bin/sh"]
-        args:
-          - -c
-          - |
-            set -e
-            echo "📦 Installing func CLI..."
-            
-            # Install func CLI from GitHub releases
-            FUNC_VERSION="v1.15.1"
-            DOWNLOAD_URL="https://github.com/knative/func/releases/download/${FUNC_VERSION}/func_linux_amd64"
-            
-            echo "Downloading from: ${DOWNLOAD_URL}"
-            curl -L -o /tmp/func "${DOWNLOAD_URL}" || {
-              echo "❌ Download failed! Trying alternative method..."
-              # Try with wget as fallback
-              wget -O /tmp/func "${DOWNLOAD_URL}" || {
-                echo "❌ Both curl and wget failed!"
-                exit 1
-              }
-            }
-            
-            echo "✓ Download complete"
-            ls -lh /tmp/func
-            
-            chmod +x /tmp/func
-            mv /tmp/func /usr/local/bin/func
-            
-            # Run func as MCP server
-            echo "🚀 Starting func MCP server on port 8003..."
-            func version
-            exec func mcp
-        ports:
-        - containerPort: 8003
-          name: mcp-http
-        env:
-        - name: PORT
-          value: "8003"
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "256Mi"
-            cpu: "200m"
 ---
 apiVersion: v1
 kind: Service
@@ -242,18 +95,6 @@ spec:
     targetPort: 8080
     protocol: TCP
     name: http
-  # - port: 8001
-  #   targetPort: 8001
-  #   protocol: TCP
-  #   name: grafana-mcp
-  # - port: 8002
-  #   targetPort: 8002
-  #   protocol: TCP
-  #   name: prometheus-mcp
-  - port: 8003
-    targetPort: 8003
-    protocol: TCP
-    name: func-mcp
   selector:
     app: sre-agent
     component: agent
@@ -274,21 +115,6 @@ spec:
     nodePort: 31081
     protocol: TCP
     name: http
-  # - port: 8001
-  #   targetPort: 8001
-  #   nodePort: 31082
-  #   protocol: TCP
-  #   name: grafana-mcp
-  # - port: 8002
-  #   targetPort: 8002
-  #   nodePort: 31083
-  #   protocol: TCP
-  #   name: prometheus-mcp
-  - port: 8003
-    targetPort: 8003
-    nodePort: 31083
-    protocol: TCP
-    name: func-mcp
   selector:
     app: sre-agent
     component: agent

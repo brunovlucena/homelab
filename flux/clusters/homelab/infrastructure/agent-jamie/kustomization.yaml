@@ -7,8 +7,6 @@ namespace: jamie
 resources:
   - namespace.yaml
   - src/slack-bot
-  - src/mcp-server
-  - jamie-slack-secrets-sealed.yaml
 
 commonLabels:
   app.kubernetes.io/managed-by: kustomize

@@ -41,12 +41,21 @@ MODEL_NAME = os.environ.get("MODEL_NAME", "llama3.2:3b")
 SERVICE_NAME = os.environ.get("SERVICE_NAME", "jamie-slack-bot")
 AGENT_SRE_URL = os.environ.get("AGENT_SRE_URL", "http://sre-agent-service.agent-sre:8080")
 
-# Configure Logfire
+# Configure Logfire with dual export (Alloy + Logfire Cloud)
 jamie_token = os.getenv('LOGFIRE_TOKEN_JAMIE')
+alloy_endpoint = os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://alloy.alloy.svc.cluster.local:4317')
+alloy_protocol = os.getenv('OTEL_EXPORTER_OTLP_PROTOCOL', 'grpc')
+
 if jamie_token:
     try:
-        logfire.configure(service_name=SERVICE_NAME, token=jamie_token)
-        logger.info("✅ Logfire configured successfully")
+        # Configure to send to both Logfire cloud AND Alloy collector
+        logfire.configure(
+            service_name=SERVICE_NAME,
+            token=jamie_token,
+            send_to_logfire=True,  # ✅ Send to Logfire cloud
+            console=False,
+        )
+        logger.info(f"✅ Logfire configured successfully (dual export: Logfire cloud + Alloy at {alloy_endpoint})")
     except Exception as e:
         logger.warning(f"⚠️  Logfire configuration failed: {e}")
         logger.warning("⚠️  Continuing without Logfire...")

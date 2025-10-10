@@ -26,14 +26,11 @@ class SREAgentService:
         self.app = web.Application(
             middlewares=[self._logging_middleware]
         )
+        
+        # Configure service URLs from environment variables
+        self.prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
         self.mcp_server_url = os.getenv("MCP_SERVER_URL", "http://sre-agent-mcp-server-service:30120")
-        # MCP servers running on same pod
-        # self.grafana_mcp_url = os.getenv("GRAFANA_MCP_URL", "http://localhost:8001")
-        # self.prometheus_mcp_url = os.getenv("PROMETHEUS_MCP_URL", "http://prometheus-mcp.prometheus-mcp.svc.cluster.local")
-        self.func_mcp_url = os.getenv("FUNC_MCP_URL", "http://localhost:8003")
-        # Direct service URLs
-        self.grafana_url = os.getenv("GRAFANA_URL", "http://grafana.grafana:3000")
-        self.prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus-operated.prometheus:9090")
+        
         self._setup_routes()
     
     @web.middleware
@@ -65,35 +62,23 @@ class SREAgentService:
         self.app.router.add_get('/health', self.handle_health)
         self.app.router.add_get('/ready', self.handle_readiness)
         
+        # Status and info endpoints
+        self.app.router.add_get('/status', self.handle_status)
+
         # Agent API endpoints
+        self.app.router.add_post('/ping', self.handle_ping)
         self.app.router.add_post('/chat', self.handle_chat)
-        self.app.router.add_post('/analyze-logs', self.handle_analyze_logs)
-        self.app.router.add_post('/incident-response', self.handle_incident_response)
-        self.app.router.add_post('/monitoring-advice', self.handle_monitoring_advice)
         
         # MCP server communication endpoints
         self.app.router.add_post('/mcp/chat', self.handle_mcp_chat)
-        self.app.router.add_post('/mcp/analyze-logs', self.handle_mcp_analyze_logs)
-        self.app.router.add_post('/mcp/incident-response', self.handle_mcp_incident_response)
-        self.app.router.add_post('/mcp/monitoring-advice', self.handle_mcp_monitoring_advice)
         
-        # Status and info endpoints
-        self.app.router.add_get('/status', self.handle_status)
-        self.app.router.add_get('/mcp/status', self.handle_mcp_status)
+        # 🔍 Query endpoints
+        self.app.router.add_post('/prometheus/query', self.handle_prometheus_query)
+        self.app.router.add_post('/grafana/query', self.handle_grafana_query)
+        self.app.router.add_post('/k8s/query', self.handle_k8s_query)
         
         # 🚨 Alertmanager webhook endpoint
         self.app.router.add_post('/webhook/alert', self.handle_alertmanager_webhook)
-        
-        # 📊 Monitoring and observability endpoints
-        self.app.router.add_post('/golden-signals', self.handle_golden_signals)
-        self.app.router.add_post('/api/prometheus/query', self.handle_prometheus_query)
-        self.app.router.add_post('/api/grafana/query', self.handle_grafana_query)
-        self.app.router.add_post('/api/pod-logs', self.handle_pod_logs)
-        
-        # 🔌 MCP proxy endpoints to other MCP servers
-        self.app.router.add_post('/mcp/grafana_mcp', self.handle_grafana_mcp_proxy)
-        self.app.router.add_post('/mcp/prometheus_mcp', self.handle_prometheus_mcp_proxy)
-        self.app.router.add_post('/mcp/func_mcp', self.handle_func_mcp_proxy)
     
     async def handle_health(self, request: Request) -> Response:
         """Liveness probe endpoint."""
@@ -176,87 +161,6 @@ class SREAgentService:
                 status=500
             )
     
-    async def handle_analyze_logs(self, request: Request) -> Response:
-        """Direct log analysis endpoint using local agent."""
-        try:
-            data = await request.json()
-            logs = data.get("logs", "")
-            
-            if not logs:
-                return web.json_response(
-                    {"error": "Logs are required"},
-                    status=400
-                )
-            
-            analysis = await self.sre_agent.analyze_logs(logs)
-            return web.json_response({
-                "analysis": analysis,
-                "service": "sre-agent",
-                "timestamp": datetime.now().isoformat(),
-                "method": "direct"
-            })
-        
-        except Exception as e:
-            logger.error(f"Error in analyze_logs handler: {e}")
-            return web.json_response(
-                {"error": str(e)},
-                status=500
-            )
-    
-    async def handle_incident_response(self, request: Request) -> Response:
-        """Direct incident response endpoint using local agent."""
-        try:
-            data = await request.json()
-            incident = data.get("incident", "")
-            
-            if not incident:
-                return web.json_response(
-                    {"error": "Incident description is required"},
-                    status=400
-                )
-            
-            response = await self.sre_agent.incident_response(incident)
-            return web.json_response({
-                "response": response,
-                "service": "sre-agent",
-                "timestamp": datetime.now().isoformat(),
-                "method": "direct"
-            })
-        
-        except Exception as e:
-            logger.error(f"Error in incident_response handler: {e}")
-            return web.json_response(
-                {"error": str(e)},
-                status=500
-            )
-    
-    async def handle_monitoring_advice(self, request: Request) -> Response:
-        """Direct monitoring advice endpoint using local agent."""
-        try:
-            data = await request.json()
-            system = data.get("system", "")
-            
-            if not system:
-                return web.json_response(
-                    {"error": "System description is required"},
-                    status=400
-                )
-            
-            advice = await self.sre_agent.monitoring_advice(system)
-            return web.json_response({
-                "advice": advice,
-                "service": "sre-agent",
-                "timestamp": datetime.now().isoformat(),
-                "method": "direct"
-            })
-        
-        except Exception as e:
-            logger.error(f"Error in monitoring_advice handler: {e}")
-            return web.json_response(
-                {"error": str(e)},
-                status=500
-            )
-    
     async def handle_mcp_chat(self, request: Request) -> Response:
         """Chat endpoint via MCP server."""
         try:
@@ -284,82 +188,18 @@ class SREAgentService:
                 status=500
             )
     
-    async def handle_mcp_analyze_logs(self, request: Request) -> Response:
-        """Log analysis endpoint via MCP server."""
+    async def handle_ping(self, request: Request) -> Response:
+        """Ping endpoint for service connectivity check."""
         try:
-            data = await request.json()
-            logs = data.get("logs", "")
-            
-            if not logs:
-                return web.json_response(
-                    {"error": "Logs are required"},
-                    status=400
-                )
-            
-            result = await self._call_mcp_tool("analyze_logs", {"logs": logs})
             return web.json_response({
-                "analysis": result,
+                "message": "pong",
                 "service": "sre-agent",
                 "timestamp": datetime.now().isoformat(),
-                "method": "mcp"
+                "status": "alive"
             })
         
         except Exception as e:
-            logger.error(f"Error in MCP analyze_logs handler: {e}")
-            return web.json_response(
-                {"error": str(e)},
-                status=500
-            )
-    
-    async def handle_mcp_incident_response(self, request: Request) -> Response:
-        """Incident response endpoint via MCP server."""
-        try:
-            data = await request.json()
-            incident = data.get("incident", "")
-            
-            if not incident:
-                return web.json_response(
-                    {"error": "Incident description is required"},
-                    status=400
-                )
-            
-            result = await self._call_mcp_tool("incident_response", {"incident": incident})
-            return web.json_response({
-                "response": result,
-                "service": "sre-agent",
-                "timestamp": datetime.now().isoformat(),
-                "method": "mcp"
-            })
-        
-        except Exception as e:
-            logger.error(f"Error in MCP incident_response handler: {e}")
-            return web.json_response(
-                {"error": str(e)},
-                status=500
-            )
-    
-    async def handle_mcp_monitoring_advice(self, request: Request) -> Response:
-        """Monitoring advice endpoint via MCP server."""
-        try:
-            data = await request.json()
-            system = data.get("system", "")
-            
-            if not system:
-                return web.json_response(
-                    {"error": "System description is required"},
-                    status=400
-                )
-            
-            result = await self._call_mcp_tool("monitoring_advice", {"system": system})
-            return web.json_response({
-                "advice": result,
-                "service": "sre-agent",
-                "timestamp": datetime.now().isoformat(),
-                "method": "mcp"
-            })
-        
-        except Exception as e:
-            logger.error(f"Error in MCP monitoring_advice handler: {e}")
+            logger.error(f"Error in ping handler: {e}")
             return web.json_response(
                 {"error": str(e)},
                 status=500
@@ -382,19 +222,6 @@ class SREAgentService:
         
         except Exception as e:
             logger.error(f"Error in status handler: {e}")
-            return web.json_response(
-                {"error": str(e)},
-                status=500
-            )
-    
-    async def handle_mcp_status(self, request: Request) -> Response:
-        """MCP server status endpoint."""
-        try:
-            mcp_status = await self._check_mcp_server()
-            return web.json_response(mcp_status)
-        
-        except Exception as e:
-            logger.error(f"Error in MCP status handler: {e}")
             return web.json_response(
                 {"error": str(e)},
                 status=500
@@ -480,111 +307,6 @@ Please provide:
                 status=500
             )
     
-    async def handle_golden_signals(self, request: Request) -> Response:
-        """📊 Check golden signals for a service via Prometheus"""
-        try:
-            data = await request.json()
-            service_name = data.get("service_name", "")
-            namespace = data.get("namespace", "default")
-            
-            if not service_name:
-                return web.json_response(
-                    {"error": "Service name is required"},
-                    status=400
-                )
-            
-            logger.info(f"📊 Checking golden signals for service: {service_name} in namespace: {namespace}")
-            
-            # Build PromQL queries for golden signals
-            job_label = f"{service_name}"
-            queries = {
-                "latency": f'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{{job="{job_label}"}}[5m])) * 1000',
-                "traffic": f'rate(http_requests_total{{job="{job_label}"}}[5m]) * 60',
-                "errors": f'rate(http_requests_total{{job="{job_label}",code=~"5.."}}[5m]) / rate(http_requests_total{{job="{job_label}"}}[5m]) * 100',
-                "saturation": f'avg(rate(container_cpu_usage_seconds_total{{namespace="{namespace}",pod=~"{service_name}-.*"}}[5m])) * 100'
-            }
-            
-            # Execute queries and collect results
-            results = {}
-            async with ClientSession() as session:
-                for signal_name, query in queries.items():
-                    try:
-                        async with session.get(
-                            f"{self.prometheus_url}/api/v1/query",
-                            params={"query": query},
-                            timeout=10
-                        ) as response:
-                            if response.status == 200:
-                                data = await response.json()
-                                result = data.get("data", {}).get("result", [])
-                                value = float(result[0].get("value", [0, "0"])[1]) if result else 0
-                                
-                                # Determine status based on thresholds
-                                status = "healthy"
-                                if signal_name == "latency" and value >= 500:
-                                    status = "critical"
-                                elif signal_name == "latency" and value >= 100:
-                                    status = "warning"
-                                elif signal_name == "traffic" and value >= 5000:
-                                    status = "critical"
-                                elif signal_name == "traffic" and value >= 1000:
-                                    status = "warning"
-                                elif signal_name == "errors" and value >= 5.0:
-                                    status = "critical"
-                                elif signal_name == "errors" and value >= 1.0:
-                                    status = "warning"
-                                elif signal_name == "saturation" and value >= 90:
-                                    status = "critical"
-                                elif signal_name == "saturation" and value >= 70:
-                                    status = "warning"
-                                
-                                results[signal_name] = {
-                                    "value": value,
-                                    "status": status,
-                                    "query": query
-                                }
-                            else:
-                                results[signal_name] = {
-                                    "value": 0,
-                                    "status": "unknown",
-                                    "query": query,
-                                    "error": f"HTTP {response.status}"
-                                }
-                    except Exception as e:
-                        logger.error(f"Error querying {signal_name}: {e}")
-                        results[signal_name] = {
-                            "value": 0,
-                            "status": "error",
-                            "query": query,
-                            "error": str(e)
-                        }
-            
-            # Determine overall status
-            statuses = [r.get("status") for r in results.values()]
-            if "critical" in statuses:
-                overall_status = "critical"
-            elif "warning" in statuses:
-                overall_status = "warning"
-            elif "error" in statuses or "unknown" in statuses:
-                overall_status = "degraded"
-            else:
-                overall_status = "healthy"
-            
-            return web.json_response({
-                "service_name": service_name,
-                "namespace": namespace,
-                "overall_status": overall_status,
-                "signals": results,
-                "timestamp": datetime.now().isoformat()
-            })
-        
-        except Exception as e:
-            logger.error(f"❌ Error checking golden signals: {e}")
-            return web.json_response(
-                {"error": str(e)},
-                status=500
-            )
-    
     async def handle_prometheus_query(self, request: Request) -> Response:
         """🔍 Execute a PromQL query"""
         try:
@@ -626,39 +348,6 @@ Please provide:
                 status=500
             )
     
-    async def handle_pod_logs(self, request: Request) -> Response:
-        """📜 Get logs from a Kubernetes pod"""
-        try:
-            data = await request.json()
-            pod_name = data.get("pod_name", "")
-            namespace = data.get("namespace", "default")
-            tail_lines = data.get("tail_lines", 100)
-            
-            if not pod_name:
-                return web.json_response(
-                    {"error": "Pod name is required"},
-                    status=400
-                )
-            
-            logger.info(f"📜 Getting logs for pod: {pod_name} in namespace: {namespace}")
-            
-            # TODO: Implement actual Kubernetes API call to get pod logs
-            # For now, return a placeholder
-            return web.json_response({
-                "pod_name": pod_name,
-                "namespace": namespace,
-                "logs": "Log fetching not yet implemented. Please use kubectl logs directly.",
-                "tail_lines": tail_lines,
-                "timestamp": datetime.now().isoformat()
-            })
-        
-        except Exception as e:
-            logger.error(f"❌ Error getting pod logs: {e}")
-            return web.json_response(
-                {"error": str(e)},
-                status=500
-            )
-    
     async def handle_grafana_query(self, request: Request) -> Response:
         """📊 Execute a Grafana query"""
         try:
@@ -692,95 +381,50 @@ Please provide:
                 status=500
             )
     
-    async def handle_grafana_mcp_proxy(self, request: Request) -> Response:
-        """🔌 Proxy MCP requests to Grafana MCP server"""
+    async def handle_k8s_query(self, request: Request) -> Response:
+        """☸️ Execute a Kubernetes query"""
         try:
             data = await request.json()
+            query = data.get("query", "")
+            context = data.get("context", {})
             
-            logger.info(f"🔌 Proxying request to Grafana MCP server")
+            if not query:
+                return web.json_response(
+                    {"error": "Query is required"},
+                    status=400
+                )
             
-            async with ClientSession() as session:
-                async with session.post(
-                    f"{self.grafana_mcp_url}/mcp",
-                    json=data,
-                    timeout=30
-                ) as response:
-                    result = await response.json()
-                    return web.json_response(result, status=response.status)
+            logger.info(f"☸️ Executing Kubernetes query: {query}")
+            
+            # Use the SRE agent to handle the Kubernetes query
+            response = await self.sre_agent.chat(query)
+            
+            return web.json_response({
+                "query": query,
+                "result": response,
+                "timestamp": datetime.now().isoformat()
+            })
         
         except Exception as e:
-            logger.error(f"❌ Error proxying to Grafana MCP: {e}")
-            return web.json_response({
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32603,
-                    "message": f"Error connecting to Grafana MCP server: {str(e)}"
-                }
-            }, status=500)
-    
-    async def handle_prometheus_mcp_proxy(self, request: Request) -> Response:
-        """🔌 Proxy MCP requests to Prometheus MCP server"""
-        try:
-            data = await request.json()
-            
-            logger.info(f"🔌 Proxying request to Prometheus MCP server")
-            
-            async with ClientSession() as session:
-                async with session.post(
-                    f"{self.prometheus_mcp_url}/mcp",
-                    json=data,
-                    timeout=30
-                ) as response:
-                    result = await response.json()
-                    return web.json_response(result, status=response.status)
-        
-        except Exception as e:
-            logger.error(f"❌ Error proxying to Prometheus MCP: {e}")
-            return web.json_response({
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32603,
-                    "message": f"Error connecting to Prometheus MCP server: {str(e)}"
-                }
-            }, status=500)
-    
-    async def handle_func_mcp_proxy(self, request: Request) -> Response:
-        """🚀 Proxy MCP requests to Knative Func MCP server"""
-        try:
-            data = await request.json()
-            
-            logger.info(f"🚀 Proxying request to Func MCP server")
-            
-            async with ClientSession() as session:
-                async with session.post(
-                    f"{self.func_mcp_url}/mcp",
-                    json=data,
-                    timeout=30
-                ) as response:
-                    result = await response.json()
-                    return web.json_response(result, status=response.status)
-        
-        except Exception as e:
-            logger.error(f"❌ Error proxying to Func MCP: {e}")
-            return web.json_response({
-                "jsonrpc": "2.0",
-                "error": {
-                    "code": -32603,
-                    "message": f"Error connecting to Func MCP server: {str(e)}"
-                }
-            }, status=500)
+            logger.error(f"❌ Error executing Kubernetes query: {e}")
+            return web.json_response(
+                {"error": str(e)},
+                status=500
+            )
     
     async def _check_mcp_server(self) -> Dict[str, Any]:
         """Check MCP server connectivity."""
         try:
             async with ClientSession() as session:
-                async with session.get(f"{self.mcp_server_url}/health", timeout=5) as response:
+                async with session.get(
+                    f"{self.mcp_server_url}/health",
+                    timeout=5
+                ) as response:
                     if response.status == 200:
-                        data = await response.json()
                         return {
                             "status": "connected",
                             "url": self.mcp_server_url,
-                            "health": data
+                            "response_time": "ok"
                         }
                     else:
                         return {
@@ -788,6 +432,7 @@ Please provide:
                             "url": self.mcp_server_url,
                             "error": f"HTTP {response.status}"
                         }
+        
         except Exception as e:
             return {
                 "status": "disconnected",
