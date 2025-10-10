@@ -57,41 +57,56 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://192.168.0.16:11434")
 MODEL_NAME = os.environ.get("MODEL_NAME", "llama3.2:3b")
 SERVICE_NAME = os.environ.get("SERVICE_NAME", "sre-agent")
 
-# Configure Logfire with dual export (Alloy + Logfire Cloud)
+# Configure OpenTelemetry to export to Alloy only (no Logfire Cloud)
 logfire_token = os.getenv('LOGFIRE_TOKEN')
 alloy_endpoint = os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://alloy.alloy.svc.cluster.local:4317')
 alloy_protocol = os.getenv('OTEL_EXPORTER_OTLP_PROTOCOL', 'grpc')
 alloy_insecure = os.getenv('OTEL_EXPORTER_OTLP_INSECURE', 'true').lower() == 'true'
 
+# Disable Logfire Cloud by removing the token - we only want local OTEL export to Alloy
 if logfire_token:
-    try:
-        # Import OTLP exporter for dual export configuration
-        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        
-        # Configure to send to both Logfire cloud AND Alloy collector
-        logfire.configure(
-            service_name=SERVICE_NAME,
-            token=logfire_token,
-            send_to_logfire=True,  # ✅ Send to Logfire cloud
-            console=False,
-            additional_span_processors=[
-                # ✅ Also send to Alloy OTLP collector (for Tempo)
-                BatchSpanProcessor(
-                    OTLPSpanExporter(
-                        endpoint=alloy_endpoint,
-                        insecure=alloy_insecure
-                    )
-                )
-            ],
-        )
-        logger.info(f"✅ Logfire configured successfully (dual export: Logfire cloud + Alloy at {alloy_endpoint})")
-    except Exception as e:
-        logger.warning(f"⚠️  Logfire configuration failed: {e}")
-        logger.warning("⚠️  Continuing without Logfire...")
-        os.environ.pop('LOGFIRE_TOKEN', None)
-else:
-    logger.warning("⚠️  LOGFIRE_TOKEN not set, skipping Logfire configuration")
+    logger.info("⚠️  LOGFIRE_TOKEN detected but removing it to avoid HTTP exporter creation")
+    logger.info("⚠️  Using direct OpenTelemetry export to Alloy instead")
+    # Remove the token so Logfire doesn't auto-configure
+    os.environ.pop('LOGFIRE_TOKEN', None)
+    logfire_token = None
+
+# Configure OpenTelemetry directly without Logfire SDK
+try:
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.sdk.resources import Resource
+    
+    # Remove http:// prefix from endpoint for gRPC exporter
+    # gRPC exporter expects host:port format, not http://host:port
+    grpc_endpoint = alloy_endpoint.replace('http://', '').replace('https://', '')
+    
+    # Create resource with service name
+    resource = Resource.create({
+        "service.name": SERVICE_NAME,
+        "service.version": "1.0.0",
+    })
+    
+    # Set up tracer provider with Alloy OTLP exporter
+    provider = TracerProvider(resource=resource)
+    otlp_exporter = OTLPSpanExporter(
+        endpoint=grpc_endpoint,
+        insecure=alloy_insecure
+    )
+    provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+    trace.set_tracer_provider(provider)
+    
+    logger.info(f"✅ OpenTelemetry configured successfully - exporting to Alloy at {grpc_endpoint}")
+    logger.info("✅ Using @logfire.instrument decorators for tracing (no Logfire cloud, no HTTP exporter)")
+    
+    # NOTE: We do NOT call logfire.configure() to avoid it creating an HTTP exporter
+    # The @logfire.instrument decorators will use our OpenTelemetry TracerProvider
+    
+except Exception as e:
+    logger.warning(f"⚠️  OpenTelemetry configuration failed: {e}")
+    logger.warning("⚠️  Continuing without OpenTelemetry tracing...")
 
 # Configure LangChain API key
 langsmith_api_key = os.getenv('LANGSMITH_API_KEY')

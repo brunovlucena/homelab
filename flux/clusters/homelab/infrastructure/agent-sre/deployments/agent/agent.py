@@ -28,8 +28,13 @@ class SREAgentService:
         )
         
         # Configure service URLs from environment variables
-        self.prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+        self.prometheus_url = os.getenv("PROMETHEUS_URL", "http://prometheus-operator-kube-p-prometheus.prometheus.svc.cluster.local:9090")
         self.mcp_server_url = os.getenv("MCP_SERVER_URL", "http://sre-agent-mcp-server-service:30120")
+        
+        # Log configuration
+        logger.info("🔧 SRE Agent Configuration:")
+        logger.info(f"  📊 Prometheus URL: {self.prometheus_url}")
+        logger.info(f"  🔌 MCP Server URL: {self.mcp_server_url}")
         
         self._setup_routes()
     
@@ -320,15 +325,20 @@ Please provide:
                 )
             
             logger.info(f"🔍 Executing Prometheus query: {query}")
+            prom_url = f"{self.prometheus_url}/api/v1/query"
+            logger.debug(f"  📡 Prometheus URL: {prom_url}")
             
             async with ClientSession() as session:
                 async with session.get(
-                    f"{self.prometheus_url}/api/v1/query",
+                    prom_url,
                     params={"query": query},
                     timeout=10
                 ) as response:
+                    logger.info(f"  📊 Prometheus responded: {response.status}")
+                    
                     if response.status == 200:
                         result = await response.json()
+                        logger.info(f"  ✅ Query successful - returned {len(result.get('data', {}).get('result', []))} results")
                         return web.json_response({
                             "query": query,
                             "result": result,
@@ -336,15 +346,17 @@ Please provide:
                         })
                     else:
                         error_text = await response.text()
+                        logger.error(f"  ❌ Prometheus error ({response.status}): {error_text}")
                         return web.json_response(
                             {"error": f"Prometheus error: {error_text}"},
                             status=response.status
                         )
         
         except Exception as e:
-            logger.error(f"❌ Error executing Prometheus query: {e}")
+            logger.error(f"❌ Error executing Prometheus query: {e}", exc_info=True)
+            logger.error(f"  🔗 Prometheus URL was: {self.prometheus_url}")
             return web.json_response(
-                {"error": str(e)},
+                {"error": str(e), "prometheus_url": self.prometheus_url},
                 status=500
             )
     
