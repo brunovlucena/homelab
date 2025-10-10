@@ -160,7 +160,7 @@ jobs:
           go mod verify
           go mod tidy
           echo "🏗️ Building Go application..."
-          go build -o bruno-site-api ./cmd/api
+          go build -o bruno-site-api .
 
       - name: "🐳 Set up Docker Buildx"
         uses: docker/setup-buildx-action@v3
