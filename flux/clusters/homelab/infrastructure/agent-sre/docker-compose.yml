@@ -15,7 +15,7 @@ services:
       - OLLAMA_URL=http://192.168.0.12:11434
       - MODEL_NAME=bruno-sre:latest
       - SERVICE_NAME=sre-agent-mcp-server
-      - LOGFIRE_TOKEN_SRE_AGENT=${LOGFIRE_TOKEN_SRE_AGENT}
+      - LOGFIRE_TOKEN=${LOGFIRE_TOKEN}
       - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:30120/health"]
@@ -42,7 +42,7 @@ services:
       - OLLAMA_URL=http://192.168.0.12:11434
       - MODEL_NAME=bruno-sre:latest
       - SERVICE_NAME=sre-agent
-      - LOGFIRE_TOKEN_SRE_AGENT=${LOGFIRE_TOKEN_SRE_AGENT}
+      - LOGFIRE_TOKEN=${LOGFIRE_TOKEN}
       - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
     depends_on:
       sre-agent-mcp-server:

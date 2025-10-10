@@ -25,7 +25,7 @@ services:
       - API_PORT=${API_PORT:-8080}
       
       # Observability (optional)
-      - LOGFIRE_TOKEN_JAMIE=${LOGFIRE_TOKEN_JAMIE:-}
+      - LOGFIRE_TOKEN=${LOGFIRE_TOKEN:-}
     ports:
       - "8081:8080"  # Jamie REST API
     restart: unless-stopped
@@ -58,7 +58,7 @@ services:
       - MCP_PORT=${MCP_PORT:-30121}
       
       # Observability (optional)
-      - LOGFIRE_TOKEN_JAMIE_MCP=${LOGFIRE_TOKEN_JAMIE_MCP:-}
+      - LOGFIRE_TOKEN=${LOGFIRE_TOKEN:-}
     restart: unless-stopped
     depends_on:
       - jamie-slack-bot

@@ -42,26 +42,40 @@ SERVICE_NAME = os.environ.get("SERVICE_NAME", "jamie-slack-bot")
 AGENT_SRE_URL = os.environ.get("AGENT_SRE_URL", "http://sre-agent-service.agent-sre:8080")
 
 # Configure Logfire with dual export (Alloy + Logfire Cloud)
-jamie_token = os.getenv('LOGFIRE_TOKEN_JAMIE')
+logfire_token = os.getenv('LOGFIRE_TOKEN')
 alloy_endpoint = os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://alloy.alloy.svc.cluster.local:4317')
 alloy_protocol = os.getenv('OTEL_EXPORTER_OTLP_PROTOCOL', 'grpc')
+alloy_insecure = os.getenv('OTEL_EXPORTER_OTLP_INSECURE', 'true').lower() == 'true'
 
-if jamie_token:
+if logfire_token:
     try:
+        # Import OTLP exporter for dual export configuration
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        
         # Configure to send to both Logfire cloud AND Alloy collector
         logfire.configure(
             service_name=SERVICE_NAME,
-            token=jamie_token,
+            token=logfire_token,
             send_to_logfire=True,  # ✅ Send to Logfire cloud
             console=False,
+            additional_span_processors=[
+                # ✅ Also send to Alloy OTLP collector (for Tempo)
+                BatchSpanProcessor(
+                    OTLPSpanExporter(
+                        endpoint=alloy_endpoint,
+                        insecure=alloy_insecure
+                    )
+                )
+            ],
         )
         logger.info(f"✅ Logfire configured successfully (dual export: Logfire cloud + Alloy at {alloy_endpoint})")
     except Exception as e:
         logger.warning(f"⚠️  Logfire configuration failed: {e}")
         logger.warning("⚠️  Continuing without Logfire...")
-        os.environ.pop('LOGFIRE_TOKEN_JAMIE', None)
+        os.environ.pop('LOGFIRE_TOKEN', None)
 else:
-    logger.warning("⚠️  LOGFIRE_TOKEN_JAMIE not set, skipping Logfire configuration")
+    logger.warning("⚠️  LOGFIRE_TOKEN not set, skipping Logfire configuration")
 
 __all__ = ['logger', 'logfire', 'OLLAMA_URL', 'MODEL_NAME', 'SERVICE_NAME', 'AGENT_SRE_URL']
 

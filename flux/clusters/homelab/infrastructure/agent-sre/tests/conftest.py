@@ -24,7 +24,7 @@ def setup_environment():
     os.environ['DEBUG'] = 'false'
     
     # Don't configure Logfire or LangSmith in tests
-    os.environ.pop('LOGFIRE_TOKEN_SRE_AGENT', None)
+    os.environ.pop('LOGFIRE_TOKEN', None)
     os.environ.pop('LANGSMITH_API_KEY', None)
     
     yield

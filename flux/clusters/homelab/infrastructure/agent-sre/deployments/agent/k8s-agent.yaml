@@ -37,11 +37,11 @@ spec:
           value: "llama3.2:3b"
         - name: SERVICE_NAME
           value: "sre-agent"
-        - name: LOGFIRE_TOKEN_SRE_AGENT
+        - name: LOGFIRE_TOKEN
           valueFrom:
             secretKeyRef:
               name: agent-sre-secrets
-              key: LOGFIRE_TOKEN_SRE_AGENT
+              key: LOGFIRE_TOKEN
         - name: LANGSMITH_API_KEY
           valueFrom:
             secretKeyRef:

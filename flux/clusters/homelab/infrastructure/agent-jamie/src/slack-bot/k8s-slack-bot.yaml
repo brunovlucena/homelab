@@ -64,11 +64,11 @@ spec:
           value: "0.0.0.0"
         - name: API_PORT
           value: "8080"
-        - name: LOGFIRE_TOKEN_JAMIE
+        - name: LOGFIRE_TOKEN
           valueFrom:
             secretKeyRef:
               name: jamie-secrets
-              key: LOGFIRE_TOKEN_JAMIE
+              key: LOGFIRE_TOKEN
               optional: true
         # OpenTelemetry configuration for Alloy collector (dual export)
         - name: OTEL_EXPORTER_OTLP_ENDPOINT

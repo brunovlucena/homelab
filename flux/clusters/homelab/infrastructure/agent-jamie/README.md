@@ -69,10 +69,10 @@ Set these environment variables for logfire:
 
 ```bash
 # For Slack Bot
-export LOGFIRE_TOKEN_JAMIE="your-jamie-token"
+export LOGFIRE_TOKEN="your-logfire-token"
 
 # For MCP Server
-export LOGFIRE_TOKEN_JAMIE_MCP="your-jamie-mcp-token"
+export LOGFIRE_TOKEN="your-logfire-token"
 ```
 
 If not set, Jamie will continue to work without logfire (graceful degradation).
@@ -301,7 +301,7 @@ Each deployment has:
 - `AGENT_SRE_URL` - Agent-SRE Service URL (default: http://sre-agent-service.agent-sre:8080)
 - `OLLAMA_URL` - Ollama server URL (default: http://192.168.0.16:11434)
 - `MODEL_NAME` - Ollama model name (default: llama3.2:3b)
-- `LOGFIRE_TOKEN_JAMIE` - Logfire token for observability (optional)
+- `LOGFIRE_TOKEN` - Logfire token for observability (optional)
 
 #### MCP Server
 - `AGENT_SRE_URL` - Agent-SRE MCP URL
@@ -309,7 +309,7 @@ Each deployment has:
 - `MODEL_NAME` - Ollama model name
 - `MCP_HOST` - Server host (default: 0.0.0.0)
 - `MCP_PORT` - Server port (default: 30121)
-- `LOGFIRE_TOKEN_JAMIE_MCP` - Logfire token for observability (optional)
+- `LOGFIRE_TOKEN` - Logfire token for observability (optional)
 
 ## 🔍 Troubleshooting
 
