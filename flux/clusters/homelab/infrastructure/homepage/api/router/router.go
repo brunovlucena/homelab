@@ -65,6 +65,9 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 	// Health check
 	r.GET("/health", handlers.HealthCheck)
 
+	// 📊 Metrics endpoint for Prometheus scraping (OpenTelemetry exports here)
+	r.GET("/metrics", handlers.MetricsHandler)
+
 	// API routes
 	api := r.Group("/api/v1")
 	{
