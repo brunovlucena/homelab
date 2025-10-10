@@ -282,30 +282,13 @@ spec:
 
             otelcol.exporter.otlp "tempo" {
               client {
-                  endpoint = "tempo-distributor.tempo:4317"
+                  endpoint = "tempo.tempo:4317"
 
                   tls {
                       insecure = true
                   }
               }
             }
-
-            // Logfire Exporter (DISABLED - uncomment to enable)
-            // Documentation: https://grafana.com/docs/alloy/latest/reference/components/otelcol.exporter.otlp/
-            // otelcol.exporter.otlp "logfire" {
-            //   client {
-            //       // Note: Verify actual endpoint from https://logfire.pydantic.dev/docs
-            //       endpoint = "logfire-api.pydantic.dev:443"
-            //
-            //       tls {
-            //           insecure = false
-            //       }
-            //
-            //       headers = {
-            //           "Authorization" = env("LOGFIRE_TOKEN"),
-            //       }
-            //   }
-            // }
 
             otelcol.receiver.otlp "otlp" {
               grpc {
@@ -374,11 +357,8 @@ spec:
               metadata_cardinality_limit = 1000
               timeout = "5s"
               output {
-                // Forward traces to Tempo (local only for now)
-                // To enable Logfire: uncomment the line below after creating the secret
                 traces  = [
                   otelcol.exporter.otlp.tempo.input,
-                  // otelcol.exporter.otlp.logfire.input,  // DISABLED: Enable after Logfire setup
                 ]
               }
             }
