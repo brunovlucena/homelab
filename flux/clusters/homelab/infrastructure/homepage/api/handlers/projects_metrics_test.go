@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +13,23 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+// TestMain initializes metrics before running tests
+func TestMain(m *testing.M) {
+	// Set Gin to test mode
+	gin.SetMode(gin.TestMode)
+
+	// Initialize metrics for tests
+	if err := metrics.InitMetrics(); err != nil {
+		panic("Failed to initialize metrics: " + err.Error())
+	}
+
+	// Run tests
+	code := m.Run()
+
+	// Exit with the test result code
+	os.Exit(code)
+}
 
 // =============================================================================
 // 🧪 TEST HELPERS
