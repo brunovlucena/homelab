@@ -10,8 +10,8 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"gorm.io/gorm"
 )
 
@@ -47,6 +47,9 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 	// 🏥 Register Jamie as a dependency for health checks
 	handlers.SetJamieChecker(jamieHandler)
 
+	// 📊 OpenTelemetry middleware for automatic tracing
+	r.Use(otelgin.Middleware("bruno-site"))
+
 	// Compression middleware (Golden Rule #6: Payload Compression)
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
 
@@ -61,9 +64,6 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 
 	// Health check
 	r.GET("/health", handlers.HealthCheck)
-
-	// 📊 Prometheus metrics endpoint
-	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// API routes
 	api := r.Group("/api/v1")

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -54,7 +55,7 @@ func GetProjects(db *gorm.DB) gin.HandlerFunc {
 
 		// ✅ Record success metrics
 		metrics.RecordProjectsLoadSuccess()
-		metrics.ProjectsLoadDuration.Observe(time.Since(start).Seconds())
+		metrics.ProjectsLoadDuration.Record(context.Background(), time.Since(start).Seconds())
 
 		c.JSON(http.StatusOK, projects)
 	}

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -54,7 +55,7 @@ func GetExperiences(db *gorm.DB) gin.HandlerFunc {
 
 		// Record success metrics
 		metrics.RecordExperienceLoadSuccess()
-		metrics.ExperienceLoadDuration.Observe(time.Since(start).Seconds())
+		metrics.ExperienceLoadDuration.Record(context.Background(), time.Since(start).Seconds())
 
 		c.JSON(http.StatusOK, experiences)
 	}
@@ -86,7 +87,7 @@ func GetExperience(db *gorm.DB) gin.HandlerFunc {
 
 		// Record success metrics
 		metrics.RecordExperienceLoadSuccess()
-		metrics.ExperienceLoadDuration.Observe(time.Since(start).Seconds())
+		metrics.ExperienceLoadDuration.Record(context.Background(), time.Since(start).Seconds())
 
 		c.JSON(http.StatusOK, experience)
 	}

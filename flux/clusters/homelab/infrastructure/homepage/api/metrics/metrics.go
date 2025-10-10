@@ -1,133 +1,206 @@
 package metrics
 
 import (
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
+	"context"
+	"log"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // =============================================================================
-// 📊 PROMETHEUS METRICS
+// 📊 OPENTELEMETRY METRICS
 // =============================================================================
 
 var (
-	// 🎯 HTTP Request metrics
-	HTTPRequestsTotal = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "http_requests_total",
-			Help: "Total number of HTTP requests",
-		},
-		[]string{"method", "handler", "code"},
-	)
+	meter metric.Meter
 
-	HTTPRequestDuration = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "http_request_duration_seconds",
-			Help:    "HTTP request duration in seconds",
-			Buckets: prometheus.DefBuckets,
-		},
-		[]string{"method", "handler"},
-	)
+	// 🎯 HTTP Request metrics
+	HTTPRequestsTotal    metric.Int64Counter
+	HTTPRequestDuration  metric.Float64Histogram
 
 	// 📦 Projects API metrics
-	ProjectsLoadErrors = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "bruno_site_projects_load_errors_total",
-			Help: "Total number of errors when loading projects from database",
-		},
-		[]string{"error_type"},
-	)
-
-	ProjectsLoadSuccess = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "bruno_site_projects_load_success_total",
-			Help: "Total number of successful project loads from database",
-		},
-	)
-
-	ProjectsLoadDuration = promauto.NewHistogram(
-		prometheus.HistogramOpts{
-			Name:    "bruno_site_projects_load_duration_seconds",
-			Help:    "Time taken to load projects from database",
-			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0},
-		},
-	)
+	ProjectsLoadErrors   metric.Int64Counter
+	ProjectsLoadSuccess  metric.Int64Counter
+	ProjectsLoadDuration metric.Float64Histogram
 
 	// 💼 Experience API metrics
-	ExperienceLoadErrors = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "bruno_site_experience_load_errors_total",
-			Help: "Total number of errors when loading experience data from database",
-		},
-		[]string{"error_type"},
-	)
-
-	ExperienceLoadSuccess = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "bruno_site_experience_load_success_total",
-			Help: "Total number of successful experience data loads from database",
-		},
-	)
-
-	ExperienceLoadDuration = promauto.NewHistogram(
-		prometheus.HistogramOpts{
-			Name:    "bruno_site_experience_load_duration_seconds",
-			Help:    "Time taken to load experience data from database",
-			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0},
-		},
-	)
+	ExperienceLoadErrors   metric.Int64Counter
+	ExperienceLoadSuccess  metric.Int64Counter
+	ExperienceLoadDuration metric.Float64Histogram
 
 	// 💾 Database metrics
-	DatabaseConnectionErrors = promauto.NewCounter(
-		prometheus.CounterOpts{
-			Name: "bruno_site_database_connection_errors_total",
-			Help: "Total number of database connection errors",
-		},
-	)
-
-	DatabaseQueryErrors = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "bruno_site_database_query_errors_total",
-			Help: "Total number of database query errors",
-		},
-		[]string{"operation", "table"},
-	)
+	DatabaseConnectionErrors metric.Int64Counter
+	DatabaseQueryErrors      metric.Int64Counter
 
 	// 🔴 Redis metrics
-	RedisOperationErrors = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "bruno_site_redis_operation_errors_total",
-			Help: "Total number of Redis operation errors",
-		},
-		[]string{"operation"},
-	)
+	RedisOperationErrors metric.Int64Counter
 
 	// 📦 MinIO metrics
-	MinIOOperationErrors = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "bruno_site_minio_operation_errors_total",
-			Help: "Total number of MinIO operation errors",
-		},
-		[]string{"operation"},
-	)
+	MinIOOperationErrors metric.Int64Counter
 
 	// 🤖 Agent-SRE proxy metrics
-	AgentSRERequestErrors = promauto.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "bruno_site_agent_sre_request_errors_total",
-			Help: "Total number of Agent-SRE proxy request errors",
-		},
-		[]string{"endpoint", "error_type"},
-	)
-
-	AgentSRERequestDuration = promauto.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "bruno_site_agent_sre_request_duration_seconds",
-			Help:    "Agent-SRE proxy request duration in seconds",
-			Buckets: []float64{0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0},
-		},
-		[]string{"endpoint"},
-	)
+	AgentSRERequestErrors   metric.Int64Counter
+	AgentSRERequestDuration metric.Float64Histogram
 )
+
+// InitMetrics initializes all OpenTelemetry metrics
+func InitMetrics() error {
+	meter = otel.Meter("bruno-site")
+
+	var err error
+
+	// ============================================================================
+	// 🎯 HTTP Request metrics
+	// ============================================================================
+	HTTPRequestsTotal, err = meter.Int64Counter(
+		"http.requests.total",
+		metric.WithDescription("Total number of HTTP requests"),
+		metric.WithUnit("{request}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	HTTPRequestDuration, err = meter.Float64Histogram(
+		"http.request.duration",
+		metric.WithDescription("HTTP request duration"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return err
+	}
+
+	// ============================================================================
+	// 📦 Projects API metrics
+	// ============================================================================
+	ProjectsLoadErrors, err = meter.Int64Counter(
+		"bruno.site.projects.load.errors",
+		metric.WithDescription("Total number of errors when loading projects from database"),
+		metric.WithUnit("{error}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	ProjectsLoadSuccess, err = meter.Int64Counter(
+		"bruno.site.projects.load.success",
+		metric.WithDescription("Total number of successful project loads from database"),
+		metric.WithUnit("{load}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	ProjectsLoadDuration, err = meter.Float64Histogram(
+		"bruno.site.projects.load.duration",
+		metric.WithDescription("Time taken to load projects from database"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return err
+	}
+
+	// ============================================================================
+	// 💼 Experience API metrics
+	// ============================================================================
+	ExperienceLoadErrors, err = meter.Int64Counter(
+		"bruno.site.experience.load.errors",
+		metric.WithDescription("Total number of errors when loading experience data from database"),
+		metric.WithUnit("{error}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	ExperienceLoadSuccess, err = meter.Int64Counter(
+		"bruno.site.experience.load.success",
+		metric.WithDescription("Total number of successful experience data loads from database"),
+		metric.WithUnit("{load}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	ExperienceLoadDuration, err = meter.Float64Histogram(
+		"bruno.site.experience.load.duration",
+		metric.WithDescription("Time taken to load experience data from database"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return err
+	}
+
+	// ============================================================================
+	// 💾 Database metrics
+	// ============================================================================
+	DatabaseConnectionErrors, err = meter.Int64Counter(
+		"bruno.site.database.connection.errors",
+		metric.WithDescription("Total number of database connection errors"),
+		metric.WithUnit("{error}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	DatabaseQueryErrors, err = meter.Int64Counter(
+		"bruno.site.database.query.errors",
+		metric.WithDescription("Total number of database query errors"),
+		metric.WithUnit("{error}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	// ============================================================================
+	// 🔴 Redis metrics
+	// ============================================================================
+	RedisOperationErrors, err = meter.Int64Counter(
+		"bruno.site.redis.operation.errors",
+		metric.WithDescription("Total number of Redis operation errors"),
+		metric.WithUnit("{error}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	// ============================================================================
+	// 📦 MinIO metrics
+	// ============================================================================
+	MinIOOperationErrors, err = meter.Int64Counter(
+		"bruno.site.minio.operation.errors",
+		metric.WithDescription("Total number of MinIO operation errors"),
+		metric.WithUnit("{error}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	// ============================================================================
+	// 🤖 Agent-SRE proxy metrics
+	// ============================================================================
+	AgentSRERequestErrors, err = meter.Int64Counter(
+		"bruno.site.agent_sre.request.errors",
+		metric.WithDescription("Total number of Agent-SRE proxy request errors"),
+		metric.WithUnit("{error}"),
+	)
+	if err != nil {
+		return err
+	}
+
+	AgentSRERequestDuration, err = meter.Float64Histogram(
+		"bruno.site.agent_sre.request.duration",
+		metric.WithDescription("Agent-SRE proxy request duration"),
+		metric.WithUnit("s"),
+	)
+	if err != nil {
+		return err
+	}
+
+	log.Println("✅ OpenTelemetry metrics initialized")
+	return nil
+}
 
 // =============================================================================
 // 📊 METRIC HELPER FUNCTIONS
@@ -135,45 +208,55 @@ var (
 
 // RecordProjectsLoadError records a project load error with error type
 func RecordProjectsLoadError(errorType string) {
-	ProjectsLoadErrors.WithLabelValues(errorType).Inc()
+	ProjectsLoadErrors.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("error_type", errorType)))
 }
 
 // RecordProjectsLoadSuccess records a successful project load
 func RecordProjectsLoadSuccess() {
-	ProjectsLoadSuccess.Inc()
+	ProjectsLoadSuccess.Add(context.Background(), 1)
 }
 
 // RecordDatabaseError records a database error
 func RecordDatabaseError(operation, table string) {
-	DatabaseQueryErrors.WithLabelValues(operation, table).Inc()
+	DatabaseQueryErrors.Add(context.Background(), 1,
+		metric.WithAttributes(
+			attribute.String("operation", operation),
+			attribute.String("table", table)))
 }
 
 // RecordDatabaseConnectionError records a database connection error
 func RecordDatabaseConnectionError() {
-	DatabaseConnectionErrors.Inc()
+	DatabaseConnectionErrors.Add(context.Background(), 1)
 }
 
 // RecordRedisError records a Redis operation error
 func RecordRedisError(operation string) {
-	RedisOperationErrors.WithLabelValues(operation).Inc()
+	RedisOperationErrors.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("operation", operation)))
 }
 
 // RecordMinIOError records a MinIO operation error
 func RecordMinIOError(operation string) {
-	MinIOOperationErrors.WithLabelValues(operation).Inc()
+	MinIOOperationErrors.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("operation", operation)))
 }
 
 // RecordAgentSREError records an Agent-SRE proxy error
 func RecordAgentSREError(endpoint, errorType string) {
-	AgentSRERequestErrors.WithLabelValues(endpoint, errorType).Inc()
+	AgentSRERequestErrors.Add(context.Background(), 1,
+		metric.WithAttributes(
+			attribute.String("endpoint", endpoint),
+			attribute.String("error_type", errorType)))
 }
 
 // RecordExperienceLoadError records an experience load error with error type
 func RecordExperienceLoadError(errorType string) {
-	ExperienceLoadErrors.WithLabelValues(errorType).Inc()
+	ExperienceLoadErrors.Add(context.Background(), 1,
+		metric.WithAttributes(attribute.String("error_type", errorType)))
 }
 
 // RecordExperienceLoadSuccess records a successful experience load
 func RecordExperienceLoadSuccess() {
-	ExperienceLoadSuccess.Inc()
+	ExperienceLoadSuccess.Add(context.Background(), 1)
 }

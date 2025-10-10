@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
+	"time"
 
 	"bruno-site/config"
 	"bruno-site/database"
@@ -11,8 +13,22 @@ import (
 )
 
 // 🌐 Bruno Site API
-// Production-ready API server with MinIO integration
+// Production-ready API server + OpenTelemetry → Alloy → Logfire
 func main() {
+	ctx := context.Background()
+
+	// 📊 Initialize OpenTelemetry → Alloy → Logfire
+	shutdown, err := InitOTel(ctx)
+	if err != nil {
+		log.Printf("⚠️  OpenTelemetry init failed: %v", err)
+	} else {
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			shutdown(ctx)
+		}()
+	}
+
 	// 🔧 Load configuration
 	cfg := config.Load()
 

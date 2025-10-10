@@ -38,7 +38,7 @@ except ImportError:
 # Configuration
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://192.168.0.16:11434")
 MODEL_NAME = os.environ.get("MODEL_NAME", "llama3.2:3b")
-SERVICE_NAME = os.environ.get("SERVICE_NAME", "jamie-slack-bot")
+SERVICE_NAME = os.environ.get("SERVICE_NAME", "jamie")
 AGENT_SRE_URL = os.environ.get("AGENT_SRE_URL", "http://sre-agent-service.agent-sre:8080")
 
 # Configure Logfire with dual export (Alloy + Logfire Cloud)

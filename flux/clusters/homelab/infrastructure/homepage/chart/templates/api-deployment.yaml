@@ -165,6 +165,15 @@ spec:
             - name: JAMIE_URL
               value: "{{ .Values.jamie.url }}"
             {{- end }}
+            # OpenTelemetry → Alloy → Logfire
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "alloy.alloy.svc.cluster.local:4317"
+            - name: LOGFIRE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: bruno-site-secrets
+                  key: LOGFIRE_TOKEN
+                  optional: true
             - name: PGPASSWORD
               {{- if .Values.database.existingSecret }}
               valueFrom:

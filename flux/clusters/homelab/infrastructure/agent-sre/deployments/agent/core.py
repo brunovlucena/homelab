@@ -53,8 +53,8 @@ aiohttp_access_logger = logging.getLogger('aiohttp.access')
 aiohttp_access_logger.addFilter(HealthCheckFilter())
 
 # Configuration
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://192.168.0.3:11434")
-MODEL_NAME = os.environ.get("MODEL_NAME", "bruno-sre:latest")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://192.168.0.16:11434")
+MODEL_NAME = os.environ.get("MODEL_NAME", "llama3.2:3b")
 SERVICE_NAME = os.environ.get("SERVICE_NAME", "sre-agent")
 
 # Configure Logfire with dual export (Alloy + Logfire Cloud)

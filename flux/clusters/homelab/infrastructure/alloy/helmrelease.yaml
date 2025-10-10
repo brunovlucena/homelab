@@ -42,15 +42,14 @@ spec:
         varlog: false
         dockercontainers: false
 
-      # Environment variables for Logfire integration (currently disabled)
-      # Uncomment when ready to enable Logfire
-      # extraEnv:
-      # - name: LOGFIRE_TOKEN
-      #   valueFrom:
-      #     secretKeyRef:
-      #       name: logfire-secrets
-      #       key: token
-      #       optional: true
+      # 🔥 Environment variables for Logfire integration
+      extraEnv:
+      - name: LOGFIRE_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: alloy-secrets
+            key: LOGFIRE_TOKEN
+            optional: true
 
       configMap:
         create: true
@@ -290,6 +289,21 @@ spec:
               }
             }
 
+            // 🔥 Logfire OTLP exporter (sends traces to Pydantic Logfire)
+            otelcol.exporter.otlp "logfire" {
+              client {
+                  endpoint = "logfire-api.pydantic.dev:443"
+                  
+                  headers = {
+                      "Authorization" = "Bearer " + env("LOGFIRE_TOKEN"),
+                  }
+
+                  tls {
+                      insecure = false
+                  }
+              }
+            }
+
             otelcol.receiver.otlp "otlp" {
               grpc {
                 endpoint = "0.0.0.0:4317"
@@ -359,6 +373,7 @@ spec:
               output {
                 traces  = [
                   otelcol.exporter.otlp.tempo.input,
+                  otelcol.exporter.otlp.logfire.input,
                 ]
               }
             }
