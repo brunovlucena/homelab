@@ -20,7 +20,12 @@ build-bot: ## 🏗️ Build Slack Bot Docker image
 	docker build -f src/slack-bot/Dockerfile -t $(BOT_IMAGE) .
 	@echo "✅ Build complete: $(BOT_IMAGE)"
 
-build: build-bot ## 🏗️ Build both images
+build-mcp: ## 🏗️ Build MCP Server Docker image
+	@echo "🏗️ Building Jamie MCP Server image..."
+	docker build -f src/mcp-server/Dockerfile -t $(MCP_IMAGE) .
+	@echo "✅ Build complete: $(MCP_IMAGE)"
+
+build: build-bot build-mcp ## 🏗️ Build both images
 
 # 📤 Push targets
 docker-login: ## 🔑 Login to GitHub Container Registry
@@ -33,7 +38,12 @@ push-bot: build-bot ## 📤 Push Slack Bot image to GHCR
 	docker push $(BOT_IMAGE)
 	@echo "✅ Push complete: $(BOT_IMAGE)"
 
-push: push-bot ## 📤 Push both images
+push-mcp: build-mcp ## 📤 Push MCP Server image to GHCR
+	@echo "📤 Pushing MCP Server image to GHCR..."
+	docker push $(MCP_IMAGE)
+	@echo "✅ Push complete: $(MCP_IMAGE)"
+
+push: push-bot push-mcp ## 📤 Push both images
 
 # 🚀 Deployment targets
 deploy: ## 🚀 Deploy to Kubernetes

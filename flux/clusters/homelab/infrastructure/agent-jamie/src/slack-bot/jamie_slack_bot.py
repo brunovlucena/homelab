@@ -730,8 +730,14 @@ class JamieSlackBot:
     
     def _setup_rest_api_routes(self):
         """Setup REST API routes for Jamie API"""
+        self.web_app.router.add_post('/api/chat', self.handle_api_chat)
+        self.web_app.router.add_post('/api/prometheus/query', self.handle_api_prometheus_query)
+        self.web_app.router.add_post('/api/golden-signals', self.handle_api_golden_signals)
+        self.web_app.router.add_post('/api/pod-logs', self.handle_api_pod_logs)
+        self.web_app.router.add_post('/api/analyze-logs', self.handle_api_analyze_logs)
         self.web_app.router.add_get('/health', self.handle_api_health)
         self.web_app.router.add_get('/ready', self.handle_api_ready)
+        self.web_app.router.add_get('/status', self.handle_api_status)
     
     @logfire.instrument("process_message")
     async def _process_message(self, message: str, context: Optional[Dict] = None) -> str:
@@ -885,7 +891,167 @@ What would you like to know? 🚀"""
             logger.error(f"❌ Error in API chat: {e}")
             return web.json_response({"error": str(e)}, status=500)
     
+    @logfire.instrument("api_prometheus_query")
+    async def handle_api_prometheus_query(self, request):
+        """Handle POST /api/prometheus/query"""
+        try:
+            data = await request.json()
+            query = data.get("query", "")
+            time_param = data.get("time")
+            
+            if not query:
+                return web.json_response(
+                    {"error": "Query is required"},
+                    status=400
+                )
+            
+            # Build context
+            context = {}
+            if time_param:
+                context["time"] = time_param
+            
+            # Call Agent-SRE Prometheus endpoint
+            async with AgentSREClient(self.agent_url) as agent:
+                result = await agent.prometheus_query(query, context)
+            
+            if result.get("error"):
+                return web.json_response(
+                    {"error": result.get("details", "Failed to query Prometheus")},
+                    status=500
+                )
+            
+            return web.json_response({
+                "result": result.get("response"),
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        except Exception as e:
+            logger.error(f"❌ Error in Prometheus query: {e}")
+            return web.json_response({"error": str(e)}, status=500)
     
+    @logfire.instrument("api_golden_signals")
+    async def handle_api_golden_signals(self, request):
+        """Handle POST /api/golden-signals"""
+        try:
+            data = await request.json()
+            service = data.get("service", "")
+            namespace = data.get("namespace", "default")
+            
+            if not service:
+                return web.json_response(
+                    {"error": "Service name is required"},
+                    status=400
+                )
+            
+            # Build a message asking for golden signals
+            message = f"Check the golden signals for service {service} in namespace {namespace}"
+            
+            # Process through Jamie's agent
+            response = await self._process_message(message)
+            
+            # Try to parse golden signals from response
+            # For now, return the full response
+            return web.json_response({
+                "service": service,
+                "namespace": namespace,
+                "latency": "N/A",
+                "traffic": "N/A", 
+                "errors": "N/A",
+                "saturation": "N/A",
+                "analysis": response,
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        except Exception as e:
+            logger.error(f"❌ Error checking golden signals: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+    
+    @logfire.instrument("api_pod_logs")
+    async def handle_api_pod_logs(self, request):
+        """Handle POST /api/pod-logs"""
+        try:
+            data = await request.json()
+            pod_name = data.get("pod_name", "")
+            namespace = data.get("namespace", "default")
+            container = data.get("container")
+            lines = data.get("lines", 100)
+            
+            if not pod_name:
+                return web.json_response(
+                    {"error": "Pod name is required"},
+                    status=400
+                )
+            
+            # Build message for Agent-SRE
+            message = f"Get logs from pod {pod_name} in namespace {namespace}"
+            if container:
+                message += f" container {container}"
+            message += f" (last {lines} lines)"
+            
+            # Call Agent-SRE K8s endpoint
+            context = {
+                "pod_name": pod_name,
+                "namespace": namespace,
+                "lines": lines
+            }
+            if container:
+                context["container"] = container
+            
+            async with AgentSREClient(self.agent_url) as agent:
+                result = await agent.k8s_query(message, context)
+            
+            if result.get("error"):
+                return web.json_response(
+                    {"error": result.get("response", "Failed to get pod logs")},
+                    status=500
+                )
+            
+            # Parse logs from response (assuming it's text)
+            logs_text = result.get("response", "")
+            logs = logs_text.split("\n") if logs_text else []
+            
+            return web.json_response({
+                "pod_name": pod_name,
+                "namespace": namespace,
+                "container": container,
+                "logs": logs,
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        except Exception as e:
+            logger.error(f"❌ Error getting pod logs: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+    
+    @logfire.instrument("api_analyze_logs")
+    async def handle_api_analyze_logs(self, request):
+        """Handle POST /api/analyze-logs"""
+        try:
+            data = await request.json()
+            logs = data.get("logs", "")
+            context = data.get("context", "")
+            
+            if not logs:
+                return web.json_response(
+                    {"error": "Logs are required"},
+                    status=400
+                )
+            
+            # Build analysis message
+            message = f"Analyze these logs and identify any errors, patterns, or issues:\n\n{logs}"
+            if context:
+                message = f"Context: {context}\n\n{message}"
+            
+            # Process through Jamie's AI
+            analysis = await self._process_message(message)
+            
+            return web.json_response({
+                "analysis": analysis,
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        except Exception as e:
+            logger.error(f"❌ Error analyzing logs: {e}")
+            return web.json_response({"error": str(e)}, status=500)
     
     @logfire.instrument("api_health")
     async def handle_api_health(self, request):
@@ -922,6 +1088,44 @@ What would you like to know? 🚀"""
                 {"status": "not_ready", "error": str(e)},
                 status=503
             )
+    
+    @logfire.instrument("api_status")
+    async def handle_api_status(self, request):
+        """Handle GET /status - Detailed status endpoint for Homepage"""
+        try:
+            # Get Agent-SRE status
+            async with AgentSREClient(self.agent_url) as agent:
+                agent_status = await agent.get_status()
+            
+            return web.json_response({
+                "status": "healthy",
+                "service": "jamie-slack-bot",
+                "timestamp": datetime.now().isoformat(),
+                "version": "1.0.0",
+                "agent_sre_url": self.agent_url,
+                "agent_sre_status": agent_status.get("status", "unknown"),
+                "components": {
+                    "slack_bot": "healthy",
+                    "rest_api": "healthy",
+                    "agent_sre": agent_status.get("status", "unknown"),
+                    "ollama": "available"
+                }
+            })
+        
+        except Exception as e:
+            logger.error(f"❌ Error in status check: {e}")
+            return web.json_response({
+                "status": "degraded",
+                "service": "jamie-slack-bot",
+                "timestamp": datetime.now().isoformat(),
+                "error": str(e),
+                "components": {
+                    "slack_bot": "healthy",
+                    "rest_api": "healthy",
+                    "agent_sre": "unavailable",
+                    "ollama": "unknown"
+                }
+            }, status=200)  # Return 200 even if degraded, so Homepage knows Jamie is alive
     
     def _setup_handlers(self):
         """Set up Slack event handlers"""

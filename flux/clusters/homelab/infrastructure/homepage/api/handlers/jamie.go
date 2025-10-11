@@ -161,6 +161,12 @@ func (h *JamieHandler) Ready(c *gin.Context) {
 	h.proxyRequest(c, "/ready", http.MethodGet)
 }
 
+// Status handles GET /api/v1/jamie/status
+// 📊 Get detailed Jamie service status
+func (h *JamieHandler) Status(c *gin.Context) {
+	h.proxyRequest(c, "/status", http.MethodGet)
+}
+
 // ChatRequest represents a chat message request
 type ChatRequest struct {
 	Message string `json:"message" binding:"required"`

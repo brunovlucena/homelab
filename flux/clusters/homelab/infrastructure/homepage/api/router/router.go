@@ -156,6 +156,7 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 			// Health and status endpoints
 			jamie.GET("/health", jamieHandler.Health)
 			jamie.GET("/ready", jamieHandler.Ready)
+			jamie.GET("/status", jamieHandler.Status)
 
 			// 💬 Main chatbot endpoint for Homepage
 			jamie.POST("/chat", jamieHandler.Chat)
