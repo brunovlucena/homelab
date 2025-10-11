@@ -22,8 +22,8 @@ func NewJamieHandler(config JamieConfig) *JamieHandler {
 		config.Timeout = 60 * time.Second // 🧠 Longer timeout for AI responses
 	}
 	if config.ServiceURL == "" {
-		// Default to Jamie MCP Server internal cluster service
-		config.ServiceURL = "http://jamie-mcp-server-service.jamie.svc.cluster.local:30121"
+		// Default to Jamie Slack Bot service (REST API endpoint)
+		config.ServiceURL = "http://jamie-slack-bot-service.jamie.svc.cluster.local:8080"
 	}
 
 	return &JamieHandler{

@@ -82,19 +82,22 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
         run: |
           echo "🔍 Running Python linting..."
-          uv run flake8 deployments/ --max-line-length=120 --extend-ignore=E203,W503 || true
+          uv run flake8 deployments/ --max-line-length=120 --extend-ignore=E203,W503
+          echo "✅ Linting passed!"
 
       - name: "🎨 Check Code Formatting with black"
         working-directory: ${{ env.WORKING_DIR }}
         run: |
           echo "🎨 Checking code formatting..."
-          uv run black --check deployments/ || true
+          uv run black --check deployments/
+          echo "✅ Code formatting is correct!"
 
       - name: "📋 Check Import Sorting with isort"
         working-directory: ${{ env.WORKING_DIR }}
         run: |
           echo "📋 Checking import sorting..."
-          uv run isort --check-only deployments/ || true
+          uv run isort --check-only deployments/
+          echo "✅ Import sorting is correct!"
 
       - name: "🧪 Run Unit Tests with pytest"
         working-directory: ${{ env.WORKING_DIR }}
@@ -104,8 +107,8 @@ jobs:
             --cov=deployments \
             --cov-report=xml \
             --cov-report=term-missing \
-            --junit-xml=test-results.xml \
-            || echo "⚠️ Some tests failed"
+            --junit-xml=test-results.xml
+          echo "✅ All tests passed!"
 
       - name: "📊 Upload Test Results"
         if: always()

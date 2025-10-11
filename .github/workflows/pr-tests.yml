@@ -1,0 +1,199 @@
+# 🔒 Pull Request Test Gate
+#
+# This workflow ensures all tests pass before a PR can be merged to main.
+# It runs automatically on all pull requests and is designed to be a required check.
+
+name: "🔒 PR Test Gate"
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+
+on:
+  pull_request:
+    branches: [main, master]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  # 🔍 Detect which services have changes
+  detect-changes:
+    name: "🔍 Detect Changes"
+    runs-on: ubuntu-latest
+    outputs:
+      homepage: ${{ steps.changes.outputs.homepage }}
+      agent-sre: ${{ steps.changes.outputs.agent-sre }}
+      agent-jamie: ${{ steps.changes.outputs.agent-jamie }}
+      any-changes: ${{ steps.changes.outputs.any-changes }}
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "🔍 Check for changes"
+        id: changes
+        run: |
+          # Check for homepage changes
+          if git diff --quiet ${{ github.event.pull_request.base.sha }} ${{ github.sha }} -- flux/clusters/homelab/infrastructure/homepage/; then
+            echo "homepage=false" >> $GITHUB_OUTPUT
+          else
+            echo "homepage=true" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check for agent-sre changes
+          if git diff --quiet ${{ github.event.pull_request.base.sha }} ${{ github.sha }} -- flux/clusters/homelab/infrastructure/agent-sre/; then
+            echo "agent-sre=false" >> $GITHUB_OUTPUT
+          else
+            echo "agent-sre=true" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check for agent-jamie changes
+          if git diff --quiet ${{ github.event.pull_request.base.sha }} ${{ github.sha }} -- flux/clusters/homelab/infrastructure/agent-jamie/ flux/clusters/homelab/infrastructure/jamie/; then
+            echo "agent-jamie=false" >> $GITHUB_OUTPUT
+          else
+            echo "agent-jamie=true" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check if any service has changes
+          if git diff --quiet ${{ github.event.pull_request.base.sha }} ${{ github.sha }} -- flux/clusters/homelab/infrastructure/homepage/ flux/clusters/homelab/infrastructure/agent-sre/ flux/clusters/homelab/infrastructure/agent-jamie/ flux/clusters/homelab/infrastructure/jamie/; then
+            echo "any-changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "any-changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "📊 Report Changes"
+        run: |
+          echo "## 🔍 Change Detection Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Changed |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Homepage | ${{ steps.changes.outputs.homepage == 'true' && '✅ Yes' || '⏭️ No' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Agent SRE | ${{ steps.changes.outputs.agent-sre == 'true' && '✅ Yes' || '⏭️ No' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Agent Jamie | ${{ steps.changes.outputs.agent-jamie == 'true' && '✅ Yes' || '⏭️ No' }} |" >> $GITHUB_STEP_SUMMARY
+
+  # 🏠 Run homepage tests if changed
+  test-homepage:
+    name: "🏠 Homepage Tests"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.homepage == 'true'
+    uses: ./.github/workflows/homepage-tests.yml
+
+  # 🤖 Run agent-sre tests if changed
+  test-agent-sre:
+    name: "🤖 Agent SRE Tests"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.agent-sre == 'true'
+    uses: ./.github/workflows/agent-sre-tests.yml
+
+  # 🤖 Run agent-jamie tests if changed
+  test-agent-jamie:
+    name: "🤖 Agent Jamie Tests"
+    needs: detect-changes
+    if: needs.detect-changes.outputs.agent-jamie == 'true'
+    uses: ./.github/workflows/jamie-tests.yml
+
+  # ✅ Overall test gate - this job must pass for PR to be mergeable
+  test-gate:
+    name: "✅ All Tests Passed"
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-homepage, test-agent-sre, test-agent-jamie]
+    if: always()
+    steps:
+      - name: "📊 Generate Test Summary"
+        run: |
+          echo "# 🔒 Pull Request Test Gate Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📋 Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          # Homepage tests
+          if [[ "${{ needs.detect-changes.outputs.homepage }}" == "true" ]]; then
+            if [[ "${{ needs.test-homepage.result }}" == "success" ]]; then
+              echo "| 🏠 Homepage | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| 🏠 Homepage | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| 🏠 Homepage | ⏭️ Skipped (no changes) |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Agent SRE tests
+          if [[ "${{ needs.detect-changes.outputs.agent-sre }}" == "true" ]]; then
+            if [[ "${{ needs.test-agent-sre.result }}" == "success" ]]; then
+              echo "| 🤖 Agent SRE | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| 🤖 Agent SRE | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| 🤖 Agent SRE | ⏭️ Skipped (no changes) |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Agent Jamie tests
+          if [[ "${{ needs.detect-changes.outputs.agent-jamie }}" == "true" ]]; then
+            if [[ "${{ needs.test-agent-jamie.result }}" == "success" ]]; then
+              echo "| 🤖 Agent Jamie | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| 🤖 Agent Jamie | ❌ Failed |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| 🤖 Agent Jamie | ⏭️ Skipped (no changes) |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: "✅ Check if all required tests passed"
+        run: |
+          FAILED=false
+          
+          # Check homepage tests
+          if [[ "${{ needs.detect-changes.outputs.homepage }}" == "true" ]] && [[ "${{ needs.test-homepage.result }}" != "success" ]]; then
+            echo "::error::Homepage tests failed or were cancelled"
+            FAILED=true
+          fi
+          
+          # Check agent-sre tests
+          if [[ "${{ needs.detect-changes.outputs.agent-sre }}" == "true" ]] && [[ "${{ needs.test-agent-sre.result }}" != "success" ]]; then
+            echo "::error::Agent SRE tests failed or were cancelled"
+            FAILED=true
+          fi
+          
+          # Check agent-jamie tests
+          if [[ "${{ needs.detect-changes.outputs.agent-jamie }}" == "true" ]] && [[ "${{ needs.test-agent-jamie.result }}" != "success" ]]; then
+            echo "::error::Agent Jamie tests failed or were cancelled"
+            FAILED=true
+          fi
+          
+          # If no changes were detected, pass by default
+          if [[ "${{ needs.detect-changes.outputs.any-changes }}" == "false" ]]; then
+            echo "✅ No service changes detected - passing by default"
+            echo "## ✅ Test Gate Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No infrastructure changes detected. PR can be merged." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          
+          if [[ "$FAILED" == "true" ]]; then
+            echo "## ❌ Test Gate Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**One or more test suites failed. Please fix the issues before merging.**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📝 Next Steps:" >> $GITHUB_STEP_SUMMARY
+            echo "1. Review the failed test results above" >> $GITHUB_STEP_SUMMARY
+            echo "2. Fix the issues in your code" >> $GITHUB_STEP_SUMMARY
+            echo "3. Push the fixes to your branch" >> $GITHUB_STEP_SUMMARY
+            echo "4. Tests will automatically run again" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          
+          echo "## ✅ Test Gate Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**All required tests passed!** This PR is ready to be reviewed and merged." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📝 What's Next:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Request review from maintainers" >> $GITHUB_STEP_SUMMARY
+          echo "2. Address any review comments" >> $GITHUB_STEP_SUMMARY
+          echo "3. Once approved, merge to main" >> $GITHUB_STEP_SUMMARY
+

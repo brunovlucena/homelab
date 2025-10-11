@@ -145,13 +145,15 @@ jobs:
         working-directory: ./flux/clusters/homelab/infrastructure/agent-sre
         run: |
           echo "🧪 Running Python tests..."
-          uv run pytest --cov=. --cov-report=xml || echo "⚠️ Tests failed, but continuing build"
+          uv run pytest --cov=. --cov-report=xml
+          echo "✅ All tests passed!"
 
       - name: "🔍 Run Linting"
         working-directory: ./flux/clusters/homelab/infrastructure/agent-sre
         run: |
           echo "🔍 Running Python linting..."
-          uv run flake8 . --max-line-length=120 || echo "⚠️ Linting issues found, but continuing build"
+          uv run flake8 . --max-line-length=120
+          echo "✅ Linting passed!"
 
       - name: "🐳 Set up Docker Buildx"
         uses: docker/setup-buildx-action@v3
