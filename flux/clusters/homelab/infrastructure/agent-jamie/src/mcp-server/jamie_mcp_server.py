@@ -17,18 +17,13 @@ import json
 import logging
 import os
 from typing import Any, Dict, Optional
-import aiohttp
 
+import aiohttp
 from mcp.server import Server
 from mcp.server.models import InitializationOptions
 from mcp.server.stdio import stdio_server
-from mcp.types import (
-    CallToolResult,
-    TextContent,
-    Tool,
-)
+from mcp.types import CallToolResult, TextContent, Tool
 
-# Import from core
 from core import logger, logfire
 
 # Configuração
@@ -185,7 +180,10 @@ class JamieMCPServer:
             return [
                 Tool(
                     name="chat",
-                    description="Conversa com Jamie, o assistente de SRE. Jamie pode responder perguntas sobre infraestrutura, monitoramento, Kubernetes, etc.",
+                    description=(
+                        "Conversa com Jamie, o assistente de SRE. Jamie pode responder perguntas sobre "
+                        "infraestrutura, monitoramento, Kubernetes, etc."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {

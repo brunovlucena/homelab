@@ -4,8 +4,8 @@
 Shared configuration, logging, and logfire setup
 """
 
-import os
 import logging
+import os
 import sys
 
 # Configure logging

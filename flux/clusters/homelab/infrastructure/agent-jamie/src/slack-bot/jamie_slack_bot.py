@@ -5,27 +5,22 @@ A sophisticated SRE assistant
 Calls Agent-SRE Agent Service MCP Server for tool execution
 """
 
-import os
 import asyncio
-from typing import Dict, List, Optional, Any, Annotated
-from datetime import datetime, UTC
+import os
+from datetime import UTC, datetime
+from typing import Annotated, Any, Dict, List, Optional
 
 import aiohttp
 from aiohttp import web
-from slack_bolt.async_app import AsyncApp
-from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
-
-# LangGraph imports for agent workflow
-from langgraph.graph import StateGraph, END
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_ollama import ChatOllama
+from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
+from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
+from slack_bolt.async_app import AsyncApp
 from typing_extensions import TypedDict
 
-# LangChain imports
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_ollama import ChatOllama
-
-# Import from core
-from core import logger, logfire, OLLAMA_URL, MODEL_NAME, AGENT_SRE_URL
+from core import AGENT_SRE_URL, MODEL_NAME, OLLAMA_URL, logger, logfire
 
 
 class AgentSREClient:
