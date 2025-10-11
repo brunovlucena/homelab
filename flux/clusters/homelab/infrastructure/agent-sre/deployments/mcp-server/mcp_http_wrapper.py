@@ -6,6 +6,7 @@ Supports proper JSON-RPC 2.0 protocol for tools/list and tools/call
 """
 
 import asyncio
+import json
 import logging
 import os
 from datetime import datetime
