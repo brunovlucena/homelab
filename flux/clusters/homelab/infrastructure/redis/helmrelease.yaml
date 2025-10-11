@@ -1,0 +1,71 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: redis
+  namespace: redis
+spec:
+  interval: 5m
+  timeout: 10m
+  chart:
+    spec:
+      chart: redis
+      version: 20.3.0  # Latest stable version
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
+        namespace: flux-system
+  values:
+    # 🔴 Redis Configuration
+    architecture: standalone
+    
+    auth:
+      enabled: false  # Internal service, no auth needed
+    
+    master:
+      persistence:
+        enabled: true
+        storageClass: local-path
+        size: 8Gi
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+    
+    # 📊 Metrics for Prometheus
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        namespace: redis
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+    
+    # 🔧 Redis Configuration
+    commonConfiguration: |-
+      # Enable AOF persistence
+      appendonly yes
+      appendfsync everysec
+      
+      # Set max memory policy
+      maxmemory 256mb
+      maxmemory-policy allkeys-lru
+      
+      # Performance tuning
+      tcp-backlog 511
+      timeout 0
+      tcp-keepalive 300
+    
+    # 📡 Service Configuration
+    service:
+      type: ClusterIP
+      ports:
+        redis: 6379
+

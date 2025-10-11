@@ -47,6 +47,11 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 	// 🏥 Register Jamie as a dependency for health checks
 	handlers.SetJamieChecker(jamieHandler)
 
+	// 🤖 Initialize Agent Bruno handler (Homepage knowledge assistant)
+	agentBrunoHandler := handlers.NewAgentBrunoHandler(handlers.AgentBrunoConfig{
+		ServiceURL: cfg.AgentBrunoURL, // Get from config, fallback to default
+	})
+
 	// 📊 OpenTelemetry middleware for automatic tracing
 	r.Use(otelgin.Middleware("bruno-site"))
 
@@ -166,6 +171,28 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 			jamie.POST("/prometheus/query", jamieHandler.QueryPrometheus)
 			jamie.POST("/pod-logs", jamieHandler.GetPodLogs)
 			jamie.POST("/analyze-logs", jamieHandler.AnalyzeLogs)
+		}
+
+		// 🤖 Agent Bruno (Homepage knowledge assistant) proxy routes
+		agentBruno := api.Group("/agent-bruno")
+		{
+			// Health and status endpoints
+			agentBruno.GET("/health", agentBrunoHandler.Health)
+			agentBruno.GET("/ready", agentBrunoHandler.Ready)
+			agentBruno.GET("/stats", agentBrunoHandler.GetStats)
+
+			// 💬 Chat endpoints
+			agentBruno.POST("/chat", agentBrunoHandler.Chat)
+			agentBruno.POST("/mcp/chat", agentBrunoHandler.MCPChat)
+
+			// 🧠 Memory endpoints
+			agentBruno.GET("/memory/:ip", agentBrunoHandler.GetMemory)
+			agentBruno.GET("/memory/:ip/history", agentBrunoHandler.GetMemoryHistory)
+			agentBruno.DELETE("/memory/:ip", agentBrunoHandler.ClearMemory)
+
+			// 📚 Knowledge endpoints
+			agentBruno.GET("/knowledge/summary", agentBrunoHandler.GetKnowledgeSummary)
+			agentBruno.GET("/knowledge/search", agentBrunoHandler.SearchKnowledge)
 		}
 	}
 

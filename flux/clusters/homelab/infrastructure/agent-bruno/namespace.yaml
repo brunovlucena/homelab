@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bruno
+  labels:
+    name: bruno
+    app.kubernetes.io/name: bruno
+    app.kubernetes.io/component: ai-agent
+

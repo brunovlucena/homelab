@@ -466,7 +466,7 @@ INSERT INTO experience (title, company, start_date, end_date, current, descripti
 INSERT INTO content (key, value) VALUES
 (
     'about',
-    '{"description": "Senior Agent Orchestrator with extensive experience in designing, implementing, and maintaining scalable, resilient cloud-native infrastructure. Passionate about automation, observability, and modern DevOps practices."}'
+    '{"description": "Agent Orchestrator with extensive experience in designing, implementing, and maintaining scalable, resilient cloud-native infrastructure. Passionate about automation, observability, and modern DevOps practices."}'
 ),
 (
     'contact',

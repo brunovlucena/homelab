@@ -14,6 +14,9 @@ resources:
   - prometheus-operator
   - homepage # TODO: Review alerts
   - agent-jamie # 🤖 Jamie Slack Bot (Kustomize-based)
+  - agent-bruno # 🤖 Agent Bruno - Homepage knowledge with IP-based memory
+  - redis # 🔴 Redis for session storage
+  - mongodb # 🍃 MongoDB for persistent memory
   - minio # Asset storage for homepage
   - loki
   - alloy

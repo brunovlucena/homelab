@@ -7,14 +7,15 @@ import (
 
 // Config holds application configuration
 type Config struct {
-	DatabaseURL string
-	RedisURL    string
-	CORSOrigin  string
-	Port        string
-	AgentSREURL string
-	JamieURL    string // 🤖 Jamie AI-powered SRE assistant URL
-	MinIO       MinIOConfig
-	Cloudflare  CloudflareConfig
+	DatabaseURL   string
+	RedisURL      string
+	CORSOrigin    string
+	Port          string
+	AgentSREURL   string
+	JamieURL      string // 🤖 Jamie AI-powered SRE assistant URL
+	AgentBrunoURL string // 🤖 Agent Bruno - Homepage knowledge assistant URL
+	MinIO         MinIOConfig
+	Cloudflare    CloudflareConfig
 }
 
 // MinIOConfig holds MinIO configuration
@@ -38,11 +39,12 @@ type CloudflareConfig struct {
 // Load loads configuration from environment variables
 func Load() *Config {
 	return &Config{
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		RedisURL:    os.Getenv("REDIS_URL"),
-		CORSOrigin:  getEnvOrDefault("CORS_ORIGIN", "*"),
-		Port:        getEnvOrDefault("PORT", "8080"),
-		JamieURL:    getEnvOrDefault("JAMIE_URL", "http://jamie-slack-bot-service.jamie.svc.cluster.local:8080"),
+		DatabaseURL:   os.Getenv("DATABASE_URL"),
+		RedisURL:      os.Getenv("REDIS_URL"),
+		CORSOrigin:    getEnvOrDefault("CORS_ORIGIN", "*"),
+		Port:          getEnvOrDefault("PORT", "8080"),
+		JamieURL:      getEnvOrDefault("JAMIE_URL", "http://jamie-slack-bot-service.jamie.svc.cluster.local:8080"),
+		AgentBrunoURL: getEnvOrDefault("AGENT_BRUNO_URL", "http://agent-bruno-service.agent-bruno.svc.cluster.local:8080"),
 		MinIO: MinIOConfig{
 			Endpoint:  getEnvOrDefault("MINIO_ENDPOINT", "minio-service.minio.svc.cluster.local:9000"),
 			AccessKey: getEnvOrDefault("MINIO_ACCESS_KEY", "minioadmin"),

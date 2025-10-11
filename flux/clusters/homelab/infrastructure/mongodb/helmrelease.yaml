@@ -1,0 +1,80 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: mongodb
+  namespace: mongodb
+spec:
+  interval: 5m
+  timeout: 10m
+  chart:
+    spec:
+      chart: mongodb
+      version: 16.3.1  # Latest stable version
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
+        namespace: flux-system
+  values:
+    # 🍃 MongoDB Configuration
+    architecture: standalone
+    
+    auth:
+      enabled: false  # Internal service, no auth needed
+      # For production, enable auth and use secrets:
+      # enabled: true
+      # rootUser: admin
+      # existingSecret: mongodb-secret
+    
+    persistence:
+      enabled: true
+      storageClass: local-path
+      size: 20Gi
+    
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+    
+    # 📊 Metrics for Prometheus
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+        namespace: mongodb
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+    
+    # 🔧 MongoDB Configuration
+    configuration: |-
+      # MongoDB configuration file
+      
+      # Storage engine
+      storage:
+        dbPath: /bitnami/mongodb/data/db
+        journal:
+          enabled: true
+      
+      # Network interfaces
+      net:
+        port: 27017
+        bindIp: 0.0.0.0
+      
+      # Operation profiling
+      operationProfiling:
+        mode: slowOp
+        slowOpThresholdMs: 100
+    
+    # 📡 Service Configuration
+    service:
+      type: ClusterIP
+      ports:
+        mongodb: 27017
+

@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-bruno
+  namespace: bruno
+  labels:
+    app: agent-bruno
+    version: v0.1.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agent-bruno
+  template:
+    metadata:
+      labels:
+        app: agent-bruno
+        version: v0.1.0
+    spec:
+      containers:
+      - name: agent-bruno
+        image: agent-bruno:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "8080"
+        - name: REDIS_URL
+          value: "redis://redis-master.redis.svc.cluster.local:6379"
+        - name: MONGODB_URL
+          value: "mongodb://mongodb.mongodb.svc.cluster.local:27017"
+        - name: MONGODB_DB
+          value: "agent_bruno"
+        - name: SESSION_TTL
+          value: "86400"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: OLLAMA_URL
+          value: "http://192.168.0.16:11434"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-bruno-service
+  namespace: bruno
+  labels:
+    app: agent-bruno
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: agent-bruno
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: agent-bruno-hpa
+  namespace: bruno
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: agent-bruno
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+

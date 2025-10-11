@@ -16,13 +16,11 @@ on:
     branches: [main, master]
     paths:
       - 'flux/clusters/homelab/infrastructure/agent-jamie/**'
-      - 'flux/clusters/homelab/infrastructure/jamie/**'
       - '.github/workflows/jamie-images.yml'
   pull_request:
     branches: [main, master]
     paths:
       - 'flux/clusters/homelab/infrastructure/agent-jamie/**'
-      - 'flux/clusters/homelab/infrastructure/jamie/**'
       - '.github/workflows/jamie-images.yml'
   schedule:
     - cron: '0 4 * * *'
@@ -48,7 +46,6 @@ env:
   IMAGE_TAG_PRD: latest
   PYTHON_VERSION: '3.13'
   WORKING_DIR_JAMIE: ./flux/clusters/homelab/infrastructure/agent-jamie
-  WORKING_DIR_JAMIE_ALT: ./flux/clusters/homelab/infrastructure/jamie
 
 jobs:
   # 🔍 Detect changes to determine which directory to test
@@ -71,23 +68,10 @@ jobs:
           
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             SHOULD_TEST="true"
-            # Check which directory has changes
-            if git diff --quiet ${{ github.event.pull_request.base.sha }} ${{ github.sha }} -- flux/clusters/homelab/infrastructure/jamie/; then
-              WORKING_DIR="${{ env.WORKING_DIR_JAMIE }}"
-            else
-              # If jamie/ has changes, use that
-              if [ -d "flux/clusters/homelab/infrastructure/jamie" ]; then
-                WORKING_DIR="${{ env.WORKING_DIR_JAMIE_ALT }}"
-              fi
-            fi
-          elif git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/agent-jamie/ flux/clusters/homelab/infrastructure/jamie/; then
+          elif git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/agent-jamie/; then
             SHOULD_TEST="false"
           else
             SHOULD_TEST="true"
-            # For push events, check which directory exists and has changes
-            if [ -d "flux/clusters/homelab/infrastructure/jamie" ] && ! git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/jamie/; then
-              WORKING_DIR="${{ env.WORKING_DIR_JAMIE_ALT }}"
-            fi
           fi
           
           echo "should-test=$SHOULD_TEST" >> $GITHUB_OUTPUT
@@ -209,14 +193,14 @@ jobs:
         id: changes
         run: |
           # Check for changes in MCP Server
-          if git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/jamie/src/mcp-server/; then
+          if git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/agent-jamie/src/mcp-server/; then
             echo "mcp-server=false" >> $GITHUB_OUTPUT
           else
             echo "mcp-server=true" >> $GITHUB_OUTPUT
           fi
           
           # Check for changes in Slack Bot
-          if git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/jamie/src/slack-bot/; then
+          if git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/agent-jamie/src/slack-bot/; then
             echo "slack-bot=false" >> $GITHUB_OUTPUT
           else
             echo "slack-bot=true" >> $GITHUB_OUTPUT
@@ -277,8 +261,8 @@ jobs:
       - name: 🏗️ Build and push MCP Server image
         uses: docker/build-push-action@v5
         with:
-          context: ./flux/clusters/homelab/infrastructure/jamie
-          file: ./flux/clusters/homelab/infrastructure/jamie/src/mcp-server/Dockerfile
+          context: ./flux/clusters/homelab/infrastructure/agent-jamie
+          file: ./flux/clusters/homelab/infrastructure/agent-jamie/src/mcp-server/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -346,8 +330,8 @@ jobs:
       - name: 🏗️ Build and push Slack Bot image
         uses: docker/build-push-action@v5
         with:
-          context: ./flux/clusters/homelab/infrastructure/jamie
-          file: ./flux/clusters/homelab/infrastructure/jamie/src/slack-bot/Dockerfile
+          context: ./flux/clusters/homelab/infrastructure/agent-jamie
+          file: ./flux/clusters/homelab/infrastructure/agent-jamie/src/slack-bot/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-slack.outputs.tags }}
           labels: ${{ steps.meta-slack.outputs.labels }}
