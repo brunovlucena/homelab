@@ -13,14 +13,6 @@ permissions:
   pull-requests: write
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - 'flux/clusters/homelab/infrastructure/agent-sre/**'
-  pull_request:
-    branches: [main, master]
-    paths:
-      - 'flux/clusters/homelab/infrastructure/agent-sre/**'
   schedule:
     # Run daily at 3 AM UTC to check for updates
     - cron: '0 3 * * *'
