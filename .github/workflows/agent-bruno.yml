@@ -1,0 +1,256 @@
+# 🤖 AGENT BRUNO Images CI/CD Pipeline
+#
+# This workflow runs tests and builds Docker images for the agent-bruno service.
+# Tests must pass before images are built.
+
+name: "🤖 AGENT BRUNO Images CI/CD"
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+  id-token: write
+  pull-requests: write
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-bruno/**'
+      - '.github/workflows/agent-bruno.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-bruno/**'
+      - '.github/workflows/agent-bruno.yml'
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prd
+      force_rebuild:
+        description: 'Force rebuild agent-bruno image'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io/brunovlucena
+  IMAGE_TAG: latest
+  PYTHON_VERSION: '3.11'
+  WORKING_DIR: ./flux/clusters/homelab/infrastructure/agent-bruno
+
+jobs:
+  # 🔍 Detect changes to determine if tests should run
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should-test: ${{ steps.changes.outputs.should-test }}
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "🔍 Detect Changes"
+        id: changes
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "should-test=true" >> $GITHUB_OUTPUT
+          elif git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/agent-bruno/; then
+            echo "should-test=false" >> $GITHUB_OUTPUT
+          else
+            echo "should-test=true" >> $GITHUB_OUTPUT
+          fi
+
+  # 🧪 Run Python tests for agent-bruno
+  test-agent-bruno:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should-test == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "🔧 Setup Python Environment"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: "📦 Install uv"
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: "📦 Install Dependencies with uv"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "📦 Installing Python dependencies with uv..."
+          uv sync --frozen
+
+      - name: "🔍 Run Linting with flake8"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "🔍 Running Python linting..."
+          uv run flake8 src/ --max-line-length=120 --extend-ignore=E203,W503
+          echo "✅ Linting passed!"
+
+      - name: "🎨 Check Code Formatting with black"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "🎨 Checking code formatting..."
+          uv run black --check src/
+          echo "✅ Code formatting is correct!"
+
+      - name: "📋 Check Import Sorting with isort"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "📋 Checking import sorting..."
+          uv run isort --check-only src/
+          echo "✅ Import sorting is correct!"
+
+      - name: "🧪 Run Unit Tests with pytest"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "🧪 Running Python tests..."
+          uv run pytest tests/ -v \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --junit-xml=test-results.xml
+          echo "✅ All tests passed!"
+
+      - name: "📊 Upload Test Results"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            ${{ env.WORKING_DIR }}/test-results.xml
+            ${{ env.WORKING_DIR }}/coverage.xml
+          retention-days: 30
+
+      - name: "📈 Upload Coverage to Codecov"
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ env.WORKING_DIR }}/coverage.xml
+          flags: agent-bruno
+          name: agent-bruno-coverage
+          fail_ci_if_error: false
+
+  # 🌍 Set Environment
+  set-environment:
+    needs: [detect-changes, test-agent-bruno]
+    if: always() && (needs.test-agent-bruno.result == 'success' || needs.test-agent-bruno.result == 'skipped')
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+    steps:
+      - name: "🌍 Determine Environment"
+        id: env
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+  # 🏗️ Build Agent Bruno Image
+  build-agent-bruno:
+    needs: set-environment
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "📝 Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+
+      - name: "🔐 Login to GitHub Container Registry"
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "🏷️ Extract Metadata for Agent Bruno"
+        id: meta-agent
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/agent-bruno
+          tags: |
+            type=raw,value=${{ env.IMAGE_TAG }}
+
+      - name: "🏗️ Build and push Agent Bruno image"
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ env.WORKING_DIR }}
+          file: ${{ env.WORKING_DIR }}/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-agent.outputs.tags }}
+          labels: ${{ steps.meta-agent.outputs.labels }}
+          cache-from: type=gha,scope=agent-bruno
+          cache-to: type=gha,mode=max,scope=agent-bruno
+          platforms: linux/amd64,linux/arm64
+
+      - name: "🔒 Run Trivy Security Scan for Agent Bruno"
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/agent-bruno:${{ env.IMAGE_TAG }}
+          format: 'sarif'
+          output: 'trivy-results-agent-bruno.sarif'
+
+      - name: "📊 Upload Trivy Scan Results for Agent Bruno"
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results-agent-bruno.sarif'
+
+  # 📊 Generate Build Summary
+  build-summary:
+    needs: [detect-changes, test-agent-bruno, set-environment, build-agent-bruno]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: "📊 Generate Build Summary"
+        run: |
+          echo "## 🤖 AGENT BRUNO Images CI/CD Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Information:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Trigger: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: ${{ needs.set-environment.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Change Detection | ${{ needs.detect-changes.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Agent Bruno Tests | ${{ needs.test-agent-bruno.result == 'success' && '✅ Success' || needs.test-agent-bruno.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Agent Bruno Image | ${{ needs.build-agent-bruno.result == 'success' && '✅ Built' || needs.build-agent-bruno.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.test-agent-bruno.result }}" == "success" || "${{ needs.test-agent-bruno.result }}" == "skipped" ]]; then
+            echo "**Status:** ✅ Tests passed! Image built successfully." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status:** ❌ Tests failed! Image not built." >> $GITHUB_STEP_SUMMARY
+          fi
