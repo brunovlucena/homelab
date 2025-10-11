@@ -5,11 +5,10 @@ Handles HTTP API requests and communicates with MCP server
 """
 
 import asyncio
-import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from aiohttp import ClientSession, web
 from aiohttp.web import Request, Response
@@ -349,7 +348,6 @@ Please provide:
         try:
             data = await request.json()
             query = data.get("query", "")
-            context = data.get("context", {})
 
             if not query:
                 return web.json_response({"error": "Query is required"}, status=400)

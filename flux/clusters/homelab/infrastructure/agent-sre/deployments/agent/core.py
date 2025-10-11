@@ -4,18 +4,14 @@ SRE Agent Core with LangGraph
 State-managed agent for SRE tasks using LangGraph and Ollama
 """
 
-import asyncio
-import json
 import logging
 import os
 from datetime import datetime
-from operator import add
 from typing import Annotated, Any, Dict, List, Optional, Sequence, TypedDict
 
 # Logfire imports
 import logfire
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 # LangChain imports
 from langchain_ollama import ChatOllama

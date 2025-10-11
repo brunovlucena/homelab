@@ -9,11 +9,9 @@ import asyncio
 import json
 import logging
 import os
-import subprocess
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict
 
-import aiohttp
 from aiohttp import web
 
 # Import the actual MCP server functions

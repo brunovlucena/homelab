@@ -9,12 +9,12 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import aiohttp
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import EmbeddedResource, ImageContent, TextContent, Tool
+from mcp.types import TextContent, Tool
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
