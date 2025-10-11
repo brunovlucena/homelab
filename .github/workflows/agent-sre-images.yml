@@ -1,9 +1,9 @@
-# 🤖 Agent SRE Images CI/CD Pipeline
+# 🤖 AGENT SRE Images CI/CD Pipeline
 #
-# This workflow builds, tests, and pushes Docker images for the agent-sre service.
-# It requires tests to pass before building images.
+# This workflow runs tests and builds Docker images for the agent-sre service.
+# Tests must pass before images are built.
 
-name: "🤖 Agent SRE Images CI/CD"
+name: "🤖 AGENT SRE Images CI/CD"
 
 permissions:
   contents: read
@@ -13,8 +13,17 @@ permissions:
   pull-requests: write
 
 on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-sre/**'
+      - '.github/workflows/agent-sre-images.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-sre/**'
+      - '.github/workflows/agent-sre-images.yml'
   schedule:
-    # Run daily at 3 AM UTC to check for updates
     - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
@@ -31,29 +40,118 @@ on:
         required: false
         default: false
         type: boolean
-  workflow_run:
-    workflows: ["🧪 Agent SRE Tests"]
-    types:
-      - completed
 
 env:
   REGISTRY: ghcr.io/brunovlucena
   IMAGE_TAG_DEV: dev
   IMAGE_TAG_PRD: latest
-  PYTHON_VERSION_SRE: '3.13'
+  PYTHON_VERSION: '3.13'
+  WORKING_DIR: ./flux/clusters/homelab/infrastructure/agent-sre
 
 jobs:
-  # ✅ Run tests before building
-  run-tests:
-    uses: ./.github/workflows/agent-sre-tests.yml
-    secrets: inherit
-    permissions:
-      contents: read
-      pull-requests: write
+  # 🔍 Detect changes to determine if tests should run
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      should-test: ${{ steps.changes.outputs.should-test }}
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "🔍 Detect Changes"
+        id: changes
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "should-test=true" >> $GITHUB_OUTPUT
+          elif git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/agent-sre/; then
+            echo "should-test=false" >> $GITHUB_OUTPUT
+          else
+            echo "should-test=true" >> $GITHUB_OUTPUT
+          fi
+
+  # 🧪 Run Python tests for agent-sre
+  test-agent-sre:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should-test == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "🔧 Setup Python Environment"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: "📦 Install uv"
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          enable-cache: true
+
+      - name: "📦 Install Dependencies with uv"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "📦 Installing Python dependencies with uv..."
+          uv sync --frozen --extra dev
+
+      - name: "🔍 Run Linting with flake8"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "🔍 Running Python linting..."
+          uv run flake8 deployments/ --max-line-length=120 --extend-ignore=E203,W503
+          echo "✅ Linting passed!"
+
+      - name: "🎨 Check Code Formatting with black"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "🎨 Checking code formatting..."
+          uv run black --check deployments/
+          echo "✅ Code formatting is correct!"
+
+      - name: "📋 Check Import Sorting with isort"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "📋 Checking import sorting..."
+          uv run isort --check-only deployments/
+          echo "✅ Import sorting is correct!"
+
+      - name: "🧪 Run Unit Tests with pytest"
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          echo "🧪 Running Python tests..."
+          uv run pytest tests/ -v \
+            --cov=deployments \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --junit-xml=test-results.xml
+          echo "✅ All tests passed!"
+
+      - name: "📊 Upload Test Results"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            ${{ env.WORKING_DIR }}/test-results.xml
+            ${{ env.WORKING_DIR }}/coverage.xml
+          retention-days: 30
+
+      - name: "📈 Upload Coverage to Codecov"
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ env.WORKING_DIR }}/coverage.xml
+          flags: agent-sre
+          name: agent-sre-coverage
+          fail_ci_if_error: false
 
   # 🔍 Detect changes and determine which agent services to build
-  detect-changes:
-    needs: run-tests
+  detect-build-changes:
+    needs: [detect-changes, test-agent-sre]
+    if: always() && (needs.test-agent-sre.result == 'success' || needs.test-agent-sre.result == 'skipped')
     runs-on: ubuntu-latest
     outputs:
       build-agent: ${{ steps.changes.outputs.agent }}
@@ -101,53 +199,25 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
-            echo "environment=prd" >> $GITHUB_OUTPUT
           else
             echo "environment=dev" >> $GITHUB_OUTPUT
           fi
 
-  # 🏗️ Build Agent (Python 3.13 with uv)
+  # 🏗️ Build Agent Image
   build-agent:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.build-agent == 'true' || needs.detect-changes.outputs.build-all == 'true'
+    needs: detect-build-changes
+    if: needs.detect-build-changes.outputs.build-agent == 'true' || needs.detect-build-changes.outputs.build-all == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
     steps:
       - name: "📥 Checkout Repository"
         uses: actions/checkout@v4
 
-      - name: "🔧 Setup Python Environment"
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION_SRE }}
-
-      - name: "📦 Install uv"
-        uses: astral-sh/setup-uv@v3
-        with:
-          version: "latest"
-          enable-cache: true
-
-      - name: "📦 Install Dependencies with uv"
-        working-directory: ./flux/clusters/homelab/infrastructure/agent-sre
-        run: |
-          echo "📦 Installing Python dependencies with uv (optimized)..."
-          uv sync --frozen --extra dev
-
-      - name: "🧪 Run Tests"
-        working-directory: ./flux/clusters/homelab/infrastructure/agent-sre
-        run: |
-          echo "🧪 Running Python tests..."
-          uv run pytest --cov=. --cov-report=xml
-          echo "✅ All tests passed!"
-
-      - name: "🔍 Run Linting"
-        working-directory: ./flux/clusters/homelab/infrastructure/agent-sre
-        run: |
-          echo "🔍 Running Python linting..."
-          uv run flake8 . --max-line-length=120
-          echo "✅ Linting passed!"
-
-      - name: "🐳 Set up Docker Buildx"
+      - name: "📝 Set up Docker Buildx"
         uses: docker/setup-buildx-action@v3
 
       - name: "🔐 Login to GitHub Container Registry"
@@ -157,70 +227,58 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: "🏷️ Extract Metadata"
-        id: meta
+      - name: "🏷️ Extract Metadata for Agent"
+        id: meta-agent
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/agent-sre
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=raw,value=${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
-            type=sha,prefix={{branch}}-
+            type=sha,prefix=sha-
+            type=raw,value=${{ needs.detect-build-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
 
-      - name: "🔍 Debug Registry Access"
-        run: |
-          echo "🔍 Debugging registry access..."
-          echo "Registry: ${{ env.REGISTRY }}"
-          echo "Actor: ${{ github.actor }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "Event: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-          echo "Tags to push: ${{ steps.meta.outputs.tags }}"
-          
-          # Test registry connectivity
-          echo "Testing registry connectivity..."
-          docker system info | grep -i registry || echo "No registry info found"
-
-      - name: "🏗️ Build and Push Agent SRE Image"
+      - name: "🏗️ Build and push Agent image"
         uses: docker/build-push-action@v5
         with:
-          context: ./flux/clusters/homelab/infrastructure/agent-sre
-          file: ./flux/clusters/homelab/infrastructure/agent-sre/deployments/agent/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=agent-sre
-          cache-to: type=gha,mode=max,scope=agent-sre
+          context: ${{ env.WORKING_DIR }}
+          file: ${{ env.WORKING_DIR }}/deployments/agent/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-agent.outputs.tags }}
+          labels: ${{ steps.meta-agent.outputs.labels }}
+          cache-from: type=gha,scope=agent-sre-agent
+          cache-to: type=gha,mode=max,scope=agent-sre-agent
           platforms: linux/amd64,linux/arm64
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
-        env:
-          # Add debug information for registry access
-          DOCKER_BUILDKIT: 1
 
-      - name: "🔒 Run Trivy Security Scan"
+      - name: "🔒 Run Trivy Security Scan for Agent"
+        if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/agent-sre:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
+          image-ref: ${{ env.REGISTRY }}/agent-sre:${{ needs.detect-build-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
           format: 'sarif'
-          output: 'trivy-results-agent-sre.sarif'
+          output: 'trivy-results-agent.sarif'
 
-      - name: "📊 Upload Trivy Scan Results"
+      - name: "📊 Upload Trivy Scan Results for Agent"
+        if: github.event_name != 'pull_request'
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-results-agent-sre.sarif'
+          sarif_file: 'trivy-results-agent.sarif'
 
-  # 🏗️ Build MCP Server (Python 3.13 with uv)
+  # 🏗️ Build MCP Server Image
   build-mcp-server:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.build-mcp-server == 'true' || needs.detect-changes.outputs.build-all == 'true'
+    needs: detect-build-changes
+    if: needs.detect-build-changes.outputs.build-mcp-server == 'true' || needs.detect-build-changes.outputs.build-all == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
     steps:
       - name: "📥 Checkout Repository"
         uses: actions/checkout@v4
 
-      - name: "🐳 Set up Docker Buildx"
+      - name: "📝 Set up Docker Buildx"
         uses: docker/setup-buildx-action@v3
 
       - name: "🔐 Login to GitHub Container Registry"
@@ -230,53 +288,58 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: "🏷️ Extract Metadata"
-        id: meta
+      - name: "🏷️ Extract Metadata for MCP Server"
+        id: meta-mcp
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/agent-sre-mcp-server
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=raw,value=${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
-            type=sha,prefix={{branch}}-
+            type=sha,prefix=sha-
+            type=raw,value=${{ needs.detect-build-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
 
-      - name: "🏗️ Build and Push MCP Server Image"
+      - name: "🏗️ Build and push MCP Server image"
         uses: docker/build-push-action@v5
         with:
-          context: ./flux/clusters/homelab/infrastructure/agent-sre
-          file: ./flux/clusters/homelab/infrastructure/agent-sre/deployments/mcp-server/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=mcp-server
-          cache-to: type=gha,mode=max,scope=mcp-server
+          context: ${{ env.WORKING_DIR }}
+          file: ${{ env.WORKING_DIR }}/deployments/mcp-server/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-mcp.outputs.tags }}
+          labels: ${{ steps.meta-mcp.outputs.labels }}
+          cache-from: type=gha,scope=agent-sre-mcp
+          cache-to: type=gha,mode=max,scope=agent-sre-mcp
           platforms: linux/amd64,linux/arm64
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
 
-      - name: "🔒 Run Trivy Security Scan"
+      - name: "🔒 Run Trivy Security Scan for MCP Server"
+        if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/agent-sre-mcp-server:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
+          image-ref: ${{ env.REGISTRY }}/agent-sre-mcp-server:${{ needs.detect-build-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
           format: 'sarif'
-          output: 'trivy-results-mcp-server.sarif'
+          output: 'trivy-results-mcp.sarif'
 
-      - name: "📊 Upload Trivy Scan Results"
+      - name: "📊 Upload Trivy Scan Results for MCP Server"
+        if: github.event_name != 'pull_request'
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-results-mcp-server.sarif'
+          sarif_file: 'trivy-results-mcp.sarif'
 
-  # 🏗️ Build Func MCP (Knative func CLI)
+  # 🏗️ Build Function MCP Image
   build-func-mcp:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.build-func-mcp == 'true' || needs.detect-changes.outputs.build-all == 'true'
+    needs: detect-build-changes
+    if: needs.detect-build-changes.outputs.build-func-mcp == 'true' || needs.detect-build-changes.outputs.build-all == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
     steps:
       - name: "📥 Checkout Repository"
         uses: actions/checkout@v4
 
-      - name: "🐳 Set up Docker Buildx"
+      - name: "📝 Set up Docker Buildx"
         uses: docker/setup-buildx-action@v3
 
       - name: "🔐 Login to GitHub Container Registry"
@@ -286,73 +349,75 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: "🏷️ Extract Metadata"
-        id: meta
+      - name: "🏷️ Extract Metadata for Function MCP"
+        id: meta-func
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/func-mcp
+          images: ${{ env.REGISTRY }}/agent-sre-func-mcp
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=raw,value=${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
-            type=sha,prefix={{branch}}-
+            type=sha,prefix=sha-
+            type=raw,value=${{ needs.detect-build-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
 
-      - name: "🏗️ Build and Push Func MCP Image"
+      - name: "🏗️ Build and push Function MCP image"
         uses: docker/build-push-action@v5
         with:
-          context: ./flux/clusters/homelab/infrastructure/agent-sre/deployments/agent
-          file: ./flux/clusters/homelab/infrastructure/agent-sre/deployments/agent/Dockerfile.func
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=func-mcp
-          cache-to: type=gha,mode=max,scope=func-mcp
+          context: ${{ env.WORKING_DIR }}
+          file: ${{ env.WORKING_DIR }}/deployments/agent/Dockerfile.func
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-func.outputs.tags }}
+          labels: ${{ steps.meta-func.outputs.labels }}
+          cache-from: type=gha,scope=agent-sre-func
+          cache-to: type=gha,mode=max,scope=agent-sre-func
           platforms: linux/amd64,linux/arm64
-          build-args: |
-            BUILDKIT_INLINE_CACHE=1
 
-      - name: "🔒 Run Trivy Security Scan"
+      - name: "🔒 Run Trivy Security Scan for Function MCP"
+        if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/func-mcp:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
+          image-ref: ${{ env.REGISTRY }}/agent-sre-func-mcp:${{ needs.detect-build-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
           format: 'sarif'
-          output: 'trivy-results-func-mcp.sarif'
+          output: 'trivy-results-func.sarif'
 
-      - name: "📊 Upload Trivy Scan Results"
+      - name: "📊 Upload Trivy Scan Results for Function MCP"
+        if: github.event_name != 'pull_request'
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-results-func-mcp.sarif'
+          sarif_file: 'trivy-results-func.sarif'
 
   # 📊 Generate Build Summary
   build-summary:
-    needs: [run-tests, detect-changes, build-agent, build-mcp-server, build-func-mcp]
+    needs: [detect-changes, test-agent-sre, detect-build-changes, build-agent, build-mcp-server, build-func-mcp]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: "📊 Generate Build Summary"
         run: |
-          echo "## 🤖 Agent SRE Images Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🤖 AGENT SRE Images CI/CD Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Build Information:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Environment: ${{ needs.detect-changes.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "- Trigger: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: ${{ needs.detect-build-changes.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Services Built:**" >> $GITHUB_STEP_SUMMARY
-          echo "| Service | Status | Image Tag |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|--------|-----------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Agent | ${{ needs.build-agent.result == 'success' && '✅ Success' || needs.build-agent.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.detect-changes.outputs.environment == 'dev' && 'dev' || 'latest' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| MCP Server | ${{ needs.build-mcp-server.result == 'success' && '✅ Success' || needs.build-mcp-server.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.detect-changes.outputs.environment == 'dev' && 'dev' || 'latest' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Func MCP | ${{ needs.build-func-mcp.result == 'success' && '✅ Success' || needs.build-func-mcp.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.detect-changes.outputs.environment == 'dev' && 'dev' || 'latest' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Change Detection | ${{ needs.detect-changes.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Agent SRE Tests | ${{ needs.test-agent-sre.result == 'success' && '✅ Success' || needs.test-agent-sre.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Registry Images:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Registry: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Agent: \`${{ env.REGISTRY }}/agent-sre:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- MCP Server: \`${{ env.REGISTRY }}/agent-sre-mcp-server:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Func MCP: \`${{ env.REGISTRY }}/func-mcp:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Agent Image | ${{ needs.build-agent.result == 'success' && '✅ Built' || needs.build-agent.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| MCP Server Image | ${{ needs.build-mcp-server.result == 'success' && '✅ Built' || needs.build-mcp-server.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Function MCP Image | ${{ needs.build-func-mcp.result == 'success' && '✅ Built' || needs.build-func-mcp.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Images are automatically available in the registry" >> $GITHUB_STEP_SUMMARY
-          echo "- Update Kubernetes deployments to use new images" >> $GITHUB_STEP_SUMMARY
-          echo "- Monitor deployments for successful rollout" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.test-agent-sre.result }}" == "success" || "${{ needs.test-agent-sre.result }}" == "skipped" ]]; then
+            echo "**Status:** ✅ Tests passed! Images built successfully." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status:** ❌ Tests failed! Images not built." >> $GITHUB_STEP_SUMMARY
+          fi

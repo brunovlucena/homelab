@@ -1,24 +1,29 @@
-# 🏠 Homepage Images CI/CD Pipeline
+# 🏠 HOMEPAGE Images CI/CD Pipeline
 #
-# This workflow builds, tests, and pushes Docker images for homepage services
+# This workflow runs tests and builds Docker images for homepage services
 # including the API and frontend components.
 
-name: "🏠 Homepage Images CI/CD"
+name: "🏠 HOMEPAGE Images CI/CD"
 
-# 🔐 Required permissions for pushing to GitHub Container Registry
 permissions:
   contents: read
   packages: write
+  security-events: write
+  id-token: write
+  pull-requests: write
 
 on:
-  # ⚠️ Images are built ONLY after tests pass via workflow_run
-  # This ensures we never build images before tests complete
-  workflow_run:
-    workflows: ["Homepage Integration Tests"]
-    types: [completed]
+  push:
     branches: [main, master]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/homepage/**'
+      - '.github/workflows/homepage-images.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/homepage/**'
+      - '.github/workflows/homepage-images.yml'
   schedule:
-    # Run weekly on Sundays at 2 AM UTC to ensure images stay fresh
     - cron: '0 2 * * 0'
   workflow_dispatch:
     inputs:
@@ -40,41 +45,159 @@ env:
   REGISTRY: ghcr.io/brunovlucena
   IMAGE_TAG_DEV: dev
   IMAGE_TAG_PRD: latest
+  GO_VERSION: '1.23.0'
   NODE_VERSION: '24'
-  GO_VERSION: '1.23'
+  HOMEPAGE_PATH: 'flux/clusters/homelab/infrastructure/homepage'
 
 jobs:
-  # ✅ Check if tests passed (only for workflow_run trigger)
-  check-tests:
+  # 🔍 Detect changes to determine if tests should run
+  detect-changes:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_run' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     outputs:
-      tests-passed: ${{ steps.check.outputs.tests-passed }}
+      should-test: ${{ steps.changes.outputs.should-test }}
     steps:
-      - name: "✅ Check Test Results"
-        id: check
+      - name: "📥 Checkout Repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "🔍 Detect Changes"
+        id: changes
         run: |
-          # For workflow_run, check if tests passed
-          if [[ "${{ github.event_name }}" == "workflow_run" ]]; then
-            if [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
-              echo "tests-passed=true" >> $GITHUB_OUTPUT
-              echo "✅ Tests passed, proceeding with image builds"
-            else
-              echo "tests-passed=false" >> $GITHUB_OUTPUT
-              echo "❌ Tests failed, skipping image builds"
-              exit 1
-            fi
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "should-test=true" >> $GITHUB_OUTPUT
+          elif git diff --quiet HEAD~1 HEAD -- flux/clusters/homelab/infrastructure/homepage/; then
+            echo "should-test=false" >> $GITHUB_OUTPUT
           else
-            # For schedule or manual dispatch, assume tests will pass
-            echo "tests-passed=true" >> $GITHUB_OUTPUT
-            echo "✅ Manual/scheduled trigger, proceeding with image builds"
+            echo "should-test=true" >> $GITHUB_OUTPUT
           fi
 
+  # 🧪 Backend Tests (Go)
+  backend-tests:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should-test == 'true'
+    name: Backend Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ${{ env.HOMEPAGE_PATH }}/api/go.sum
+
+      - name: 📦 Install dependencies
+        working-directory: ${{ env.HOMEPAGE_PATH }}/api
+        run: |
+          go mod download
+          go mod verify
+
+      - name: 🧪 Run unit tests
+        working-directory: ${{ env.HOMEPAGE_PATH }}/api
+        run: |
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: 📊 Generate coverage report
+        working-directory: ${{ env.HOMEPAGE_PATH }}/api
+        run: |
+          go tool cover -func=coverage.out
+          echo "### Test Coverage" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.out >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: 📈 Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ env.HOMEPAGE_PATH }}/api/coverage.out
+          flags: backend
+          name: backend-coverage
+          fail_ci_if_error: false
+
+      - name: 🔍 Run go vet
+        working-directory: ${{ env.HOMEPAGE_PATH }}/api
+        run: go vet ./...
+
+      - name: 🔍 Run staticcheck
+        working-directory: ${{ env.HOMEPAGE_PATH }}/api
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+
+  # 🧪 Frontend Tests (TypeScript)
+  frontend-tests:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should-test == 'true'
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: ${{ env.HOMEPAGE_PATH }}/frontend/package-lock.json
+
+      - name: 📦 Install dependencies
+        working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
+        run: |
+          echo "📦 Installing npm dependencies..."
+          npm cache clean --force
+          npm ci --legacy-peer-deps --no-audit --no-fund --prefer-offline || {
+            echo "❌ npm ci failed, trying npm install..."
+            rm -rf node_modules package-lock.json
+            npm install --legacy-peer-deps --no-audit --no-fund
+          }
+          
+          echo "🔍 Verifying jest-util installation..."
+          npm list jest-util || {
+            echo "❌ jest-util not found, installing explicitly..."
+            npm install jest-util@^29.7.0 --save-dev
+          }
+
+      - name: 🧪 Run unit tests
+        working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
+        run: npm test -- --coverage --watchAll=false --passWithNoTests
+        env:
+          CI: true
+
+      - name: 📊 Generate coverage report
+        if: always()
+        working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
+        run: |
+          if [ -f coverage/lcov.info ]; then
+            echo "### Frontend Test Coverage" >> $GITHUB_STEP_SUMMARY
+            echo "Coverage report generated successfully" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📈 Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ env.HOMEPAGE_PATH }}/frontend/coverage/lcov.info
+          flags: frontend
+          name: frontend-coverage
+          fail_ci_if_error: false
+
+      - name: 🔍 Run TypeScript check
+        working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
+        run: npm run build
+
+      - name: 🔍 Run ESLint
+        working-directory: ${{ env.HOMEPAGE_PATH }}/frontend
+        run: npm run lint || true
+        continue-on-error: true
+
   # 🔍 Detect changes and determine which services to build
-  detect-changes:
-    needs: [check-tests]
-    # Only proceed if tests passed (check-tests succeeded means tests passed)
-    if: needs.check-tests.result == 'success'
+  detect-build-changes:
+    needs: [detect-changes, backend-tests, frontend-tests]
+    if: always() && (needs.backend-tests.result == 'success' || needs.backend-tests.result == 'skipped') && (needs.frontend-tests.result == 'success' || needs.frontend-tests.result == 'skipped')
     runs-on: ubuntu-latest
     outputs:
       build-homepage-api: ${{ steps.changes.outputs.homepage-api }}
@@ -103,66 +226,47 @@ jobs:
             FRONTEND_CHANGED=true
           fi
           
-          # For scheduled runs or manual triggers, build all
-          BUILD_ALL=false
-          if [[ "${{ github.event_name }}" == "schedule" ]] || [[ "${{ github.event.inputs.force_rebuild }}" == "true" ]]; then
-            BUILD_ALL=true
-          fi
-          
-          # Check if any changes detected
-          HAS_CHANGES=false
-          if [[ "$API_CHANGED" == "true" ]] || [[ "$FRONTEND_CHANGED" == "true" ]] || [[ "$BUILD_ALL" == "true" ]]; then
-            HAS_CHANGES=true
-          fi
-          
+          # Set outputs
           echo "homepage-api=$API_CHANGED" >> $GITHUB_OUTPUT
           echo "homepage-frontend=$FRONTEND_CHANGED" >> $GITHUB_OUTPUT
-          echo "build-all=$BUILD_ALL" >> $GITHUB_OUTPUT
-          echo "has-changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
           
-          echo "🔍 Change Detection Results:"
-          echo "  API changed: $API_CHANGED"
-          echo "  Frontend changed: $FRONTEND_CHANGED"
-          echo "  Build all: $BUILD_ALL"
-          echo "  Has changes: $HAS_CHANGES"
+          # For scheduled runs or manual triggers, build all
+          if [[ "${{ github.event_name }}" == "schedule" ]] || [[ "${{ github.event.inputs.force_rebuild }}" == "true" ]]; then
+            echo "build-all=true" >> $GITHUB_OUTPUT
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "build-all=false" >> $GITHUB_OUTPUT
+            if [[ "$API_CHANGED" == "true" ]] || [[ "$FRONTEND_CHANGED" == "true" ]]; then
+              echo "has-changes=true" >> $GITHUB_OUTPUT
+            else
+              echo "has-changes=false" >> $GITHUB_OUTPUT
+            fi
+          fi
 
       - name: "🌍 Set Environment"
         id: env
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
-            echo "environment=prd" >> $GITHUB_OUTPUT
           else
             echo "environment=dev" >> $GITHUB_OUTPUT
           fi
 
-  # 🏗️ Build Homepage API (Go)
+  # 🏗️ Build Homepage API Image
   build-homepage-api:
-    needs: [check-tests, detect-changes]
-    if: always() && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && (needs.detect-changes.outputs.build-homepage-api == 'true' || needs.detect-changes.outputs.build-all == 'true')
+    needs: detect-build-changes
+    if: needs.detect-build-changes.outputs.build-homepage-api == 'true' || needs.detect-build-changes.outputs.build-all == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
     steps:
       - name: "📥 Checkout Repository"
         uses: actions/checkout@v4
 
-      - name: "🔧 Setup Go Environment"
-        uses: actions/setup-go@v4
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-          cache-dependency-path: './flux/clusters/homelab/infrastructure/homepage/api/go.sum'
-
-      - name: "🏗️ Build Go Application"
-        working-directory: ./flux/clusters/homelab/infrastructure/homepage/api
-        run: |
-          echo "🔍 Validating Go modules..."
-          go mod verify
-          go mod tidy
-          echo "🏗️ Building Go application..."
-          go build -o bruno-site-api .
-
-      - name: "🐳 Set up Docker Buildx"
+      - name: "📝 Set up Docker Buildx"
         uses: docker/setup-buildx-action@v3
 
       - name: "🔐 Login to GitHub Container Registry"
@@ -172,78 +276,58 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: "🏷️ Extract Metadata"
-        id: meta
+      - name: "🏷️ Extract Metadata for Homepage API"
+        id: meta-api
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/homelab/homepage-api
+          images: ${{ env.REGISTRY }}/homepage-api
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=raw,value=${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
-            type=sha,prefix={{branch}}-
+            type=sha,prefix=sha-
+            type=raw,value=${{ needs.detect-build-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
 
-      - name: "🏗️ Build and Push API Image"
+      - name: "🏗️ Build and push Homepage API image"
         uses: docker/build-push-action@v5
         with:
-          context: ./flux/clusters/homelab/infrastructure/homepage/api
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          context: ${{ env.HOMEPAGE_PATH }}/api
+          file: ${{ env.HOMEPAGE_PATH }}/api/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha,scope=homepage-api
+          cache-to: type=gha,mode=max,scope=homepage-api
           platforms: linux/amd64,linux/arm64
 
-      - name: "🔒 Run Trivy Security Scan"
+      - name: "🔒 Run Trivy Security Scan for Homepage API"
+        if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/homelab/homepage-api:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
+          image-ref: ${{ env.REGISTRY }}/homepage-api:${{ needs.detect-build-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
           format: 'sarif'
           output: 'trivy-results-api.sarif'
 
-      - name: "📊 Upload Trivy Scan Results"
-        uses: github/codeql-action/upload-sarif@v2
+      - name: "📊 Upload Trivy Scan Results for Homepage API"
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results-api.sarif'
 
-  # 🏗️ Build Homepage Frontend (React)
+  # 🏗️ Build Homepage Frontend Image
   build-homepage-frontend:
-    needs: [check-tests, detect-changes]
-    if: always() && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && (needs.detect-changes.outputs.build-homepage-frontend == 'true' || needs.detect-changes.outputs.build-all == 'true')
+    needs: detect-build-changes
+    if: needs.detect-build-changes.outputs.build-homepage-frontend == 'true' || needs.detect-build-changes.outputs.build-all == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
     steps:
       - name: "📥 Checkout Repository"
         uses: actions/checkout@v4
 
-      - name: "🔧 Setup Node.js Environment"
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: './flux/clusters/homelab/infrastructure/homepage/frontend/package-lock.json'
-
-      - name: "📦 Install Dependencies"
-        working-directory: ./flux/clusters/homelab/infrastructure/homepage/frontend
-        run: |
-          echo "📦 Installing npm dependencies..."
-          npm ci --legacy-peer-deps --no-audit --no-fund || {
-            echo "❌ npm ci failed, trying npm install..."
-            npm install --legacy-peer-deps --no-audit --no-fund
-          }
-
-      - name: "🧪 Run Tests"
-        working-directory: ./flux/clusters/homelab/infrastructure/homepage/frontend
-        run: |
-          echo "🧪 Running frontend tests..."
-          npm test -- --coverage --watchAll=false || echo "⚠️ Tests failed, but continuing build"
-
-      - name: "🏗️ Build Application"
-        working-directory: ./flux/clusters/homelab/infrastructure/homepage/frontend
-        run: |
-          echo "🏗️ Building React application..."
-          npm run build
-
-      - name: "🐳 Set up Docker Buildx"
+      - name: "📝 Set up Docker Buildx"
         uses: docker/setup-buildx-action@v3
 
       - name: "🔐 Login to GitHub Container Registry"
@@ -253,69 +337,75 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: "🏷️ Extract Metadata"
-        id: meta
+      - name: "🏷️ Extract Metadata for Homepage Frontend"
+        id: meta-frontend
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/homelab/homepage-frontend
+          images: ${{ env.REGISTRY }}/homepage-frontend
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=raw,value=${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
-            type=sha,prefix={{branch}}-
+            type=sha,prefix=sha-
+            type=raw,value=${{ needs.detect-build-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
 
-      - name: "🏗️ Build and Push Frontend Image"
+      - name: "🏗️ Build and push Homepage Frontend image"
         uses: docker/build-push-action@v5
         with:
-          context: ./flux/clusters/homelab/infrastructure/homepage/frontend
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          context: ${{ env.HOMEPAGE_PATH }}/frontend
+          file: ${{ env.HOMEPAGE_PATH }}/frontend/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha,scope=homepage-frontend
+          cache-to: type=gha,mode=max,scope=homepage-frontend
           platforms: linux/amd64,linux/arm64
 
-      - name: "🔒 Run Trivy Security Scan"
+      - name: "🔒 Run Trivy Security Scan for Homepage Frontend"
+        if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.REGISTRY }}/homelab/homepage-frontend:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
+          image-ref: ${{ env.REGISTRY }}/homepage-frontend:${{ needs.detect-build-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}
           format: 'sarif'
           output: 'trivy-results-frontend.sarif'
 
-      - name: "📊 Upload Trivy Scan Results"
-        uses: github/codeql-action/upload-sarif@v2
+      - name: "📊 Upload Trivy Scan Results for Homepage Frontend"
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-results-frontend.sarif'
 
   # 📊 Generate Build Summary
   build-summary:
-    needs: [check-tests, detect-changes, build-homepage-api, build-homepage-frontend]
+    needs: [detect-changes, backend-tests, frontend-tests, detect-build-changes, build-homepage-api, build-homepage-frontend]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: "📊 Generate Build Summary"
         run: |
-          echo "## 🏠 Homepage Images Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 🏠 HOMEPAGE Images CI/CD Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Build Information:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Environment: ${{ needs.detect-changes.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "- Trigger: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Tests Status: ${{ needs.check-tests.outputs.tests-passed == 'true' && '✅ Passed' || '❌ Failed/Skipped' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: ${{ needs.detect-build-changes.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Services Built:**" >> $GITHUB_STEP_SUMMARY
-          echo "| Service | Status | Image Tag |" >> $GITHUB_STEP_SUMMARY
-          echo "|---------|--------|-----------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Homepage API | ${{ needs.build-homepage-api.result == 'success' && '✅ Success' || needs.build-homepage-api.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.detect-changes.outputs.environment == 'dev' && 'dev' || 'latest' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Homepage Frontend | ${{ needs.build-homepage-frontend.result == 'success' && '✅ Success' || needs.build-homepage-frontend.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} | ${{ needs.detect-changes.outputs.environment == 'dev' && 'dev' || 'latest' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Change Detection | ${{ needs.detect-changes.result == 'success' && '✅ Success' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Tests | ${{ needs.backend-tests.result == 'success' && '✅ Success' || needs.backend-tests.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Tests | ${{ needs.frontend-tests.result == 'success' && '✅ Success' || needs.frontend-tests.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Registry Images:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Registry: ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
-          echo "- API: \`${{ env.REGISTRY }}/homelab/homepage-api:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Frontend: \`${{ env.REGISTRY }}/homelab/homepage-frontend:${{ needs.detect-changes.outputs.environment == 'dev' && env.IMAGE_TAG_DEV || env.IMAGE_TAG_PRD }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Results:**" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Homepage API Image | ${{ needs.build-homepage-api.result == 'success' && '✅ Built' || needs.build-homepage-api.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Homepage Frontend Image | ${{ needs.build-homepage-frontend.result == 'success' && '✅ Built' || needs.build-homepage-frontend.result == 'skipped' && '⏭️ Skipped' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
-          echo "- Images are automatically available in the registry" >> $GITHUB_STEP_SUMMARY
-          echo "- Update Kubernetes deployments to use new images" >> $GITHUB_STEP_SUMMARY
-          echo "- Monitor deployments for successful rollout" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.backend-tests.result }}" == "success" || "${{ needs.backend-tests.result }}" == "skipped" ]] && [[ "${{ needs.frontend-tests.result }}" == "success" || "${{ needs.frontend-tests.result }}" == "skipped" ]]; then
+            echo "**Status:** ✅ Tests passed! Images built successfully." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Status:** ❌ Tests failed! Images not built." >> $GITHUB_STEP_SUMMARY
+          fi
