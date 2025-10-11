@@ -13,7 +13,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'deployments', 'mcp-server'))
 
-from mcp_server import MCPServer
+from mcp_http_wrapper import MCPHTTPWrapper
 
 
 class TestMCPServer(AioHTTPTestCase):
@@ -21,7 +21,7 @@ class TestMCPServer(AioHTTPTestCase):
 
     async def get_application(self):
         """Create the aiohttp application for testing"""
-        server = MCPServer()
+        server = MCPHTTPWrapper()
         return server.app
 
     @unittest_run_loop
