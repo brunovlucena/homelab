@@ -220,10 +220,10 @@ class SREAgentGraph:
         # Create recommendations prompt
         rec_prompt = f"""
         Based on the following analysis for a {task_type} task, provide 3-5 specific, actionable recommendations:
-        
+
         Analysis:
         {analysis_result}
-        
+
         Format your recommendations as a numbered list with clear action items.
         """
 
@@ -257,7 +257,7 @@ class SREAgentGraph:
         analysis = state.get("analysis_result", "No analysis available")
         recommendations = state.get("recommendations", [])
 
-        logger.info(f"📝 Format response node started")
+        logger.info("📝 Format response node started")
         logger.debug(f"📝 Formatting {len(recommendations)} recommendations")
 
         formatted_response = f"""
@@ -275,7 +275,7 @@ class SREAgentGraph:
         state["messages"] = state["messages"] + [AIMessage(content=formatted_response)]
         state["next_action"] = "complete"
 
-        logger.info(f"✅ Format response node completed")
+        logger.info("✅ Format response node completed")
 
         return state
 
@@ -288,7 +288,7 @@ You provide clear, actionable insights based on SRE best practices and observabi
 
         prompts = {
             "logs": f"""{base_prompt}
-            
+
 Your current task is to analyze logs and identify:
 1. Critical errors and warnings
 2. Patterns and anomalies
@@ -296,7 +296,7 @@ Your current task is to analyze logs and identify:
 4. Performance issues
             """,
             "incident": f"""{base_prompt}
-            
+
 Your current task is incident response. Focus on:
 1. Immediate impact assessment
 2. Quick mitigation steps
@@ -305,7 +305,7 @@ Your current task is incident response. Focus on:
 5. Post-incident actions
             """,
             "monitoring": f"""{base_prompt}
-            
+
 Your current task is to provide monitoring advice. Focus on:
 1. Key metrics to track
 2. Alert thresholds and conditions
@@ -314,7 +314,7 @@ Your current task is to provide monitoring advice. Focus on:
 5. SLIs and SLOs
             """,
             "performance": f"""{base_prompt}
-            
+
 Your current task is performance analysis. Focus on:
 1. Bottleneck identification
 2. Resource utilization
@@ -351,7 +351,7 @@ Your current task is performance analysis. Focus on:
         }
 
         # Execute the graph
-        logger.debug(f"🤖 Executing LangGraph workflow...")
+        logger.debug("🤖 Executing LangGraph workflow...")
         config = {"configurable": {"thread_id": thread_id}}
         final_state = await self.graph.ainvoke(initial_state, config)
 

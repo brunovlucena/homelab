@@ -246,7 +246,7 @@ Generator URL: {alert.get("generatorURL", "N/A")}
 
 Please provide:
 1. Root cause analysis
-2. Impact assessment  
+2. Impact assessment
 3. Immediate mitigation steps
 4. Recommended investigation queries (PromQL, LogQL)
 5. Prevention recommendations
@@ -440,7 +440,7 @@ Please provide:
         logger.info(f"📊 MCP Chat endpoint: http://localhost:{port}/mcp/chat")
         logger.info(f"📈 Status endpoint: http://localhost:{port}/status")
         logger.info(f"🚨 Alertmanager webhook: http://localhost:{port}/webhook/alert")
-        logger.info(f"🔇 Health/ready check logs filtered for cleaner output")
+        logger.info("🔇 Health/ready check logs filtered for cleaner output")
 
         return runner
 

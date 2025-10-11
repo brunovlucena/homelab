@@ -38,7 +38,7 @@ async def list_tools() -> List[Tool]:
         Tool(
             name="prometheus_query",
             description="""🔍 Execute a PromQL query against Prometheus.
-            
+
 Use this tool to query metrics from Prometheus. You can query:
 - Current values: rate(http_requests_total[5m])
 - Time series data: node_memory_usage_bytes
@@ -66,7 +66,7 @@ The query should be a valid PromQL expression.
         Tool(
             name="grafana_query",
             description="""📊 Query data from Grafana dashboards or datasources.
-            
+
 Use this tool to:
 - Get dashboard information by UID or ID
 - Query datasources directly
@@ -98,7 +98,7 @@ This is useful for getting visualization data and dashboard states.
         Tool(
             name="prometheus_query_range",
             description="""📈 Execute a range query against Prometheus to get time series data.
-            
+
 Use this tool to query metrics over a time range:
 - Memory usage over the last hour
 - CPU trends for the past day
@@ -292,7 +292,7 @@ async def execute_grafana_query(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 url = f"{GRAFANA_URL}/api/datasources/name/{query}"
             elif query_type == "panel":
                 dashboard_id = arguments.get("dashboard_id", "")
-                panel_id = arguments.get("panel_id", 0)
+                # panel_id = arguments.get("panel_id", 0)  # TODO: Use panel_id for specific panel queries
                 if not dashboard_id:
                     return {"error": "dashboard_id required for panel queries"}
                 url = f"{GRAFANA_URL}/api/dashboards/uid/{dashboard_id}"
