@@ -4,52 +4,53 @@ SRE Agent Core with LangGraph
 State-managed agent for SRE tasks using LangGraph and Ollama
 """
 
-import os
-import json
 import asyncio
+import json
 import logging
-from typing import Dict, Any, List, Optional, TypedDict, Annotated, Sequence
+import os
 from datetime import datetime
 from operator import add
+from typing import Annotated, Any, Dict, List, Optional, Sequence, TypedDict
+
+# Logfire imports
+import logfire
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 # LangChain imports
 from langchain_ollama import ChatOllama
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, AIMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langgraph.checkpoint.memory import MemorySaver
 
 # LangGraph imports
-from langgraph.graph import StateGraph, END, START
+from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
-from langgraph.checkpoint.memory import MemorySaver
 
 # LangSmith imports for tracing
 from langsmith import traceable
 
-# Logfire imports
-import logfire
-
 # Configure logging with detailed format
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger(__name__)
+
 
 # Filter to exclude health/ready check logs from aiohttp access logging
 class HealthCheckFilter(logging.Filter):
     """Filter out health and ready endpoint access logs"""
+
     def filter(self, record):
         # Check if this is an aiohttp access log for health/ready endpoints
-        if hasattr(record, 'args') and len(record.args) >= 4:
+        if hasattr(record, "args") and len(record.args) >= 4:
             # args[3] typically contains the request path in aiohttp access logs
             request_info = str(record.args)
             return not ("/health" in request_info or "/ready" in request_info)
         message = record.getMessage()
         return not ("/health" in message or "/ready" in message)
 
+
 # Apply filter to aiohttp access logger to reduce noise from health/ready checks
-aiohttp_access_logger = logging.getLogger('aiohttp.access')
+aiohttp_access_logger = logging.getLogger("aiohttp.access")
 aiohttp_access_logger.addFilter(HealthCheckFilter())
 
 # Configuration
@@ -58,60 +59,59 @@ MODEL_NAME = os.environ.get("MODEL_NAME", "llama3.2:3b")
 SERVICE_NAME = os.environ.get("SERVICE_NAME", "sre-agent")
 
 # Configure OpenTelemetry to export to Alloy only (no Logfire Cloud)
-logfire_token = os.getenv('LOGFIRE_TOKEN')
-alloy_endpoint = os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://alloy.alloy.svc.cluster.local:4317')
-alloy_protocol = os.getenv('OTEL_EXPORTER_OTLP_PROTOCOL', 'grpc')
-alloy_insecure = os.getenv('OTEL_EXPORTER_OTLP_INSECURE', 'true').lower() == 'true'
+logfire_token = os.getenv("LOGFIRE_TOKEN")
+alloy_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://alloy.alloy.svc.cluster.local:4317")
+alloy_protocol = os.getenv("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+alloy_insecure = os.getenv("OTEL_EXPORTER_OTLP_INSECURE", "true").lower() == "true"
 
 # Disable Logfire Cloud by removing the token - we only want local OTEL export to Alloy
 if logfire_token:
     logger.info("⚠️  LOGFIRE_TOKEN detected but removing it to avoid HTTP exporter creation")
     logger.info("⚠️  Using direct OpenTelemetry export to Alloy instead")
     # Remove the token so Logfire doesn't auto-configure
-    os.environ.pop('LOGFIRE_TOKEN', None)
+    os.environ.pop("LOGFIRE_TOKEN", None)
     logfire_token = None
 
 # Configure OpenTelemetry directly without Logfire SDK
 try:
     from opentelemetry import trace
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.sdk.resources import Resource
-    
+
     # Remove http:// prefix from endpoint for gRPC exporter
     # gRPC exporter expects host:port format, not http://host:port
-    grpc_endpoint = alloy_endpoint.replace('http://', '').replace('https://', '')
-    
+    grpc_endpoint = alloy_endpoint.replace("http://", "").replace("https://", "")
+
     # Create resource with service name
-    resource = Resource.create({
-        "service.name": SERVICE_NAME,
-        "service.version": "1.0.0",
-    })
-    
+    resource = Resource.create(
+        {
+            "service.name": SERVICE_NAME,
+            "service.version": "1.0.0",
+        }
+    )
+
     # Set up tracer provider with Alloy OTLP exporter
     provider = TracerProvider(resource=resource)
-    otlp_exporter = OTLPSpanExporter(
-        endpoint=grpc_endpoint,
-        insecure=alloy_insecure
-    )
+    otlp_exporter = OTLPSpanExporter(endpoint=grpc_endpoint, insecure=alloy_insecure)
     provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
     trace.set_tracer_provider(provider)
-    
+
     logger.info(f"✅ OpenTelemetry configured successfully - exporting to Alloy at {grpc_endpoint}")
     logger.info("✅ Using @logfire.instrument decorators for tracing (no Logfire cloud, no HTTP exporter)")
-    
+
     # NOTE: We do NOT call logfire.configure() to avoid it creating an HTTP exporter
     # The @logfire.instrument decorators will use our OpenTelemetry TracerProvider
-    
+
 except Exception as e:
     logger.warning(f"⚠️  OpenTelemetry configuration failed: {e}")
     logger.warning("⚠️  Continuing without OpenTelemetry tracing...")
 
 # Configure LangChain API key
-langsmith_api_key = os.getenv('LANGSMITH_API_KEY')
+langsmith_api_key = os.getenv("LANGSMITH_API_KEY")
 if langsmith_api_key:
-    os.environ['LANGCHAIN_API_KEY'] = langsmith_api_key
+    os.environ["LANGCHAIN_API_KEY"] = langsmith_api_key
     logger.info("✅ LangSmith API key configured from environment")
 else:
     logger.warning("⚠️  LANGSMITH_API_KEY not set, LangSmith features will be limited")
@@ -133,6 +133,7 @@ except Exception as e:
 # Define the state for the graph
 class AgentState(TypedDict):
     """🔧 State for the SRE Agent"""
+
     messages: Annotated[Sequence[BaseMessage], add_messages]
     task_type: str
     context: Dict[str, Any]
@@ -143,32 +144,32 @@ class AgentState(TypedDict):
 
 class SREAgentGraph:
     """🤖 SRE Agent with LangGraph state management"""
-    
+
     def __init__(self):
         self.llm = llm
         self.service_name = SERVICE_NAME
         self.checkpointer = MemorySaver()
         self.graph = self._build_graph()
-        
+
     def _build_graph(self) -> StateGraph:
         """🏗️ Build the LangGraph workflow"""
-        
+
         # Create the graph
         workflow = StateGraph(AgentState)
-        
+
         # Add nodes
         workflow.add_node("analyze", self._analyze_node)
         workflow.add_node("generate_recommendations", self._generate_recommendations_node)
         workflow.add_node("format_response", self._format_response_node)
-        
+
         # Define the flow
         workflow.add_edge(START, "analyze")
         workflow.add_edge("analyze", "generate_recommendations")
         workflow.add_edge("generate_recommendations", "format_response")
         workflow.add_edge("format_response", END)
-        
+
         return workflow.compile(checkpointer=self.checkpointer)
-    
+
     @traceable(name="sre_analyze_node", run_type="llm")
     @logfire.instrument("analyze_node")
     async def _analyze_node(self, state: AgentState) -> AgentState:
@@ -177,37 +178,34 @@ class SREAgentGraph:
             logger.error("❌ Ollama LLM not available in analyze node")
             state["analysis_result"] = "Error: Ollama connection not available"
             return state
-        
+
         task_type = state.get("task_type", "general")
         messages = state.get("messages", [])
-        
+
         logger.info(f"🔍 Analyze node started - task_type: {task_type}, messages: {len(messages)}")
         logger.debug(f"🔍 Using system prompt for task type: {task_type}")
-        
+
         # Create analysis prompt based on task type
         system_prompt = self._get_system_prompt(task_type)
-        
+
         # Invoke LLM for analysis
         try:
-            analysis_messages = [
-                SystemMessage(content=system_prompt),
-                *messages
-            ]
-            
+            analysis_messages = [SystemMessage(content=system_prompt), *messages]
+
             logger.debug(f"🔍 Invoking Ollama model: {MODEL_NAME}")
             response = await self.llm.ainvoke(analysis_messages)
             logger.info(f"✅ Analysis completed - response length: {len(response.content)} chars")
             logger.debug(f"✅ Analysis preview: {response.content[:200]}...")
-            
+
             state["analysis_result"] = response.content
             state["messages"] = state["messages"] + [response]
-            
+
         except Exception as e:
             logger.error(f"❌ Error in analysis node: {e}", exc_info=True)
             state["analysis_result"] = f"Error during analysis: {str(e)}"
-        
+
         return state
-    
+
     @traceable(name="sre_generate_recommendations", run_type="llm")
     @logfire.instrument("generate_recommendations")
     async def _generate_recommendations_node(self, state: AgentState) -> AgentState:
@@ -216,13 +214,13 @@ class SREAgentGraph:
             logger.error("❌ Ollama LLM not available in recommendations node")
             state["recommendations"] = ["Error: Ollama connection not available"]
             return state
-        
+
         analysis_result = state.get("analysis_result", "")
         task_type = state.get("task_type", "general")
-        
+
         logger.info(f"💡 Recommendations node started - task_type: {task_type}")
         logger.debug(f"💡 Analysis result length: {len(analysis_result)} chars")
-        
+
         # Create recommendations prompt
         rec_prompt = f"""
         Based on the following analysis for a {task_type} task, provide 3-5 specific, actionable recommendations:
@@ -232,40 +230,40 @@ class SREAgentGraph:
         
         Format your recommendations as a numbered list with clear action items.
         """
-        
+
         try:
             logger.debug(f"💡 Generating recommendations using {MODEL_NAME}")
             response = await self.llm.ainvoke([HumanMessage(content=rec_prompt)])
-            
+
             # Parse recommendations from response
             recommendations = []
-            for line in response.content.split('\n'):
+            for line in response.content.split("\n"):
                 line = line.strip()
-                if line and (line[0].isdigit() or line.startswith('-') or line.startswith('•')):
+                if line and (line[0].isdigit() or line.startswith("-") or line.startswith("•")):
                     recommendations.append(line)
-            
+
             logger.info(f"✅ Generated {len(recommendations)} recommendations")
             for idx, rec in enumerate(recommendations, 1):
                 logger.debug(f"💡 Recommendation {idx}: {rec[:80]}...")
-            
+
             state["recommendations"] = recommendations if recommendations else [response.content]
             state["messages"] = state["messages"] + [response]
-            
+
         except Exception as e:
             logger.error(f"❌ Error generating recommendations: {e}", exc_info=True)
             state["recommendations"] = [f"Error generating recommendations: {str(e)}"]
-        
+
         return state
-    
+
     @logfire.instrument("format_response")
     async def _format_response_node(self, state: AgentState) -> AgentState:
         """📝 Format the final response"""
         analysis = state.get("analysis_result", "No analysis available")
         recommendations = state.get("recommendations", [])
-        
+
         logger.info(f"📝 Format response node started")
         logger.debug(f"📝 Formatting {len(recommendations)} recommendations")
-        
+
         formatted_response = f"""
 ## 🔍 Analysis
 
@@ -275,25 +273,23 @@ class SREAgentGraph:
 
 {chr(10).join(recommendations) if recommendations else 'No recommendations available'}
         """.strip()
-        
+
         logger.debug(f"📝 Formatted response length: {len(formatted_response)} chars")
-        
-        state["messages"] = state["messages"] + [
-            AIMessage(content=formatted_response)
-        ]
+
+        state["messages"] = state["messages"] + [AIMessage(content=formatted_response)]
         state["next_action"] = "complete"
-        
+
         logger.info(f"✅ Format response node completed")
-        
+
         return state
-    
+
     def _get_system_prompt(self, task_type: str) -> str:
         """📋 Get system prompt based on task type"""
-        
+
         base_prompt = """You are an expert SRE (Site Reliability Engineering) AI assistant.
 You help with monitoring, troubleshooting, incident response, and maintaining system reliability.
 You provide clear, actionable insights based on SRE best practices and observability principles."""
-        
+
         prompts = {
             "logs": f"""{base_prompt}
             
@@ -303,7 +299,6 @@ Your current task is to analyze logs and identify:
 3. Potential root causes
 4. Performance issues
             """,
-            
             "incident": f"""{base_prompt}
             
 Your current task is incident response. Focus on:
@@ -313,7 +308,6 @@ Your current task is incident response. Focus on:
 4. Communication strategy
 5. Post-incident actions
             """,
-            
             "monitoring": f"""{base_prompt}
             
 Your current task is to provide monitoring advice. Focus on:
@@ -323,7 +317,6 @@ Your current task is to provide monitoring advice. Focus on:
 4. Observability strategy
 5. SLIs and SLOs
             """,
-            
             "performance": f"""{base_prompt}
             
 Your current task is performance analysis. Focus on:
@@ -334,24 +327,24 @@ Your current task is performance analysis. Focus on:
 5. Cost optimization
             """,
         }
-        
+
         return prompts.get(task_type, base_prompt)
-    
+
     @traceable(name="sre_execute", run_type="chain")
     @logfire.instrument("execute")
     async def execute(
-        self, 
-        message: str, 
+        self,
+        message: str,
         task_type: str = "general",
         context: Optional[Dict[str, Any]] = None,
-        thread_id: str = "default"
+        thread_id: str = "default",
     ) -> Dict[str, Any]:
         """🚀 Execute the SRE agent workflow"""
-        
+
         logger.info(f"🤖 Agent execution started - task_type: {task_type}, thread_id: {thread_id}")
         logger.debug(f"🤖 Message length: {len(message)} chars")
         logger.debug(f"🤖 Context keys: {list(context.keys()) if context else []}")
-        
+
         initial_state: AgentState = {
             "messages": [HumanMessage(content=message)],
             "task_type": task_type,
@@ -360,14 +353,14 @@ Your current task is performance analysis. Focus on:
             "recommendations": [],
             "next_action": None,
         }
-        
+
         # Execute the graph
         logger.debug(f"🤖 Executing LangGraph workflow...")
         config = {"configurable": {"thread_id": thread_id}}
         final_state = await self.graph.ainvoke(initial_state, config)
-        
+
         logger.info(f"✅ Agent execution completed - task_type: {task_type}, thread_id: {thread_id}")
-        
+
         return {
             "analysis": final_state.get("analysis_result"),
             "recommendations": final_state.get("recommendations"),
@@ -375,7 +368,7 @@ Your current task is performance analysis. Focus on:
             "task_type": task_type,
             "timestamp": datetime.now().isoformat(),
         }
-    
+
     @logfire.instrument("health_check")
     async def health_check(self) -> Dict[str, Any]:
         """❤️ Check agent health status"""
@@ -389,7 +382,7 @@ Your current task is performance analysis. Focus on:
             "graph_compiled": self.graph is not None,
             "langgraph_enabled": True,
         }
-    
+
     # Convenience methods for common tasks
     @traceable(name="sre_chat", run_type="chain")
     @logfire.instrument("chat")
@@ -397,7 +390,7 @@ Your current task is performance analysis. Focus on:
         """💬 Chat method - forwards to LangGraph"""
         result = await self.execute(message=message, task_type="general")
         return result.get("full_response", "No response")
-    
+
     @traceable(name="sre_analyze_logs", run_type="chain")
     @logfire.instrument("analyze_logs")
     async def analyze_logs(self, logs: str) -> str:
@@ -405,14 +398,14 @@ Your current task is performance analysis. Focus on:
         message = f"Analyze these logs and provide insights:\n\n{logs}"
         result = await self.execute(message=message, task_type="logs")
         return result.get("full_response", "No analysis")
-    
+
     @traceable(name="sre_incident_response", run_type="chain")
     @logfire.instrument("incident_response")
     async def incident_response(self, incident: str) -> str:
         """🚨 Incident response method - forwards to LangGraph"""
         result = await self.execute(message=incident, task_type="incident")
         return result.get("full_response", "No response")
-    
+
     @traceable(name="sre_monitoring_advice", run_type="chain")
     @logfire.instrument("monitoring_advice")
     async def monitoring_advice(self, system: str) -> str:
@@ -426,4 +419,4 @@ Your current task is performance analysis. Focus on:
 agent = SREAgentGraph()
 
 # Export for use in other modules
-__all__ = ['agent', 'logger', 'logfire', 'SREAgentGraph']
+__all__ = ["agent", "logger", "logfire", "SREAgentGraph"]
