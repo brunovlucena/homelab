@@ -5,11 +5,10 @@ Handles HTTP API requests and communicates with MCP server
 """
 
 import asyncio
-import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from aiohttp import ClientSession, web
 from aiohttp.web import Request, Response
@@ -247,7 +246,7 @@ Generator URL: {alert.get("generatorURL", "N/A")}
 
 Please provide:
 1. Root cause analysis
-2. Impact assessment  
+2. Impact assessment
 3. Immediate mitigation steps
 4. Recommended investigation queries (PromQL, LogQL)
 5. Prevention recommendations
@@ -349,7 +348,6 @@ Please provide:
         try:
             data = await request.json()
             query = data.get("query", "")
-            context = data.get("context", {})
 
             if not query:
                 return web.json_response({"error": "Query is required"}, status=400)
@@ -442,7 +440,7 @@ Please provide:
         logger.info(f"📊 MCP Chat endpoint: http://localhost:{port}/mcp/chat")
         logger.info(f"📈 Status endpoint: http://localhost:{port}/status")
         logger.info(f"🚨 Alertmanager webhook: http://localhost:{port}/webhook/alert")
-        logger.info(f"🔇 Health/ready check logs filtered for cleaner output")
+        logger.info("🔇 Health/ready check logs filtered for cleaner output")
 
         return runner
 

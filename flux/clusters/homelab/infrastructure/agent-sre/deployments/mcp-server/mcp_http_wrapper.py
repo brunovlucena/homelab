@@ -6,14 +6,11 @@ Supports proper JSON-RPC 2.0 protocol for tools/list and tools/call
 """
 
 import asyncio
-import json
 import logging
 import os
-import subprocess
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict
 
-import aiohttp
 from aiohttp import web
 
 # Import the actual MCP server functions
@@ -133,7 +130,7 @@ class MCPHTTPWrapper:
             tools_dict.append({"name": tool.name, "description": tool.description, "inputSchema": tool.inputSchema})
 
         # Support pagination (cursor parameter)
-        cursor = params.get("cursor")
+        # cursor = params.get("cursor")  # TODO: Implement pagination
 
         return {
             "tools": tools_dict,
