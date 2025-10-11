@@ -2,14 +2,14 @@
 """
 🤖 Jamie MCP Server
 
-Este servidor MCP fornece acesso às funcionalidades de SRE do Jamie.
-Funcionalidades:
-- Chat com Jamie AI (powered by Ollama + Agent-SRE)
+This MCP server provides access to Jamie's SRE functionalities.
+Features:
+- Chat with Jamie AI (powered by Ollama + Agent-SRE)
 - Query Prometheus metrics
-- Verificar Golden Signals (latency, traffic, errors, saturation)
-- Obter logs de pods do Kubernetes
-- Análise de logs com AI
-- Queries Grafana
+- Check Golden Signals (latency, traffic, errors, saturation)
+- Get Kubernetes pod logs
+- AI-powered log analysis
+- Grafana queries
 """
 
 import asyncio
@@ -26,12 +26,12 @@ from mcp.types import CallToolResult, TextContent, Tool
 
 from core import logger, logfire
 
-# Configuração
+# Configuration
 JAMIE_SLACK_BOT_URL = os.getenv("JAMIE_SLACK_BOT_URL", "http://jamie-slack-bot-service.jamie.svc.cluster.local:8080")
 
 
 class JamieAPIClient:
-    """Cliente para a API REST do Jamie Slack Bot"""
+    """Client for Jamie Slack Bot REST API"""
 
     def __init__(self, base_url: str = None):
         self.base_url = base_url or JAMIE_SLACK_BOT_URL
@@ -39,7 +39,7 @@ class JamieAPIClient:
 
     @logfire.instrument("jamie_api_chat")
     async def chat(self, message: str) -> Dict[str, Any]:
-        """Envia mensagem para o Jamie via API de chat"""
+        """Send message to Jamie via chat API"""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -84,7 +84,7 @@ class JamieAPIClient:
 
     @logfire.instrument("jamie_api_golden_signals")
     async def check_golden_signals(self, service: str, namespace: str = "default") -> Dict[str, Any]:
-        """Verifica os Golden Signals de um serviço"""
+        """Check Golden Signals for a service"""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -106,7 +106,7 @@ class JamieAPIClient:
     async def get_pod_logs(
         self, pod_name: str, namespace: str = "default", container: Optional[str] = None, lines: int = 100
     ) -> Dict[str, Any]:
-        """Obtém logs de um pod do Kubernetes"""
+        """Get logs from a Kubernetes pod"""
         try:
             async with aiohttp.ClientSession() as session:
                 payload = {"pod_name": pod_name, "namespace": namespace, "lines": lines}
@@ -128,7 +128,7 @@ class JamieAPIClient:
 
     @logfire.instrument("jamie_api_analyze_logs")
     async def analyze_logs(self, logs: str, context: Optional[str] = None) -> Dict[str, Any]:
-        """Analisa logs com AI"""
+        """Analyze logs with AI"""
         try:
             async with aiohttp.ClientSession() as session:
                 payload = {"logs": logs}
@@ -150,7 +150,7 @@ class JamieAPIClient:
 
     @logfire.instrument("jamie_api_health")
     async def health_check(self) -> Dict[str, Any]:
-        """Verifica o status de saúde do Jamie"""
+        """Check Jamie's health status"""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{self.base_url}/health", timeout=aiohttp.ClientTimeout(total=5)) as response:
@@ -172,39 +172,39 @@ class JamieMCPServer:
         self._setup_handlers()
 
     def _setup_handlers(self):
-        """Configura os handlers do servidor MCP"""
+        """Setup MCP server handlers"""
 
         @self.server.list_tools()
         async def handle_list_tools():
-            """Lista as ferramentas disponíveis"""
+            """List available tools"""
             return [
                 Tool(
                     name="chat",
                     description=(
-                        "Conversa com Jamie, o assistente de SRE. Jamie pode responder perguntas sobre "
-                        "infraestrutura, monitoramento, Kubernetes, etc."
+                        "Chat with Jamie, the SRE assistant. Jamie can answer questions about "
+                        "infrastructure, monitoring, Kubernetes, etc."
                     ),
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "message": {"type": "string", "description": "Mensagem ou pergunta para o Jamie"}
+                            "message": {"type": "string", "description": "Message or question for Jamie"}
                         },
                         "required": ["message"],
                     },
                 ),
                 Tool(
                     name="query_prometheus",
-                    description="Executa query PromQL no Prometheus para obter métricas de infraestrutura",
+                    description="Execute PromQL query in Prometheus to get infrastructure metrics",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "Query PromQL (ex: 'up{job=\"homepage\"}')",
+                                "description": "PromQL query (e.g.: 'up{job=\"homepage\"}')",
                             },
                             "time": {
                                 "type": "string",
-                                "description": "Timestamp opcional para query instantânea (formato RFC3339)",
+                                "description": "Optional timestamp for instant query (RFC3339 format)",
                             },
                         },
                         "required": ["query"],
@@ -212,14 +212,14 @@ class JamieMCPServer:
                 ),
                 Tool(
                     name="check_golden_signals",
-                    description="Verifica os Golden Signals (latency, traffic, errors, saturation) de um serviço",
+                    description="Check the Golden Signals (latency, traffic, errors, saturation) for a service",
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "service": {"type": "string", "description": "Nome do serviço para verificar"},
+                            "service": {"type": "string", "description": "Service name to check"},
                             "namespace": {
                                 "type": "string",
-                                "description": "Namespace do Kubernetes (padrão: 'default')",
+                                "description": "Kubernetes namespace (default: 'default')",
                                 "default": "default",
                             },
                         },
@@ -228,23 +228,23 @@ class JamieMCPServer:
                 ),
                 Tool(
                     name="get_pod_logs",
-                    description="Obtém logs de um pod do Kubernetes",
+                    description="Get logs from a Kubernetes pod",
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "pod_name": {"type": "string", "description": "Nome do pod"},
+                            "pod_name": {"type": "string", "description": "Pod name"},
                             "namespace": {
                                 "type": "string",
-                                "description": "Namespace do Kubernetes (padrão: 'default')",
+                                "description": "Kubernetes namespace (default: 'default')",
                                 "default": "default",
                             },
                             "container": {
                                 "type": "string",
-                                "description": "Nome do container (opcional, usa o primeiro se não especificado)",
+                                "description": "Container name (optional, uses first if not specified)",
                             },
                             "lines": {
                                 "type": "integer",
-                                "description": "Número de linhas de log para retornar (padrão: 100)",
+                                "description": "Number of log lines to return (default: 100)",
                                 "default": 100,
                             },
                         },
@@ -253,14 +253,14 @@ class JamieMCPServer:
                 ),
                 Tool(
                     name="analyze_logs",
-                    description="Analisa logs com AI para identificar erros, padrões, e problemas",
+                    description="Analyze logs with AI to identify errors, patterns, and issues",
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "logs": {"type": "string", "description": "Logs para analisar (texto ou JSON)"},
+                            "logs": {"type": "string", "description": "Logs to analyze (text or JSON)"},
                             "context": {
                                 "type": "string",
-                                "description": "Contexto adicional para a análise (opcional)",
+                                "description": "Additional context for analysis (optional)",
                             },
                         },
                         "required": ["logs"],
@@ -268,20 +268,20 @@ class JamieMCPServer:
                 ),
                 Tool(
                     name="health_check",
-                    description="Verifica o status de saúde do Jamie e seus serviços",
+                    description="Check Jamie's health status and its services",
                     inputSchema={"type": "object", "properties": {}},
                 ),
             ]
 
         @self.server.call_tool()
         async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> CallToolResult:
-            """Executa uma ferramenta"""
+            """Execute a tool"""
 
             if name == "chat":
                 message = arguments.get("message", "")
 
                 if not message:
-                    return CallToolResult(content=[TextContent(type="text", text="❌ Erro: Mensagem não fornecida")])
+                    return CallToolResult(content=[TextContent(type="text", text="❌ Error: Message not provided")])
 
                 result = await self.api_client.chat(message)
 
@@ -293,7 +293,7 @@ class JamieMCPServer:
                         content=[
                             TextContent(
                                 type="text",
-                                text=f"❌ Erro ao conversar com Jamie: {result.get('error', 'Erro desconhecido')}",
+                                text=f"❌ Error chatting with Jamie: {result.get('error', 'Unknown error')}",
                             )
                         ]
                     )
@@ -304,7 +304,7 @@ class JamieMCPServer:
 
                 if not query:
                     return CallToolResult(
-                        content=[TextContent(type="text", text="❌ Erro: Query PromQL não fornecida")]
+                        content=[TextContent(type="text", text="❌ Error: PromQL query not provided")]
                     )
 
                 result = await self.api_client.query_prometheus(query, time)
@@ -321,7 +321,7 @@ class JamieMCPServer:
                         content=[
                             TextContent(
                                 type="text",
-                                text=f"❌ Erro ao consultar Prometheus: {result.get('error', 'Erro desconhecido')}",
+                                text=f"❌ Error querying Prometheus: {result.get('error', 'Unknown error')}",
                             )
                         ]
                     )
@@ -332,7 +332,7 @@ class JamieMCPServer:
 
                 if not service:
                     return CallToolResult(
-                        content=[TextContent(type="text", text="❌ Erro: Nome do serviço não fornecido")]
+                        content=[TextContent(type="text", text="❌ Error: Service name not provided")]
                     )
 
                 result = await self.api_client.check_golden_signals(service, namespace)
@@ -351,7 +351,7 @@ class JamieMCPServer:
                         content=[
                             TextContent(
                                 type="text",
-                                text=f"❌ Erro ao verificar golden signals: {result.get('error', 'Erro desconhecido')}",
+                                text=f"❌ Error checking golden signals: {result.get('error', 'Unknown error')}",
                             )
                         ]
                     )
@@ -363,13 +363,13 @@ class JamieMCPServer:
                 lines = arguments.get("lines", 100)
 
                 if not pod_name:
-                    return CallToolResult(content=[TextContent(type="text", text="❌ Erro: Nome do pod não fornecido")])
+                    return CallToolResult(content=[TextContent(type="text", text="❌ Error: Pod name not provided")])
 
                 result = await self.api_client.get_pod_logs(pod_name, namespace, container, lines)
 
                 if result["success"]:
                     logs = result.get("logs", [])
-                    text = f"📝 **Logs do Pod: {pod_name}**\n"
+                    text = f"📝 **Pod Logs: {pod_name}**\n"
                     text += f"Namespace: `{namespace}`\n"
                     if container:
                         text += f"Container: `{container}`\n"
@@ -387,7 +387,7 @@ class JamieMCPServer:
                     return CallToolResult(
                         content=[
                             TextContent(
-                                type="text", text=f"❌ Erro ao obter logs: {result.get('error', 'Erro desconhecido')}"
+                                type="text", text=f"❌ Error getting logs: {result.get('error', 'Unknown error')}"
                             )
                         ]
                     )
@@ -397,13 +397,13 @@ class JamieMCPServer:
                 context = arguments.get("context")
 
                 if not logs:
-                    return CallToolResult(content=[TextContent(type="text", text="❌ Erro: Logs não fornecidos")])
+                    return CallToolResult(content=[TextContent(type="text", text="❌ Error: Logs not provided")])
 
                 result = await self.api_client.analyze_logs(logs, context)
 
                 if result["success"]:
                     analysis = result.get("analysis", "")
-                    text = f"🔍 **Análise de Logs**\n\n{analysis}"
+                    text = f"🔍 **Log Analysis**\n\n{analysis}"
 
                     return CallToolResult(content=[TextContent(type="text", text=text)])
                 else:
@@ -411,7 +411,7 @@ class JamieMCPServer:
                         content=[
                             TextContent(
                                 type="text",
-                                text=f"❌ Erro ao analisar logs: {result.get('error', 'Erro desconhecido')}",
+                                text=f"❌ Error analyzing logs: {result.get('error', 'Unknown error')}",
                             )
                         ]
                     )
@@ -433,16 +433,16 @@ class JamieMCPServer:
                         content=[
                             TextContent(
                                 type="text",
-                                text=f"❌ Jamie não está disponível: {result.get('error', 'Erro desconhecido')}",
+                                text=f"❌ Jamie is not available: {result.get('error', 'Unknown error')}",
                             )
                         ]
                     )
 
             else:
-                return CallToolResult(content=[TextContent(type="text", text=f"❌ Ferramenta desconhecida: {name}")])
+                return CallToolResult(content=[TextContent(type="text", text=f"❌ Unknown tool: {name}")])
 
     async def run(self):
-        """Executa o servidor MCP"""
+        """Run the MCP server"""
         async with stdio_server() as (read_stream, write_stream):
             await self.server.run(
                 read_stream,
@@ -459,7 +459,7 @@ class JamieMCPServer:
 
 
 async def main():
-    """Função principal"""
+    """Main function"""
     logger.info("🚀 Starting Jamie MCP Server...")
     server = JamieMCPServer()
     await server.run()
