@@ -8,7 +8,13 @@ metadata:
     - finalizers.fluxcd.io
 spec:
   interval: 5m
-  timeout: 10m
+  timeout: 30m
+  install:
+    remediation:
+      retries: 5
+  upgrade:
+    remediation:
+      retries: 5
   chart:
     spec:
       chart: sealed-secrets
@@ -37,15 +43,11 @@ spec:
       type: RollingUpdate
       rollingUpdate:
         maxUnavailable: 0
-    # Add persistence for the private key
+    # Add persistence for the private key (uses default storage class)
     persistence:
-      enabled: true
-      storageClass: ""
-      accessMode: ReadWriteOnce
-      size: 1Gi
+      enabled: false  # Disabled for initial install - can be enabled later
     tolerations: []
     nodeSelector: {}
-    # Prevent accidental deletion
+    # Prevent accidental deletion (disabled during initial install)
     podDisruptionBudget:
-      enabled: true
-      minAvailable: 1
+      enabled: false

@@ -15,8 +15,8 @@ from typing import Optional, Dict, Any
 from prometheus_client import Counter, Histogram, Gauge, generate_latest
 from fastapi.responses import Response
 
-from agent.core import AgentBruno
-from memory.manager import MemoryManager
+from .agent.core import AgentBruno
+from .memory.manager import MemoryManager
 
 # Configure logging
 logging.basicConfig(

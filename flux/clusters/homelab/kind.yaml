@@ -17,52 +17,84 @@ nodes:
 - role: worker
   image: kindest/node:v1.34.0
   labels:
-    role: homepage
+    role: ai
+  extraPortMappings:
+  - containerPort: 30120 # jamie
+    hostPort: 30120
+    protocol: TCP
+  - containerPort: 30121 # bruno
+    hostPort: 30121
+    protocol: TCP
+  - containerPort: 30121
+    hostPort: 30121
+    protocol: TCP
+  - containerPort: 30122
+    hostPort: 30122
+    protocol: TCP
+  - containerPort: 30123
+    hostPort: 30123
+    protocol: TCP
+  - containerPort: 30124
+    hostPort: 30124
+    protocol: TCP
 - role: worker
   image: kindest/node:v1.34.0
   labels:
-    role: worker
+    role: serverless
   extraPortMappings:
-  - containerPort: 30000 # knative-lambda-mcp
-    hostPort: 31000
+  - containerPort: 30130
+    hostPort: 30130
+    protocol: TCP
+  - containerPort: 30131
+    hostPort: 30131
+    protocol: TCP
+  - containerPort: 30132
+    hostPort: 30132
     protocol: TCP
 - role: worker
   image: kindest/node:v1.34.0
   labels:
     role: observability
-  extraPortMappings: []
+  extraPortMappings:
+  - containerPort: 31040 # grafana
+    hostPort: 30040
+    protocol: TCP
+  - containerPort: 30041 # prometheus
+    hostPort: 30041
+    protocol: TCP
+  - containerPort: 30042 # loki
+    hostPort: 30042
+    protocol: TCP
+  - containerPort: 30043 # tempo
+    hostPort: 30043
+    protocol: TCP
 - role: worker
   image: kindest/node:v1.34.0
   labels:
-    role: mcp-servers
+    role: observability
   extraPortMappings:
-  - containerPort: 30080 # grafana
-    hostPort: 31080
+  - containerPort: 31050 # grafana
+    hostPort: 30050
     protocol: TCP
-  - containerPort: 30090 # prometheus
-    hostPort: 31090
+  - containerPort: 30051 # prometheus
+    hostPort: 30051
     protocol: TCP
-  - containerPort: 3100 # loki
-    hostPort: 31100
+  - containerPort: 30052 # loki
+    hostPort: 30052
     protocol: TCP
-  - containerPort: 3200 # tempo
-    hostPort: 31110
+  - containerPort: 30053 # tempo
+    hostPort: 30053
     protocol: TCP
-  - containerPort: 30120 # jamie
-    hostPort: 31120
-    protocol: TCP
-  - containerPort: 30121 # agent-sre
-    hostPort: 31121
-    protocol: TCP
-  - containerPort: 30130 # flux
-    hostPort: 31130
-    protocol: TCP
-  - containerPort: 30140 # prometheus-mcp (optional NodePort)
-    hostPort: 31140
-    protocol: TCP
-  - containerPort: 30150 # extra
-    hostPort: 31150
-    protocol: TCP
-  - containerPort: 30160 # extra
-    hostPort: 31160
-    protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab
+  namespace: kube-system
+spec:
+  type: NodePort
+  port: 30000
+  nodePort: 30000
+  protocol: TCP
+  selector:
+    app: homelab

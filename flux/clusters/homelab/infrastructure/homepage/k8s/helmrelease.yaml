@@ -25,3 +25,11 @@ spec:
       enabled: true  # Enable Ollama with external service
     frontend:
       apiUrl: "/api/v1"
+    # 🤖 Jamie Configuration (AI-powered SRE assistant)
+    jamie:
+      enabled: true
+      url: "http://jamie-slack-bot-service.jamie.svc.cluster.local:8080"
+    # 🤖 Agent SRE Configuration (AI-powered SRE assistant)
+    agentSRE:
+      enabled: true
+      url: "http://agent-sre-service.agent-sre.svc.cluster.local:8080"

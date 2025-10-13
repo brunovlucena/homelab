@@ -17,9 +17,11 @@ spec:
         app: agent-bruno
         version: v0.1.0
     spec:
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: agent-bruno
-        image: agent-bruno:latest
+        image: ghcr.io/brunovlucena/agent-bruno:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

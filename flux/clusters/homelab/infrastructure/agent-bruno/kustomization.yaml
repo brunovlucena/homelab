@@ -7,7 +7,6 @@ metadata:
 namespace: bruno
 
 resources:
-  - namespace.yaml
   - k8s/deployment.yaml
   - k8s/servicemonitor.yaml
 

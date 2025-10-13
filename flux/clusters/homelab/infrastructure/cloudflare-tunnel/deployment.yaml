@@ -19,7 +19,7 @@ spec:
         fsGroup: 1001
       containers:
       - name: cloudflared
-        image: cloudflare/cloudflared:2025.9.1
+        image: cloudflare/cloudflared:latest
         args:
         - tunnel
         - --no-autoupdate

@@ -1,0 +1,22 @@
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
+metadata:
+  name: bitnami-mongodb
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: oci://registry-1.docker.io/bitnamicharts/mongodb
+  ref:
+    tag: 16.5.45
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
+metadata:
+  name: bitnami-redis
+  namespace: flux-system
+spec:
+  interval: 12h
+  url: oci://registry-1.docker.io/bitnamicharts/redis
+  ref:
+    tag: 20.13.4
+

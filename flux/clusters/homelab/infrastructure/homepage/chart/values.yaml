@@ -44,6 +44,11 @@ jamie:
   enabled: true
   url: "http://jamie-slack-bot-service.jamie.svc.cluster.local:8080"
 
+# 🤖 Agent SRE Configuration (AI-powered SRE assistant)
+agentSRE:
+  enabled: true
+  url: "http://agent-sre-service.agent-sre.svc.cluster.local:8080"
+
 # Ollama Configuration
 ollama:
   enabled: true

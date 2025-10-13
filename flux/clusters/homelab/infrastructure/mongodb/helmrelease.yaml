@@ -9,7 +9,7 @@ spec:
   chart:
     spec:
       chart: mongodb
-      version: 16.3.1  # Latest stable version
+      version: "16.5.45"
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -27,7 +27,7 @@ spec:
     
     persistence:
       enabled: true
-      storageClass: local-path
+      storageClass: standard
       size: 20Gi
     
     resources:
