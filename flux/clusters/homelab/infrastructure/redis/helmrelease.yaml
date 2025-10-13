@@ -11,8 +11,8 @@ spec:
       chart: redis
       version: "20.13.4"
       sourceRef:
-        kind: OCIRepository
-        name: bitnami-redis
+        kind: HelmRepository
+        name: bitnami
         namespace: flux-system
   values:
     # 🔴 Redis Configuration
