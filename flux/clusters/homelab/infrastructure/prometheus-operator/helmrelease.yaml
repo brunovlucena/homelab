@@ -58,6 +58,11 @@ spec:
             targetPort: 30090
             nodePort: 30090
     grafana:
+      # Admin credentials - using existing secret created by create-secrets.sh
+      admin:
+        existingSecret: prometheus-secrets
+        userKey: admin-username
+        passwordKey: admin-password
       initChownData:
         enabled: false
       # livenessProbe:
