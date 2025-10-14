@@ -81,11 +81,11 @@ AllowCredentials: true
 
 **Sealed Secrets:**
 ```yaml
-# sealed-secrets/bruno-site-db-secret.yaml
+# sealed-secrets/bruno-site-secret.yaml
 apiVersion: bitnami.com/v1alpha1
 kind: SealedSecret
 metadata:
-  name: bruno-site-db-secret
+  name: bruno-site-secret
   namespace: homepage
 spec:
   encryptedData:

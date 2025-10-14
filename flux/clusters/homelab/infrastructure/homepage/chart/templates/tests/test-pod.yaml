@@ -36,6 +36,6 @@ spec:
     - name: PGPASSWORD
       valueFrom:
         secretKeyRef:
-          name: bruno-site-db-secret
+          name: bruno-site-secret
           key: password
   restartPolicy: Never
