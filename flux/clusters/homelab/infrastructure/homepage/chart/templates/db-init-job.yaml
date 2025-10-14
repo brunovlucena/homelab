@@ -32,7 +32,7 @@ spec:
             - -c
             - |
               echo "🗄️ Waiting for PostgreSQL to be ready..."
-              until pg_isready -h {{ include "bruno-site.fullname" . }}-postgres -p {{ .Values.database.port }} -U {{ .Values.database.user }}; do
+              until pg_isready -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }}; do
                 echo "⏳ PostgreSQL is not ready yet. Waiting..."
                 sleep 10
               done
@@ -40,7 +40,7 @@ spec:
               
               # Check if database exists, create if not
               echo "🔍 Checking if database exists..."
-              psql -h {{ include "bruno-site.fullname" . }}-postgres -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d postgres -c "SELECT 1 FROM pg_database WHERE datname='{{ .Values.database.name }}';" | grep -q 1 || psql -h {{ include "bruno-site.fullname" . }}-postgres -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d postgres -c "CREATE DATABASE {{ .Values.database.name }};"
+              psql -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d postgres -c "SELECT 1 FROM pg_database WHERE datname='{{ .Values.database.name }}';" | grep -q 1 || psql -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d postgres -c "CREATE DATABASE {{ .Values.database.name }};"
               
               # Calculate migration checksum
               MIGRATION_CHECKSUM=$(sha256sum /migrations/001_complete_schema.sql | cut -d' ' -f1)
@@ -48,15 +48,15 @@ spec:
               
               # Check if migration was already applied with same checksum
               echo "🔍 Checking if migration $MIGRATION_VERSION was already applied..."
-              if psql -h {{ include "bruno-site.fullname" . }}-postgres -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -t -c "SELECT migration_applied('$MIGRATION_VERSION', '$MIGRATION_CHECKSUM');" | grep -q t; then
+              if psql -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -t -c "SELECT migration_applied('$MIGRATION_VERSION', '$MIGRATION_CHECKSUM');" | grep -q t; then
                 echo "✅ Migration $MIGRATION_VERSION already applied with same checksum. Skipping."
               else
                 echo "🔄 Running migration $MIGRATION_VERSION with checksum $MIGRATION_CHECKSUM..."
-                psql -h {{ include "bruno-site.fullname" . }}-postgres -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -f /migrations/001_complete_schema.sql
+                psql -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -f /migrations/001_complete_schema.sql
                 
                 # Mark migration as applied
                 echo "📝 Marking migration as applied..."
-                psql -h {{ include "bruno-site.fullname" . }}-postgres -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -c "SELECT mark_migration_applied('$MIGRATION_VERSION', '$MIGRATION_CHECKSUM', 'Complete database schema and initial data for Bruno site system');"
+                psql -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -c "SELECT mark_migration_applied('$MIGRATION_VERSION', '$MIGRATION_CHECKSUM', 'Complete database schema and initial data for Bruno site system');"
                 
                 echo "✅ Migration $MIGRATION_VERSION completed successfully!"
               fi
