@@ -37,5 +37,5 @@ spec:
       valueFrom:
         secretKeyRef:
           name: bruno-site-secret
-          key: password
+          key: POSTGRES_PASSWORD
   restartPolicy: Never
