@@ -116,7 +116,7 @@ cloudflare:
 database:
   enabled: true
   type: postgresql
-  host: homepage-bruno-site-postgres
+  host: postgres-postgresql.postgres.svc.cluster.local
   port: 5432
   name: bruno_site
   user: postgres
@@ -143,9 +143,9 @@ postgres:
 # Redis configuration
 redis:
   enabled: true
-  host: homepage-bruno-site-redis
+  host: redis-master.redis.svc.cluster.local
   port: 6379
-  password: "enabled"  # Set to "enabled" to use the secret
+  password: ""  # No password for internal cluster service
   existingSecret: "bruno-site-secret"  # Unified secret for all credentials
   resources:
     limits:

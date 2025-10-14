@@ -27,6 +27,8 @@ spec:
         - info
         - --metrics
         - 0.0.0.0:2000
+        - --protocol
+        - http2
         - --retries
         - "5"
         - --heartbeat-count
