@@ -9,11 +9,12 @@ spec:
   chart:
     spec:
       chart: mongodb
-      version: "16.5.45"
+      version: ">=16.5.45"
       sourceRef:
         kind: HelmRepository
         name: bitnami
         namespace: flux-system
+      interval: 5m
   values:
     # 🍃 MongoDB Configuration
     architecture: standalone
@@ -51,26 +52,6 @@ spec:
         limits:
           cpu: 100m
           memory: 128Mi
-    
-    # 🔧 MongoDB Configuration
-    configuration: |-
-      # MongoDB configuration file
-      
-      # Storage engine
-      storage:
-        dbPath: /bitnami/mongodb/data/db
-        journal:
-          enabled: true
-      
-      # Network interfaces
-      net:
-        port: 27017
-        bindIp: 0.0.0.0
-      
-      # Operation profiling
-      operationProfiling:
-        mode: slowOp
-        slowOpThresholdMs: 100
     
     # 📡 Service Configuration
     service:
