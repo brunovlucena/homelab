@@ -49,18 +49,21 @@ spec:
               
               # Check if migration was already applied with same checksum
               echo "🔍 Checking if migration $MIGRATION_VERSION was already applied..."
-              if psql -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -t -c "SELECT migration_applied('$MIGRATION_VERSION', '$MIGRATION_CHECKSUM');" | grep -q t; then
-                echo "✅ Migration $MIGRATION_VERSION already applied with same checksum. Skipping."
-              else
-                echo "🔄 Running migration $MIGRATION_VERSION with checksum $MIGRATION_CHECKSUM..."
-                psql -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -f /migrations/001_complete_schema.sql
-                
-                # Mark migration as applied
-                echo "📝 Marking migration as applied..."
-                psql -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -c "SELECT mark_migration_applied('$MIGRATION_VERSION', '$MIGRATION_CHECKSUM', 'Complete database schema and initial data for Bruno site system');"
-                
-                echo "✅ Migration $MIGRATION_VERSION completed successfully!"
+              # Check directly on the table instead of using a function that may not exist yet
+              MIGRATION_EXISTS=$(psql -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'schema_migrations';" 2>/dev/null | xargs)
+              
+              if [ "$MIGRATION_EXISTS" = "1" ]; then
+                ALREADY_APPLIED=$(psql -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -t -c "SELECT COUNT(*) FROM schema_migrations WHERE version = '$MIGRATION_VERSION' AND checksum = '$MIGRATION_CHECKSUM';" | xargs)
+                if [ "$ALREADY_APPLIED" = "1" ]; then
+                  echo "✅ Migration $MIGRATION_VERSION already applied with same checksum. Skipping."
+                  exit 0
+                fi
               fi
+              
+              echo "🔄 Running migration $MIGRATION_VERSION with checksum $MIGRATION_CHECKSUM..."
+              psql -h {{ .Values.database.host }} -p {{ .Values.database.port }} -U {{ .Values.database.user }} -d {{ .Values.database.name }} -f /migrations/001_complete_schema.sql
+              
+              echo "✅ Migration $MIGRATION_VERSION completed successfully!"
               
               echo "✅ Database migration completed successfully!"
           env:
