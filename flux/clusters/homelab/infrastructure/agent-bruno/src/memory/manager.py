@@ -35,10 +35,20 @@ class MemoryManager:
         self.mongo_store = MongoStore(mongodb_url, db_name=mongodb_db)
 
     async def connect(self):
-        """Connect to both stores"""
+        """Connect to both stores (non-blocking if unavailable)"""
         await self.redis_store.connect()
         await self.mongo_store.connect()
-        logger.info("✅ Memory manager connected")
+        
+        # Check connection status
+        redis_ok = self.redis_store._connected
+        mongo_ok = self.mongo_store._connected
+        
+        if redis_ok and mongo_ok:
+            logger.info("✅ Memory manager connected to both stores")
+        elif redis_ok or mongo_ok:
+            logger.warning(f"⚠️  Memory manager partially connected: Redis={redis_ok}, MongoDB={mongo_ok}")
+        else:
+            logger.warning("⚠️  Memory manager could not connect to any stores - running in degraded mode")
 
     async def disconnect(self):
         """Disconnect from both stores"""
@@ -62,10 +72,13 @@ class MemoryManager:
             response: Agent response
             context: Additional context
         """
-        # Save to both stores in parallel
-        await self.redis_store.save_message(ip, message, response, context)
-        await self.mongo_store.save_conversation(ip, message, response, context)
-        logger.debug(f"💾 Saved conversation for IP: {ip}")
+        # Save to both stores in parallel (graceful degradation if one fails)
+        try:
+            await self.redis_store.save_message(ip, message, response, context)
+            await self.mongo_store.save_conversation(ip, message, response, context)
+            logger.debug(f"💾 Saved conversation for IP: {ip}")
+        except Exception as e:
+            logger.warning(f"⚠️  Error saving conversation: {e}")
 
     async def get_recent_context(
         self,

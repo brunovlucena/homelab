@@ -28,9 +28,10 @@ class MongoStore:
         self.client: Optional[AsyncIOMotorClient] = None
         self.db: Optional[AsyncIOMotorDatabase] = None
         self.collection_name = "conversations"
+        self._connected = False
 
     async def connect(self):
-        """Connect to MongoDB"""
+        """Connect to MongoDB (non-blocking if unavailable)"""
         try:
             self.client = AsyncIOMotorClient(self.mongodb_url)
             self.db = self.client[self.db_name]
@@ -41,10 +42,13 @@ class MongoStore:
             # Test connection
             await self.client.admin.command('ping')
             
+            self._connected = True
             logger.info(f"✅ Connected to MongoDB: {self.db_name}")
         except Exception as e:
-            logger.error(f"❌ Failed to connect to MongoDB: {e}")
-            raise
+            self._connected = False
+            logger.warning(f"⚠️  MongoDB unavailable: {e} - service will continue with degraded functionality")
+            self.client = None
+            self.db = None
 
     async def _create_indexes(self):
         """Create database indexes"""
@@ -83,8 +87,9 @@ class MongoStore:
             response: Agent response
             context: Additional context
         """
-        if not self.db:
-            raise RuntimeError("MongoDB not connected")
+        if not self.db or not self._connected:
+            logger.debug(f"⚠️  MongoDB unavailable, skipping save for IP: {ip}")
+            return
 
         collection = self.db[self.collection_name]
 
@@ -101,8 +106,8 @@ class MongoStore:
             await collection.insert_one(document)
             logger.debug(f"💾 Saved conversation for IP: {ip}")
         except Exception as e:
-            logger.error(f"❌ Failed to save conversation: {e}")
-            raise
+            logger.warning(f"⚠️  MongoDB operation failed: {e}")
+            self._connected = False
 
     async def get_conversation_history(
         self,
@@ -121,8 +126,9 @@ class MongoStore:
         Returns:
             List of conversation dictionaries
         """
-        if not self.db:
-            raise RuntimeError("MongoDB not connected")
+        if not self.db or not self._connected:
+            logger.debug(f"⚠️  MongoDB unavailable, returning empty history for IP: {ip}")
+            return []
 
         collection = self.db[self.collection_name]
 
@@ -139,7 +145,8 @@ class MongoStore:
             
             return conversations
         except Exception as e:
-            logger.error(f"❌ Failed to get conversation history: {e}")
+            logger.warning(f"⚠️  MongoDB operation failed: {e}")
+            self._connected = False
             return []
 
     async def delete_conversation_history(self, ip: str):
@@ -149,8 +156,9 @@ class MongoStore:
         Args:
             ip: User IP address
         """
-        if not self.db:
-            raise RuntimeError("MongoDB not connected")
+        if not self.db or not self._connected:
+            logger.debug(f"⚠️  MongoDB unavailable, cannot delete history for IP: {ip}")
+            return
 
         collection = self.db[self.collection_name]
 
@@ -158,8 +166,8 @@ class MongoStore:
             result = await collection.delete_many({"ip": ip})
             logger.info(f"🗑️ Deleted {result.deleted_count} conversations for IP: {ip}")
         except Exception as e:
-            logger.error(f"❌ Failed to delete conversation history: {e}")
-            raise
+            logger.warning(f"⚠️  MongoDB operation failed: {e}")
+            self._connected = False
 
     async def get_total_conversations(self, ip: Optional[str] = None) -> int:
         """
@@ -171,8 +179,9 @@ class MongoStore:
         Returns:
             Number of conversations
         """
-        if not self.db:
-            raise RuntimeError("MongoDB not connected")
+        if not self.db or not self._connected:
+            logger.debug("⚠️  MongoDB unavailable, returning 0 conversations")
+            return 0
 
         collection = self.db[self.collection_name]
 
@@ -181,7 +190,8 @@ class MongoStore:
             count = await collection.count_documents(query)
             return count
         except Exception as e:
-            logger.error(f"❌ Failed to get total conversations: {e}")
+            logger.warning(f"⚠️  MongoDB operation failed: {e}")
+            self._connected = False
             return 0
 
     async def get_unique_ips(self) -> List[str]:
@@ -191,8 +201,9 @@ class MongoStore:
         Returns:
             List of IP addresses
         """
-        if not self.db:
-            raise RuntimeError("MongoDB not connected")
+        if not self.db or not self._connected:
+            logger.debug("⚠️  MongoDB unavailable, returning empty IP list")
+            return []
 
         collection = self.db[self.collection_name]
 
@@ -200,22 +211,28 @@ class MongoStore:
             ips = await collection.distinct("ip")
             return ips
         except Exception as e:
-            logger.error(f"❌ Failed to get unique IPs: {e}")
+            logger.warning(f"⚠️  MongoDB operation failed: {e}")
+            self._connected = False
             return []
 
     async def health_check(self) -> bool:
         """
-        Check MongoDB health
+        Check MongoDB health (and attempt reconnection if needed)
         
         Returns:
             True if healthy, False otherwise
         """
         try:
             if not self.client:
-                return False
+                # Attempt reconnection
+                await self.connect()
+                return self._connected
+            
             await self.client.admin.command('ping')
+            self._connected = True
             return True
         except Exception as e:
-            logger.error(f"❌ MongoDB health check failed: {e}")
+            logger.debug(f"⚠️  MongoDB health check failed: {e}")
+            self._connected = False
             return False
 

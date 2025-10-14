@@ -28,9 +28,10 @@ class RedisStore:
         self.ttl = ttl
         self.client: Optional[redis.Redis] = None
         self.key_prefix = "bruno:session"
+        self._connected = False
 
     async def connect(self):
-        """Connect to Redis"""
+        """Connect to Redis (non-blocking if unavailable)"""
         try:
             self.client = await redis.from_url(
                 self.redis_url,
@@ -38,10 +39,12 @@ class RedisStore:
                 decode_responses=True
             )
             await self.client.ping()
+            self._connected = True
             logger.info("✅ Connected to Redis")
         except Exception as e:
-            logger.error(f"❌ Failed to connect to Redis: {e}")
-            raise
+            self._connected = False
+            logger.warning(f"⚠️  Redis unavailable: {e} - service will continue with degraded functionality")
+            self.client = None
 
     async def disconnect(self):
         """Disconnect from Redis"""
@@ -69,8 +72,9 @@ class RedisStore:
             response: Agent response
             context: Additional context
         """
-        if not self.client:
-            raise RuntimeError("Redis client not connected")
+        if not self.client or not self._connected:
+            logger.debug(f"⚠️  Redis unavailable, skipping save for IP: {ip}")
+            return
 
         key = self._make_key(ip)
 
@@ -90,8 +94,8 @@ class RedisStore:
             
             logger.debug(f"💾 Saved message for IP: {ip}")
         except Exception as e:
-            logger.error(f"❌ Failed to save message: {e}")
-            raise
+            logger.warning(f"⚠️  Redis operation failed: {e}")
+            self._connected = False
 
     async def get_session(self, ip: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
@@ -104,8 +108,9 @@ class RedisStore:
         Returns:
             List of message dictionaries
         """
-        if not self.client:
-            raise RuntimeError("Redis client not connected")
+        if not self.client or not self._connected:
+            logger.debug(f"⚠️  Redis unavailable, returning empty session for IP: {ip}")
+            return []
 
         key = self._make_key(ip)
 
@@ -115,7 +120,8 @@ class RedisStore:
             
             return [json.loads(msg) for msg in messages]
         except Exception as e:
-            logger.error(f"❌ Failed to get session: {e}")
+            logger.warning(f"⚠️  Redis operation failed: {e}")
+            self._connected = False
             return []
 
     async def clear_session(self, ip: str):
@@ -125,8 +131,9 @@ class RedisStore:
         Args:
             ip: User IP address
         """
-        if not self.client:
-            raise RuntimeError("Redis client not connected")
+        if not self.client or not self._connected:
+            logger.debug(f"⚠️  Redis unavailable, cannot clear session for IP: {ip}")
+            return
 
         key = self._make_key(ip)
 
@@ -134,8 +141,8 @@ class RedisStore:
             await self.client.delete(key)
             logger.info(f"🗑️ Cleared session for IP: {ip}")
         except Exception as e:
-            logger.error(f"❌ Failed to clear session: {e}")
-            raise
+            logger.warning(f"⚠️  Redis operation failed: {e}")
+            self._connected = False
 
     async def get_active_sessions(self) -> int:
         """
@@ -144,29 +151,36 @@ class RedisStore:
         Returns:
             Number of active sessions
         """
-        if not self.client:
-            raise RuntimeError("Redis client not connected")
+        if not self.client or not self._connected:
+            logger.debug("⚠️  Redis unavailable, returning 0 active sessions")
+            return 0
 
         try:
             keys = await self.client.keys(f"{self.key_prefix}:*")
             return len(keys)
         except Exception as e:
-            logger.error(f"❌ Failed to get active sessions: {e}")
+            logger.warning(f"⚠️  Redis operation failed: {e}")
+            self._connected = False
             return 0
 
     async def health_check(self) -> bool:
         """
-        Check Redis health
+        Check Redis health (and attempt reconnection if needed)
         
         Returns:
             True if healthy, False otherwise
         """
         try:
             if not self.client:
-                return False
+                # Attempt reconnection
+                await self.connect()
+                return self._connected
+            
             await self.client.ping()
+            self._connected = True
             return True
         except Exception as e:
-            logger.error(f"❌ Redis health check failed: {e}")
+            logger.debug(f"⚠️  Redis health check failed: {e}")
+            self._connected = False
             return False
 

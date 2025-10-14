@@ -185,22 +185,23 @@ async def health():
 
 @app.get("/ready")
 async def ready():
-    """Readiness check endpoint"""
+    """Readiness check endpoint - allows service to run with degraded functionality"""
     if not memory_manager:
         raise HTTPException(status_code=503, detail="Memory manager not initialized")
     
     health = await memory_manager.health_check()
     
+    # Service is ready even if stores are unavailable (degraded mode)
+    status = "ready"
     if not health["overall"]:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Service not ready: Redis={health['redis']}, MongoDB={health['mongodb']}"
-        )
+        status = "degraded"
+        logger.warning(f"⚠️  Service running in degraded mode: Redis={health['redis']}, MongoDB={health['mongodb']}")
     
     return {
-        "status": "ready",
+        "status": status,
         "service": "agent-bruno",
-        "health": health
+        "health": health,
+        "degraded": not health["overall"]
     }
 
 

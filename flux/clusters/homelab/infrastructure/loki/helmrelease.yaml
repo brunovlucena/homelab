@@ -49,9 +49,9 @@ spec:
     backend:
       replicas: 1
     read:
-      replicas: 3
+      replicas: 2
     write:
-      replicas: 3
+      replicas: 2
     monitoring:
       selfMonitoring:
         enabled: false
