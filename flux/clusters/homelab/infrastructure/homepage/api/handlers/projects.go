@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"time"
 
@@ -32,13 +33,18 @@ func GetProjects(db *gorm.DB) gin.HandlerFunc {
 
 		// 💾 Check database availability
 		if db == nil {
+			log.Println("❌ ERROR: GetProjects - Database connection is nil")
 			metrics.RecordProjectsLoadError("database_unavailable")
 			metrics.RecordDatabaseConnectionError()
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database not available"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error":   "database not available",
+				"message": "The database connection is not initialized. Check database configuration.",
+			})
 			return
 		}
 
 		// 🔍 Fetch projects from database
+		log.Printf("📊 GetProjects - Fetching projects from database (client: %s)", c.ClientIP())
 		var projects []Project
 		if err := db.Find(&projects).Error; err != nil {
 			// 🚨 Record error metrics with detailed error type
@@ -46,16 +52,23 @@ func GetProjects(db *gorm.DB) gin.HandlerFunc {
 			if err == gorm.ErrRecordNotFound {
 				errorType = "not_found"
 			}
+			log.Printf("❌ ERROR: GetProjects - Database query failed: %v (type: %s)", err, errorType)
 			metrics.RecordProjectsLoadError(errorType)
 			metrics.RecordDatabaseError("select", "projects")
 
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":      "failed to load projects",
+				"message":    err.Error(),
+				"error_type": errorType,
+			})
 			return
 		}
 
 		// ✅ Record success metrics
+		duration := time.Since(start)
+		log.Printf("✅ SUCCESS: GetProjects - Loaded %d projects in %v (client: %s)", len(projects), duration, c.ClientIP())
 		metrics.RecordProjectsLoadSuccess()
-		metrics.ProjectsLoadDuration.Record(context.Background(), time.Since(start).Seconds())
+		metrics.ProjectsLoadDuration.Record(context.Background(), duration.Seconds())
 
 		c.JSON(http.StatusOK, projects)
 	}

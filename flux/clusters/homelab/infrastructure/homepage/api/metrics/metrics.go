@@ -17,32 +17,57 @@ var (
 	meter metric.Meter
 
 	// 🎯 HTTP Request metrics
-	HTTPRequestsTotal    metric.Int64Counter
-	HTTPRequestDuration  metric.Float64Histogram
+	HTTPRequestsTotal   metric.Int64Counter
+	HTTPRequestDuration metric.Float64Histogram
+	HTTPActiveRequests  metric.Int64UpDownCounter // Track concurrent requests
+	HTTPRequestSize     metric.Int64Histogram     // Track request payload sizes
+	HTTPResponseSize    metric.Int64Histogram     // Track response payload sizes
 
 	// 📦 Projects API metrics
 	ProjectsLoadErrors   metric.Int64Counter
 	ProjectsLoadSuccess  metric.Int64Counter
 	ProjectsLoadDuration metric.Float64Histogram
+	ProjectsCount        metric.Int64Gauge // Total projects in database
 
 	// 💼 Experience API metrics
 	ExperienceLoadErrors   metric.Int64Counter
 	ExperienceLoadSuccess  metric.Int64Counter
 	ExperienceLoadDuration metric.Float64Histogram
 
+	// 🛠️ Skills API metrics
+	SkillsLoadErrors   metric.Int64Counter
+	SkillsLoadSuccess  metric.Int64Counter
+	SkillsLoadDuration metric.Float64Histogram
+
 	// 💾 Database metrics
 	DatabaseConnectionErrors metric.Int64Counter
 	DatabaseQueryErrors      metric.Int64Counter
+	DatabaseQueryDuration    metric.Float64Histogram // Track query performance
+	DatabaseActiveConns      metric.Int64Gauge       // Track active connections
 
 	// 🔴 Redis metrics
-	RedisOperationErrors metric.Int64Counter
+	RedisOperationErrors   metric.Int64Counter
+	RedisOperationDuration metric.Float64Histogram
+	RedisCacheHits         metric.Int64Counter
+	RedisCacheMisses       metric.Int64Counter
 
 	// 📦 MinIO metrics
-	MinIOOperationErrors metric.Int64Counter
+	MinIOOperationErrors   metric.Int64Counter
+	MinIOOperationDuration metric.Float64Histogram
+	MinIOUploadSize        metric.Int64Histogram
+	MinIODownloadSize      metric.Int64Histogram
 
 	// 🤖 Agent-SRE proxy metrics
 	AgentSRERequestErrors   metric.Int64Counter
 	AgentSRERequestDuration metric.Float64Histogram
+
+	// 🤖 Jamie proxy metrics
+	JamieRequestErrors   metric.Int64Counter
+	JamieRequestDuration metric.Float64Histogram
+
+	// 🤖 Agent Bruno proxy metrics
+	AgentBrunoRequestErrors   metric.Int64Counter
+	AgentBrunoRequestDuration metric.Float64Histogram
 )
 
 // InitMetrics initializes all OpenTelemetry metrics

@@ -1,6 +1,6 @@
 -- Complete database schema and initial data for Bruno site system
 -- Migration: 001_complete_schema.sql
--- Updated: 2025-10-14 - Force migration trigger
+-- Updated: 2025-10-14 - Force migration trigger!
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
