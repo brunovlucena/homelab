@@ -1,4 +1,3 @@
-{{- if and .Values.database.enabled .Values.database.migration.enabled }}
 # =============================================================================
 # 🗄️ DATABASE MIGRATION JOB (Runs on Helm Install/Upgrade)
 # =============================================================================
@@ -85,4 +84,3 @@ spec:
         - name: migrations
           configMap:
             name: {{ include "bruno-site.fullname" . }}-migrations
-{{- end }}
