@@ -39,15 +39,10 @@ api:
       cpu: 500m       # Higher CPU request
       memory: 512Mi   # Higher memory request
 
-# 🤖 Jamie Configuration (AI-powered SRE assistant)
-jamie:
+# 🤖 Bruno Agent Configuration (AI agent for bruno site)
+brunoAgent:
   enabled: true
-  url: "http://jamie-slack-bot-service.jamie.svc.cluster.local:8080"
-
-# 🤖 Agent SRE Configuration (AI-powered SRE assistant)
-agentSRE:
-  enabled: true
-  url: "http://agent-sre-service.agent-sre.svc.cluster.local:8080"
+  url: "http://agent-bruno-service.agent-bruno.svc.cluster.local:8080"
 
 # Ollama Configuration
 ollama:
@@ -81,12 +76,6 @@ frontend:
       cpu: 200m      # Higher CPU request
       memory: 256Mi  # Higher memory request
 
-ingress:
-  enabled: false
-  className: "nginx"
-  hosts:
-    - host: lucena.cloud
-
 autoscaling:
   enabled: false  # Disabled for Mac Studio - single node setup
   minReplicas: 1  # Single replica for Mac Studio
@@ -103,14 +92,10 @@ affinity: {}
 # CORS Configuration
 corsOrigin: "https://lucena.cloud"
 
-# Cloudflare Configuration
-cloudflare:
-  enabled: false  # Disabled until sealed secret is created
-  zoneId: ""  # Set via Kubernetes secret bruno-site-cloudflare-secret
-  apiToken: ""  # Set via Kubernetes secret bruno-site-cloudflare-secret
-  domain: "lucena.cloud"
-  cacheTtl: 86400  # 24 hours
-  existingSecret: "bruno-site-cloudflare-secret"  # Created by Sealed Secrets
+# OpenTelemetry Configuration
+otel:
+  exporter:
+    endpoint: "alloy.alloy.svc.cluster.local:4317"
 
 # Database configuration
 database:
@@ -122,9 +107,6 @@ database:
   user: postgres
   password: ""
   existingSecret: "bruno-site-secret"  # Unified secret for all credentials
-  migration:
-    schedule: "*/5 * * * *"  # Every 5 minutes - runs database migrations
-    enabled: true
 
 # PostgreSQL configuration
 postgres:
@@ -183,46 +165,15 @@ k6:
 
 # Monitoring Configuration
 monitoring:
-  enabled: true
-  prometheus:
-    enabled: true
-    rules:
-      enabled: true
-    servicemonitor:
-      enabled: true
-  grafana:
-    enabled: true
-    dashboard:
-      enabled: true
-  alertmanager:
-    enabled: true
-    webhook:
-      url: ""  # Set your webhook URL for notifications
-    email:
-      smtp_host: "localhost"
-      smtp_port: 587
-      from: "alerts@bruno-site.com"
-      to: "sre-team@bruno-site.com"
-    slack:
-      webhook_url: ""  # Set your Slack webhook URL
-      channel: "#bruno-site-alerts"
-      icon_emoji: ":bruno-slack:"  # Custom Bruno Slack icon
-      icon_url: "https://lucena.cloud/assets/logos/bruno-slack-logo.png"  # Direct link to PNG icon
-  
-  # Metrics configuration
   metrics:
     enabled: true
     path: /metrics
     port: 8080
     interval: 30s
     timeout: 10s
-    basicAuth:
-      enabled: false
-      username: "admin"
-      password: ""  # Set via secret
   
   # Environment and cluster labels
   environment: "production"
-  cluster: "default"
-  team: "sre"
-  application: "bruno-site"
+  cluster: "homelab"
+  team: "bruno"
+  application: "homepage"

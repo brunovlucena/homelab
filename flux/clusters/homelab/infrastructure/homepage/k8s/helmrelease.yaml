@@ -10,7 +10,7 @@ spec:
   chart:
     spec:
       chart: ./flux/clusters/homelab/infrastructure/homepage/chart
-      version: 0.1.16
+      version: 0.1.18
       sourceRef:
         kind: GitRepository
         name: homelab
@@ -29,7 +29,3 @@ spec:
     jamie:
       enabled: true
       url: "http://jamie-slack-bot-service.jamie.svc.cluster.local:8080"
-    # 🤖 Agent SRE Configuration (AI-powered SRE assistant)
-    agentSRE:
-      enabled: true
-      url: "http://agent-sre-service.agent-sre.svc.cluster.local:8080"

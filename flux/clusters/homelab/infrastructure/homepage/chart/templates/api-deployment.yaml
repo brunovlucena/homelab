@@ -106,68 +106,13 @@ spec:
               value: "8080"
             - name: CORS_ORIGIN
               value: "{{ .Values.corsOrigin }}"
-            - name: ENABLE_METRICS_AUTH
-              value: {{ .Values.monitoring.metrics.basicAuth.enabled | quote }}
-            # Cloudflare configuration (kept separate as it's optional and has its own secret)
-            {{- if .Values.cloudflare.enabled }}
-            - name: CLOUDFLARE_ENABLED
-              {{- if .Values.cloudflare.existingSecret }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.cloudflare.existingSecret }}
-                  key: enabled
-              {{- else }}
-              value: {{ .Values.cloudflare.enabled | quote }}
-              {{- end }}
-            - name: CLOUDFLARE_ZONE_ID
-              {{- if .Values.cloudflare.existingSecret }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.cloudflare.existingSecret }}
-                  key: zone-id
-              {{- else }}
-              value: {{ .Values.cloudflare.zoneId | quote }}
-              {{- end }}
-            - name: CLOUDFLARE_API_TOKEN
-              {{- if .Values.cloudflare.existingSecret }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.cloudflare.existingSecret }}
-                  key: api-token
-              {{- else }}
-              value: {{ .Values.cloudflare.apiToken | quote }}
-              {{- end }}
-            - name: CLOUDFLARE_DOMAIN
-              {{- if .Values.cloudflare.existingSecret }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.cloudflare.existingSecret }}
-                  key: domain
-              {{- else }}
-              value: {{ .Values.cloudflare.domain | quote }}
-              {{- end }}
-            - name: CLOUDFLARE_CACHE_TTL
-              {{- if .Values.cloudflare.existingSecret }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.cloudflare.existingSecret }}
-                  key: cache-ttl
-              {{- else }}
-              value: {{ .Values.cloudflare.cacheTtl | quote }}
-              {{- end }}
-            {{- end }}
-            # Agent URLs
-            {{- if .Values.agentSRE.enabled }}
-            - name: AGENT_SRE_URL
-              value: "{{ .Values.agentSRE.url }}"
-            {{- end }}
-            {{- if .Values.jamie.enabled }}
-            - name: JAMIE_URL
-              value: "{{ .Values.jamie.url }}"
+            {{- if .Values.brunoAgent.enabled }}
+            - name: BRUNO_AGENT_URL
+              value: "{{ .Values.brunoAgent.url }}"
             {{- end }}
             # OpenTelemetry → Alloy → Logfire
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "alloy.alloy.svc.cluster.local:4317"
+              value: "{{ .Values.otel.exporter.endpoint }}"
             - name: LOGFIRE_TOKEN
               valueFrom:
                 secretKeyRef:

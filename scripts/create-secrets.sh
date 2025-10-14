@@ -336,7 +336,7 @@ echo "     └─ GitHub, HuggingFace, LangSmith, Logfire (LOGFIRE_TOKEN), Pager
 echo "  6. jamie-secrets (${NAMESPACE_JAMIE} namespace)"
 echo "     └─ Slack and Logfire (LOGFIRE_TOKEN) credentials"
 echo "  7. bruno-site-secret (${NAMESPACE_BRUNO} namespace)"
-echo "     └─ PostgreSQL, Redis, MinIO, and Logfire credentials"
+echo "     └─ PostgreSQL, Redis, MinIO, Logfire, and OTEL endpoint credentials"
 echo "  8. alloy-secrets (alloy namespace)"
 echo "     └─ Logfire (LOGFIRE_TOKEN) for Alloy → Logfire forwarding"
 echo "  9. loki-minio-secret (${NAMESPACE_LOKI} namespace)"
