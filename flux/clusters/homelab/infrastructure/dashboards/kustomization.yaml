@@ -7,4 +7,4 @@ resources:
 commonLabels:
   app.kubernetes.io/part-of: grafana-dashboards
 
-namespace: monitoring
+namespace: bruno

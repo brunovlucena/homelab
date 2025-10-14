@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: bruno-site-golden-signals-dashboard
-  namespace: monitoring
+  namespace: prometheus
   labels:
     app.kubernetes.io/name: bruno-site
     app.kubernetes.io/instance: bruno-site
