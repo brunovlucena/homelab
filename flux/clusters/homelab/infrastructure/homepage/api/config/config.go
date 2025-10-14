@@ -38,8 +38,21 @@ type CloudflareConfig struct {
 
 // Load loads configuration from environment variables
 func Load() *Config {
+	// Construct DATABASE_URL programmatically from individual components
+	// Instead of using a hardcoded DATABASE_URL, we build it from parts
+	dbHost := getEnvOrDefault("POSTGRES_HOST", "localhost")
+	dbPort := getEnvOrDefault("POSTGRES_PORT", "5432")
+	dbUser := getEnvOrDefault("POSTGRES_USER", "postgres")
+	dbPassword := getEnvOrDefault("POSTGRES_PASSWORD", "")
+	dbName := getEnvOrDefault("POSTGRES_DB", "bruno_site")
+
+	databaseURL := ""
+	if dbPassword != "" {
+		databaseURL = "postgresql://" + dbUser + ":" + dbPassword + "@" + dbHost + ":" + dbPort + "/" + dbName
+	}
+
 	return &Config{
-		DatabaseURL:   os.Getenv("DATABASE_URL"),
+		DatabaseURL:   databaseURL,
 		RedisURL:      os.Getenv("REDIS_URL"),
 		CORSOrigin:    getEnvOrDefault("CORS_ORIGIN", "*"),
 		Port:          getEnvOrDefault("PORT", "8080"),

@@ -6,7 +6,7 @@ ENV ?= dev
 DOCKER_COMPOSE_FILE = docker-compose.yml
 REGISTRY ?= ghcr.io/brunovlucena/homelab
 
-.PHONY: help start stop restart build build-push logs clean status api-logs frontend-logs db-logs psql redis-cli api-shell frontend-shell frontend-dev migrate migrate-k8s test-api test-api-unit test-frontend-unit test-e2e test-load test-coverage update-deps format lint pf-api pf-redis pf-postgres tp-intercept tp-intercept-with-mounts tp-stop tp-connect tp-disconnect tp-status tp-list restart-fresh reconcile optimize-images
+.PHONY: help up down restart build-dev build-push-latest logs logs-api logs-frontend logs-postgres status-services clean psql migrate migrate-k8s redis-cli api-shell frontend-shell up-frontend-dev restart-fresh pf-api pf-redis pf-postgres tp-intercept tp-intercept-mounts tp-stop tp-connect tp-disconnect tp-status tp-list reconcile test-api-endpoints test-k6 test-k6-local test test-api-unit test-frontend-unit test-e2e test-coverage update-deps format lint cloudflare-setup cloudflare-purge cloudflare-deploy cloudflare-status optimize-images build-api run-api dev-api test-api tidy-api lint-api clean-api docker-build-api docker-run-api build-frontend dev-frontend test-frontend test-frontend-watch test-frontend-cov preview-frontend install-frontend clean-frontend docker-build-frontend build-all push-all
 
 # Default target
 help:
@@ -49,6 +49,32 @@ help:
 	@echo "  make format                - Format code"
 	@echo "  make lint                  - Lint code"
 	@echo "  make optimize-images       - Optimize images for web performance"
+	@echo ""
+	@echo "API Development Commands:"
+	@echo "  make build-api             - Build the API binary"
+	@echo "  make run-api               - Run the API server locally"
+	@echo "  make dev-api               - Run API with hot reload (requires air)"
+	@echo "  make test-api              - Run API tests"
+	@echo "  make tidy-api              - Tidy API dependencies"
+	@echo "  make lint-api              - Run API linter"
+	@echo "  make clean-api             - Clean API build artifacts"
+	@echo "  make docker-build-api      - Build API Docker image"
+	@echo "  make docker-run-api        - Run API Docker container"
+	@echo ""
+	@echo "Frontend Development Commands:"
+	@echo "  make build-frontend        - Build the frontend for production"
+	@echo "  make dev-frontend          - Run frontend in development mode (hot reload)"
+	@echo "  make test-frontend         - Run frontend tests"
+	@echo "  make test-frontend-watch   - Run frontend tests in watch mode"
+	@echo "  make test-frontend-cov     - Run frontend tests with coverage"
+	@echo "  make preview-frontend      - Preview production build locally"
+	@echo "  make install-frontend      - Install frontend dependencies"
+	@echo "  make clean-frontend        - Clean frontend build artifacts"
+	@echo "  make docker-build-frontend - Build frontend Docker image"
+	@echo ""
+	@echo "Combined Build & Push Commands:"
+	@echo "  make build-all             - Build both API and frontend Docker images"
+	@echo "  make push-all              - Push both API and frontend to registry"
 	@echo ""
 
 # Start services (development)
@@ -143,6 +169,12 @@ clean:
 psql:
 	@echo "🗄️ Connecting to PostgreSQL..."
 	@docker exec -it bruno-postgres psql -U postgres -d bruno_site
+
+# Run database migration (local development)
+migrate:
+	@echo "🗄️ Running database migration..."
+	@docker exec -i bruno-postgres psql -U postgres -d bruno_site < api/migrations/001_complete_schema.sql || true
+	@echo "✅ Migration completed"
 
 # Run database migration in Kubernetes
 migrate-k8s:
@@ -412,3 +444,149 @@ optimize-images:
 	@cd scripts && npm install
 	@cd scripts && npm run optimize-images
 	@echo "✅ Image optimization completed!"
+
+# ========================================
+# API Development Commands
+# ========================================
+
+# Build the API binary
+build-api:
+	@echo "🔨 Building API..."
+	@cd api && go build -o bin/bruno-site-api .
+	@echo "✅ Build complete: api/bin/bruno-site-api"
+
+# Run the API server locally
+run-api:
+	@echo "🚀 Starting API..."
+	@cd api && go run main.go
+
+# Run API with hot reload
+dev-api:
+	@echo "🔥 Starting API with hot reload..."
+	@which air > /dev/null || (echo "Installing air..." && go install github.com/cosmtrek/air@latest)
+	@cd api && air
+
+# Run API tests
+test-api:
+	@echo "🧪 Running API tests..."
+	@cd api && go test -v ./...
+
+# Tidy API dependencies
+tidy-api:
+	@echo "📦 Tidying API dependencies..."
+	@cd api && go mod tidy
+	@echo "✅ Dependencies updated"
+
+# Run API linter
+lint-api:
+	@echo "🔍 Running API linter..."
+	@which golangci-lint > /dev/null || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
+	@cd api && golangci-lint run
+
+# Clean API build artifacts
+clean-api:
+	@echo "🧹 Cleaning API build artifacts..."
+	@cd api && rm -rf bin/
+	@cd api && rm -rf tmp/
+	@cd api && rm -f build-errors.log
+	@echo "✅ API clean complete"
+
+# Build API Docker image
+docker-build-api:
+	@echo "🐳 Building API Docker image..."
+	@docker build -t bruno-site-api:latest -f api/Dockerfile api/
+	@echo "✅ Docker image built: bruno-site-api:latest"
+
+# Run API Docker container
+docker-run-api:
+	@echo "🐳 Running API Docker container..."
+	@docker run -p 8080:8080 \
+		-e DATABASE_URL=${DATABASE_URL} \
+		-e REDIS_URL=${REDIS_URL} \
+		-e MINIO_ENDPOINT=${MINIO_ENDPOINT} \
+		bruno-site-api:latest
+
+# ========================================
+# Frontend Development Commands
+# ========================================
+
+# Build the frontend for production
+build-frontend:
+	@echo "🏗️ Building frontend for production..."
+	@cd frontend && npm run build
+	@echo "✅ Frontend build complete: frontend/dist"
+
+# Run frontend in development mode (hot reload)
+dev-frontend:
+	@echo "🔥 Starting frontend with hot reload..."
+	@echo "💡 Access frontend at http://localhost:5173"
+	@cd frontend && npm run dev
+
+# Run frontend tests
+test-frontend:
+	@echo "🧪 Running frontend tests..."
+	@cd frontend && npm run test
+
+# Run frontend tests in watch mode
+test-frontend-watch:
+	@echo "🧪 Running frontend tests in watch mode..."
+	@cd frontend && npm run test:watch
+
+# Run frontend tests with coverage
+test-frontend-cov:
+	@echo "🧪 Running frontend tests with coverage..."
+	@cd frontend && npm run test:coverage
+	@echo "✅ Coverage report: frontend/coverage/index.html"
+
+# Preview production build locally
+preview-frontend:
+	@echo "👁️ Previewing frontend production build..."
+	@echo "💡 Access preview at http://localhost:4173"
+	@cd frontend && npm run preview
+
+# Install frontend dependencies
+install-frontend:
+	@echo "📦 Installing frontend dependencies..."
+	@cd frontend && npm install
+	@echo "✅ Frontend dependencies installed"
+
+# Clean frontend build artifacts
+clean-frontend:
+	@echo "🧹 Cleaning frontend build artifacts..."
+	@cd frontend && rm -rf dist/
+	@cd frontend && rm -rf coverage/
+	@cd frontend && rm -rf node_modules/.vite/
+	@echo "✅ Frontend clean complete"
+
+# Build frontend Docker image
+docker-build-frontend:
+	@echo "🐳 Building frontend Docker image..."
+	@docker build -t bruno-site-frontend:latest -f frontend/Dockerfile frontend/
+	@echo "✅ Docker image built: bruno-site-frontend:latest"
+
+# ========================================
+# Combined Build & Push Commands
+# ========================================
+
+# Build both API and frontend Docker images
+build-all:
+	@echo "🏗️ Building all Docker images..."
+	@echo "Building API..."
+	@docker build -t $(REGISTRY)/homepage-api:latest -f api/Dockerfile api/
+	@echo "Building Frontend..."
+	@docker build -t $(REGISTRY)/homepage-frontend:latest -f frontend/Dockerfile frontend/
+	@echo "✅ All images built successfully!"
+	@echo "📋 Built images:"
+	@echo "  API: $(REGISTRY)/homepage-api:latest"
+	@echo "  Frontend: $(REGISTRY)/homepage-frontend:latest"
+
+# Push both API and frontend to registry
+push-all: build-all
+	@echo "🚀 Pushing all images to registry..."
+	@echo "Registry: $(REGISTRY)"
+	@docker push $(REGISTRY)/homepage-api:latest
+	@docker push $(REGISTRY)/homepage-frontend:latest
+	@echo "✅ All images pushed successfully!"
+	@echo "📋 Pushed images:"
+	@echo "  API: $(REGISTRY)/homepage-api:latest"
+	@echo "  Frontend: $(REGISTRY)/homepage-frontend:latest"

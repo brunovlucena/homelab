@@ -20,9 +20,9 @@ resources:
   - knative-eventing
   - homepage # TODO: Review alerts
   - cloudflare-tunnel # TODO Alerts - temporarily disabled due to deployment issues
-  - agent-bruno # 🤖 Agent Bruno - Homepage knowledge with IP-based memory
   - redis # 🔴 Redis for session storage
   - mongodb # 🍃 MongoDB for persistent memory
+  # - agent-bruno # 🤖 Agent Bruno - Homepage knowledge with IP-based memory
   # - agent-sre # Updated with LangGraph state management
   # - agent-jamie # 🤖 Jamie Slack Bot (Kustomize-based)
   # - k6-operator

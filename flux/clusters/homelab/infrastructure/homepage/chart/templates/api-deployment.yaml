@@ -48,19 +48,25 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
-            - name: DATABASE_HOST
+            - name: POSTGRES_HOST
               value: "{{ .Values.database.host }}"
-            - name: DATABASE_PORT
+            - name: POSTGRES_PORT
               value: "{{ .Values.database.port }}"
-            - name: DATABASE_USER
+            - name: POSTGRES_USER
               value: "{{ .Values.database.user }}"
-            - name: DATABASE_NAME
+            - name: POSTGRES_DB
               value: "{{ .Values.database.name }}"
-            - name: DATABASE_URL
+            - name: POSTGRES_PASSWORD
+              {{- if .Values.database.existingSecret }}
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.database.existingSecret }}
-                  key: database-url
+                  key: password
+              {{- else if .Values.secrets.databasePassword }}
+              value: {{ .Values.secrets.databasePassword | quote }}
+              {{- else }}
+              value: "secure-password"
+              {{- end }}
             - name: REDIS_URL
               value: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}"
             - name: REDIS_PASSWORD
@@ -174,17 +180,6 @@ spec:
                   name: bruno-site-secrets
                   key: LOGFIRE_TOKEN
                   optional: true
-            - name: PGPASSWORD
-              {{- if .Values.database.existingSecret }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.database.existingSecret }}
-                  key: password
-              {{- else if .Values.secrets.databasePassword }}
-              value: {{ .Values.secrets.databasePassword | quote }}
-              {{- else }}
-              value: "secure-password" # TODO: Remove this
-              {{- end }}
           startupProbe:
             httpGet:
               path: /health
