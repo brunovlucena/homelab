@@ -71,14 +71,14 @@ spec:
                   valueFrom:
                     secretKeyRef:
                       name: {{ .Values.database.existingSecret }}
-                      key: password
+                      key: POSTGRES_PASSWORD
                   {{- else if .Values.secrets.databasePassword }}
                   value: {{ .Values.secrets.databasePassword | quote }}
                   {{- else }}
                   valueFrom:
                     secretKeyRef:
                       name: {{ include "bruno-site.name" . }}-db-secret
-                      key: password
+                      key: POSTGRES_PASSWORD
                   {{- end }}
               volumeMounts:
                 - name: migrations
