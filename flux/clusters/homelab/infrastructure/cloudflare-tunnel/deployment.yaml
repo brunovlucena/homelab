@@ -27,8 +27,6 @@ spec:
         - info
         - --metrics
         - 0.0.0.0:2000
-        - --protocol
-        - quic
         - --retries
         - "5"
         - --heartbeat-count

@@ -7,21 +7,21 @@ metadata:
 
 resources:
   - repositories
-  - cert-manager # TODO: Alerts
-  - sealed-secrets
+  - cert-manager
   - metrics-server
   - prometheus-operator
-  - minio # Asset storage for homepage
+  - minio
   - loki
   - alloy
   - tempo
   - knative-operator
   - knative-serving
   - knative-eventing
-  - homepage # TODO: Review alerts
-  - cloudflare-tunnel # TODO Alerts - temporarily disabled due to deployment issues
-  - redis # 🔴 Redis for session storage
-  - mongodb # 🍃 MongoDB for persistent memory
+  - homepage
+  - cloudflare-tunnel
+  # - sealed-secrets
+  # - redis # 🔴 Redis for session storage
+  # - mongodb # 🍃 MongoDB for persistent memory
   # - agent-bruno # 🤖 Agent Bruno - Homepage knowledge with IP-based memory
   # - agent-sre # Updated with LangGraph state management
   # - agent-jamie # 🤖 Jamie Slack Bot (Kustomize-based)

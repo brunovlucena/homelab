@@ -28,12 +28,47 @@
 - Verify the cluster has sufficient resources
 
 ### 4. Buffer Size Issues
-**Error**: `failed to sufficiently increase receive buffer size`
+**Error**: `failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB)`
 
-**Solutions**:
-- This is often a system-level limitation
-- Consider running cloudflared with elevated privileges (not recommended in production)
-- Monitor system resources and adjust limits accordingly
+**Root Cause**:
+- QUIC protocol requires large UDP receive buffers (7+ MB)
+- Container security context prevents increasing system buffer limits
+- Kubernetes nodes may have restrictive net.core.rmem_max settings
+
+**Solutions** (in order of preference):
+
+**Option 1: Switch to HTTP/2 Protocol** (Recommended)
+```yaml
+args:
+  - --protocol
+  - http2  # Change from 'quic'
+```
+This is the most stable and secure solution for Kubernetes environments.
+
+**Option 2: Increase Node-Level Buffer Sizes**
+On each Kubernetes node, set:
+```bash
+sudo sysctl -w net.core.rmem_max=7500000
+sudo sysctl -w net.core.wmem_max=7500000
+```
+
+**Option 3: Add NET_ADMIN Capability** (Less secure)
+```yaml
+securityContext:
+  capabilities:
+    add:
+      - NET_ADMIN
+```
+
+**Option 4: Use InitContainer for Sysctl**
+```yaml
+initContainers:
+- name: sysctl-tuning
+  image: busybox
+  command: ["sysctl", "-w", "net.core.rmem_max=7500000"]
+  securityContext:
+    privileged: true
+```
 
 ## Diagnostic Commands
 

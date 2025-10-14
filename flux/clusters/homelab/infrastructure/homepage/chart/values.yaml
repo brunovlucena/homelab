@@ -60,7 +60,7 @@ minio:
   endpoint: "minio-service.minio.svc.cluster.local:9000"
   useSSL: false
   bucket: "homepage-assets"
-  existingSecret: "bruno-site-minio-secret"  # Created by Sealed Secrets
+  existingSecret: "bruno-site-secret"  # Unified secret for all credentials
 
 # Frontend Configuration
 frontend:
@@ -121,7 +121,7 @@ database:
   name: bruno_site
   user: postgres
   password: ""
-  existingSecret: "bruno-site-db-secret"  # Created by Sealed Secrets
+  existingSecret: "bruno-site-secret"  # Unified secret for all credentials
   migration:
     schedule: "*/5 * * * *"  # Every 5 minutes - runs database migrations
     enabled: true
@@ -146,7 +146,7 @@ redis:
   host: homepage-bruno-site-redis
   port: 6379
   password: "enabled"  # Set to "enabled" to use the secret
-  existingSecret: "bruno-site-redis-secret"  # Created by Sealed Secrets
+  existingSecret: "bruno-site-secret"  # Unified secret for all credentials
   resources:
     limits:
       cpu: 500m     # Higher CPU limit for Mac Studio Redis performance

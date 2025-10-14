@@ -48,74 +48,67 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
+            # Database configuration from bruno-site-secret
             - name: POSTGRES_HOST
-              value: "{{ .Values.database.host }}"
-            - name: POSTGRES_PORT
-              value: "{{ .Values.database.port }}"
-            - name: POSTGRES_USER
-              value: "{{ .Values.database.user }}"
-            - name: POSTGRES_DB
-              value: "{{ .Values.database.name }}"
-            - name: POSTGRES_PASSWORD
-              {{- if .Values.database.existingSecret }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.database.existingSecret }}
-                  key: password
-              {{- else if .Values.secrets.databasePassword }}
-              value: {{ .Values.secrets.databasePassword | quote }}
-              {{- else }}
-              value: "secure-password"
-              {{- end }}
+                  name: bruno-site-secret
+                  key: POSTGRES_HOST
+            - name: POSTGRES_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: bruno-site-secret
+                  key: POSTGRES_PORT
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: bruno-site-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: bruno-site-secret
+                  key: POSTGRES_DB
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bruno-site-secret
+                  key: POSTGRES_PASSWORD
+            # Redis configuration from bruno-site-secret
             - name: REDIS_URL
               value: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}"
             - name: REDIS_PASSWORD
-              {{- if .Values.redis.existingSecret }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.redis.existingSecret }}
-                  key: password
-              {{- else if .Values.secrets.redisPassword }}
-              value: {{ .Values.secrets.redisPassword | quote }}
-              {{- else }}
-              value: ""
-              {{- end }}
+                  name: bruno-site-secret
+                  key: REDIS_PASSWORD
+            # MinIO configuration from bruno-site-secret
+            {{- if .Values.minio.enabled }}
+            - name: MINIO_ENDPOINT
+              value: "{{ .Values.minio.endpoint }}"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bruno-site-secret
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: bruno-site-secret
+                  key: MINIO_SECRET_KEY
+            - name: MINIO_USE_SSL
+              value: "{{ .Values.minio.useSSL }}"
+            - name: MINIO_BUCKET
+              value: "{{ .Values.minio.bucket }}"
+            {{- end }}
+            # Application configuration
             - name: PORT
               value: "8080"
             - name: CORS_ORIGIN
               value: "{{ .Values.corsOrigin }}"
             - name: ENABLE_METRICS_AUTH
               value: {{ .Values.monitoring.metrics.basicAuth.enabled | quote }}
-            {{- if .Values.minio.enabled }}
-            - name: MINIO_ENDPOINT
-              value: "{{ .Values.minio.endpoint }}"
-            - name: MINIO_ACCESS_KEY
-              {{- if .Values.minio.existingSecret }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.minio.existingSecret }}
-                  key: accessKey
-              {{- else if .Values.secrets.minioAccessKey }}
-              value: {{ .Values.secrets.minioAccessKey | quote }}
-              {{- else }}
-              value: "minioadmin"
-              {{- end }}
-            - name: MINIO_SECRET_KEY
-              {{- if .Values.minio.existingSecret }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.minio.existingSecret }}
-                  key: secretKey
-              {{- else if .Values.secrets.minioSecretKey }}
-              value: {{ .Values.secrets.minioSecretKey | quote }}
-              {{- else }}
-              value: "minioadmin"
-              {{- end }}
-            - name: MINIO_USE_SSL
-              value: "{{ .Values.minio.useSSL }}"
-            - name: MINIO_BUCKET
-              value: "{{ .Values.minio.bucket }}"
-            {{- end }}
+            # Cloudflare configuration (kept separate as it's optional and has its own secret)
             {{- if .Values.cloudflare.enabled }}
             - name: CLOUDFLARE_ENABLED
               {{- if .Values.cloudflare.existingSecret }}
@@ -163,6 +156,7 @@ spec:
               value: {{ .Values.cloudflare.cacheTtl | quote }}
               {{- end }}
             {{- end }}
+            # Agent URLs
             {{- if .Values.agentSRE.enabled }}
             - name: AGENT_SRE_URL
               value: "{{ .Values.agentSRE.url }}"
@@ -177,7 +171,7 @@ spec:
             - name: LOGFIRE_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: bruno-site-secrets
+                  name: bruno-site-secret
                   key: LOGFIRE_TOKEN
                   optional: true
           startupProbe:
