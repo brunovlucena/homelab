@@ -1,6 +1,6 @@
 {{- if .Values.database.enabled }}
 # =============================================================================
-# 📁 MIGRATIONS CONFIGMAP
+# 📁 MIGRATIONS CONFIGMAP (Pre-install hook for db-init-job)
 # =============================================================================
 apiVersion: v1
 kind: ConfigMap
@@ -9,6 +9,11 @@ metadata:
   labels:
     {{- include "bruno-site.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrations
+  annotations:
+    # 🎯 Helm hooks: runs before install/upgrade (before db-init-job)
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation
 data:
   001_complete_schema.sql: |
 {{ .Files.Get "files/migrations/001_complete_schema.sql" | indent 4 }}
