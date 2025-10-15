@@ -92,7 +92,7 @@ describe('ChatbotService', () => {
     it('should process message successfully', async () => {
       const mockResponse = {
         data: {
-          response: 'Jamie response',
+          response: 'Agent Bruno response',
           timestamp: '2025-10-08T12:00:00Z',
         },
       }
@@ -102,8 +102,8 @@ describe('ChatbotService', () => {
       const result = await service.processMessage('test question')
 
       expect(mockAxiosInstance.post).toHaveBeenCalledWith('/chat', expect.any(Object))
-      expect(result.text).toBe('Jamie response')
-      expect(result.sources).toContain('Jamie')
+      expect(result.text).toBe('Agent Bruno response')
+      expect(result.sources).toContain('Agent Bruno')
     })
 
     it('should return error message when chat fails', async () => {
@@ -112,7 +112,7 @@ describe('ChatbotService', () => {
       const result = await service.processMessage('test question')
 
       expect(result.text).toContain('currently unavailable')
-      expect(result.text).toContain('Jamie')
+      expect(result.text).toContain('Agent Bruno')
       expect(result.sources).toContain('Error Handler')
     })
   })
@@ -218,7 +218,7 @@ describe('ChatbotService', () => {
       const result = await service.getLLMStatus()
 
       expect(result.status).toBe('error')
-      expect(result.error).toBe('Jamie AI service is unavailable')
+      expect(result.error).toBe('Agent Bruno service is unavailable')
     })
   })
 
@@ -250,7 +250,7 @@ describe('ChatbotService', () => {
       expect(typeof info.initialized).toBe('boolean')
     })
 
-    it('should include Jamie endpoint in baseUrl', () => {
+    it('should include Agent Bruno endpoint in baseUrl', () => {
       const info = service.getAgentInfo()
       
       expect(info.baseUrl).toContain('agent-bruno')
