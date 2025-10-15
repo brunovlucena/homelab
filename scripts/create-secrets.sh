@@ -15,6 +15,7 @@ NAMESPACE_AGENT_SRE="agent-sre"
 NAMESPACE_JAMIE="jamie"
 NAMESPACE_LOKI="loki"
 NAMESPACE_BRUNO="bruno"
+NAMESPACE_HOMEPAGE="homepage"
 NAMESPACE_ALLOY="alloy"
 NAMESPACE_MINIO="minio"
 NAMESPACE_CLOUDFLARE_TUNNEL="cloudflare-tunnel"
@@ -109,6 +110,16 @@ kubectl create secret docker-registry ghcr-secret \
   --docker-password="${GHCR_TOKEN}" \
   --dry-run=client -o yaml | kubectl apply -f -
 echo -e "${GREEN}✅ Secret created in cluster: ghcr-secret (${NAMESPACE_AGENT_SRE})${NC}"
+
+# Create ghcr-secret for homepage namespace
+echo "Creating ghcr-secret in homepage namespace..."
+kubectl create secret docker-registry ghcr-secret \
+  --namespace="${NAMESPACE_HOMEPAGE}" \
+  --docker-server=ghcr.io \
+  --docker-username="${GHCR_USERNAME}" \
+  --docker-password="${GHCR_TOKEN}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+echo -e "${GREEN}✅ Secret created in cluster: ghcr-secret (${NAMESPACE_HOMEPAGE})${NC}"
 
 # ============================================================================
 # 2. Create prometheus-secrets (consolidated: grafana, pagerduty, slack, strava)
@@ -253,7 +264,7 @@ HOMEPAGE_MINIO_SECRET_KEY=$(extract_env_value "HOMEPAGE_MINIO_SECRET_KEY")
 # Create the secret in the cluster with individual fields (no hardcoded database-url)
 # The application constructs the DATABASE_URL programmatically from these components
 kubectl create secret generic bruno-site-secret \
-  --namespace="${NAMESPACE_BRUNO}" \
+  --namespace="${NAMESPACE_HOMEPAGE}" \
   --from-literal=LOGFIRE_TOKEN="${LOGFIRE_TOKEN}" \
   --from-literal=POSTGRES_HOST="${POSTGRES_HOST}" \
   --from-literal=POSTGRES_PORT="${POSTGRES_PORT}" \
@@ -264,7 +275,7 @@ kubectl create secret generic bruno-site-secret \
   --from-literal=MINIO_SECRET_KEY="${HOMEPAGE_MINIO_SECRET_KEY}" \
   --from-literal=REDIS_PASSWORD="${REDIS_PASSWORD}" \
   --dry-run=client -o yaml | kubectl apply -f -
-echo -e "${GREEN}✅ Secret created in cluster: bruno-site-secret (${NAMESPACE_BRUNO})${NC}"
+echo -e "${GREEN}✅ Secret created in cluster: bruno-site-secret (${NAMESPACE_HOMEPAGE})${NC}"
 
 # ============================================================================
 # 5. Create loki-minio-secret
@@ -329,20 +340,22 @@ echo "  2. ghcr-secret (${NAMESPACE_BRUNO} namespace)"
 echo "     └─ GitHub Container Registry credentials"
 echo "  3. ghcr-secret (${NAMESPACE_AGENT_SRE} namespace)"
 echo "     └─ GitHub Container Registry credentials"
-echo "  4. prometheus-secrets (${NAMESPACE_PROMETHEUS} namespace)"
+echo "  4. ghcr-secret (${NAMESPACE_HOMEPAGE} namespace)"
+echo "     └─ GitHub Container Registry credentials"
+echo "  5. prometheus-secrets (${NAMESPACE_PROMETHEUS} namespace)"
 echo "     └─ Grafana, PagerDuty, Slack, Strava credentials"
-echo "  5. agent-sre-secrets (${NAMESPACE_AGENT_SRE} namespace)"
+echo "  6. agent-sre-secrets (${NAMESPACE_AGENT_SRE} namespace)"
 echo "     └─ GitHub, HuggingFace, LangSmith, Logfire (LOGFIRE_TOKEN), PagerDuty, Twingate credentials"
-echo "  6. jamie-secrets (${NAMESPACE_JAMIE} namespace)"
+echo "  7. jamie-secrets (${NAMESPACE_JAMIE} namespace)"
 echo "     └─ Slack and Logfire (LOGFIRE_TOKEN) credentials"
-echo "  7. bruno-site-secret (${NAMESPACE_BRUNO} namespace)"
+echo "  8. bruno-site-secret (${NAMESPACE_HOMEPAGE} namespace)"
 echo "     └─ PostgreSQL, Redis, MinIO, Logfire, and OTEL endpoint credentials"
-echo "  8. alloy-secrets (alloy namespace)"
+echo "  9. alloy-secrets (alloy namespace)"
 echo "     └─ Logfire (LOGFIRE_TOKEN) for Alloy → Logfire forwarding"
-echo "  9. loki-minio-secret (${NAMESPACE_LOKI} namespace)"
+echo "  10. loki-minio-secret (${NAMESPACE_LOKI} namespace)"
 echo "     └─ Loki MinIO credentials"
-echo "  10. minio-secret (minio namespace)"
+echo "  11. minio-secret (minio namespace)"
 echo "     └─ MinIO root credentials"
-echo "  11. cloudflare-tunnel-credentials (cloudflare-tunnel namespace)"
+echo "  12. cloudflare-tunnel-credentials (cloudflare-tunnel namespace)"
 echo "     └─ Cloudflare Tunnel token"
 echo ""

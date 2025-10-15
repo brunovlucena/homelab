@@ -3,7 +3,7 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: homepage
-  namespace: bruno
+  namespace: homepage
 spec:
   interval: 5m
   timeout: 10m
@@ -28,4 +28,4 @@ spec:
     # 🤖 Agent Bruno Configuration (Homepage chatbot and knowledge assistant)
     agentBruno:
       enabled: true
-      url: "http://agent-bruno-service.agent-bruno.svc.cluster.local:8080"
+      url: "http://agent-bruno-service.bruno.svc.cluster.local:8080"
