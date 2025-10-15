@@ -3,19 +3,26 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/propagation"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdkresource "go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
+var prometheusHandler http.Handler
+
 // InitOTel initializes OpenTelemetry and returns a shutdown function
 // Sends traces to Alloy → Alloy forwards to Logfire + Tempo
+// Exports metrics in Prometheus format for scraping
 func InitOTel(ctx context.Context) (func(context.Context) error, error) {
 	// Alloy OTLP endpoint
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -36,7 +43,32 @@ func InitOTel(ctx context.Context) (func(context.Context) error, error) {
 		return nil, err
 	}
 
-	// OTLP trace exporter → Alloy
+	// ═══════════════════════════════════════════════════════════════════════
+	// 📊 METRICS: Prometheus exporter for /metrics endpoint
+	// ═══════════════════════════════════════════════════════════════════════
+	var err2 error
+	prometheusExporter, err2 := prometheus.New()
+	if err2 != nil {
+		log.Printf("⚠️  WARNING: Failed to create Prometheus exporter: %v", err2)
+		prometheusHandler = promhttp.Handler() // Fallback to default Prometheus handler
+	} else {
+		// Create meter provider with Prometheus exporter
+		mp := sdkmetric.NewMeterProvider(
+			sdkmetric.WithResource(res),
+			sdkmetric.WithReader(prometheusExporter),
+		)
+		otel.SetMeterProvider(mp)
+		
+		// The prometheus.Exporter implements http.Handler interface via its Collect method
+		// We need to wrap it with promhttp.Handler() to serve metrics
+		prometheusHandler = promhttp.Handler()
+		
+		log.Println("✅ OpenTelemetry Metrics → Prometheus exporter initialized")
+	}
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// 🔍 TRACES: OTLP trace exporter → Alloy
+	// ═══════════════════════════════════════════════════════════════════════
 	traceExporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithEndpoint(endpoint),
 		otlptracegrpc.WithInsecure(),
@@ -54,8 +86,19 @@ func InitOTel(ctx context.Context) (func(context.Context) error, error) {
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
-	log.Println("✅ OpenTelemetry initialized → Alloy → Logfire")
+	log.Println("✅ OpenTelemetry Tracing → Alloy → Logfire")
 
 	// Return shutdown function
 	return tp.Shutdown, nil
+}
+
+// PrometheusHandler returns the HTTP handler for the Prometheus metrics endpoint
+func PrometheusHandler() http.Handler {
+	if prometheusHandler != nil {
+		return prometheusHandler
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("Prometheus exporter not initialized"))
+	})
 }

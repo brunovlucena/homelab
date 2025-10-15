@@ -5,9 +5,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "bruno-site.fullname" . }}-db-migrate-{{ .Release.Revision }}
+  name: {{ include "homepage.fullname" . }}-db-migrate-{{ .Release.Revision }}
   labels:
-    {{- include "bruno-site.labels" . | nindent 4 }}
+    {{- include "homepage.labels" . | nindent 4 }}
     app.kubernetes.io/component: db-migrate
   annotations:
     # 🎯 Helm hooks: runs before install/upgrade
@@ -21,7 +21,7 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "bruno-site.selectorLabels" . | nindent 8 }}
+        {{- include "homepage.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: db-migrate
     spec:
       restartPolicy: Never
@@ -78,7 +78,7 @@ spec:
               {{- else }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "bruno-site.name" . }}-db-secret
+                  name: {{ include "homepage.name" . }}-db-secret
                   key: POSTGRES_PASSWORD
               {{- end }}
           volumeMounts:
@@ -87,5 +87,5 @@ spec:
       volumes:
         - name: migrations
           configMap:
-            name: {{ include "bruno-site.fullname" . }}-migrations
+            name: {{ include "homepage.fullname" . }}-migrations
 {{- end }}

@@ -4,7 +4,7 @@ metadata:
   name: bruno-site-rules
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "bruno-site.labels" . | nindent 4 }}
+    {{- include "homepage.labels" . | nindent 4 }}
     app.kubernetes.io/component: monitoring
     prometheus: kube-prometheus
     role: alert-rules
@@ -13,7 +13,7 @@ spec:
   # =============================================================================
   # 🚨 CRITICAL ALERTS - IMMEDIATE ATTENTION REQUIRED
   # =============================================================================
-  - name: bruno-site.critical
+  - name: homepage.critical
     rules:
     - alert: BrunoSiteAPIDown
       expr: up{job="bruno-site-api"} == 0
@@ -106,7 +106,7 @@ spec:
   # =============================================================================
   # ⚠️ WARNING ALERTS - ATTENTION NEEDED SOON
   # =============================================================================
-  - name: bruno-site.warning
+  - name: homepage.warning
     rules:
     - alert: BrunoSiteHighResponseTime
       expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="bruno-site-api"}[5m])) > 1
@@ -209,7 +209,7 @@ spec:
   # =============================================================================
   # 📊 BUSINESS LOGIC ALERTS - APPLICATION SPECIFIC
   # =============================================================================
-  - name: bruno-site.business
+  - name: homepage.business
     rules:
     - alert: BrunoSiteProjectsLoadFailed
       expr: rate(bruno_site_projects_load_errors_total[5m]) > 0.01
@@ -283,7 +283,7 @@ spec:
   # =============================================================================
   # 🔧 INFRASTRUCTURE ALERTS - KUBERNETES & RESOURCES
   # =============================================================================
-  - name: bruno-site.infrastructure
+  - name: homepage.infrastructure
     rules:
     - alert: BrunoSitePodCrashLooping
       expr: rate(kube_pod_container_status_restarts_total{pod=~"bruno-site-.*"}[15m]) > 0
@@ -336,7 +336,7 @@ spec:
   # =============================================================================
   # 🔒 SECURITY ALERTS - SECURITY MONITORING
   # =============================================================================
-  - name: bruno-site.security
+  - name: homepage.security
     rules:
     - alert: BrunoSiteHighRateLimitHits
       expr: rate(http_requests_total{job="bruno-site-api",code="429"}[5m]) > 0.1
@@ -380,7 +380,7 @@ spec:
   # =============================================================================
   # 👥 VISITOR TRACKING ALERTS - TRAFFIC MONITORING & ABUSE DETECTION
   # =============================================================================
-  - name: bruno-site.visitors
+  - name: homepage.visitors
     rules:
     # ==================== CRITICAL: ABUSE DETECTION ====================
     
@@ -619,7 +619,7 @@ spec:
   # =============================================================================
   # 📈 PERFORMANCE ALERTS - PERFORMANCE MONITORING
   # =============================================================================
-  - name: bruno-site.performance
+  - name: homepage.performance
     rules:
     - alert: BrunoSiteSlowDatabaseQueries
       expr: histogram_quantile(0.95, rate(pg_stat_database_tup_fetched{job="bruno-site-postgres"}[5m])) > 1000
@@ -663,7 +663,7 @@ spec:
   # =============================================================================
   # 🎯 AVAILABILITY ALERTS - UPTIME MONITORING
   # =============================================================================
-  - name: bruno-site.availability
+  - name: homepage.availability
     rules:
     - alert: BrunoSiteLowAvailability
       expr: (rate(http_requests_total{job="bruno-site-api",code=~"2.."}[1h]) / rate(http_requests_total{job="bruno-site-api"}[1h])) < 0.99

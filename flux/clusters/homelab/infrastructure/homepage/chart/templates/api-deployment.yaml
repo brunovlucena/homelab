@@ -1,9 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "bruno-site.fullname" . }}-api
+  name: {{ include "homepage.fullname" . }}-api
   labels:
-    {{- include "bruno-site.labels" . | nindent 4 }}
+    {{- include "homepage.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
   annotations:
     "helm.sh/hook-weight": "20"
@@ -18,7 +18,7 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      {{- include "bruno-site.selectorLabels" . | nindent 6 }}
+      {{- include "homepage.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: api
   template:
     metadata:
@@ -27,14 +27,14 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "bruno-site.selectorLabels" . | nindent 8 }}
+        {{- include "homepage.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: api
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "bruno-site.serviceAccountName" . }}
+      serviceAccountName: {{ include "homepage.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:

@@ -2,9 +2,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "bruno-site.fullname" . }}-api-nodeport
+  name: {{ include "homepage.fullname" . }}-api-nodeport
   labels:
-    {{- include "bruno-site.labels" . | nindent 4 }}
+    {{- include "homepage.labels" . | nindent 4 }}
     app.kubernetes.io/component: api
 spec:
   type: NodePort
@@ -20,5 +20,5 @@ spec:
     nodePort: 30111
     protocol: TCP
   selector:
-    {{- include "bruno-site.selectorLabels" . | nindent 4 }}
+    {{- include "homepage.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: api

@@ -5,6 +5,7 @@ import (
 	"bruno-site/cdn"
 	"bruno-site/config"
 	"bruno-site/handlers"
+	"bruno-site/middleware"
 	"bruno-site/storage"
 
 	"github.com/gin-contrib/cors"
@@ -54,6 +55,9 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 
 	// 📊 OpenTelemetry middleware for automatic tracing
 	r.Use(otelgin.Middleware("bruno-site"))
+
+	// 📊 HTTP Metrics middleware for Prometheus Golden Signals
+	r.Use(middleware.HTTPMetricsMiddleware())
 
 	// Compression middleware (Golden Rule #6: Payload Compression)
 	r.Use(gzip.Gzip(gzip.DefaultCompression))

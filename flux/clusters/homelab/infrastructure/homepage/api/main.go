@@ -8,9 +8,12 @@ import (
 
 	"bruno-site/config"
 	"bruno-site/database"
+	"bruno-site/handlers"
 	"bruno-site/metrics"
 	"bruno-site/router"
 	"bruno-site/storage"
+
+	"github.com/gin-gonic/gin"
 )
 
 // 🌐 Bruno Site API
@@ -30,6 +33,13 @@ func main() {
 		log.Println("⚠️  WARNING: Continuing without OpenTelemetry tracing")
 	} else {
 		log.Println("✅ OpenTelemetry tracing configured successfully")
+		
+		// Set up Prometheus metrics handler
+		promHandler := PrometheusHandler()
+		handlers.PrometheusHandlerFunc = func(c *gin.Context) {
+			promHandler.ServeHTTP(c.Writer, c.Request)
+		}
+		
 		defer func() {
 			log.Println("🔄 Shutting down OpenTelemetry...")
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

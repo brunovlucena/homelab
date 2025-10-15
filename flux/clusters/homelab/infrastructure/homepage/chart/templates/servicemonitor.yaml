@@ -5,14 +5,14 @@ metadata:
   name: bruno-site-api
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "bruno-site.labels" . | nindent 4 }}
+    {{- include "homepage.labels" . | nindent 4 }}
     app.kubernetes.io/component: monitoring
     prometheus: kube-prometheus
     release: prometheus-operator
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: bruno-site
+      app.kubernetes.io/name: homepage
       app.kubernetes.io/component: api
   endpoints:
   - port: http
@@ -55,14 +55,14 @@ metadata:
   name: bruno-site-postgres
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "bruno-site.labels" . | nindent 4 }}
+    {{- include "homepage.labels" . | nindent 4 }}
     app.kubernetes.io/component: monitoring
     prometheus: kube-prometheus
     release: prometheus-operator
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: bruno-site
+      app.kubernetes.io/name: homepage
       app.kubernetes.io/component: postgres
   endpoints:
   - port: metrics
@@ -104,14 +104,14 @@ metadata:
   name: bruno-site-redis
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "bruno-site.labels" . | nindent 4 }}
+    {{- include "homepage.labels" . | nindent 4 }}
     app.kubernetes.io/component: monitoring
     prometheus: kube-prometheus
     release: prometheus-operator
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: bruno-site
+      app.kubernetes.io/name: homepage
       app.kubernetes.io/component: redis
   endpoints:
   - port: metrics
@@ -153,14 +153,14 @@ metadata:
   name: bruno-site-ollama
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "bruno-site.labels" . | nindent 4 }}
+    {{- include "homepage.labels" . | nindent 4 }}
     app.kubernetes.io/component: monitoring
     prometheus: kube-prometheus
     release: prometheus-operator
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: bruno-site
+      app.kubernetes.io/name: homepage
       app.kubernetes.io/component: ollama
   endpoints:
   - port: http
@@ -202,14 +202,14 @@ metadata:
   name: bruno-site-frontend
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "bruno-site.labels" . | nindent 4 }}
+    {{- include "homepage.labels" . | nindent 4 }}
     app.kubernetes.io/component: monitoring
     prometheus: kube-prometheus
     release: prometheus-operator
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: bruno-site
+      app.kubernetes.io/name: homepage
       app.kubernetes.io/component: frontend
   endpoints:
   - port: http
