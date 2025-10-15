@@ -88,10 +88,7 @@ class HomepageKnowledge:
                 {"method": "GET", "path": "/api/v1/experiences/:id", "description": "Get specific experience"},
             ],
             "agents": [
-                {"method": "POST", "path": "/api/v1/agent-sre/chat", "description": "Direct chat with Agent-SRE"},
-                {"method": "POST", "path": "/api/v1/agent-sre/mcp/chat", "description": "MCP chat with Agent-SRE"},
-                {"method": "POST", "path": "/api/v1/agent-bruno/chat", "description": "Chat with Agent-Bruno"},
-                {"method": "POST", "path": "/api/v1/jamie/chat", "description": "Chat with Jamie"},
+                {"method": "POST", "path": "/api/v1/agent-bruno/chat", "description": "Chat with Agent-Bruno (Homepage chatbot)"},
             ],
             "health": [
                 {"method": "GET", "path": "/health", "description": "Health check"},
@@ -178,7 +175,7 @@ class HomepageKnowledge:
                     "database/database.go - Database initialization",
                     "database/redis.go - Redis initialization",
                     "handlers/agent_sre.go - Agent-SRE proxy",
-                    "handlers/jamie.go - Jamie proxy",
+                    "handlers/agent_bruno.go - Agent-Bruno proxy",
                     "handlers/projects.go - Projects CRUD",
                     "handlers/skills.go - Skills CRUD",
                     "handlers/content.go - Content CRUD",
@@ -238,8 +235,7 @@ class HomepageKnowledge:
             ],
             "ai": [
                 "Agent-SRE",
-                "Agent-Bruno",
-                "Jamie Slack Bot",
+                "Agent-Bruno (Homepage chatbot & knowledge assistant)",
                 "Ollama",
                 "MCP Protocol"
             ],
@@ -337,7 +333,7 @@ class HomepageKnowledge:
 
 **Key Features**:
 - Dynamic content management via API
-- AI chatbot integration (Agent-SRE, Agent-Bruno, Jamie)
+- AI chatbot integration (Agent-Bruno for homepage, Agent-SRE for infrastructure)
 - Real-time updates
 - Cloudflare CDN integration
 - Comprehensive observability (Prometheus, Grafana, Loki, Tempo)

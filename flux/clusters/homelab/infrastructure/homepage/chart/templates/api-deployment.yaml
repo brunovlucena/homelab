@@ -106,9 +106,9 @@ spec:
               value: "8080"
             - name: CORS_ORIGIN
               value: "{{ .Values.corsOrigin }}"
-            {{- if .Values.brunoAgent.enabled }}
-            - name: BRUNO_AGENT_URL
-              value: "{{ .Values.brunoAgent.url }}"
+            {{- if .Values.agentBruno.enabled }}
+            - name: AGENT_BRUNO_URL
+              value: "{{ .Values.agentBruno.url }}"
             {{- end }}
             # OpenTelemetry → Alloy → Logfire
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

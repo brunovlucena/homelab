@@ -39,10 +39,10 @@ api:
       cpu: 500m       # Higher CPU request
       memory: 512Mi   # Higher memory request
 
-# 🤖 Bruno Agent Configuration (AI agent for bruno site)
-brunoAgent:
+# 🤖 Agent Bruno Configuration (Homepage chatbot and knowledge assistant)
+agentBruno:
   enabled: true
-  url: "http://agent-bruno-service.agent-bruno.svc.cluster.local:8080"
+  url: "http://agent-bruno-service.bruno.svc.cluster.local:8080"
 
 # Ollama Configuration
 ollama:

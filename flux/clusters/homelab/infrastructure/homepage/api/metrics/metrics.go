@@ -61,11 +61,7 @@ var (
 	AgentSRERequestErrors   metric.Int64Counter
 	AgentSRERequestDuration metric.Float64Histogram
 
-	// 🤖 Jamie proxy metrics
-	JamieRequestErrors   metric.Int64Counter
-	JamieRequestDuration metric.Float64Histogram
-
-	// 🤖 Agent Bruno proxy metrics
+	// 🤖 Agent Bruno proxy metrics (Homepage chatbot and knowledge assistant)
 	AgentBrunoRequestErrors   metric.Int64Counter
 	AgentBrunoRequestDuration metric.Float64Histogram
 )

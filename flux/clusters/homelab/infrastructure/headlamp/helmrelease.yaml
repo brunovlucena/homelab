@@ -1,0 +1,21 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: headlamp
+  namespace: headlamp
+spec:
+  interval: 5m
+  timeout: 10m
+  chart:
+    spec:
+      chart: headlamp
+      sourceRef:
+        kind: HelmRepository
+        name: headlamp
+        namespace: flux-system
+  values:
+    # Enable service monitor for Prometheus
+    serviceMonitor:
+      enabled: true
+

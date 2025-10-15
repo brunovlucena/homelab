@@ -21,8 +21,8 @@ func NewAgentBrunoHandler(config AgentBrunoConfig) *AgentBrunoHandler {
 		config.Timeout = 30 * time.Second
 	}
 	if config.ServiceURL == "" {
-		// Default to internal cluster service
-		config.ServiceURL = "http://agent-bruno-service.agent-bruno.svc.cluster.local:8080"
+		// Default to internal cluster service (deployed in bruno namespace)
+		config.ServiceURL = "http://agent-bruno-service.bruno.svc.cluster.local:8080"
 	}
 
 	return &AgentBrunoHandler{
