@@ -205,6 +205,39 @@ async def ready():
     }
 
 
+@app.get("/status")
+async def status():
+    """Status endpoint - comprehensive service status"""
+    if not memory_manager or not agent:
+        return {
+            "status": "initializing",
+            "service": "agent-bruno",
+            "ready": False
+        }
+    
+    try:
+        health = await memory_manager.health_check()
+        
+        return {
+            "status": "healthy" if health["overall"] else "degraded",
+            "service": "agent-bruno",
+            "ready": True,
+            "health": {
+                "redis": health["redis"],
+                "mongodb": health["mongodb"]
+            },
+            "degraded": not health["overall"]
+        }
+    except Exception as e:
+        logger.error(f"❌ Status check error: {e}")
+        return {
+            "status": "error",
+            "service": "agent-bruno",
+            "ready": False,
+            "error": str(e)
+        }
+
+
 @app.get("/metrics")
 async def metrics():
     """Prometheus metrics endpoint"""
@@ -347,6 +380,7 @@ async def root():
             "mcp_chat": "/mcp/chat",
             "health": "/health",
             "ready": "/ready",
+            "status": "/status",
             "metrics": "/metrics",
             "memory": "/memory/{ip}",
             "knowledge": "/knowledge/summary"

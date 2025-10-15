@@ -138,6 +138,7 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 			// Health and status endpoints
 			agentBruno.GET("/health", agentBrunoHandler.Health)
 			agentBruno.GET("/ready", agentBrunoHandler.Ready)
+			agentBruno.GET("/status", agentBrunoHandler.Status)
 			agentBruno.GET("/stats", agentBrunoHandler.GetStats)
 
 			// 💬 Chat endpoints

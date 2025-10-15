@@ -30,13 +30,17 @@ func NewAgentBrunoHandler(config AgentBrunoConfig) *AgentBrunoHandler {
 		client: &http.Client{
 			Timeout: config.Timeout,
 		},
+		chatClient: &http.Client{
+			Timeout: 120 * time.Second, // Longer timeout for LLM responses
+		},
 	}
 }
 
 // AgentBrunoHandler handles proxying requests to agent-bruno service
 type AgentBrunoHandler struct {
-	config AgentBrunoConfig
-	client *http.Client
+	config     AgentBrunoConfig
+	client     *http.Client
+	chatClient *http.Client // Separate client with longer timeout for chat endpoints
 }
 
 // CheckHealth implements DependencyChecker interface
@@ -169,4 +173,9 @@ func (h *AgentBrunoHandler) Health(c *gin.Context) {
 // Ready handles GET /api/v1/agent-bruno/ready
 func (h *AgentBrunoHandler) Ready(c *gin.Context) {
 	h.proxyRequest(c, "/ready", http.MethodGet)
+}
+
+// Status handles GET /api/v1/agent-bruno/status
+func (h *AgentBrunoHandler) Status(c *gin.Context) {
+	h.proxyRequest(c, "/status", http.MethodGet)
 }
