@@ -19,6 +19,22 @@ data:
             add_header Content-Type text/plain;
         }
 
+        # 📊 Prometheus metrics endpoint
+        # Proxies to nginx-prometheus-exporter sidecar
+        location /metrics {
+            access_log off;
+            proxy_pass http://127.0.0.1:9113/metrics;
+            proxy_set_header Host $host;
+        }
+
+        # 📈 Nginx stub_status for prometheus exporter (internal only)
+        location /stub_status {
+            access_log off;
+            stub_status;
+            allow 127.0.0.1;  # Only allow localhost
+            deny all;         # Deny all other IPs
+        }
+
         location / {
             root   /usr/share/nginx/html;
             index  index.html index.htm;

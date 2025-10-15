@@ -77,11 +77,29 @@ cd tests/integration && ./test-agent-sre-integration.sh
 
 **Test Coverage:** 100% (50+ tests)
 
+## 📊 Observability
+
+The homepage includes comprehensive observability:
+
+- **Metrics:** Prometheus metrics for all components
+- **Logs:** Structured logging to Loki
+- **Traces:** OpenTelemetry traces to Tempo
+- **Frontend Metrics:** Nginx metrics via prometheus-exporter
+
+See [FRONTEND_METRICS.md](./FRONTEND_METRICS.md) for frontend metrics details.
+
+```bash
+# Access metrics
+curl http://localhost:8080/metrics  # Frontend
+curl http://localhost:8080/metrics  # API
+```
+
 ## 📚 Documentation
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture and design
 - [CHATBOT.md](./CHATBOT.md) - AI chatbot integration guide
 - [SECURITY.md](./SECURITY.md) - Security implementation
+- [FRONTEND_METRICS.md](./FRONTEND_METRICS.md) - Frontend metrics guide
 - [tests/TEST_README.md](./tests/TEST_README.md) - Testing guide
 - [API Documentation](./api/README.md) - API reference
 - [Frontend Guide](./frontend/README.md) - Frontend development

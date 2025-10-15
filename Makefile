@@ -25,6 +25,8 @@ up: ## Deploy homelab stack
 		exit 1; \
 	fi
 	cd pulumi && pulumi stack select homelab && pulumi refresh --yes && pulumi up --yes
+	@echo "🔐 Creating Kubernetes secrets..."
+	./scripts/create-secrets.sh
 
 destroy: ## Destroy homelab stack
 	cd pulumi && pulumi stack select homelab && pulumi destroy --yes

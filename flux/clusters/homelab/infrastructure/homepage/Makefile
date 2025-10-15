@@ -45,6 +45,7 @@ help:
 	@echo "  make test-api-endpoints    - Test API endpoints"
 	@echo "  make test-k6               - Run k6 load tests for golden signals (Kubernetes)"
 	@echo "  make test-k6-local         - Run k6 load tests locally (development)"
+	@echo "  make test-metrics          - Test Prometheus metrics endpoints"
 	@echo "  make test                  - Run all tests (API, frontend, E2E)"
 	@echo "  make format                - Format code"
 	@echo "  make lint                  - Lint code"
@@ -377,6 +378,21 @@ test-coverage:
 	@cd api && go tool cover -func=coverage.out
 	@cd frontend && npm run test:coverage
 	@echo "✅ Coverage reports generated"
+
+# Test Prometheus metrics endpoints
+test-metrics:
+	@echo "📊 Testing Prometheus metrics endpoints..."
+	@echo ""
+	@echo "🎯 Frontend metrics:"
+	@curl -s http://localhost:8080/metrics | grep -E '^(nginx_|nginxexporter_)' | head -20 || echo "❌ Frontend metrics not available"
+	@echo ""
+	@echo "🎯 API metrics:"
+	@curl -s http://localhost:8080/api/metrics 2>/dev/null | grep -E '^(http_|go_)' | head -20 || echo "⚠️  API metrics endpoint may not be exposed through frontend proxy"
+	@echo ""
+	@echo "💡 For full metrics access, use port-forward:"
+	@echo "   kubectl port-forward -n bruno svc/bruno-site-frontend 8080:80"
+	@echo "   kubectl port-forward -n bruno svc/bruno-site-api 8081:8080"
+	@echo "✅ Metrics test completed"
 
 # Update dependencies
 update-deps:

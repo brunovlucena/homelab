@@ -5,7 +5,7 @@ metadata:
   name: ollama
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "bruno-site.labels" . | nindent 4 }}
+    {{- include "homepage.labels" . | nindent 4 }}
     app.kubernetes.io/component: ollama
 spec:
   type: ExternalName
@@ -16,3 +16,4 @@ spec:
     protocol: TCP
     name: http
 {{- end }}
+
