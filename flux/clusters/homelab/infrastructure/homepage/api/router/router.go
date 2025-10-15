@@ -35,23 +35,13 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 	// Initialize Cloudflare handler
 	cloudflareHandler := handlers.NewCloudflareHandler(cloudflareCDN)
 
-	// Initialize Agent-SRE handler
-	agentSREHandler := handlers.NewAgentSREHandler(handlers.AgentSREConfig{
-		ServiceURL: cfg.AgentSREURL, // Get from config, fallback to default
-	})
-
-	// 🤖 Initialize Jamie handler (AI-powered SRE assistant)
-	jamieHandler := handlers.NewJamieHandler(handlers.JamieConfig{
-		ServiceURL: cfg.JamieURL, // Get from config, fallback to default
-	})
-
-	// 🏥 Register Jamie as a dependency for health checks
-	handlers.SetJamieChecker(jamieHandler)
-
-	// 🤖 Initialize Agent Bruno handler (Homepage knowledge assistant)
+	// 🤖 Initialize Agent Bruno handler (Homepage chatbot and knowledge assistant)
 	agentBrunoHandler := handlers.NewAgentBrunoHandler(handlers.AgentBrunoConfig{
 		ServiceURL: cfg.AgentBrunoURL, // Get from config, fallback to default
 	})
+
+	// 🏥 Register Agent Bruno as a dependency for health checks
+	handlers.SetAgentBrunoChecker(agentBrunoHandler)
 
 	// 📊 OpenTelemetry middleware for automatic tracing
 	r.Use(otelgin.Middleware("bruno-site"))
@@ -142,42 +132,7 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 			cloudflare.POST("/purge", cloudflareHandler.PurgeCache)
 		}
 
-		// Agent-SRE proxy routes
-		agentSRE := api.Group("/agent-sre")
-		{
-			// Health and status endpoints
-			agentSRE.GET("/health", agentSREHandler.Health)
-			agentSRE.GET("/ready", agentSREHandler.Ready)
-			agentSRE.GET("/status", agentSREHandler.Status)
-
-			// Chat endpoints
-			agentSRE.POST("/chat", agentSREHandler.Chat)
-			agentSRE.POST("/mcp/chat", agentSREHandler.MCPChat)
-
-			// Log analysis endpoints
-			agentSRE.POST("/analyze-logs", agentSREHandler.AnalyzeLogs)
-			agentSRE.POST("/mcp/analyze-logs", agentSREHandler.MCPAnalyzeLogs)
-		}
-
-		// 🤖 Jamie (AI-powered SRE assistant) proxy routes
-		jamie := api.Group("/jamie")
-		{
-			// Health and status endpoints
-			jamie.GET("/health", jamieHandler.Health)
-			jamie.GET("/ready", jamieHandler.Ready)
-			jamie.GET("/status", jamieHandler.Status)
-
-			// 💬 Main chatbot endpoint for Homepage
-			jamie.POST("/chat", jamieHandler.Chat)
-
-			// 📊 SRE operations via Jamie
-			jamie.POST("/golden-signals", jamieHandler.CheckGoldenSignals)
-			jamie.POST("/prometheus/query", jamieHandler.QueryPrometheus)
-			jamie.POST("/pod-logs", jamieHandler.GetPodLogs)
-			jamie.POST("/analyze-logs", jamieHandler.AnalyzeLogs)
-		}
-
-		// 🤖 Agent Bruno (Homepage knowledge assistant) proxy routes
+		// 🤖 Agent Bruno (Homepage chatbot and knowledge assistant) proxy routes
 		agentBruno := api.Group("/agent-bruno")
 		{
 			// Health and status endpoints

@@ -85,7 +85,7 @@ services:
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
       - CLOUDFLARE_DOMAIN=${CLOUDFLARE_DOMAIN:-lucena.cloud}
       - CLOUDFLARE_CACHE_TTL=${CLOUDFLARE_CACHE_TTL:-86400}
-      - JAMIE_URL=${JAMIE_URL:-http://host.docker.internal:8081}
+      - AGENT_BRUNO_URL=${AGENT_BRUNO_URL:-http://host.docker.internal:8082}
     ports:
       - "0.0.0.0:8080:8080"
     depends_on:

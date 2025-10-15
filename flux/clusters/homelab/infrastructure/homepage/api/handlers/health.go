@@ -14,12 +14,12 @@ type DependencyChecker interface {
 
 var (
 	// Global dependency checkers - will be set by router
-	jamieChecker DependencyChecker
+	agentBrunoChecker DependencyChecker
 )
 
-// SetJamieChecker sets the Jamie dependency checker
-func SetJamieChecker(checker DependencyChecker) {
-	jamieChecker = checker
+// SetAgentBrunoChecker sets the Agent Bruno dependency checker
+func SetAgentBrunoChecker(checker DependencyChecker) {
+	agentBrunoChecker = checker
 }
 
 // HealthCheck returns the health status of the API and all dependencies
@@ -31,20 +31,20 @@ func HealthCheck(c *gin.Context) {
 	dependencies := make(map[string]interface{})
 	hasDegradedDependencies := false
 
-	// 🤖 Check Jamie service health
-	if jamieChecker != nil {
-		jamieStart := time.Now()
-		if err := jamieChecker.CheckHealth(); err != nil {
+	// 🤖 Check Agent Bruno service health
+	if agentBrunoChecker != nil {
+		agentBrunoStart := time.Now()
+		if err := agentBrunoChecker.CheckHealth(); err != nil {
 			hasDegradedDependencies = true
-			dependencies["jamie"] = map[string]interface{}{
+			dependencies["agent-bruno"] = map[string]interface{}{
 				"status":       "degraded",
 				"error":        err.Error(),
-				"responseTime": time.Since(jamieStart).Milliseconds(),
+				"responseTime": time.Since(agentBrunoStart).Milliseconds(),
 			}
 		} else {
-			dependencies["jamie"] = map[string]interface{}{
+			dependencies["agent-bruno"] = map[string]interface{}{
 				"status":       "healthy",
-				"responseTime": time.Since(jamieStart).Milliseconds(),
+				"responseTime": time.Since(agentBrunoStart).Milliseconds(),
 			}
 		}
 	}

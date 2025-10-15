@@ -17,7 +17,6 @@ resources:
   - cloudflare-tunnel
   - redis # 🔴 Redis for session storage
   - mongodb # 🍃 MongoDB for persistent memory
-  - bruno-namespace.yaml # 🏠 Homepage namespace with updated labels
   - homepage
   - dashboards
   # - agent-bruno # 🤖 Agent Bruno - Homepage knowledge with IP-based memory

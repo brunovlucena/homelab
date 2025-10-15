@@ -25,7 +25,7 @@ spec:
       enabled: true  # Enable Ollama with external service
     frontend:
       apiUrl: "/api/v1"
-    # 🤖 Jamie Configuration (AI-powered SRE assistant)
-    jamie:
+    # 🤖 Agent Bruno Configuration (Homepage chatbot and knowledge assistant)
+    agentBruno:
       enabled: true
-      url: "http://jamie-slack-bot-service.jamie.svc.cluster.local:8080"
+      url: "http://agent-bruno-service.agent-bruno.svc.cluster.local:8080"

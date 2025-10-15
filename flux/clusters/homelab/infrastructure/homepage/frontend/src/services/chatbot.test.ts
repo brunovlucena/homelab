@@ -179,7 +179,7 @@ describe('ChatbotService', () => {
       const mockResponse = {
         data: {
           status: 'healthy',
-          service: 'jamie',
+          service: 'agent-bruno',
           timestamp: '2025-10-08T12:00:00Z',
         },
       }
@@ -190,7 +190,7 @@ describe('ChatbotService', () => {
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith('/status')
       expect(result.status).toBe('healthy')
-      expect(result.service).toBe('jamie')
+      expect(result.service).toBe('agent-bruno')
     })
   })
 
@@ -199,7 +199,7 @@ describe('ChatbotService', () => {
       const mockResponse = {
         data: {
           status: 'healthy',
-          service: 'jamie',
+          service: 'agent-bruno',
           timestamp: '2025-10-08T12:00:00Z',
         },
       }
@@ -253,7 +253,7 @@ describe('ChatbotService', () => {
     it('should include Jamie endpoint in baseUrl', () => {
       const info = service.getAgentInfo()
       
-      expect(info.baseUrl).toContain('jamie')
+      expect(info.baseUrl).toContain('agent-bruno')
     })
   })
 })
