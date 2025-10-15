@@ -67,7 +67,7 @@ func (h *AgentBrunoHandler) CheckHealth() error {
 }
 
 // proxyRequest is a helper function to proxy requests to agent-bruno
-func (h *AgentBrunoHandler) proxyRequest(c *gin.Context, path string, method string) {
+func (h *AgentBrunoHandler) proxyRequest(c *gin.Context, path string, method string, useChatClient bool) {
 	// Build target URL
 	targetURL := h.config.ServiceURL + path
 
@@ -91,8 +91,14 @@ func (h *AgentBrunoHandler) proxyRequest(c *gin.Context, path string, method str
 	req.Header.Set("X-Forwarded-For", c.ClientIP())
 	req.Header.Set("X-Forwarded-Host", c.Request.Host)
 
+	// Select appropriate client based on endpoint type
+	client := h.client
+	if useChatClient {
+		client = h.chatClient
+	}
+
 	// Send request
-	resp, err := h.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error":   "Agent-Bruno service unavailable",
@@ -124,58 +130,58 @@ func (h *AgentBrunoHandler) proxyRequest(c *gin.Context, path string, method str
 
 // Chat handles POST /api/v1/agent-bruno/chat
 func (h *AgentBrunoHandler) Chat(c *gin.Context) {
-	h.proxyRequest(c, "/chat", http.MethodPost)
+	h.proxyRequest(c, "/chat", http.MethodPost, true) // Use longer timeout for chat
 }
 
 // MCPChat handles POST /api/v1/agent-bruno/mcp/chat
 func (h *AgentBrunoHandler) MCPChat(c *gin.Context) {
-	h.proxyRequest(c, "/mcp/chat", http.MethodPost)
+	h.proxyRequest(c, "/mcp/chat", http.MethodPost, true) // Use longer timeout for chat
 }
 
 // GetMemory handles GET /api/v1/agent-bruno/memory/:ip
 func (h *AgentBrunoHandler) GetMemory(c *gin.Context) {
 	ip := c.Param("ip")
-	h.proxyRequest(c, "/memory/"+ip, http.MethodGet)
+	h.proxyRequest(c, "/memory/"+ip, http.MethodGet, false)
 }
 
 // GetMemoryHistory handles GET /api/v1/agent-bruno/memory/:ip/history
 func (h *AgentBrunoHandler) GetMemoryHistory(c *gin.Context) {
 	ip := c.Param("ip")
-	h.proxyRequest(c, "/memory/"+ip+"/history", http.MethodGet)
+	h.proxyRequest(c, "/memory/"+ip+"/history", http.MethodGet, false)
 }
 
 // ClearMemory handles DELETE /api/v1/agent-bruno/memory/:ip
 func (h *AgentBrunoHandler) ClearMemory(c *gin.Context) {
 	ip := c.Param("ip")
-	h.proxyRequest(c, "/memory/"+ip, http.MethodDelete)
+	h.proxyRequest(c, "/memory/"+ip, http.MethodDelete, false)
 }
 
 // GetKnowledgeSummary handles GET /api/v1/agent-bruno/knowledge/summary
 func (h *AgentBrunoHandler) GetKnowledgeSummary(c *gin.Context) {
-	h.proxyRequest(c, "/knowledge/summary", http.MethodGet)
+	h.proxyRequest(c, "/knowledge/summary", http.MethodGet, false)
 }
 
 // SearchKnowledge handles GET /api/v1/agent-bruno/knowledge/search
 func (h *AgentBrunoHandler) SearchKnowledge(c *gin.Context) {
-	h.proxyRequest(c, "/knowledge/search", http.MethodGet)
+	h.proxyRequest(c, "/knowledge/search", http.MethodGet, false)
 }
 
 // GetStats handles GET /api/v1/agent-bruno/stats
 func (h *AgentBrunoHandler) GetStats(c *gin.Context) {
-	h.proxyRequest(c, "/stats", http.MethodGet)
+	h.proxyRequest(c, "/stats", http.MethodGet, false)
 }
 
 // Health handles GET /api/v1/agent-bruno/health
 func (h *AgentBrunoHandler) Health(c *gin.Context) {
-	h.proxyRequest(c, "/health", http.MethodGet)
+	h.proxyRequest(c, "/health", http.MethodGet, false)
 }
 
 // Ready handles GET /api/v1/agent-bruno/ready
 func (h *AgentBrunoHandler) Ready(c *gin.Context) {
-	h.proxyRequest(c, "/ready", http.MethodGet)
+	h.proxyRequest(c, "/ready", http.MethodGet, false)
 }
 
 // Status handles GET /api/v1/agent-bruno/status
 func (h *AgentBrunoHandler) Status(c *gin.Context) {
-	h.proxyRequest(c, "/status", http.MethodGet)
+	h.proxyRequest(c, "/status", http.MethodGet, false)
 }
