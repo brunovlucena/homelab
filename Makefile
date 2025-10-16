@@ -48,6 +48,18 @@ flux-refresh: ## Force refresh all Flux HelmRepositories, GitRepositories, and H
 	kubectl annotate helmrelease --all -n flux-system --overwrite reconcile.fluxcd.io/requestedAt="$$(date +%s)"
 	@echo "✅ Flux refresh triggered for all resources"
 
+reconcile-gitrepo: ## Reconcile GitRepository (usage: make reconcile-gitrepo homelab)
+	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
+		echo "❌ Error: GitRepository name is required"; \
+		echo "Usage: make reconcile-gitrepo <gitrepo-name>"; \
+		echo "Example: make reconcile-gitrepo homelab"; \
+		exit 1; \
+	fi
+	@GITREPO="$(filter-out $@,$(MAKECMDGOALS))"; \
+	echo "🔄 Reconciling GitRepository: $$GITREPO..."; \
+	flux reconcile source git $$GITREPO -n flux-system; \
+	echo "✅ GitRepository $$GITREPO reconciled successfully!"
+
 reconcile: ## Reconcile HelmRelease(s) managed by Flux (usage: make reconcile [service-name] or make reconcile for all)
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		echo "🔄 Reconciling all HelmReleases..."; \
