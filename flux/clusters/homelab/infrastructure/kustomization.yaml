@@ -9,25 +9,25 @@ kind: Kustomization
 
 resources:
   # Core infrastructure (CRDs from prometheus-operator are now available)
-  - ../cert-manager
-  - ../metrics-server
-  - ../minio
-  - ../loki
-  - ../alloy
-  - ../tempo
+  - ./cert-manager
+  - ./metrics-server
+  - ./minio
+  - ./loki
+  - ./alloy
+  - ./tempo
   # Application infrastructure (Knative CRDs are now available)
-  - ../knative-serving
-  - ../knative-eventing
-  - ../postgres
-  - ../redis
-  - ../mongodb
+  - ./knative-serving
+  - ./knative-eventing
+  - ./postgres
+  - ./redis
+  - ./mongodb
   # Agent-specific components (can now use Prometheus CRDs)
-  - ../cloudflare-tunnel
-  - ../agent-bruno
-  - ../homepage
+  - ./cloudflare-tunnel
+  - ./agent-bruno
+  - ./homepage
   # Dashboards and monitoring (can now use Prometheus CRDs)
-  - ../headlamp
-  - ../k6-operator
-  - ../prometheus-pushgateway
-  # - ../agent-sre
-  # - ../agent-jamie
+  - ./headlamp
+  - ./k6-operator
+  - ./prometheus-pushgateway
+  # - ./agent-sre
+  # - ./agent-jamie
