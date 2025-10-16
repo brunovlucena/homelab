@@ -50,7 +50,8 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 	r.Use(middleware.HTTPMetricsMiddleware())
 
 	// Compression middleware (Golden Rule #6: Payload Compression)
-	r.Use(gzip.Gzip(gzip.DefaultCompression))
+	// ⚠️ Exclude /metrics and /health from compression - Prometheus expects plain text
+	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/metrics", "/health"})))
 
 	// CORS middleware
 	r.Use(cors.New(cors.Config{

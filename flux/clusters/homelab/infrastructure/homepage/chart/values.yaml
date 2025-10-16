@@ -27,7 +27,7 @@ api:
   image:
     repository: ghcr.io/brunovlucena/homepage-api
     pullPolicy: Always
-    tag: "0.1.30"
+    tag: "0.1.31"
   service:
     type: ClusterIP
     port: 8080
@@ -62,7 +62,7 @@ frontend:
   image:
     repository: ghcr.io/brunovlucena/homepage-frontend
     pullPolicy: Always
-    tag: "0.1.30"
+    tag: "0.1.31"
   service:
     type: ClusterIP
     port: 80
