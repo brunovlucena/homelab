@@ -16,6 +16,10 @@ serviceAccount:
   annotations: {}
   name: ""
 
+# Linkerd Configuration
+linkerd:
+  enabled: true
+
 podAnnotations: {}
 
 podSecurityContext: {}
