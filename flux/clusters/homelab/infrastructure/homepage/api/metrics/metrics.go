@@ -76,7 +76,7 @@ func InitMetrics() error {
 	// 🎯 HTTP Request metrics
 	// ============================================================================
 	HTTPRequestsTotal, err = meter.Int64Counter(
-		"http.requests.total",
+		"http_requests_total",
 		metric.WithDescription("Total number of HTTP requests"),
 		metric.WithUnit("{request}"),
 	)
@@ -85,7 +85,7 @@ func InitMetrics() error {
 	}
 
 	HTTPRequestDuration, err = meter.Float64Histogram(
-		"http.request.duration",
+		"http_request_duration",
 		metric.WithDescription("HTTP request duration"),
 		metric.WithUnit("s"),
 	)
@@ -97,7 +97,7 @@ func InitMetrics() error {
 	// 📦 Projects API metrics
 	// ============================================================================
 	ProjectsLoadErrors, err = meter.Int64Counter(
-		"bruno.site.projects.load.errors",
+		"homepage_projects_load_errors",
 		metric.WithDescription("Total number of errors when loading projects from database"),
 		metric.WithUnit("{error}"),
 	)
@@ -106,7 +106,7 @@ func InitMetrics() error {
 	}
 
 	ProjectsLoadSuccess, err = meter.Int64Counter(
-		"bruno.site.projects.load.success",
+		"homepage_projects_load_success",
 		metric.WithDescription("Total number of successful project loads from database"),
 		metric.WithUnit("{load}"),
 	)
@@ -115,7 +115,7 @@ func InitMetrics() error {
 	}
 
 	ProjectsLoadDuration, err = meter.Float64Histogram(
-		"bruno.site.projects.load.duration",
+		"homepage_projects_load_duration",
 		metric.WithDescription("Time taken to load projects from database"),
 		metric.WithUnit("s"),
 	)
@@ -127,7 +127,7 @@ func InitMetrics() error {
 	// 💼 Experience API metrics
 	// ============================================================================
 	ExperienceLoadErrors, err = meter.Int64Counter(
-		"bruno.site.experience.load.errors",
+		"homepage_experience_load_errors",
 		metric.WithDescription("Total number of errors when loading experience data from database"),
 		metric.WithUnit("{error}"),
 	)
@@ -136,7 +136,7 @@ func InitMetrics() error {
 	}
 
 	ExperienceLoadSuccess, err = meter.Int64Counter(
-		"bruno.site.experience.load.success",
+		"homepage_experience_load_success",
 		metric.WithDescription("Total number of successful experience data loads from database"),
 		metric.WithUnit("{load}"),
 	)
@@ -145,7 +145,7 @@ func InitMetrics() error {
 	}
 
 	ExperienceLoadDuration, err = meter.Float64Histogram(
-		"bruno.site.experience.load.duration",
+		"homepage_experience_load_duration",
 		metric.WithDescription("Time taken to load experience data from database"),
 		metric.WithUnit("s"),
 	)
@@ -157,7 +157,7 @@ func InitMetrics() error {
 	// 💾 Database metrics
 	// ============================================================================
 	DatabaseConnectionErrors, err = meter.Int64Counter(
-		"bruno.site.database.connection.errors",
+		"homepage_database_connection_errors",
 		metric.WithDescription("Total number of database connection errors"),
 		metric.WithUnit("{error}"),
 	)
@@ -166,7 +166,7 @@ func InitMetrics() error {
 	}
 
 	DatabaseQueryErrors, err = meter.Int64Counter(
-		"bruno.site.database.query.errors",
+		"homepage_database_query_errors",
 		metric.WithDescription("Total number of database query errors"),
 		metric.WithUnit("{error}"),
 	)
@@ -178,7 +178,7 @@ func InitMetrics() error {
 	// 🔴 Redis metrics
 	// ============================================================================
 	RedisOperationErrors, err = meter.Int64Counter(
-		"bruno.site.redis.operation.errors",
+		"homepage_redis_operation_errors",
 		metric.WithDescription("Total number of Redis operation errors"),
 		metric.WithUnit("{error}"),
 	)
@@ -190,7 +190,7 @@ func InitMetrics() error {
 	// 📦 MinIO metrics
 	// ============================================================================
 	MinIOOperationErrors, err = meter.Int64Counter(
-		"bruno.site.minio.operation.errors",
+		"homepage_minio_operation_errors",
 		metric.WithDescription("Total number of MinIO operation errors"),
 		metric.WithUnit("{error}"),
 	)
@@ -202,7 +202,7 @@ func InitMetrics() error {
 	// 🤖 Agent-SRE proxy metrics
 	// ============================================================================
 	AgentSRERequestErrors, err = meter.Int64Counter(
-		"bruno.site.agent_sre.request.errors",
+		"homepage_agent_sre_request_errors",
 		metric.WithDescription("Total number of Agent-SRE proxy request errors"),
 		metric.WithUnit("{error}"),
 	)
@@ -211,7 +211,7 @@ func InitMetrics() error {
 	}
 
 	AgentSRERequestDuration, err = meter.Float64Histogram(
-		"bruno.site.agent_sre.request.duration",
+		"homepage_agent_sre_request_duration",
 		metric.WithDescription("Agent-SRE proxy request duration"),
 		metric.WithUnit("s"),
 	)

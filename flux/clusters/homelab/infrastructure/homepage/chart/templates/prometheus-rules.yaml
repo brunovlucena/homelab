@@ -16,7 +16,7 @@ spec:
   - name: homepage.critical
     rules:
     - alert: BrunoSiteAPIDown
-      expr: up{job="bruno-site-api"} == 0
+      expr: up{job="homepage-api"} == 0
       for: 1m
       labels:
         severity: critical
@@ -52,7 +52,7 @@ spec:
         runbook_url: "https://github.com/brunovlucena/homelab/blob/main/docs/runbooks/homepage/redis-down.md"
 
     - alert: BrunoSiteHighErrorRate
-      expr: rate(http_requests_total{job="bruno-site-api",code=~"5.."}[5m]) / rate(http_requests_total{job="bruno-site-api"}[5m]) > 0.05
+      expr: rate(http_requests_total{job="homepage-api",code=~"5.."}[5m]) / rate(http_requests_total{job="homepage-api"}[5m]) > 0.05
       for: 2m
       labels:
         severity: critical
@@ -109,7 +109,7 @@ spec:
   - name: homepage.warning
     rules:
     - alert: BrunoSiteHighResponseTime
-      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="bruno-site-api"}[5m])) > 1
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="homepage-api"}[5m])) > 1
       for: 5m
       labels:
         severity: warning
@@ -121,7 +121,7 @@ spec:
         runbook_url: "https://github.com/brunovlucena/homelab/blob/main/docs/runbooks/homepage/high-response-time.md"
 
     - alert: BrunoSiteHighCPUUsage
-      expr: rate(container_cpu_usage_seconds_total{pod=~"bruno-site-api-.*"}[5m]) > 0.8
+      expr: rate(container_cpu_usage_seconds_total{pod=~"homepage-api-.*"}[5m]) > 0.8
       for: 5m
       labels:
         severity: warning
@@ -133,7 +133,7 @@ spec:
         runbook_url: "https://github.com/brunovlucena/homelab/blob/main/docs/runbooks/homepage/high-cpu-usage.md"
 
     - alert: BrunoSiteHighMemoryUsage
-      expr: container_memory_usage_bytes{pod=~"bruno-site-api-.*"} / container_spec_memory_limit_bytes{pod=~"bruno-site-api-.*"} > 0.9
+      expr: container_memory_usage_bytes{pod=~"homepage-api-.*"} / container_spec_memory_limit_bytes{pod=~"homepage-api-.*"} > 0.9
       for: 5m
       labels:
         severity: warning
@@ -242,7 +242,7 @@ spec:
         action: "1. Check database performance\n2. Review query execution plans\n3. Consider adding indexes\n4. Check for N+1 query issues"
 
     - alert: BrunoSiteHighProjectViewErrors
-      expr: rate(http_requests_total{job="bruno-site-api",handler="/api/projects",code=~"4..|5.."}[10m]) > 0.1
+      expr: rate(http_requests_total{job="homepage-api",handler="/api/projects",code=~"4..|5.."}[10m]) > 0.1
       for: 5m
       labels:
         severity: warning
@@ -255,7 +255,7 @@ spec:
         runbook_url: "https://github.com/brunovlucena/homelab/blob/main/docs/runbooks/homepage/project-errors.md"
 
     - alert: BrunoSiteChatAPIErrors
-      expr: rate(http_requests_total{job="bruno-site-api",handler="/api/chat",code=~"4..|5.."}[10m]) > 0.05
+      expr: rate(http_requests_total{job="homepage-api",handler="/api/chat",code=~"4..|5.."}[10m]) > 0.05
       for: 5m
       labels:
         severity: warning
@@ -268,7 +268,7 @@ spec:
         runbook_url: "https://github.com/brunovlucena/homelab/blob/main/docs/runbooks/homepage/chat-errors.md"
 
     - alert: BrunoSiteHighAnalyticsLoad
-      expr: rate(http_requests_total{job="bruno-site-api",handler="/api/analytics/track"}[5m]) > 10
+      expr: rate(http_requests_total{job="homepage-api",handler="/api/analytics/track"}[5m]) > 10
       for: 10m
       labels:
         severity: info
@@ -339,7 +339,7 @@ spec:
   - name: homepage.security
     rules:
     - alert: BrunoSiteHighRateLimitHits
-      expr: rate(http_requests_total{job="bruno-site-api",code="429"}[5m]) > 0.1
+      expr: rate(http_requests_total{job="homepage-api",code="429"}[5m]) > 0.1
       for: 5m
       labels:
         severity: warning
@@ -352,7 +352,7 @@ spec:
         runbook_url: "https://github.com/brunovlucena/homelab/blob/main/docs/runbooks/homepage/rate-limit-hits.md"
 
     - alert: BrunoSiteSuspiciousActivity
-      expr: rate(http_requests_total{job="bruno-site-api",code=~"4.."}[5m]) > 5
+      expr: rate(http_requests_total{job="homepage-api",code=~"4.."}[5m]) > 5
       for: 10m
       labels:
         severity: warning
@@ -365,7 +365,7 @@ spec:
         runbook_url: "https://github.com/brunovlucena/homelab/blob/main/docs/runbooks/homepage/suspicious-activity.md"
 
     - alert: BrunoSiteSQLInjectionAttempts
-      expr: increase(http_requests_total{job="bruno-site-api",handler="/api",code="400"}[10m]) > 20
+      expr: increase(http_requests_total{job="homepage-api",handler="/api",code="400"}[10m]) > 20
       for: 5m
       labels:
         severity: warning
@@ -666,7 +666,7 @@ spec:
   - name: homepage.availability
     rules:
     - alert: BrunoSiteLowAvailability
-      expr: (rate(http_requests_total{job="bruno-site-api",code=~"2.."}[1h]) / rate(http_requests_total{job="bruno-site-api"}[1h])) < 0.99
+      expr: (rate(http_requests_total{job="homepage-api",code=~"2.."}[1h]) / rate(http_requests_total{job="homepage-api"}[1h])) < 0.99
       for: 15m
       labels:
         severity: critical
@@ -679,7 +679,7 @@ spec:
         runbook_url: "https://github.com/brunovlucena/homelab/blob/main/docs/runbooks/homepage/low-availability.md"
 
     - alert: BrunoSiteHealthCheckFailures
-      expr: rate(http_requests_total{job="bruno-site-api",handler="/health",code!="200"}[5m]) > 0
+      expr: rate(http_requests_total{job="homepage-api",handler="/health",code!="200"}[5m]) > 0
       for: 2m
       labels:
         severity: critical

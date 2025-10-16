@@ -93,7 +93,7 @@ func InitOTel(ctx context.Context) (func(context.Context) error, error) {
 
 		// 🔧 Use the OpenTelemetry Prometheus exporter via the custom registry
 		// This ensures OpenTelemetry metrics are properly exposed in Prometheus format
-		// The exporter converts OTel metrics (e.g., http.request.duration) to Prometheus format
+		// Metric names use underscores following Prometheus naming conventions
 		// (e.g., http_request_duration_seconds_bucket)
 		prometheusHandler = promhttp.HandlerFor(
 			registry,
