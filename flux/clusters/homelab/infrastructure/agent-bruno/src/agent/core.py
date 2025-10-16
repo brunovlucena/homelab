@@ -75,12 +75,12 @@ Remember: You have access to the user's conversation history through memory. Use
     ) -> Dict[str, Any]:
         """
         Process a chat message
-        
+
         Args:
             message: User message
             ip: User IP address
             context: Additional context
-            
+
         Returns:
             Response dictionary
         """
@@ -160,7 +160,7 @@ Remember: You have access to the user's conversation history through memory. Use
     async def _query_ollama(self, prompt: str) -> str:
         """Query Ollama LLM"""
         url = f"{self.ollama_url}/api/generate"
-        
+
         payload = {
             "model": self.model,
             "prompt": prompt,
@@ -176,7 +176,7 @@ Remember: You have access to the user's conversation history through memory. Use
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(url, json=payload)
                 response.raise_for_status()
-                
+
                 data = response.json()
                 return data.get("response", "").strip()
 
@@ -193,7 +193,6 @@ Remember: You have access to the user's conversation history through memory. Use
     async def get_memory_stats(self, ip: str) -> Dict[str, Any]:
         """Get memory statistics for IP"""
         recent = await self.memory.get_recent_context(ip)
-        history = await self.memory.get_full_history(ip, limit=1)  # Just count
         total = await self.memory.mongo_store.get_total_conversations(ip)
 
         return {
@@ -215,4 +214,3 @@ Remember: You have access to the user's conversation history through memory. Use
     def search_knowledge(self, query: str) -> list:
         """Search knowledge base"""
         return self.knowledge.search(query)
-

@@ -148,8 +148,7 @@ specific analyses like error pattern detection or slow request detection.
                     "labels": {
                         "type": "object",
                         "description": (
-                            "Labels to scope the investigation "
-                            '(e.g., {"cluster": "prod", "namespace": "api"})'
+                            "Labels to scope the investigation " '(e.g., {"cluster": "prod", "namespace": "api"})'
                         ),
                     },
                     "start_time": {
