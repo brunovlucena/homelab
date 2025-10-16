@@ -1,9 +1,10 @@
 package middleware
 
 import (
-	"github.com/brunovlucena/homelab/homepage-api/metrics"
 	"strconv"
 	"time"
+
+	"github.com/brunovlucena/homelab/homepage-api/metrics"
 
 	"github.com/gin-gonic/gin"
 )

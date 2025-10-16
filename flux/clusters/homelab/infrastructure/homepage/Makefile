@@ -60,6 +60,7 @@ help:
 	@echo "  make test-api-endpoints    - Test API endpoints"
 	@echo "  make test-k6               - Run k6 load tests for golden signals (Kubernetes)"
 	@echo "  make test-k6-local         - Run k6 load tests locally (development)"
+	@echo "  make test-k6-prod          - Run k6 load tests against production (k8s-api.lucena.cloud)"
 	@echo "  make test-metrics          - Test Prometheus metrics endpoints"
 	@echo "  make test                  - Run all tests (API, frontend, E2E)"
 	@echo "  make format                - Format code"
@@ -416,6 +417,17 @@ test-k6-local:
 	@rm -f /tmp/golden-signals-test.js
 	@echo "✅ k6 golden signals test completed"
 	@echo "📋 Results saved to: golden-signals-results.json"
+
+# Run k6 load tests against production (k8s-api.lucena.cloud)
+test-k6-prod:
+	@echo "🎯 Running k6 load test against production..."
+	@echo "🌐 Target: https://k8s-api.lucena.cloud"
+	@echo "📊 Testing: Health, Projects, Metrics, and Analytics endpoints"
+	@echo ""
+	@cd tests/k6 && BASE_URL=https://k8s-api.lucena.cloud k6 run --out json=k6-results.json load-test.js
+	@echo ""
+	@echo "✅ k6 load test completed"
+	@echo "📋 Results saved to: tests/k6/k6-results.json"
 
 # Run all tests
 test: test-api-unit test-frontend-unit test-e2e test-k6

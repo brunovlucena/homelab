@@ -1,0 +1,150 @@
+name: Homepage K6 Load Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Test duration (short, medium, long)'
+        required: false
+        default: 'short'
+        type: choice
+        options:
+          - short
+          - medium
+          - long
+      target_url:
+        description: 'Target URL'
+        required: false
+        default: 'https://k8s-api.lucena.cloud'
+        type: string
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  push:
+    branches:
+      - main
+    paths:
+      - 'flux/clusters/homelab/infrastructure/homepage/**'
+      - '.github/workflows/homepage-k6.yaml'
+
+jobs:
+  k6-load-test:
+    name: K6 Load Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: 'latest'
+
+      - name: Set test duration
+        id: test-config
+        run: |
+          DURATION="${{ github.event.inputs.duration || 'short' }}"
+          TARGET_URL="${{ github.event.inputs.target_url || 'https://k8s-api.lucena.cloud' }}"
+          
+          echo "target_url=${TARGET_URL}" >> $GITHUB_OUTPUT
+          
+          case $DURATION in
+            short)
+              echo "stages=[{duration:'1m',target:10},{duration:'2m',target:10},{duration:'1m',target:0}]" >> $GITHUB_OUTPUT
+              echo "duration_label=Short (4 minutes)" >> $GITHUB_OUTPUT
+              ;;
+            medium)
+              echo "stages=[{duration:'2m',target:10},{duration:'5m',target:10},{duration:'2m',target:20},{duration:'5m',target:20},{duration:'2m',target:0}]" >> $GITHUB_OUTPUT
+              echo "duration_label=Medium (16 minutes)" >> $GITHUB_OUTPUT
+              ;;
+            long)
+              echo "stages=[{duration:'5m',target:20},{duration:'10m',target:20},{duration:'5m',target:50},{duration:'10m',target:50},{duration:'5m',target:0}]" >> $GITHUB_OUTPUT
+              echo "duration_label=Long (35 minutes)" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Run K6 load test
+        id: k6
+        continue-on-error: true
+        run: |
+          cd flux/clusters/homelab/infrastructure/homepage/tests/k6
+          
+          echo "🚀 Running K6 load test against ${{ steps.test-config.outputs.target_url }}"
+          echo "⏱️  Test duration: ${{ steps.test-config.outputs.duration_label }}"
+          
+          k6 run \
+            --out json=k6-results.json \
+            --env BASE_URL="${{ steps.test-config.outputs.target_url }}" \
+            load-test.js
+
+      - name: Parse K6 results
+        if: always()
+        id: parse-results
+        run: |
+          cd flux/clusters/homelab/infrastructure/homepage/tests/k6
+          
+          if [ -f k6-results.json ]; then
+            # Extract key metrics from the last line (summary)
+            SUMMARY=$(tail -1 k6-results.json)
+            
+            echo "## 📊 K6 Load Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Target URL:** ${{ steps.test-config.outputs.target_url }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Test Duration:** ${{ steps.test-config.outputs.duration_label }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Parse and display key metrics
+            echo "### Key Metrics" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            k6 inspect k6-results.json 2>/dev/null || echo "Full metrics available in artifacts"
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ K6 results file not found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload K6 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results-${{ github.run_number }}
+          path: |
+            flux/clusters/homelab/infrastructure/homepage/tests/k6/k6-results.json
+          retention-days: 30
+
+      - name: Check test status
+        if: steps.k6.outcome == 'failure'
+        run: |
+          echo "❌ K6 load test failed - thresholds not met"
+          echo "Check the artifacts for detailed results"
+          exit 1
+
+      - name: Test success notification
+        if: steps.k6.outcome == 'success'
+        run: |
+          echo "✅ K6 load test passed successfully!"
+          echo "Target: ${{ steps.test-config.outputs.target_url }}"
+          echo "Duration: ${{ steps.test-config.outputs.duration_label }}"
+
+  # Optional: Post results to a monitoring system
+  post-results:
+    name: Post Results to Prometheus Pushgateway (Optional)
+    runs-on: ubuntu-latest
+    needs: k6-load-test
+    if: always() && false  # Disabled by default - set to true to enable
+    
+    steps:
+      - name: Download K6 results
+        uses: actions/download-artifact@v4
+        with:
+          name: k6-results-${{ github.run_number }}
+          path: ./results
+
+      - name: Push metrics to Prometheus
+        run: |
+          # Example: Push key metrics to Prometheus Pushgateway
+          # Customize this based on your monitoring setup
+          echo "Pushing metrics to Prometheus Pushgateway..."
+          # Add your Prometheus Pushgateway logic here
+

@@ -42,7 +42,7 @@ spec:
     - targetLabel: team
       replacement: "sre"
     - targetLabel: application
-      replacement: "bruno-site"
+      replacement: "homepage"
   # Namespace selector to limit which namespaces to scrape
   namespaceSelector:
     matchNames:
@@ -90,7 +90,7 @@ spec:
     - targetLabel: team
       replacement: "sre"
     - targetLabel: application
-      replacement: "bruno-site"
+      replacement: "homepage"
     - targetLabel: service_type
       replacement: "llm"
   namespaceSelector:
@@ -139,7 +139,7 @@ spec:
     - targetLabel: team
       replacement: "sre"
     - targetLabel: application
-      replacement: "bruno-site"
+      replacement: "homepage"
     - targetLabel: service_type
       replacement: "frontend"
   namespaceSelector:
