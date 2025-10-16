@@ -27,3 +27,4 @@ resources:
   - ../homepage
   # Dashboards and monitoring (can now use Prometheus CRDs)
   - ../headlamp
+  - ../k6-operator
