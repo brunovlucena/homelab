@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
     mongodb_url = os.getenv("MONGODB_URL", "mongodb://mongodb:27017")
     mongodb_db = os.getenv("MONGODB_DB", "agent_bruno")
     session_ttl = int(os.getenv("SESSION_TTL", "86400"))
-    ollama_url = os.getenv("OLLAMA_URL", "http://192.168.0.16:11434")
+    ollama_url = os.getenv("OLLAMA_URL", "http://ollama.homepage.svc.cluster.local:11434")
     ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
     
     # Initialize memory manager

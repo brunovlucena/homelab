@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/component: ollama
 spec:
   type: ExternalName
-  externalName: 192.168.0.12
+  externalName: 192.168.0.16
   ports:
   - port: 11434
     targetPort: 11434

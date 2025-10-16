@@ -41,7 +41,7 @@ spec:
         - name: LOG_LEVEL
           value: "INFO"
         - name: OLLAMA_URL
-          value: "http://192.168.0.16:11434"
+          value: "http://ollama.homepage.svc.cluster.local:11434"
         - name: OLLAMA_MODEL
           value: "llama3.2:3b"
         resources:

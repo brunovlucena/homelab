@@ -19,7 +19,7 @@ class AgentBruno:
     def __init__(
         self,
         memory_manager: MemoryManager,
-        ollama_url: str = "http://192.168.0.16:11434",
+        ollama_url: str = "http://ollama.homepage.svc.cluster.local:11434",
         model: str = "llama3.2:3b"
     ):
         """
