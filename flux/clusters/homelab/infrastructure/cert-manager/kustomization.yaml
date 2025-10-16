@@ -4,3 +4,14 @@ resources:
   - namespace.yaml
   - helmrelease.yaml
   - clusterissuer.yaml
+
+# Ensure ClusterIssuer is created after HelmRelease is ready
+patches:
+  - target:
+      kind: ClusterIssuer
+      name: linkerd-trust-anchor
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          fluxcd.io/depends-on: "HelmRelease/cert-manager"
