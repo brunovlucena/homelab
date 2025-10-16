@@ -2,8 +2,8 @@ apiVersion: v2
 name: homepage
 description: Bruno Lucena's personal portfolio and homelab showcase website
 type: application
-version: 0.1.28
-appVersion: "0.1.28"
+version: 0.1.29
+appVersion: "0.1.29"
 keywords:
   - portfolio
   - homelab
