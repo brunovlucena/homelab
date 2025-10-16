@@ -645,7 +645,7 @@ clean-frontend:
 # Build frontend Docker image
 docker-build-frontend:
 	@echo "🐳 Building frontend Docker image..."
-	@docker buildx build --platform linux/arm64 -t bruno-site-frontend:latest -f frontend/Dockerfile frontend/ --load
+	@docker buildx build -t bruno-site-frontend:latest -f frontend/Dockerfile frontend/ --load
 	@echo "✅ Docker image built: bruno-site-frontend:latest"
 
 # ========================================
