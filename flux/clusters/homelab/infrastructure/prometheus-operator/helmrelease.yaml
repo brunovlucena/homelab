@@ -19,9 +19,10 @@ spec:
     prometheus:
       prometheusSpec:
         retention: 7d
-        additionalArgs:
-          - name: "enable-feature"
-            value: "native-histograms"
+        # Disabled native-histograms feature as it's not compatible with OpenTelemetry Prometheus exporter
+        # additionalArgs:
+        #   - name: "enable-feature"
+        #     value: "native-histograms"
         storageSpec:
           volumeClaimTemplate:
             spec:

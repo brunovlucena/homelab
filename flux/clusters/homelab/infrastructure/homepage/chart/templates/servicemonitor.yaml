@@ -21,9 +21,6 @@ spec:
     scrapeTimeout: 10s
     scheme: http
     honorLabels: true
-    # Disable native histograms to avoid protobuf format issues with OpenTelemetry exporter
-    scrapeProtocols:
-      - PrometheusText0.0.4
     # No authentication for metrics endpoint
     # Relabeling rules for better metric organization
     relabelings:
