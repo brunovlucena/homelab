@@ -38,12 +38,7 @@ spec:
             cpu: 500m
             memory: 1Gi
         nodeSelector:
-          role: mcp-servers
-        tolerations:
-          - key: "observability"
-            operator: Equal
-            value: "true"
-            effect: NoSchedule
+          role: observability
         containers:
           - name: prometheus
             ports:
@@ -108,12 +103,7 @@ spec:
           cpu: 500m
           memory: 512Mi
       nodeSelector:
-        role: mcp-servers
-      tolerations:
-        - key: "observability"
-          operator: Equal
-          value: "true"
-          effect: NoSchedule
+        role: observability
       persistence:
         enabled: true
         type: pvc
