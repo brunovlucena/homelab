@@ -24,6 +24,15 @@ yarn-error.log*
 node_modules/
 vendor/
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
 # Build outputs
 dist/
 build/
