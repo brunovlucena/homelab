@@ -214,7 +214,7 @@ class TestSREAgentServiceUnit:
             
             assert result["status"] == "connected"
             assert "url" in result
-            assert "health" in result
+            assert "response_time" in result
 
     @pytest.mark.asyncio
     async def test_check_mcp_server_disconnected(self, service):
