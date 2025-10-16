@@ -6,12 +6,12 @@ import (
 	"os"
 	"time"
 
-	"homepage/config"
-	"homepage/database"
-	"homepage/handlers"
-	"homepage/metrics"
-	"homepage/router"
-	"homepage/storage"
+	"github.com/brunovlucena/homelab/homepage-api/config"
+	"github.com/brunovlucena/homelab/homepage-api/database"
+	"github.com/brunovlucena/homelab/homepage-api/handlers"
+	"github.com/brunovlucena/homelab/homepage-api/metrics"
+	"github.com/brunovlucena/homelab/homepage-api/router"
+	"github.com/brunovlucena/homelab/homepage-api/storage"
 
 	"github.com/gin-gonic/gin"
 )

@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"bruno-site/metrics"
+	"github.com/brunovlucena/homelab/homepage-api/metrics"
 	"errors"
 	"net/http"
 	"net/http/httptest"

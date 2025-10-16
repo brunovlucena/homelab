@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"bruno-site/storage"
+	"github.com/brunovlucena/homelab/homepage-api/storage"
 
 	"github.com/gin-gonic/gin"
 )

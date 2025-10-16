@@ -173,7 +173,8 @@ export function initWebVitals(): void {
       });
     });
 
-    observer.observe({ type: 'event', buffered: true, durationThreshold: 40 });
+    // Use type assertion as durationThreshold is not in official TypeScript types yet
+    observer.observe({ type: 'event', buffered: true, durationThreshold: 40 } as PerformanceObserverInit);
   } catch (e) {
     // INP is experimental and may not be supported
     if (import.meta.env.DEV) {

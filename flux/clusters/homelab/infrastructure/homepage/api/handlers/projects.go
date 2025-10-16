@@ -1,12 +1,11 @@
 package handlers
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"time"
 
-	"bruno-site/metrics"
+	"github.com/brunovlucena/homelab/homepage-api/metrics"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
@@ -68,7 +67,7 @@ func GetProjects(db *gorm.DB) gin.HandlerFunc {
 		duration := time.Since(start)
 		log.Printf("✅ SUCCESS: GetProjects - Loaded %d projects in %v (client: %s)", len(projects), duration, c.ClientIP())
 		metrics.RecordProjectsLoadSuccess()
-		metrics.ProjectsLoadDuration.Record(context.Background(), duration.Seconds())
+		metrics.ProjectsLoadDuration.Observe(duration.Seconds())
 
 		c.JSON(http.StatusOK, projects)
 	}

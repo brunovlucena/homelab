@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"bruno-site/cdn"
+	"github.com/brunovlucena/homelab/homepage-api/cdn"
 
 	"github.com/gin-gonic/gin"
 )

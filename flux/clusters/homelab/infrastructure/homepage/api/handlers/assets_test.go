@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"bruno-site/storage"
+	"github.com/brunovlucena/homelab/homepage-api/storage"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"

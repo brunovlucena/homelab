@@ -1,12 +1,12 @@
 package router
 
 import (
-	"homepage/cache"
-	"homepage/cdn"
-	"homepage/config"
-	"homepage/handlers"
-	"homepage/middleware"
-	"homepage/storage"
+	"github.com/brunovlucena/homelab/homepage-api/cache"
+	"github.com/brunovlucena/homelab/homepage-api/cdn"
+	"github.com/brunovlucena/homelab/homepage-api/config"
+	"github.com/brunovlucena/homelab/homepage-api/handlers"
+	"github.com/brunovlucena/homelab/homepage-api/middleware"
+	"github.com/brunovlucena/homelab/homepage-api/storage"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"

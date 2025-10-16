@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"bruno-site/cdn"
+	"github.com/brunovlucena/homelab/homepage-api/cdn"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
