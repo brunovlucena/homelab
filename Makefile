@@ -81,6 +81,8 @@ reconcile: ## Reconcile HelmRelease(s) managed by Flux (usage: make reconcile [s
 		flux reconcile helmrelease mongodb -n mongodb; \
 		echo "🔥 Reconciling prometheus-operator..."; \
 		flux reconcile helmrelease prometheus-operator -n prometheus; \
+		echo "📊 Reconciling prometheus-pushgateway..."; \
+		flux reconcile helmrelease prometheus-pushgateway -n prometheus; \
 		echo "⏱️  Reconciling tempo..."; \
 		flux reconcile helmrelease tempo -n tempo; \
 		echo "✅ All HelmReleases reconciled successfully!"; \
