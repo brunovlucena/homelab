@@ -190,7 +190,7 @@ Remember: You have access to the user's conversation history through memory. Use
             # Create messages with system prompt and user message
             messages = [
                 SystemMessage(content=self.system_prompt),
-                HumanMessage(content=prompt)
+                HumanMessage(content=prompt),
             ]
 
             # Generate response using LangChain
