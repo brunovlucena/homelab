@@ -1,9 +1,0 @@
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: agent-sre
-  labels:
-    app: sre-agent
-    managed-by: flux
-

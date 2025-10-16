@@ -5,7 +5,6 @@ kind: Kustomization
 namespace: jamie
 
 resources:
-  - namespace.yaml
   - src/slack-bot
   - src/mcp-server
 

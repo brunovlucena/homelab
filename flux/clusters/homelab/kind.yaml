@@ -25,9 +25,6 @@ nodes:
   - containerPort: 30121 # bruno
     hostPort: 30121
     protocol: TCP
-  - containerPort: 30121
-    hostPort: 30121
-    protocol: TCP
   - containerPort: 30122
     hostPort: 30122
     protocol: TCP

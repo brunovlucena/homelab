@@ -10,10 +10,11 @@ resources:
   - k8s/deployment.yaml
   - k8s/servicemonitor.yaml
 
-commonLabels:
-  app: agent-bruno
-  app.kubernetes.io/name: agent-bruno
-  app.kubernetes.io/component: ai-agent
-  version: v0.1.0
-  managed-by: flux
+labels:
+  - pairs:
+      app: agent-bruno
+      app.kubernetes.io/name: agent-bruno
+      app.kubernetes.io/component: ai-agent
+      version: v0.1.0
+      managed-by: flux
 

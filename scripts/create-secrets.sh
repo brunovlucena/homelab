@@ -35,12 +35,34 @@ fi
 echo -e "${BLUE}🔐 Creating Kubernetes Secrets from .zshrc environment variables${NC}"
 echo ""
 
+# Array to track variables that were auto-generated
+declare -a AUTO_GENERATED_VARS=()
+
+# ============================================================================
+# Helper function to generate random value
+# ============================================================================
+generate_random_value() {
+    local length="${1:-32}"
+    LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "${length}"
+}
+
 # ============================================================================
 # Helper function to extract environment variable value
+# If not set, generates a random value and shows a warning
 # ============================================================================
 extract_env_value() {
     local var_name="$1"
     local value=$(grep "^export ${var_name}=" "${ZSHRC_FILE}" | sed 's/^export [^=]*=//g' | sed 's/"//g' | sed "s/'//g")
+    
+    # Check if value is empty or not set
+    if [[ -z "${value}" ]]; then
+        # Generate random value
+        value=$(generate_random_value)
+        echo -e "${YELLOW}⚠️  Warning: ${var_name} not set in .zshrc - using random value${NC}" >&2
+        # Track auto-generated variable
+        AUTO_GENERATED_VARS+=("${var_name}")
+    fi
+    
     echo "${value}"
 }
 
@@ -67,6 +89,7 @@ ensure_namespace "${NAMESPACE_AGENT_SRE}"
 ensure_namespace "${NAMESPACE_JAMIE}"
 ensure_namespace "${NAMESPACE_LOKI}"
 ensure_namespace "${NAMESPACE_BRUNO}"
+ensure_namespace "${NAMESPACE_HOMEPAGE}"
 ensure_namespace "${NAMESPACE_ALLOY}"
 ensure_namespace "${NAMESPACE_MINIO}"
 ensure_namespace "${NAMESPACE_CLOUDFLARE_TUNNEL}"
@@ -359,3 +382,18 @@ echo "     └─ MinIO root credentials"
 echo "  12. cloudflare-tunnel-credentials (cloudflare-tunnel namespace)"
 echo "     └─ Cloudflare Tunnel token"
 echo ""
+
+# Display warning summary if any variables were auto-generated
+if [[ ${#AUTO_GENERATED_VARS[@]} -gt 0 ]]; then
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}⚠️  WARNING: The following variables were not set in .zshrc${NC}"
+    echo -e "${YELLOW}   Random values were generated for testing purposes:${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    for var in "${AUTO_GENERATED_VARS[@]}"; do
+        echo -e "${YELLOW}   • ${var}${NC}"
+    done
+    echo ""
+    echo -e "${RED}⚠️  Production Warning: These random values should NOT be used in production!${NC}"
+    echo -e "${RED}   Please set the proper values in ${ZSHRC_FILE}${NC}"
+    echo ""
+fi

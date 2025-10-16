@@ -1,30 +1,30 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-resources:
-  - repositories
-  - cert-manager
-  - metrics-server
-  - prometheus-operator
-  - minio
-  - loki
-  - alloy
-  - tempo
-  - knative-operator
-  - knative-serving
-  - knative-eventing
-  - postgres
-  - cloudflare-tunnel
-  - redis # 🔴 Redis for session storage
-  - mongodb # 🍃 MongoDB for persistent memory
-  - agent-bruno
-  - homepage
-  - dashboards
-  - headlamp
-  # - agent-sre # Updated with LangGraph state management
-  # - agent-jamie # 🤖 Jamie Slack Bot (Kustomize-based)
-  # - sealed-secrets
-  # - k6-operator
-  # - falco
-  # - flagger
+# This kustomization deploys all infrastructure components EXCEPT:
+# - repositories (deployed in phase1-core)
+# - prometheus-operator (deployed in phase2-prometheus)
+# - knative-operator (deployed in phase3-knative)
+# Those are deployed separately to ensure CRDs are available before dependent components
 
+resources:
+  # Core infrastructure (CRDs from prometheus-operator are now available)
+  - ../cert-manager
+  - ../metrics-server
+  - ../minio
+  - ../loki
+  - ../alloy
+  - ../tempo
+  # Application infrastructure (Knative CRDs are now available)
+  - ../knative-serving
+  - ../knative-eventing
+  - ../postgres
+  - ../redis
+  - ../mongodb
+  # Agent-specific components (can now use Prometheus CRDs)
+  - ../cloudflare-tunnel
+  - ../agent-bruno
+  - ../homepage
+  # Dashboards and monitoring (can now use Prometheus CRDs)
+  - ../dashboards
+  - ../headlamp

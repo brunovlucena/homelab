@@ -20,7 +20,7 @@ class AgentBruno:
         self,
         memory_manager: MemoryManager,
         ollama_url: str = "http://192.168.0.16:11434",
-        model: str = "llama3.1:latest"
+        model: str = "llama3.2:3b"
     ):
         """
         Initialize Agent Bruno

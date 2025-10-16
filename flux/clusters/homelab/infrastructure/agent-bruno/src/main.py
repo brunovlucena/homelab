@@ -65,6 +65,7 @@ async def lifespan(app: FastAPI):
     mongodb_db = os.getenv("MONGODB_DB", "agent_bruno")
     session_ttl = int(os.getenv("SESSION_TTL", "86400"))
     ollama_url = os.getenv("OLLAMA_URL", "http://192.168.0.16:11434")
+    ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
     
     # Initialize memory manager
     memory_manager = MemoryManager(
@@ -78,7 +79,8 @@ async def lifespan(app: FastAPI):
     # Initialize agent
     agent = AgentBruno(
         memory_manager=memory_manager,
-        ollama_url=ollama_url
+        ollama_url=ollama_url,
+        model=ollama_model
     )
     
     logger.info("✅ Agent Bruno started successfully")

@@ -6,5 +6,4 @@ metadata:
   namespace: alloy
 
 resources:
-  - namespace.yaml
   - helmrelease.yaml

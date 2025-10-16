@@ -22,22 +22,3 @@ spec:
   namespaceSelector:
     matchNames:
     - cloudflare-tunnel
-
----
-apiVersion: monitoring.coreos.com/v1
-kind: Probe
-metadata:
-  name: cloudflare-tunnel-health
-  namespace: cloudflare-tunnel
-  labels:
-    app: kube-prometheus-stack
-    release: prometheus-operator
-    component: cloudflare-tunnel
-spec:
-  jobName: cloudflare-tunnel-health
-  prober:
-    url: http://cloudflared-metrics.cloudflare-tunnel.svc.cluster.local:2000/ready
-  targets:
-    staticConfig:
-      static:
-      - cloudflared-metrics.cloudflare-tunnel.svc.cluster.local:2000

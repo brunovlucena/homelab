@@ -10,6 +10,13 @@ CONTEXT="kind-${CLUSTER_NAME}"
 echo "🚀 Installing Linkerd on cluster: ${CLUSTER_NAME}"
 echo "📍 Using context: ${CONTEXT}"
 
+# Check if Linkerd control plane is already installed
+if kubectl get deployment -n linkerd linkerd-destination --context "${CONTEXT}" >/dev/null 2>&1; then
+    echo "✅ Linkerd control plane is already installed, skipping installation..."
+    echo "💡 Run 'linkerd check --context ${CONTEXT}' manually to verify health if needed."
+    exit 0
+fi
+
 # Pre-flight check
 echo "✅ Running pre-flight checks..."
 if ! linkerd check --pre --context "${CONTEXT}"; then
