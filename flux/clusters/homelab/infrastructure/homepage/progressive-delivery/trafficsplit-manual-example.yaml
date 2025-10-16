@@ -1,0 +1,65 @@
+---
+# 🔀 Manual TrafficSplit Example
+# This shows how to manually control traffic splitting without Flagger
+# Use this approach when you want full control over the rollout process
+
+# NOTE: This file is an EXAMPLE and should NOT be applied when using Flagger
+# Flagger will automatically create TrafficSplit resources for you
+
+# To use manual traffic splitting:
+# 1. Create separate deployments for primary and canary
+# 2. Create separate services for primary and canary
+# 3. Create this TrafficSplit resource
+# 4. Manually adjust weights as needed
+
+apiVersion: split.smi-spec.io/v1alpha1
+kind: TrafficSplit
+metadata:
+  name: homepage-api-manual
+  namespace: homepage
+spec:
+  # 🎯 Apex service that receives incoming traffic
+  service: homepage-api
+  
+  # 📊 Backend services and their traffic weights
+  # Weights are proportional (10 + 90 = 100% of traffic)
+  backends:
+  
+  # Stable version (primary)
+  - service: homepage-api-primary
+    weight: 90  # 90% of traffic
+  
+  # New version (canary)
+  - service: homepage-api-canary
+    weight: 10  # 10% of traffic
+
+---
+# Example: 50/50 traffic split for A/B testing
+# apiVersion: split.smi-spec.io/v1alpha1
+# kind: TrafficSplit
+# metadata:
+#   name: homepage-api-ab-test
+#   namespace: homepage
+# spec:
+#   service: homepage-api
+#   backends:
+#   - service: homepage-api-primary
+#     weight: 50
+#   - service: homepage-api-canary
+#     weight: 50
+
+---
+# Example: Full cutover (100% to canary)
+# apiVersion: split.smi-spec.io/v1alpha1
+# kind: TrafficSplit
+# metadata:
+#   name: homepage-api-full-canary
+#   namespace: homepage
+# spec:
+#   service: homepage-api
+#   backends:
+#   - service: homepage-api-primary
+#     weight: 0
+#   - service: homepage-api-canary
+#     weight: 100
+

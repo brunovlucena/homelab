@@ -1,0 +1,112 @@
+---
+# 🎨 Homepage Frontend Canary Deployment Configuration
+# Progressive delivery for the React frontend
+
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: homepage-frontend
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage-frontend
+    app.kubernetes.io/component: frontend
+spec:
+  # 🎯 Target Deployment
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: homepage-frontend
+  
+  # 📊 Service Mesh Provider
+  provider: linkerd
+  
+  # ⏱️ Progressive Delivery Configuration
+  progressDeadlineSeconds: 600
+  
+  # 🏥 Service Configuration
+  service:
+    port: 80
+    targetPort: 8080
+    portName: http
+  
+  # 📈 Analysis Configuration
+  analysis:
+    interval: 1m
+    threshold: 3
+    maxWeight: 50
+    stepWeight: 10
+    
+    metrics:
+    # Frontend-specific success rate (2xx, 3xx responses)
+    - name: request-success-rate
+      templateRef:
+        name: frontend-success-rate
+        namespace: flagger-system
+      thresholdRange:
+        min: 99
+      interval: 1m
+    
+    # Frontend load time
+    - name: page-load-time
+      templateRef:
+        name: frontend-latency
+        namespace: flagger-system
+      thresholdRange:
+        max: 1000  # 1 second max load time
+      interval: 1m
+
+---
+# 📊 Frontend-specific Metric Templates
+
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: frontend-success-rate
+  namespace: flagger-system
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus-kube-prometheus-prometheus.prometheus.svc:9090
+  query: |
+    sum(
+      rate(
+        http_requests_total{
+          namespace="{{ namespace }}",
+          deployment=~"{{ target }}.*",
+          status=~"[23].*"
+        }[{{ interval }}]
+      )
+    ) 
+    / 
+    sum(
+      rate(
+        http_requests_total{
+          namespace="{{ namespace }}",
+          deployment=~"{{ target }}.*"
+        }[{{ interval }}]
+      )
+    ) * 100
+
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: frontend-latency
+  namespace: flagger-system
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus-kube-prometheus-prometheus.prometheus.svc:9090
+  query: |
+    histogram_quantile(
+      0.95,
+      sum(
+        rate(
+          http_request_duration_seconds_bucket{
+            namespace="{{ namespace }}",
+            deployment=~"{{ target }}.*"
+          }[{{ interval }}]
+        )
+      ) by (le)
+    ) * 1000
+

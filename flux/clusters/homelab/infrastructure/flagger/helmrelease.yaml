@@ -1,0 +1,54 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flagger
+  namespace: flagger-system
+spec:
+  interval: 5m
+  chart:
+    spec:
+      chart: flagger
+      version: "1.38.x"
+      sourceRef:
+        kind: HelmRepository
+        name: flagger
+        namespace: flagger-system
+      interval: 1h
+  values:
+    # 🔗 Linkerd Integration
+    meshProvider: linkerd
+    
+    # 📊 Metrics Provider - Reference Prometheus via variable [[memory:8768642]]
+    metricsServer: http://prometheus-kube-prometheus-prometheus.prometheus.svc:9090
+    
+    # 🎯 Enable Prometheus scraping
+    prometheus:
+      install: false  # We already have Prometheus
+    
+    # 🔍 Logging
+    logLevel: info
+    
+    # 🎛️ Resources [[memory:7609072]]
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 1000m
+      requests:
+        memory: 32Mi
+        cpu: 100m
+    
+    # 🏥 Pod Security
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+    
+    securityContext:
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 65534
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+

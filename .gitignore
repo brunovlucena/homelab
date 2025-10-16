@@ -70,6 +70,9 @@ sealed-secrets-private-key.pem
 **/sealed-secrets/*.backup
 **/sealed-secrets/*.yaml.backup
 
+# Kubeconfig files with credentials
+github-kubeconfig.yaml
+
 # Temporary secret files
 /tmp/*secret*.yaml
 /tmp/*secret*.yml

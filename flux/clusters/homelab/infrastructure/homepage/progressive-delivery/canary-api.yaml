@@ -1,0 +1,151 @@
+---
+# 🚀 Homepage API Canary Deployment Configuration
+# This resource enables automated progressive delivery for the homepage API
+# Flagger will automatically create canary deployments and manage traffic shifting
+
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: homepage-api
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage-api
+    app.kubernetes.io/component: api
+spec:
+  # 🎯 Target Deployment to manage
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: homepage-api
+  
+  # 📊 Service Mesh Provider
+  provider: linkerd
+  
+  # ⏱️ Progressive Delivery Configuration
+  progressDeadlineSeconds: 600  # 10 minutes max for entire rollout
+  
+  # 🏥 Service Configuration
+  service:
+    port: 8080
+    targetPort: 8080
+    portName: http
+    # Apex service will be created: homepage-api
+    # Primary service: homepage-api-primary
+    # Canary service: homepage-api-canary
+  
+  # 📈 Analysis Configuration
+  analysis:
+    # 📊 Check interval between traffic weight increments
+    interval: 1m
+    
+    # 🧪 Number of successful checks before promotion
+    threshold: 3
+    
+    # 📉 Maximum traffic weight for canary (safety limit)
+    maxWeight: 50
+    
+    # 🎚️ Traffic weight increment percentage
+    stepWeight: 10
+    
+    # 🎯 Metrics to evaluate at each step
+    metrics:
+    
+    # ✅ Golden Signal #1: Success Rate
+    - name: request-success-rate
+      templateRef:
+        name: success-rate
+        namespace: flagger-system
+      thresholdRange:
+        min: 99  # Must maintain >= 99% success rate
+      interval: 1m
+    
+    # ⏱️ Golden Signal #2: Request Duration (P99 latency)
+    - name: request-duration
+      templateRef:
+        name: latency
+        namespace: flagger-system
+      thresholdRange:
+        max: 500  # P99 latency must be <= 500ms
+      interval: 1m
+  
+  # 🧪 Automated Testing Webhooks (optional, commented out for now)
+  # webhooks:
+  #   # Pre-rollout health check
+  #   - name: pre-rollout-health-check
+  #     type: pre-rollout
+  #     url: http://homepage-api-canary.homepage.svc:8080/health
+  #     timeout: 5s
+  #   
+  #   # Load test during canary
+  #   - name: load-test
+  #     type: rollout
+  #     url: http://loadtester.flagger-system.svc/
+  #     timeout: 30s
+  #     metadata:
+  #       type: cmd
+  #       cmd: "hey -z 1m -q 10 -c 2 http://homepage-api-canary.homepage.svc:8080/health"
+  #   
+  #   # Post-rollout notification
+  #   - name: send-notification
+  #     type: post-rollout
+  #     url: http://event-webhook.monitoring.svc/
+  #     timeout: 5s
+  #     metadata:
+  #       message: "Homepage API {{ .Status }} - version {{ .CanaryRevision }}"
+
+---
+# 📊 Custom Metric Templates for Homepage API
+# These define how Flagger should query Prometheus for metrics
+
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: success-rate
+  namespace: flagger-system
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus-kube-prometheus-prometheus.prometheus.svc:9090
+  query: |
+    sum(
+      rate(
+        http_requests_total{
+          namespace="{{ namespace }}",
+          deployment=~"{{ target }}.*",
+          status!~"5.*"
+        }[{{ interval }}]
+      )
+    ) 
+    / 
+    sum(
+      rate(
+        http_requests_total{
+          namespace="{{ namespace }}",
+          deployment=~"{{ target }}.*"
+        }[{{ interval }}]
+      )
+    ) * 100
+
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: latency
+  namespace: flagger-system
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus-kube-prometheus-prometheus.prometheus.svc:9090
+  query: |
+    histogram_quantile(
+      0.99,
+      sum(
+        rate(
+          http_request_duration_seconds_bucket{
+            namespace="{{ namespace }}",
+            deployment=~"{{ target }}.*"
+          }[{{ interval }}]
+        )
+      ) by (le)
+    ) * 1000
+

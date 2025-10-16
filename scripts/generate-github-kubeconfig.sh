@@ -67,3 +67,4 @@ cat $OUTPUT_FILE | base64 -w 0
 echo ""
 echo ""
 echo "🔐 Security Note: This kubeconfig uses the $SERVICE_ACCOUNT service account in the $NAMESPACE namespace."
+echo "📝 The kubeconfig is already configured to use $CLOUDFLARE_K8S_URL (no localhost references)"

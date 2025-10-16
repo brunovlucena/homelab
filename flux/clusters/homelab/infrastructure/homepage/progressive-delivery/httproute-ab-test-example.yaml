@@ -1,0 +1,139 @@
+---
+# 🧪 HTTPRoute for A/B Testing with Header/Cookie-Based Routing
+# This example shows how to route traffic based on request attributes
+
+# NOTE: This is an EXAMPLE for A/B testing scenarios
+# Use this when you want to route specific users to canary versions
+
+# Prerequisites:
+# - Gateway API CRDs installed (done by Linkerd install script)
+# - Linkerd service mesh running
+# - Separate services for primary and canary deployments
+
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: homepage-api-ab-test
+  namespace: homepage
+  annotations:
+    linkerd.io/inject: enabled
+spec:
+  # 🎯 Parent service that this route applies to
+  parentRefs:
+  - name: homepage-api
+    kind: Service
+  
+  rules:
+  
+  # 🧪 Rule 1: Beta Users (via header)
+  # Users with header "X-Beta-User: true" get canary version
+  - matches:
+    - headers:
+      - type: Exact
+        name: X-Beta-User
+        value: "true"
+    backendRefs:
+    - name: homepage-api-canary
+      port: 8080
+      weight: 100
+  
+  # 🍪 Rule 2: Canary Cookie
+  # Users with cookie "canary=enabled" get canary version
+  - matches:
+    - headers:
+      - type: Exact
+        name: Cookie
+        value: "canary=enabled"
+    backendRefs:
+    - name: homepage-api-canary
+      port: 8080
+      weight: 100
+  
+  # 🎯 Rule 3: Internal Testing (via query param simulation with header)
+  # Internal testers with special header get canary
+  - matches:
+    - headers:
+      - type: Exact
+        name: X-Canary-Test
+        value: "true"
+    backendRefs:
+    - name: homepage-api-canary
+      port: 8080
+      weight: 100
+  
+  # 📊 Rule 4: Default Route
+  # All other traffic goes to primary (stable) version
+  - backendRefs:
+    - name: homepage-api-primary
+      port: 8080
+      weight: 100
+
+---
+# 🎨 Frontend A/B Testing Example
+# Route frontend requests based on user attributes
+
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: homepage-frontend-ab-test
+  namespace: homepage
+  annotations:
+    linkerd.io/inject: enabled
+spec:
+  parentRefs:
+  - name: homepage-frontend
+    kind: Service
+  
+  rules:
+  
+  # 🌟 Early Access Users
+  - matches:
+    - headers:
+      - type: Exact
+        name: X-Early-Access
+        value: "true"
+    backendRefs:
+    - name: homepage-frontend-canary
+      port: 80
+      weight: 100
+  
+  # 🍪 Remember user preference via cookie
+  - matches:
+    - headers:
+      - type: Exact
+        name: Cookie
+        value: "ui_version=new"
+    backendRefs:
+    - name: homepage-frontend-canary
+      port: 80
+      weight: 100
+  
+  # 📊 Default to stable version
+  - backendRefs:
+    - name: homepage-frontend-primary
+      port: 80
+      weight: 100
+
+---
+# 📝 Usage Examples:
+#
+# Test canary API with header:
+#   curl -H "X-Beta-User: true" https://bruno.lucena.dev/api/health
+#
+# Test canary API with cookie:
+#   curl -H "Cookie: canary=enabled" https://bruno.lucena.dev/api/health
+#
+# Test stable API (no headers):
+#   curl https://bruno.lucena.dev/api/health
+#
+# JavaScript example for frontend:
+#   // Set cookie for canary UI
+#   document.cookie = "ui_version=new; path=/; max-age=86400";
+#   
+#   // Or use custom header
+#   fetch('/api/health', {
+#     headers: {
+#       'X-Beta-User': 'true'
+#     }
+#   });
+
