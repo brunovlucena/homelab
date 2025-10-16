@@ -9,7 +9,6 @@ on:
       - 'flux/clusters/homelab/infrastructure/homepage/frontend/**'
       - 'flux/clusters/homelab/infrastructure/homepage/chart/**'
       - '.github/workflows/homepage-cd-production.yml'
-  push:
     tags:
       - 'homepage-v*.*.*'
   workflow_dispatch:
