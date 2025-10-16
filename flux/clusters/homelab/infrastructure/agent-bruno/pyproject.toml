@@ -19,6 +19,8 @@ dependencies = [
     "opentelemetry-sdk>=1.29.0",
     "opentelemetry-instrumentation-fastapi>=0.50b0",
     "mcp>=1.3.2",
+    "langchain-core>=0.3.0",
+    "langchain-ollama>=0.2.0",
 ]
 
 [build-system]

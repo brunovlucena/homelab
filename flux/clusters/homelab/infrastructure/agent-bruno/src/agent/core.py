@@ -7,7 +7,8 @@ Core agent logic with homepage knowledge and memory integration.
 import logging
 from typing import Any, Dict, Optional
 
-import httpx
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_ollama import ChatOllama
 
 from ..knowledge.homepage import HomepageKnowledge
 from ..memory.manager import MemoryManager
@@ -37,6 +38,19 @@ class AgentBruno:
         self.ollama_url = ollama_url
         self.model = model
         self.system_prompt = self._build_system_prompt()
+        
+        # Initialize Ollama LLM with LangChain
+        try:
+            self.llm = ChatOllama(
+                model=model,
+                base_url=ollama_url,
+                temperature=0.7,
+                num_ctx=8192,
+            )
+            logger.info(f"✅ Ollama connection established: {ollama_url}")
+        except Exception as e:
+            logger.error(f"❌ Error connecting to Ollama: {e}")
+            self.llm = None
 
     def _build_system_prompt(self) -> str:
         """Build system prompt with homepage knowledge"""
@@ -168,30 +182,21 @@ Remember: You have access to the user's conversation history through memory. Use
         return "\n".join(parts)
 
     async def _query_ollama(self, prompt: str) -> str:
-        """Query Ollama LLM"""
-        url = f"{self.ollama_url}/api/generate"
-
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0.7, "top_p": 0.9, "top_k": 40},
-        }
+        """Query Ollama LLM using LangChain"""
+        if not self.llm:
+            raise Exception("LLM not initialized")
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
+            # Create messages with system prompt and user message
+            messages = [
+                SystemMessage(content=self.system_prompt),
+                HumanMessage(content=prompt)
+            ]
+            
+            # Generate response using LangChain
+            response = await self.llm.ainvoke(messages)
+            return response.content.strip()
 
-                data = response.json()
-                return data.get("response", "").strip()
-
-        except httpx.TimeoutException:
-            logger.error("⏱️ Ollama request timed out")
-            raise Exception("LLM request timed out")
-        except httpx.HTTPStatusError as e:
-            logger.error(f"❌ Ollama HTTP error: {e}")
-            raise Exception(f"LLM service error: {e.response.status_code}")
         except Exception as e:
             logger.error(f"❌ Ollama error: {e}")
             raise Exception(f"Failed to query LLM: {str(e)}")

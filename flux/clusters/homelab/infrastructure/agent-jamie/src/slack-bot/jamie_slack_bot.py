@@ -163,7 +163,15 @@ class AgentSREClient:
     async def _generate_promql_with_llm(self, natural_query: str) -> str:
         """🤖 Use LLM to generate PromQL query from natural language"""
         try:
-            # Call Ollama to generate PromQL
+            # Initialize ChatOllama
+            llm = ChatOllama(
+                model=MODEL_NAME,
+                base_url=OLLAMA_URL,
+                temperature=0.7,
+                num_ctx=4096,
+            )
+            
+            # Create prompt for PromQL generation
             prompt = f"""Convert this natural language query to valid PromQL syntax:
 
 Natural language: "{natural_query}"
@@ -177,19 +185,12 @@ Focus on common Kubernetes metrics like:
 
 Return ONLY the PromQL query, nothing else."""
 
-            async with self.http_session.post(
-                f"{OLLAMA_URL}/api/generate",
-                json={"model": MODEL_NAME, "prompt": prompt, "stream": False},
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    promql = result.get("response", "").strip()
-                    logger.info(f"🤖 LLM generated PromQL: {promql}")
-                    return promql
-                else:
-                    logger.error(f"❌ LLM call failed: {response.status}")
-                    return 'up{namespace="agent-sre"}'  # fallback
+            # Generate response using LangChain
+            response = await llm.ainvoke([HumanMessage(content=prompt)])
+            promql = response.content.strip()
+            logger.info(f"🤖 LLM generated PromQL: {promql}")
+            return promql
+            
         except Exception as e:
             logger.error(f"❌ Error calling LLM: {e}")
             return 'up{namespace="agent-sre"}'  # fallback
