@@ -87,19 +87,15 @@ func InitOTel(ctx context.Context) (func(context.Context) error, error) {
 		otel.SetMeterProvider(mp)
 
 		// Use the OpenTelemetry Prometheus exporter as the HTTP handler
-		// Force Prometheus text format (not protobuf) to avoid native histogram issues
-		// Wrap the handler to explicitly set Content-Type and reject protobuf requests
-		baseHandler := promhttp.HandlerFor(
+		// Native histograms are disabled at Prometheus level, so standard text format works
+		// Disable compression to avoid gzip parsing issues
+		prometheusHandler = promhttp.HandlerFor(
 			prometheus.DefaultGatherer,
 			promhttp.HandlerOpts{
 				EnableOpenMetrics: false, // Disable OpenMetrics format, use classic Prometheus text format
+				DisableCompression: true,  // Disable gzip compression
 			},
 		)
-		prometheusHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Force text/plain content type to prevent protobuf negotiation
-			w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-			baseHandler.ServeHTTP(w, r)
-		})
 
 		log.Println("✅ OpenTelemetry Metrics → Prometheus exporter initialized (with explicit histogram buckets)")
 	}
