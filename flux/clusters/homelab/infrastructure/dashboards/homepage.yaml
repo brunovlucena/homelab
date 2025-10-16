@@ -102,19 +102,19 @@ data:
           },
           "targets": [
             {
-              "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"bruno-site-api\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"homepage-api\"}[5m])) by (le))",
               "interval": "",
               "legendFormat": "50th percentile",
               "refId": "A"
             },
             {
-              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"bruno-site-api\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"homepage-api\"}[5m])) by (le))",
               "interval": "",
               "legendFormat": "95th percentile",
               "refId": "B"
             },
             {
-              "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"bruno-site-api\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"homepage-api\"}[5m])) by (le))",
               "interval": "",
               "legendFormat": "99th percentile",
               "refId": "C"
@@ -195,19 +195,19 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[5m]))",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\"}[5m]))",
               "interval": "",
               "legendFormat": "Total Requests/sec",
               "refId": "A"
             },
             {
-              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",path=\"/api/v1/projects\"}[5m]))",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\",path=\"/api/v1/projects\"}[5m]))",
               "interval": "",
               "legendFormat": "Project API Requests/sec",
               "refId": "B"
             },
             {
-              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",path=\"/api/v1/chat\"}[5m]))",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\",path=\"/api/v1/chat\"}[5m]))",
               "interval": "",
               "legendFormat": "Chat API Requests/sec",
               "refId": "C"
@@ -294,19 +294,19 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",status_code=~\"4..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[5m]))",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\",status_code=~\"4..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\"}[5m]))",
               "interval": "",
               "legendFormat": "4xx Error Rate",
               "refId": "A"
             },
             {
-              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[5m]))",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\",status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\"}[5m]))",
               "interval": "",
               "legendFormat": "5xx Error Rate",
               "refId": "B"
             },
             {
-              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",status_code=~\"4..|5..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[5m]))",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\",status_code=~\"4..|5..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\"}[5m]))",
               "interval": "",
               "legendFormat": "Total Error Rate",
               "refId": "C"
@@ -467,7 +467,7 @@ data:
           "pluginVersion": "8.0.0",
           "targets": [
             {
-              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",status_code=~\"2..\"}[1h])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[1h]))",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\",status_code=~\"2..\"}[1h])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\"}[1h]))",
               "interval": "",
               "legendFormat": "Availability",
               "refId": "A"
@@ -529,7 +529,7 @@ data:
           "pluginVersion": "8.0.0",
           "targets": [
             {
-              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"bruno-site-api\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"homepage-api\"}[5m])) by (le))",
               "interval": "",
               "legendFormat": "95th Percentile",
               "refId": "A"
@@ -591,7 +591,7 @@ data:
           "pluginVersion": "8.0.0",
           "targets": [
             {
-              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[5m]))",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\",status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"homepage-api\"}[5m]))",
               "interval": "",
               "legendFormat": "Error Rate",
               "refId": "A"
@@ -821,7 +821,7 @@ data:
           },
           "targets": [
             {
-              "expr": "up{namespace=\"homepage\",job=\"bruno-site-api\"}",
+              "expr": "up{namespace=\"homepage\",job=\"homepage-api\"}",
               "interval": "",
               "legendFormat": "API Service",
               "refId": "A"
