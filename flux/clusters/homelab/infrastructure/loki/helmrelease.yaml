@@ -48,10 +48,16 @@ spec:
         allow_structured_metadata: false
     backend:
       replicas: 1
+      nodeSelector:
+        role: observability
     read:
       replicas: 2
+      nodeSelector:
+        role: observability
     write:
       replicas: 2
+      nodeSelector:
+        role: observability
     monitoring:
       selfMonitoring:
         enabled: false
@@ -59,6 +65,8 @@ spec:
           installOperator: false
     minio:
       enabled: true
+      nodeSelector:
+        role: observability
       auth:
         rootUser: root-user
         existingSecret: loki-minio-secret

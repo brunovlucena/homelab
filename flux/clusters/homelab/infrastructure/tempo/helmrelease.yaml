@@ -70,6 +70,9 @@ spec:
       limits:
         cpu: 500m
         memory: 512Mi
+    # Schedule on observability nodes
+    nodeSelector:
+      role: observability
     # Persistence for local storage
     persistence:
       enabled: true
