@@ -54,7 +54,7 @@ func Load() *Config {
 		RedisURL:      os.Getenv("REDIS_URL"),
 		CORSOrigin:    getEnvOrDefault("CORS_ORIGIN", "*"),
 		Port:          getEnvOrDefault("PORT", "8080"),
-		AgentBrunoURL: getEnvOrDefault("AGENT_BRUNO_URL", "http://agent-bruno-service.agent-bruno.svc.cluster.local:8080"),
+		AgentBrunoURL: getEnvOrDefault("AGENT_BRUNO_URL", "http://agent-bruno-service.bruno.svc.cluster.local:8080"),
 		MinIO: MinIOConfig{
 			Endpoint:  getEnvOrDefault("MINIO_ENDPOINT", "minio-service.minio.svc.cluster.local:9000"),
 			AccessKey: getEnvOrDefault("MINIO_ACCESS_KEY", "minioadmin"),

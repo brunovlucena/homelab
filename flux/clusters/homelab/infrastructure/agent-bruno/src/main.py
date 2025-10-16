@@ -119,11 +119,10 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    success: bool
     response: str
+    timestamp: str
     model: Optional[str] = None
-    context_used: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    sources: Optional[list[str]] = None
 
 
 class MemoryStats(BaseModel):
@@ -264,12 +263,23 @@ async def chat(request: ChatRequest, req: Request):
         
         memory_operations.labels(operation="chat", status="success").inc()
         
-        return ChatResponse(**result)
+        from datetime import datetime
+        return ChatResponse(
+            response=result.get("response", "Sorry, I encountered an error."),
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            model=result.get("model"),
+            sources=["Agent Bruno"]
+        )
     
     except Exception as e:
         logger.error(f"❌ Chat error: {e}")
         memory_operations.labels(operation="chat", status="error").inc()
-        raise HTTPException(status_code=500, detail=str(e))
+        from datetime import datetime
+        return ChatResponse(
+            response="Sorry, I encountered an error processing your message. Please try again.",
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            sources=["Error Handler"]
+        )
 
 
 @app.post("/mcp/chat", response_model=ChatResponse)
