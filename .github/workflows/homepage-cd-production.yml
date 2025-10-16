@@ -256,14 +256,14 @@ jobs:
       - name: Trigger Flux reconciliation
         run: |
           # Install Flux CLI if needed
-          curl -s https://fluxcd.io/install.sh | sudo bash
+          # TODO: use @scripts/install-flux.sh
           
           # Reconcile GitRepository
-          flux reconcile source git homelab -n flux-system --timeout 5m
-          
+          # TODO: use Makefile
+
           # Reconcile HelmRelease
-          flux reconcile helmrelease homepage -n homepage --timeout 10m
-      
+          # TODO: use Makefile
+
       - name: Wait for deployment
         run: |
           kubectl rollout status deployment/homepage-api -n homepage --timeout=10m
@@ -313,8 +313,9 @@ jobs:
       
       - name: Install k6
         run: |
-          curl https://github.com/grafana/k6/releases/download/v0.48.0/k6-v0.48.0-linux-amd64.tar.gz -L | tar xvz
-          sudo mv k6-v0.48.0-linux-amd64/k6 /usr/local/bin/
+          # Install k6 for load testing using our script
+          chmod +x scripts/install-k6.sh
+          ./scripts/install-k6.sh v0.48.0 linux amd64
       
       - name: Run k6 load test
         run: |
