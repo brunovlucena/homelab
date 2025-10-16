@@ -32,20 +32,19 @@ class TestMCPServer(AioHTTPTestCase):
         
         data = await resp.json()
         assert data["status"] == "healthy"
-        assert data["service"] == "sre-agent-mcp-server"
+        assert data["service"] == "agent-sre-mcp-http-wrapper"
         assert "timestamp" in data
 
     @unittest_run_loop
     async def test_mcp_info_endpoint(self):
-        """Test GET /mcp endpoint returns server info"""
-        resp = await self.client.request("GET", "/mcp")
+        """Test GET /tools endpoint returns available tools"""
+        resp = await self.client.request("GET", "/tools")
         assert resp.status == 200
         
         data = await resp.json()
-        assert data["name"] == "sre-agent-mcp-server"
-        assert data["protocol"] == "mcp"
-        assert "capabilities" in data
-        assert "endpoints" in data
+        assert "tools" in data
+        assert "count" in data
+        assert len(data["tools"]) > 0
 
     @unittest_run_loop
     async def test_mcp_initialize(self):
@@ -147,8 +146,8 @@ class TestMCPServerUnit:
 
     @pytest.fixture
     def server(self):
-        """Create an MCPServer instance"""
-        return MCPServer()
+        """Create an MCPHTTPWrapper instance"""
+        return MCPHTTPWrapper()
 
     @pytest.mark.asyncio
     async def test_check_agent_service_connected(self, server):

@@ -73,9 +73,13 @@ class SREAgentService:
         # Agent API endpoints
         self.app.router.add_post("/ping", self.handle_ping)
         self.app.router.add_post("/chat", self.handle_chat)
+        self.app.router.add_post("/analyze-logs", self.handle_analyze_logs)
+        self.app.router.add_post("/incident-response", self.handle_incident_response)
+        self.app.router.add_post("/monitoring-advice", self.handle_monitoring_advice)
 
         # MCP server communication endpoints
         self.app.router.add_post("/mcp/chat", self.handle_mcp_chat)
+        self.app.router.add_get("/mcp/status", self.handle_mcp_status)
 
         # 🔍 Query endpoints
         self.app.router.add_post("/prometheus/query", self.handle_prometheus_query)
@@ -153,6 +157,73 @@ class SREAgentService:
             logger.error(f"Error in chat handler: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
+    async def handle_analyze_logs(self, request: Request) -> Response:
+        """Analyze logs endpoint."""
+        try:
+            data = await request.json()
+            logs = data.get("logs", "")
+
+            if not logs:
+                return web.json_response({"error": "Logs are required"}, status=400)
+
+            analysis = await self.sre_agent.analyze_logs(logs)
+            return web.json_response(
+                {
+                    "analysis": analysis,
+                    "service": "sre-agent",
+                    "timestamp": datetime.now().isoformat(),
+                    "method": "direct",
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error in analyze logs handler: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_incident_response(self, request: Request) -> Response:
+        """Incident response endpoint."""
+        try:
+            data = await request.json()
+            incident = data.get("incident", "")
+
+            if not incident:
+                return web.json_response({"error": "Incident description is required"}, status=400)
+
+            response = await self.sre_agent.incident_response(incident)
+            return web.json_response(
+                {
+                    "response": response,
+                    "service": "sre-agent",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error in incident response handler: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_monitoring_advice(self, request: Request) -> Response:
+        """Monitoring advice endpoint."""
+        try:
+            data = await request.json()
+            system = data.get("system", "")
+
+            if not system:
+                return web.json_response({"error": "System description is required"}, status=400)
+
+            advice = await self.sre_agent.monitoring_advice(system)
+            return web.json_response(
+                {
+                    "advice": advice,
+                    "service": "sre-agent",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error in monitoring advice handler: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
     async def handle_mcp_chat(self, request: Request) -> Response:
         """Chat endpoint via MCP server."""
         try:
@@ -169,6 +240,22 @@ class SREAgentService:
 
         except Exception as e:
             logger.error(f"Error in MCP chat handler: {e}")
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_mcp_status(self, request: Request) -> Response:
+        """MCP server status endpoint."""
+        try:
+            mcp_status = await self._check_mcp_server()
+            return web.json_response(
+                {
+                    "status": mcp_status,
+                    "service": "sre-agent",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error in MCP status handler: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
     async def handle_ping(self, request: Request) -> Response:
