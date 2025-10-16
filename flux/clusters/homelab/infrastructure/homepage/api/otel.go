@@ -7,10 +7,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/exporters/prometheus"
+	otelprometheus "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdkresource "go.opentelemetry.io/otel/sdk/resource"
@@ -47,7 +48,7 @@ func InitOTel(ctx context.Context) (func(context.Context) error, error) {
 	// 📊 METRICS: Prometheus exporter for /metrics endpoint
 	// ═══════════════════════════════════════════════════════════════════════
 	var err2 error
-	prometheusExporter, err2 := prometheus.New()
+	prometheusExporter, err2 := otelprometheus.New()
 	if err2 != nil {
 		log.Printf("⚠️  WARNING: Failed to create Prometheus exporter: %v", err2)
 		prometheusHandler = promhttp.Handler() // Fallback to default Prometheus handler
@@ -85,9 +86,20 @@ func InitOTel(ctx context.Context) (func(context.Context) error, error) {
 		)
 		otel.SetMeterProvider(mp)
 
-		// The prometheus.Exporter implements http.Handler interface via its Collect method
-		// We need to wrap it with promhttp.Handler() to serve metrics
-		prometheusHandler = promhttp.Handler()
+		// Use the OpenTelemetry Prometheus exporter as the HTTP handler
+		// Force Prometheus text format (not protobuf) to avoid native histogram issues
+		// Wrap the handler to explicitly set Content-Type and reject protobuf requests
+		baseHandler := promhttp.HandlerFor(
+			prometheus.DefaultGatherer,
+			promhttp.HandlerOpts{
+				EnableOpenMetrics: false, // Disable OpenMetrics format, use classic Prometheus text format
+			},
+		)
+		prometheusHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Force text/plain content type to prevent protobuf negotiation
+			w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+			baseHandler.ServeHTTP(w, r)
+		})
 
 		log.Println("✅ OpenTelemetry Metrics → Prometheus exporter initialized (with explicit histogram buckets)")
 	}
