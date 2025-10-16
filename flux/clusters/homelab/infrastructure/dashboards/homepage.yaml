@@ -2,10 +2,10 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: bruno-site-golden-signals-dashboard
-  namespace: bruno
+  namespace: homepage
   labels:
-    app.kubernetes.io/name: bruno-site
-    app.kubernetes.io/instance: bruno-site
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/instance: homepage
     app.kubernetes.io/component: monitoring
     grafana_dashboard: "1"
 data:
@@ -102,19 +102,19 @@ data:
           },
           "targets": [
             {
-              "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{application=\"bruno-site\"}[5m]))",
+              "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"bruno-site-api\"}[5m])) by (le))",
               "interval": "",
               "legendFormat": "50th percentile",
               "refId": "A"
             },
             {
-              "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{application=\"bruno-site\"}[5m]))",
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"bruno-site-api\"}[5m])) by (le))",
               "interval": "",
               "legendFormat": "95th percentile",
               "refId": "B"
             },
             {
-              "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{application=\"bruno-site\"}[5m]))",
+              "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"bruno-site-api\"}[5m])) by (le))",
               "interval": "",
               "legendFormat": "99th percentile",
               "refId": "C"
@@ -195,19 +195,19 @@ data:
           },
           "targets": [
             {
-              "expr": "rate(http_requests_total{application=\"bruno-site\"}[5m])",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[5m]))",
               "interval": "",
               "legendFormat": "Total Requests/sec",
               "refId": "A"
             },
             {
-              "expr": "rate(http_requests_total{application=\"bruno-site\",path=\"/api/v1/projects\"}[5m])",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",path=\"/api/v1/projects\"}[5m]))",
               "interval": "",
               "legendFormat": "Project API Requests/sec",
               "refId": "B"
             },
             {
-              "expr": "rate(http_requests_total{application=\"bruno-site\",path=\"/api/v1/chat\"}[5m])",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",path=\"/api/v1/chat\"}[5m]))",
               "interval": "",
               "legendFormat": "Chat API Requests/sec",
               "refId": "C"
@@ -294,19 +294,19 @@ data:
           },
           "targets": [
             {
-              "expr": "rate(http_requests_total{application=\"bruno-site\",status_code=~\"4..\"}[5m]) / rate(http_requests_total{application=\"bruno-site\"}[5m])",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",status_code=~\"4..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[5m]))",
               "interval": "",
               "legendFormat": "4xx Error Rate",
               "refId": "A"
             },
             {
-              "expr": "rate(http_requests_total{application=\"bruno-site\",status_code=~\"5..\"}[5m]) / rate(http_requests_total{application=\"bruno-site\"}[5m])",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[5m]))",
               "interval": "",
               "legendFormat": "5xx Error Rate",
               "refId": "B"
             },
             {
-              "expr": "rate(http_requests_total{application=\"bruno-site\",status_code=~\"4..|5..\"}[5m]) / rate(http_requests_total{application=\"bruno-site\"}[5m])",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",status_code=~\"4..|5..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[5m]))",
               "interval": "",
               "legendFormat": "Total Error Rate",
               "refId": "C"
@@ -393,19 +393,19 @@ data:
           },
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{pod=~\"bruno-site-api-.*\"}[5m])",
+              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"homepage\",pod=~\"homepage-api-.*\"}[5m])",
               "interval": "",
               "legendFormat": "API CPU Usage",
               "refId": "A"
             },
             {
-              "expr": "container_memory_usage_bytes{pod=~\"bruno-site-api-.*\"} / container_spec_memory_limit_bytes{pod=~\"bruno-site-api-.*\"}",
+              "expr": "container_memory_usage_bytes{namespace=\"homepage\",pod=~\"homepage-api-.*\"} / container_spec_memory_limit_bytes{namespace=\"homepage\",pod=~\"homepage-api-.*\"}",
               "interval": "",
               "legendFormat": "API Memory Usage",
               "refId": "B"
             },
             {
-              "expr": "pg_stat_database_numbackends{job=\"bruno-site-postgres\"} / pg_settings_max_connections{job=\"bruno-site-postgres\"}",
+              "expr": "pg_stat_database_numbackends{namespace=\"postgres\"} / pg_settings_max_connections{namespace=\"postgres\"}",
               "interval": "",
               "legendFormat": "DB Connection Pool Usage",
               "refId": "C"
@@ -467,7 +467,7 @@ data:
           "pluginVersion": "8.0.0",
           "targets": [
             {
-              "expr": "rate(http_requests_total{application=\"bruno-site\",status_code=~\"2..\"}[1h]) / rate(http_requests_total{application=\"bruno-site\"}[1h])",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",status_code=~\"2..\"}[1h])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[1h]))",
               "interval": "",
               "legendFormat": "Availability",
               "refId": "A"
@@ -529,7 +529,7 @@ data:
           "pluginVersion": "8.0.0",
           "targets": [
             {
-              "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{application=\"bruno-site\"}[5m]))",
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"homepage\",job=\"bruno-site-api\"}[5m])) by (le))",
               "interval": "",
               "legendFormat": "95th Percentile",
               "refId": "A"
@@ -591,7 +591,7 @@ data:
           "pluginVersion": "8.0.0",
           "targets": [
             {
-              "expr": "rate(http_requests_total{application=\"bruno-site\",status_code=~\"5..\"}[5m]) / rate(http_requests_total{application=\"bruno-site\"}[5m])",
+              "expr": "sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\",status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total{namespace=\"homepage\",job=\"bruno-site-api\"}[5m]))",
               "interval": "",
               "legendFormat": "Error Rate",
               "refId": "A"
@@ -653,7 +653,7 @@ data:
           "pluginVersion": "8.0.0",
           "targets": [
             {
-              "expr": "rate(container_cpu_usage_seconds_total{pod=~\"bruno-site-api-.*\"}[5m])",
+              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"homepage\",pod=~\"homepage-api-.*\"}[5m])",
               "interval": "",
               "legendFormat": "CPU Usage",
               "refId": "A"
@@ -734,13 +734,13 @@ data:
           },
           "targets": [
             {
-              "expr": "kube_pod_status_ready{pod=~\"bruno-site-.*\"}",
+              "expr": "kube_pod_status_ready{namespace=\"homepage\",pod=~\"homepage-.*\"}",
               "interval": "",
               "legendFormat": "{{`{{ pod }}`}} - Ready",
               "refId": "A"
             },
             {
-              "expr": "kube_pod_status_phase{pod=~\"bruno-site-.*\",phase=\"Running\"}",
+              "expr": "kube_pod_status_phase{namespace=\"homepage\",pod=~\"homepage-.*\",phase=\"Running\"}",
               "interval": "",
               "legendFormat": "{{`{{ pod }}`}} - Running",
               "refId": "B"
@@ -821,25 +821,25 @@ data:
           },
           "targets": [
             {
-              "expr": "up{application=\"bruno-site\"}",
+              "expr": "up{namespace=\"homepage\",job=\"bruno-site-api\"}",
               "interval": "",
               "legendFormat": "API Service",
               "refId": "A"
             },
             {
-              "expr": "up{job=\"bruno-site-postgres\"}",
+              "expr": "up{namespace=\"postgres\",job=~\"postgres.*\"}",
               "interval": "",
               "legendFormat": "PostgreSQL",
               "refId": "B"
             },
             {
-              "expr": "up{job=\"bruno-site-redis\"}",
+              "expr": "up{namespace=\"redis\",job=~\"redis.*\"}",
               "interval": "",
               "legendFormat": "Redis",
               "refId": "C"
             },
             {
-              "expr": "up{job=\"bruno-site-ollama\"}",
+              "expr": "up{namespace=\"ollama\",job=~\"ollama.*\"}",
               "interval": "",
               "legendFormat": "Ollama LLM",
               "refId": "D"
@@ -926,19 +926,19 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(rate(response_total{namespace=\"bruno\",classification=\"success\"}[5m])) / sum(rate(response_total{namespace=\"bruno\"}[5m]))",
+              "expr": "sum(rate(response_total{namespace=\"homepage\",classification=\"success\"}[5m])) / sum(rate(response_total{namespace=\"homepage\"}[5m]))",
               "interval": "",
               "legendFormat": "Overall Success Rate",
               "refId": "A"
             },
             {
-              "expr": "sum(rate(response_total{namespace=\"bruno\",deployment=~\".*api.*\",classification=\"success\"}[5m])) / sum(rate(response_total{namespace=\"bruno\",deployment=~\".*api.*\"}[5m]))",
+              "expr": "sum(rate(response_total{namespace=\"homepage\",deployment=~\".*api.*\",classification=\"success\"}[5m])) / sum(rate(response_total{namespace=\"homepage\",deployment=~\".*api.*\"}[5m]))",
               "interval": "",
               "legendFormat": "API Success Rate",
               "refId": "B"
             }
           ],
-          "title": "🔗 Linkerd - Success Rate (bruno namespace)",
+          "title": "🔗 Linkerd - Success Rate (homepage namespace)",
           "type": "timeseries"
         },
         {
@@ -1013,7 +1013,7 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(rate(request_total{namespace=\"bruno\"}[5m])) by (deployment)",
+              "expr": "sum(rate(request_total{namespace=\"homepage\"}[5m])) by (deployment)",
               "interval": "",
               "legendFormat": "{{`{{ deployment }}`}}",
               "refId": "A"
@@ -1094,19 +1094,19 @@ data:
           },
           "targets": [
             {
-              "expr": "histogram_quantile(0.50, sum(rate(response_latency_ms_bucket{namespace=\"bruno\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.50, sum(rate(response_latency_ms_bucket{namespace=\"homepage\"}[5m])) by (le))",
               "interval": "",
               "legendFormat": "P50 Latency",
               "refId": "A"
             },
             {
-              "expr": "histogram_quantile(0.95, sum(rate(response_latency_ms_bucket{namespace=\"bruno\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.95, sum(rate(response_latency_ms_bucket{namespace=\"homepage\"}[5m])) by (le))",
               "interval": "",
               "legendFormat": "P95 Latency",
               "refId": "B"
             },
             {
-              "expr": "histogram_quantile(0.99, sum(rate(response_latency_ms_bucket{namespace=\"bruno\"}[5m])) by (le))",
+              "expr": "histogram_quantile(0.99, sum(rate(response_latency_ms_bucket{namespace=\"homepage\"}[5m])) by (le))",
               "interval": "",
               "legendFormat": "P99 Latency",
               "refId": "C"
@@ -1187,19 +1187,19 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(rate(response_total{namespace=\"bruno\",direction=\"inbound\"}[5m])) by (pod)",
+              "expr": "sum(rate(response_total{namespace=\"homepage\",direction=\"inbound\"}[5m])) by (pod)",
               "interval": "",
               "legendFormat": "{{`{{ pod }}`}} - Inbound",
               "refId": "A"
             },
             {
-              "expr": "sum(rate(response_total{namespace=\"bruno\",direction=\"outbound\"}[5m])) by (pod)",
+              "expr": "sum(rate(response_total{namespace=\"homepage\",direction=\"outbound\"}[5m])) by (pod)",
               "interval": "",
               "legendFormat": "{{`{{ pod }}`}} - Outbound",
               "refId": "B"
             }
           ],
-          "title": "🔗 Linkerd - Traffic Direction (bruno namespace)",
+          "title": "🔗 Linkerd - Traffic Direction (homepage namespace)",
           "type": "timeseries"
         },
         {
@@ -1256,13 +1256,13 @@ data:
           "pluginVersion": "8.0.0",
           "targets": [
             {
-              "expr": "redis_connected_clients{namespace=\"bruno\"}",
+              "expr": "redis_connected_clients{namespace=\"redis\"}",
               "interval": "",
               "legendFormat": "Connected Clients",
               "refId": "A"
             },
             {
-              "expr": "redis_db_keys{namespace=\"bruno\",db=\"db0\"}",
+              "expr": "redis_db_keys{namespace=\"redis\",db=\"db0\"}",
               "interval": "",
               "legendFormat": "Total Keys",
               "refId": "B"
@@ -1343,19 +1343,19 @@ data:
           },
           "targets": [
             {
-              "expr": "mongodb_connections{namespace=\"bruno\",state=\"current\"}",
+              "expr": "mongodb_connections{namespace=\"mongodb\",state=\"current\"}",
               "interval": "",
               "legendFormat": "Current Connections",
               "refId": "A"
             },
             {
-              "expr": "mongodb_connections{namespace=\"bruno\",state=\"available\"}",
+              "expr": "mongodb_connections{namespace=\"mongodb\",state=\"available\"}",
               "interval": "",
               "legendFormat": "Available Connections",
               "refId": "B"
             },
             {
-              "expr": "rate(mongodb_op_counters_total{namespace=\"bruno\"}[5m])",
+              "expr": "rate(mongodb_op_counters_total{namespace=\"mongodb\"}[5m])",
               "interval": "",
               "legendFormat": "Operations/sec - {{`{{ type }}`}}",
               "refId": "C"
@@ -1436,25 +1436,25 @@ data:
           },
           "targets": [
             {
-              "expr": "pg_stat_database_numbackends{namespace=\"bruno\"}",
+              "expr": "pg_stat_database_numbackends{namespace=\"postgres\"}",
               "interval": "",
               "legendFormat": "Active Connections - {{`{{ datname }}`}}",
               "refId": "A"
             },
             {
-              "expr": "pg_settings_max_connections{namespace=\"bruno\"}",
+              "expr": "pg_settings_max_connections{namespace=\"postgres\"}",
               "interval": "",
               "legendFormat": "Max Connections",
               "refId": "B"
             },
             {
-              "expr": "rate(pg_stat_database_xact_commit{namespace=\"bruno\"}[5m])",
+              "expr": "rate(pg_stat_database_xact_commit{namespace=\"postgres\"}[5m])",
               "interval": "",
               "legendFormat": "Commits/sec - {{`{{ datname }}`}}",
               "refId": "C"
             },
             {
-              "expr": "rate(pg_stat_database_xact_rollback{namespace=\"bruno\"}[5m])",
+              "expr": "rate(pg_stat_database_xact_rollback{namespace=\"postgres\"}[5m])",
               "interval": "",
               "legendFormat": "Rollbacks/sec - {{`{{ datname }}`}}",
               "refId": "D"
@@ -1535,19 +1535,19 @@ data:
           },
           "targets": [
             {
-              "expr": "redis_memory_used_bytes{namespace=\"bruno\"}",
+              "expr": "redis_memory_used_bytes{namespace=\"redis\"}",
               "interval": "",
               "legendFormat": "Redis Memory Used",
               "refId": "A"
             },
             {
-              "expr": "redis_memory_max_bytes{namespace=\"bruno\"}",
+              "expr": "redis_memory_max_bytes{namespace=\"redis\"}",
               "interval": "",
               "legendFormat": "Redis Memory Max",
               "refId": "B"
             },
             {
-              "expr": "rate(redis_commands_processed_total{namespace=\"bruno\"}[5m])",
+              "expr": "rate(redis_commands_processed_total{namespace=\"redis\"}[5m])",
               "interval": "",
               "legendFormat": "Redis Commands/sec",
               "refId": "C"
@@ -1628,19 +1628,19 @@ data:
           },
           "targets": [
             {
-              "expr": "pg_stat_database_blks_read{namespace=\"bruno\"}",
+              "expr": "pg_stat_database_blks_read{namespace=\"postgres\"}",
               "interval": "",
               "legendFormat": "Disk Blocks Read - {{`{{ datname }}`}}",
               "refId": "A"
             },
             {
-              "expr": "pg_stat_database_blks_hit{namespace=\"bruno\"}",
+              "expr": "pg_stat_database_blks_hit{namespace=\"postgres\"}",
               "interval": "",
               "legendFormat": "Cache Blocks Hit - {{`{{ datname }}`}}",
               "refId": "B"
             },
             {
-              "expr": "pg_stat_database_blks_hit{namespace=\"bruno\"} / (pg_stat_database_blks_hit{namespace=\"bruno\"} + pg_stat_database_blks_read{namespace=\"bruno\"})",
+              "expr": "pg_stat_database_blks_hit{namespace=\"postgres\"} / (pg_stat_database_blks_hit{namespace=\"postgres\"} + pg_stat_database_blks_read{namespace=\"postgres\"})",
               "interval": "",
               "legendFormat": "Cache Hit Ratio - {{`{{ datname }}`}}",
               "refId": "C"
