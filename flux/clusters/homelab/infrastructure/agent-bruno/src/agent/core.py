@@ -38,7 +38,7 @@ class AgentBruno:
         self.ollama_url = ollama_url
         self.model = model
         self.system_prompt = self._build_system_prompt()
-        
+
         # Initialize Ollama LLM with LangChain
         try:
             self.llm = ChatOllama(
@@ -192,7 +192,7 @@ Remember: You have access to the user's conversation history through memory. Use
                 SystemMessage(content=self.system_prompt),
                 HumanMessage(content=prompt)
             ]
-            
+
             # Generate response using LangChain
             response = await self.llm.ainvoke(messages)
             return response.content.strip()
