@@ -18,8 +18,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_API: ${{ github.repository_owner }}/homelab/homepage-api
-  IMAGE_NAME_FRONTEND: ${{ github.repository_owner }}/homelab/homepage-frontend
+  IMAGE_NAME_API: ${{ github.repository_owner }}/homepage-api
+  IMAGE_NAME_FRONTEND: ${{ github.repository_owner }}/homepage-frontend
   WORKING_DIR: flux/clusters/homelab/infrastructure/homepage
 
 jobs:

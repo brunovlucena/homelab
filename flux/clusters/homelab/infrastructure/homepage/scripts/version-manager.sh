@@ -227,8 +227,8 @@ generate_release_notes() {
     echo ""
     echo "## Docker Images"
     echo ""
-    echo "- \`ghcr.io/brunovlucena/homelab/homepage-api:$version\`"
-    echo "- \`ghcr.io/brunovlucena/homelab/homepage-frontend:$version\`"
+    echo "- \`ghcr.io/brunovlucena/homepage-api:$version\`"
+    echo "- \`ghcr.io/brunovlucena/homepage-frontend:$version\`"
     echo ""
 }
 

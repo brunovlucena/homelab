@@ -284,8 +284,8 @@ grelnotes
 - docs: update readme
 
 ### Docker Images
-- ghcr.io/brunovlucena/homelab/homepage-api:1.1.0
-- ghcr.io/brunovlucena/homelab/homepage-frontend:1.1.0
+- ghcr.io/brunovlucena/homepage-api:1.1.0
+- ghcr.io/brunovlucena/homepage-frontend:1.1.0
 ```
 
 ---

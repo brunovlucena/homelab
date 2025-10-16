@@ -214,8 +214,8 @@ make release-notes
 - chore: update dependencies
 
 ### Docker Images
-- ghcr.io/brunovlucena/homelab/homepage-api:1.1.0
-- ghcr.io/brunovlucena/homelab/homepage-frontend:1.1.0
+- ghcr.io/brunovlucena/homepage-api:1.1.0
+- ghcr.io/brunovlucena/homepage-frontend:1.1.0
 ```
 
 ---

@@ -41,12 +41,12 @@ MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
 #### API Version
 - Location: `api/VERSION`
 - Current: `0.1.0` → `1.0.0` (first stable release)
-- Container image: `ghcr.io/brunovlucena/homelab/homepage-api:1.0.0`
+- Container image: `ghcr.io/brunovlucena/homepage-api:1.0.0`
 
 #### Frontend Version
 - Location: `frontend/package.json` (version field)
 - Current: `0.1.0` → `1.0.0` (first stable release)
-- Container image: `ghcr.io/brunovlucena/homelab/homepage-frontend:1.0.0`
+- Container image: `ghcr.io/brunovlucena/homepage-frontend:1.0.0`
 
 #### Helm Chart Version
 - Location: `chart/Chart.yaml`
