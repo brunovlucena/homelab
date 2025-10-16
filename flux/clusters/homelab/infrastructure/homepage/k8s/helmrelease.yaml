@@ -20,6 +20,8 @@ spec:
       enabled: false
     monitoring:
       enabled: true
+      dashboard:
+        enabled: true
     ollama:
       url: "http://ollama:11434"  # Use internal service
       enabled: true  # Enable Ollama with external service
