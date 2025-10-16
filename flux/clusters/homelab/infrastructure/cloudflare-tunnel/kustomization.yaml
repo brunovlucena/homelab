@@ -6,9 +6,9 @@ metadata:
   namespace: flux-system
 
 resources:
-  - namespace.yaml
   - deployment.yaml
   - service.yaml
   - prometheus-rule.yaml
   - servicemonitor.yaml
-  - canary-monitoring.yaml
+  # Temporarily disable canary-monitoring until Prometheus operator is ready
+  # - canary-monitoring.yaml
