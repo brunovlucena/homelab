@@ -33,9 +33,11 @@ func main() {
 			return err
 		}
 
-		// Create Kubernetes provider
+		// Create Kubernetes provider with Server-Side Apply enabled
 		k8sProvider, err := kubernetes.NewProvider(ctx, "k8s-provider", &kubernetes.ProviderArgs{
-			Context: pulumi.String(fmt.Sprintf("kind-%s", clusterName)),
+			Context:               pulumi.String(fmt.Sprintf("kind-%s", clusterName)),
+			EnableServerSideApply: pulumi.Bool(true),
+			DeleteUnreachable:     pulumi.Bool(true),
 		}, pulumi.DependsOn([]pulumi.Resource{createCluster}))
 		if err != nil {
 			return err
@@ -76,13 +78,16 @@ func main() {
 			return err
 		}
 
-		// 📦 Apply GitRepository using Pulumi Kubernetes
+		// 📦 Apply GitRepository using Pulumi Kubernetes with Server-Side Apply
 		_, err = apiextensions.NewCustomResource(ctx, "homelab-gitrepo", &apiextensions.CustomResourceArgs{
 			ApiVersion: pulumi.String("source.toolkit.fluxcd.io/v1"),
 			Kind:       pulumi.String("GitRepository"),
 			Metadata: &metav1.ObjectMetaArgs{
 				Name:      pulumi.String("homelab"),
 				Namespace: pulumi.String("flux-system"),
+				Annotations: pulumi.StringMap{
+					"pulumi.com/patchForce": pulumi.String("true"),
+				},
 			},
 			OtherFields: kubernetes.UntypedArgs{
 				"spec": pulumi.Map{
