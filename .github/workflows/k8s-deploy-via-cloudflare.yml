@@ -1,0 +1,80 @@
+name: 🚀 Deploy to Kubernetes via Cloudflare
+
+# This workflow uses the homepage service account for authentication
+# Generate the KUBECONFIG secret using: ./scripts/generate-github-kubeconfig.sh
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to deploy'
+        required: true
+        type: choice
+        options:
+          - homepage
+          - grafana
+          - prometheus
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+        default: production
+
+env:
+  KUBECONFIG: ${{ secrets.KUBECONFIG }}
+
+jobs:
+  deploy:
+    name: 🚀 Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: 🔧 Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: 🔐 Configure kubectl
+        run: |
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig.yaml
+          export KUBECONFIG=kubeconfig.yaml
+          
+          # Test connection
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: 🚀 Deploy ${{ inputs.service }}
+        run: |
+          export KUBECONFIG=kubeconfig.yaml
+          
+          case "${{ inputs.service }}" in
+            "homepage")
+              echo "Deploying Homepage..."
+              # Add your homepage deployment commands here
+              kubectl get deployments -n homepage || echo "No homepage deployments found"
+              ;;
+            "grafana")
+              echo "Deploying Grafana..."
+              kubectl get deployments -n grafana || echo "No grafana deployments found"
+              ;;
+            "prometheus")
+              echo "Deploying Prometheus..."
+              kubectl get deployments -n prometheus || echo "No prometheus deployments found"
+              ;;
+          esac
+
+      - name: ✅ Verify Deployment
+        run: |
+          export KUBECONFIG=kubeconfig.yaml
+          kubectl get pods --all-namespaces
+          kubectl get services --all-namespaces
