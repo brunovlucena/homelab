@@ -1,6 +1,6 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, FileText, Linkedin, Github, Mail } from 'lucide-react'
+import { Search, FileText, Linkedin, Github, Mail, Menu, X } from 'lucide-react'
 import { useChatbot } from '../contexts/ChatbotContext'
 
 // =============================================================================
@@ -21,6 +21,15 @@ interface HeaderLink {
 
 const Header: React.FC = () => {
   const { openChatbot } = useChatbot();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
   
   const navigationLinks: HeaderLink[] = [
     {
@@ -54,15 +63,21 @@ const Header: React.FC = () => {
   ]
 
   const renderLink = (link: HeaderLink) => {
+    const handleClick = (e?: React.MouseEvent) => {
+      closeMobileMenu();
+      if (link.onClick) {
+        e?.preventDefault();
+        link.onClick();
+      }
+    };
+
     const linkProps = {
       className: 'header-link',
       ...(link.external && {
         target: '_blank',
         rel: 'noopener noreferrer',
       }),
-      ...(link.onClick && {
-        onClick: link.onClick,
-      }),
+      onClick: handleClick,
     }
 
     if (link.external) {
@@ -105,9 +120,19 @@ const Header: React.FC = () => {
             Homelab
           </Link>
         </div>
+
+        {/* Mobile Menu Toggle */}
+        <button
+          className={`mobile-menu-toggle ${isMobileMenuOpen ? 'active' : ''}`}
+          onClick={toggleMobileMenu}
+          aria-label="Toggle menu"
+          aria-expanded={isMobileMenuOpen}
+        >
+          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
         
         {/* Navigation */}
-        <nav className="header-nav">
+        <nav className={`header-nav ${isMobileMenuOpen ? 'nav-open' : ''}`}>
           <ul className="nav-menu">
             {navigationLinks.map((link) => (
               <li key={link.label}>
