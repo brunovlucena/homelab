@@ -28,3 +28,6 @@ resources:
   # Dashboards and monitoring (can now use Prometheus CRDs)
   - ../headlamp
   - ../k6-operator
+  - ../prometheus-pushgateway
+  # - ../agent-sre
+  # - ../agent-jamie

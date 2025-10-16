@@ -1,7 +1,7 @@
 [project]
 name = "agent-sre"
-version = "0.2.0"
-description = "SRE Agent with LangGraph state management"
+version = "0.3.0"
+description = "SRE Agent with LangGraph state management and Grafana Sift"
 requires-python = ">=3.11"
 dependencies = [
     "langchain>=0.3.0",
