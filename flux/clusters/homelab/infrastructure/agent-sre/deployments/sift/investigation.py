@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 
 class InvestigationStatus(str, Enum):
@@ -124,4 +124,3 @@ class Investigation:
         """Update investigation status"""
         self.status = status
         self.updated_at = datetime.utcnow()
-

@@ -8,4 +8,3 @@ from .sift_core import SiftCore
 from .storage import InvestigationStorage
 
 __all__ = ["Investigation", "InvestigationStatus", "SiftCore", "InvestigationStorage"]
-

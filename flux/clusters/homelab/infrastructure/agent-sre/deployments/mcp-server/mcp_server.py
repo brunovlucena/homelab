@@ -20,7 +20,7 @@ from mcp.types import TextContent, Tool
 # Add parent directory to path for sift imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sift.sift_core import SiftCore
+from sift.sift_core import SiftCore  # noqa: E402
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -147,13 +147,19 @@ specific analyses like error pattern detection or slow request detection.
                     "name": {"type": "string", "description": "Name/description of the investigation"},
                     "labels": {
                         "type": "object",
-                        "description": "Labels to scope the investigation (e.g., {\"cluster\": \"prod\", \"namespace\": \"api\"})",
+                        "description": (
+                            "Labels to scope the investigation "
+                            '(e.g., {"cluster": "prod", "namespace": "api"})'
+                        ),
                     },
                     "start_time": {
                         "type": "string",
                         "description": "Optional start time (ISO 8601 format, defaults to 30 minutes ago)",
                     },
-                    "end_time": {"type": "string", "description": "Optional end time (ISO 8601 format, defaults to now)"},
+                    "end_time": {
+                        "type": "string",
+                        "description": "Optional end time (ISO 8601 format, defaults to now)",
+                    },
                 },
                 "required": ["name", "labels"],
             },
@@ -227,7 +233,10 @@ Useful for tracking past investigations and their results.
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "limit": {"type": "integer", "description": "Maximum number of investigations to return (default: 10)"},
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of investigations to return (default: 10)",
+                    },
                 },
             },
         ),

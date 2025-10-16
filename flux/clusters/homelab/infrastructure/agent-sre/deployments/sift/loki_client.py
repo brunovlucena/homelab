@@ -6,7 +6,6 @@ Provides log querying capabilities for Grafana Loki
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlencode
 
 import aiohttp
 
@@ -153,7 +152,9 @@ class LokiClient:
                 logger.error(f"❌ Error getting Loki label values: {e}")
                 return []
 
-    async def query_stats(self, query: str, start: Optional[datetime] = None, end: Optional[datetime] = None) -> Dict[str, Any]:
+    async def query_stats(
+        self, query: str, start: Optional[datetime] = None, end: Optional[datetime] = None
+    ) -> Dict[str, Any]:
         """Get statistics about log streams matching a selector"""
         if not start:
             start = datetime.utcnow() - timedelta(minutes=30)
@@ -181,4 +182,3 @@ class LokiClient:
             except Exception as e:
                 logger.error(f"❌ Error getting Loki stats: {e}")
                 return {}
-

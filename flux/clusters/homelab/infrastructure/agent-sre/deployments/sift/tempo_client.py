@@ -62,7 +62,7 @@ class TempoClient:
         # Add tag filters
         if tags:
             for key, value in tags.items():
-                params[f"tags"] = f'{key}="{value}"'
+                params["tags"] = f'{key}="{value}"'
 
         if min_duration:
             params["minDuration"] = min_duration
@@ -172,4 +172,3 @@ class TempoClient:
             except Exception as e:
                 logger.error(f"❌ Error getting Tempo tag values: {e}")
                 return []
-

@@ -8,7 +8,7 @@ import logging
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from .investigation import Investigation, InvestigationStatus
 
@@ -54,7 +54,7 @@ class InvestigationStorage:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO investigations 
+                INSERT OR REPLACE INTO investigations
                 (id, name, labels, start_time, end_time, status, analyses, created_at, updated_at, metadata)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -137,4 +137,3 @@ class InvestigationStorage:
             if deleted:
                 logger.info(f"🗑️ Deleted investigation {investigation_id}")
             return deleted
-

@@ -321,4 +321,3 @@ class SiftCore:
             )
 
         return traces
-
