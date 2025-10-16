@@ -88,7 +88,8 @@ class HomepageKnowledge:
                 {"method": "GET", "path": "/api/v1/experiences/:id", "description": "Get specific experience"},
             ],
             "agents": [
-                {"method": "POST", "path": "/api/v1/agent-bruno/chat", "description": "Chat with Agent-Bruno (Homepage chatbot)"},
+                {"method": "POST", "path": "/api/v1/agent-bruno/chat",
+                 "description": "Chat with Agent-Bruno (Homepage chatbot)"},
             ],
             "health": [
                 {"method": "GET", "path": "/health", "description": "Health check"},
@@ -344,4 +345,3 @@ class HomepageKnowledge:
 
 **Status**: ✅ Production Ready with 100% test coverage (50+ tests)
 """
-

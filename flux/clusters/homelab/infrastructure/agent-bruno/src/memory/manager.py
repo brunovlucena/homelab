@@ -24,7 +24,7 @@ class MemoryManager:
     ):
         """
         Initialize memory manager
-        
+
         Args:
             redis_url: Redis connection URL
             mongodb_url: MongoDB connection URL
@@ -38,11 +38,11 @@ class MemoryManager:
         """Connect to both stores (non-blocking if unavailable)"""
         await self.redis_store.connect()
         await self.mongo_store.connect()
-        
+
         # Check connection status
         redis_ok = self.redis_store._connected
         mongo_ok = self.mongo_store._connected
-        
+
         if redis_ok and mongo_ok:
             logger.info("✅ Memory manager connected to both stores")
         elif redis_ok or mongo_ok:
@@ -65,7 +65,7 @@ class MemoryManager:
     ):
         """
         Save conversation to both session and persistent stores
-        
+
         Args:
             ip: User IP address
             message: User message
@@ -87,11 +87,11 @@ class MemoryManager:
     ) -> List[Dict[str, Any]]:
         """
         Get recent conversation context from session store
-        
+
         Args:
             ip: User IP address
             limit: Maximum number of messages to return
-            
+
         Returns:
             List of recent messages
         """
@@ -105,12 +105,12 @@ class MemoryManager:
     ) -> List[Dict[str, Any]]:
         """
         Get full conversation history from persistent store
-        
+
         Args:
             ip: User IP address
             limit: Maximum number of conversations to return
             skip: Number of conversations to skip
-            
+
         Returns:
             List of conversations
         """
@@ -119,7 +119,7 @@ class MemoryManager:
     async def clear_memory(self, ip: str):
         """
         Clear all memory for IP
-        
+
         Args:
             ip: User IP address
         """
@@ -130,7 +130,7 @@ class MemoryManager:
     async def get_stats(self) -> Dict[str, Any]:
         """
         Get memory statistics
-        
+
         Returns:
             Statistics dictionary
         """
@@ -148,7 +148,7 @@ class MemoryManager:
     async def health_check(self) -> Dict[str, bool]:
         """
         Check health of both stores
-        
+
         Returns:
             Health status dictionary
         """
@@ -167,10 +167,10 @@ class MemoryManager:
     ) -> str:
         """
         Format recent messages for LLM prompt
-        
+
         Args:
             recent_messages: List of recent messages
-            
+
         Returns:
             Formatted context string
         """
@@ -178,14 +178,12 @@ class MemoryManager:
             return "No previous conversation context."
 
         context_parts = ["Previous conversation:"]
-        
+
         for msg in recent_messages:
-            timestamp = msg.get("timestamp", "")
             user_msg = msg.get("message", "")
             agent_resp = msg.get("response", "")
-            
+
             context_parts.append(f"\nUser: {user_msg}")
             context_parts.append(f"Agent: {agent_resp}")
 
         return "\n".join(context_parts)
-

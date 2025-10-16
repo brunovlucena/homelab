@@ -9,7 +9,6 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from prometheus_client import Counter, Histogram, Gauge, generate_latest
@@ -55,10 +54,10 @@ memory_manager: Optional[MemoryManager] = None
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown"""
     global agent, memory_manager
-    
+
     # Startup
     logger.info("🚀 Starting Agent Bruno...")
-    
+
     # Load configuration
     redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
     mongodb_url = os.getenv("MONGODB_URL", "mongodb://mongodb:27017")
@@ -66,7 +65,7 @@ async def lifespan(app: FastAPI):
     session_ttl = int(os.getenv("SESSION_TTL", "86400"))
     ollama_url = os.getenv("OLLAMA_URL", "http://ollama.homepage.svc.cluster.local:11434")
     ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
-    
+
     # Initialize memory manager
     memory_manager = MemoryManager(
         redis_url=redis_url,
@@ -75,18 +74,18 @@ async def lifespan(app: FastAPI):
         session_ttl=session_ttl
     )
     await memory_manager.connect()
-    
+
     # Initialize agent
     agent = AgentBruno(
         memory_manager=memory_manager,
         ollama_url=ollama_url,
         model=ollama_model
     )
-    
+
     logger.info("✅ Agent Bruno started successfully")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("👋 Shutting down Agent Bruno...")
     if memory_manager:
@@ -143,23 +142,23 @@ class SystemStats(BaseModel):
 async def metrics_middleware(request: Request, call_next):
     """Collect metrics for all requests"""
     import time
-    
+
     start_time = time.time()
     response = await call_next(request)
     duration = time.time() - start_time
-    
+
     # Record metrics
     requests_total.labels(
         method=request.method,
         endpoint=request.url.path,
         status=response.status_code
     ).inc()
-    
+
     request_duration.labels(
         method=request.method,
         endpoint=request.url.path
     ).observe(duration)
-    
+
     return response
 
 
@@ -169,11 +168,11 @@ def get_client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("X-Forwarded-For")
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
-    
+
     # Fall back to client host
     if request.client:
         return request.client.host
-    
+
     return "unknown"
 
 
@@ -189,15 +188,15 @@ async def ready():
     """Readiness check endpoint - allows service to run with degraded functionality"""
     if not memory_manager:
         raise HTTPException(status_code=503, detail="Memory manager not initialized")
-    
+
     health = await memory_manager.health_check()
-    
+
     # Service is ready even if stores are unavailable (degraded mode)
     status = "ready"
     if not health["overall"]:
         status = "degraded"
         logger.warning(f"⚠️  Service running in degraded mode: Redis={health['redis']}, MongoDB={health['mongodb']}")
-    
+
     return {
         "status": status,
         "service": "agent-bruno",
@@ -215,7 +214,7 @@ async def status():
             "service": "agent-bruno",
             "ready": False
         }
-    
+
     try:
         health = await memory_manager.health_check()
         
@@ -251,18 +250,18 @@ async def chat(request: ChatRequest, req: Request):
     """Chat with Agent Bruno"""
     if not agent:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    
+
     ip = get_client_ip(req)
-    
+
     try:
         result = await agent.chat(
             message=request.message,
             ip=ip,
             context=request.context
         )
-        
+
         memory_operations.labels(operation="chat", status="success").inc()
-        
+
         from datetime import datetime
         return ChatResponse(
             response=result.get("response", "Sorry, I encountered an error."),
@@ -270,7 +269,7 @@ async def chat(request: ChatRequest, req: Request):
             model=result.get("model"),
             sources=["Agent Bruno"]
         )
-    
+
     except Exception as e:
         logger.error(f"❌ Chat error: {e}")
         memory_operations.labels(operation="chat", status="error").inc()
@@ -294,11 +293,11 @@ async def get_memory(ip: str):
     """Get memory statistics for IP"""
     if not agent:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    
+
     try:
         stats = await agent.get_memory_stats(ip)
         return MemoryStats(**stats)
-    
+
     except Exception as e:
         logger.error(f"❌ Get memory error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -309,11 +308,11 @@ async def get_memory_history(ip: str, limit: int = 50, skip: int = 0):
     """Get full conversation history for IP"""
     if not memory_manager:
         raise HTTPException(status_code=503, detail="Memory manager not initialized")
-    
+
     try:
         history = await memory_manager.get_full_history(ip, limit, skip)
         return {"ip": ip, "history": history, "count": len(history)}
-    
+
     except Exception as e:
         logger.error(f"❌ Get history error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -324,12 +323,12 @@ async def clear_memory(ip: str):
     """Clear memory for IP"""
     if not agent:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    
+
     try:
         await agent.clear_memory(ip)
         memory_operations.labels(operation="clear", status="success").inc()
         return {"status": "success", "message": f"Memory cleared for IP: {ip}"}
-    
+
     except Exception as e:
         logger.error(f"❌ Clear memory error: {e}")
         memory_operations.labels(operation="clear", status="error").inc()
@@ -342,7 +341,7 @@ async def knowledge_summary():
     """Get knowledge base summary"""
     if not agent:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    
+
     return {"summary": agent.get_knowledge_summary()}
 
 
@@ -351,7 +350,7 @@ async def knowledge_search(q: str):
     """Search knowledge base"""
     if not agent:
         raise HTTPException(status_code=503, detail="Agent not initialized")
-    
+
     results = agent.search_knowledge(q)
     return {"query": q, "results": results}
 
@@ -362,19 +361,19 @@ async def system_stats():
     """Get system statistics"""
     if not memory_manager:
         raise HTTPException(status_code=503, detail="Memory manager not initialized")
-    
+
     try:
         stats = await memory_manager.get_stats()
-        
+
         # Update Prometheus gauge
         active_sessions.set(stats["active_sessions"])
-        
+
         return SystemStats(
             active_sessions=stats["active_sessions"],
             total_conversations=stats["total_conversations"],
             unique_ips=stats["unique_ips"]
         )
-    
+
     except Exception as e:
         logger.error(f"❌ Stats error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -402,7 +401,7 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     port = int(os.getenv("PORT", "8080"))
     uvicorn.run(
         "main:app",
@@ -410,4 +409,3 @@ if __name__ == "__main__":
         port=port,
         log_level="info"
     )
-

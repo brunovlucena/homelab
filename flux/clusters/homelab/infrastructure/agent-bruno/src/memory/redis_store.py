@@ -6,7 +6,7 @@ Manages short-term conversation memory in Redis with TTL.
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 import redis.asyncio as redis
 
@@ -19,7 +19,7 @@ class RedisStore:
     def __init__(self, redis_url: str, ttl: int = 86400):
         """
         Initialize Redis store
-        
+
         Args:
             redis_url: Redis connection URL
             ttl: Session TTL in seconds (default: 24 hours)

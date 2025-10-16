@@ -18,7 +18,7 @@ class MongoStore:
     def __init__(self, mongodb_url: str, db_name: str = "agent_bruno"):
         """
         Initialize MongoDB store
-        
+
         Args:
             mongodb_url: MongoDB connection URL
             db_name: Database name
@@ -35,13 +35,13 @@ class MongoStore:
         try:
             self.client = AsyncIOMotorClient(self.mongodb_url)
             self.db = self.client[self.db_name]
-            
+
             # Create indexes
             await self._create_indexes()
-            
+
             # Test connection
             await self.client.admin.command('ping')
-            
+
             self._connected = True
             logger.info(f"✅ Connected to MongoDB: {self.db_name}")
         except Exception as e:
@@ -53,16 +53,16 @@ class MongoStore:
     async def _create_indexes(self):
         """Create database indexes"""
         collection = self.db[self.collection_name]
-        
+
         # Index on IP address
         await collection.create_index("ip")
-        
+
         # Index on timestamp
         await collection.create_index("timestamp")
-        
+
         # Compound index on IP + timestamp
         await collection.create_index([("ip", 1), ("timestamp", -1)])
-        
+
         logger.info("✅ Created MongoDB indexes")
 
     async def disconnect(self):
@@ -80,7 +80,7 @@ class MongoStore:
     ):
         """
         Save a conversation to persistent storage
-        
+
         Args:
             ip: User IP address
             message: User message
@@ -117,12 +117,12 @@ class MongoStore:
     ) -> List[Dict[str, Any]]:
         """
         Get conversation history for IP
-        
+
         Args:
             ip: User IP address
             limit: Maximum number of conversations to return
             skip: Number of conversations to skip
-            
+
         Returns:
             List of conversation dictionaries
         """
@@ -136,13 +136,13 @@ class MongoStore:
             cursor = collection.find(
                 {"ip": ip}
             ).sort("timestamp", -1).skip(skip).limit(limit)
-            
+
             conversations = await cursor.to_list(length=limit)
-            
+
             # Convert ObjectId to string for JSON serialization
             for conv in conversations:
                 conv["_id"] = str(conv["_id"])
-            
+
             return conversations
         except Exception as e:
             logger.warning(f"⚠️  MongoDB operation failed: {e}")
@@ -152,7 +152,7 @@ class MongoStore:
     async def delete_conversation_history(self, ip: str):
         """
         Delete all conversations for IP
-        
+
         Args:
             ip: User IP address
         """
@@ -172,10 +172,10 @@ class MongoStore:
     async def get_total_conversations(self, ip: Optional[str] = None) -> int:
         """
         Get total number of conversations
-        
+
         Args:
             ip: Optional IP to filter by
-            
+
         Returns:
             Number of conversations
         """
@@ -197,7 +197,7 @@ class MongoStore:
     async def get_unique_ips(self) -> List[str]:
         """
         Get list of unique IP addresses
-        
+
         Returns:
             List of IP addresses
         """
@@ -218,7 +218,7 @@ class MongoStore:
     async def health_check(self) -> bool:
         """
         Check MongoDB health (and attempt reconnection if needed)
-        
+
         Returns:
             True if healthy, False otherwise
         """
@@ -227,7 +227,7 @@ class MongoStore:
                 # Attempt reconnection
                 await self.connect()
                 return self._connected
-            
+
             await self.client.admin.command('ping')
             self._connected = True
             return True
@@ -235,4 +235,3 @@ class MongoStore:
             logger.debug(f"⚠️  MongoDB health check failed: {e}")
             self._connected = False
             return False
-

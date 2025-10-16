@@ -213,8 +213,8 @@ class TestSlowRequestAnalyzer:
         p50 = slow_request_analyzer._percentile(values, 50)
         p95 = slow_request_analyzer._percentile(values, 95)
 
-        assert p50 == 50
-        assert p95 == 95
+        assert p50 == 60  # 50th percentile of [10..100] is 60 (index 5)
+        assert p95 == 100  # 95th percentile of [10..100] is 100 (index 9)
 
     def test_analyze(self, slow_request_analyzer):
         """Test full analysis"""
@@ -309,7 +309,8 @@ class TestSiftCore:
 
     async def test_create_investigation(self, sift_core):
         """Test creating investigation"""
-        inv = await sift_core.create_investigation(
+        core = await sift_core
+        inv = await core.create_investigation(
             name="Test Investigation",
             labels={"cluster": "prod", "namespace": "api"},
         )
@@ -321,40 +322,44 @@ class TestSiftCore:
 
     async def test_get_investigation(self, sift_core):
         """Test getting investigation"""
-        inv = await sift_core.create_investigation(
+        core = await sift_core
+        inv = await core.create_investigation(
             name="Test",
             labels={"cluster": "prod"},
         )
 
-        retrieved = await sift_core.get_investigation(inv.id)
+        retrieved = await core.get_investigation(inv.id)
 
         assert retrieved is not None
         assert retrieved.id == inv.id
 
     async def test_list_investigations(self, sift_core):
         """Test listing investigations"""
-        await sift_core.create_investigation("Test 1", {"cluster": "prod"})
-        await sift_core.create_investigation("Test 2", {"cluster": "prod"})
+        core = await sift_core
+        await core.create_investigation("Test 1", {"cluster": "prod"})
+        await core.create_investigation("Test 2", {"cluster": "prod"})
 
-        investigations = await sift_core.list_investigations()
+        investigations = await core.list_investigations()
 
         assert len(investigations) >= 2
 
-    def test_build_log_query(self, sift_core):
+    async def test_build_log_query(self, sift_core):
         """Test building LogQL query"""
+        core = await sift_core
         labels = {"namespace": "default", "pod": "test-pod"}
 
-        query = sift_core._build_log_query(labels)
+        query = core._build_log_query(labels)
 
         assert "namespace" in query
         assert "pod" in query
         assert "default" in query
 
-    def test_build_trace_tags(self, sift_core):
+    async def test_build_trace_tags(self, sift_core):
         """Test building trace tags"""
+        core = await sift_core
         labels = {"namespace": "default", "service": "api"}
 
-        tags = sift_core._build_trace_tags(labels)
+        tags = core._build_trace_tags(labels)
 
         assert "namespace" in tags
         assert tags["service.name"] == "api"
