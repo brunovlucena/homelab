@@ -6,12 +6,12 @@ import (
 	"os"
 	"time"
 
-	"bruno-site/config"
-	"bruno-site/database"
-	"bruno-site/handlers"
-	"bruno-site/metrics"
-	"bruno-site/router"
-	"bruno-site/storage"
+	"homepage/config"
+	"homepage/database"
+	"homepage/handlers"
+	"homepage/metrics"
+	"homepage/router"
+	"homepage/storage"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,7 +22,7 @@ func main() {
 	ctx := context.Background()
 
 	log.Println("═══════════════════════════════════════════════════════════")
-	log.Println("🚀 Bruno Site API - Initialization Starting")
+	log.Println("🚀 Homepage API - Initialization Starting")
 	log.Println("═══════════════════════════════════════════════════════════")
 
 	// 📊 Initialize OpenTelemetry → Alloy → Logfire
@@ -33,13 +33,13 @@ func main() {
 		log.Println("⚠️  WARNING: Continuing without OpenTelemetry tracing")
 	} else {
 		log.Println("✅ OpenTelemetry tracing configured successfully")
-		
+
 		// Set up Prometheus metrics handler
 		promHandler := PrometheusHandler()
 		handlers.PrometheusHandlerFunc = func(c *gin.Context) {
 			promHandler.ServeHTTP(c.Writer, c.Request)
 		}
-		
+
 		defer func() {
 			log.Println("🔄 Shutting down OpenTelemetry...")
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -58,6 +58,13 @@ func main() {
 		log.Fatalf("❌ FATAL ERROR: Failed to initialize metrics: %v", err)
 	}
 	log.Println("✅ Metrics initialized: projects, experiences, database, redis, minio")
+
+	// 📊 Initialize frontend metrics
+	log.Println("📊 Step 2b/7: Initializing frontend metrics...")
+	if err := handlers.InitFrontendMetrics(); err != nil {
+		log.Fatalf("❌ FATAL ERROR: Failed to initialize frontend metrics: %v", err)
+	}
+	log.Println("✅ Frontend metrics initialized: page views, API calls, errors, Web Vitals")
 
 	// 🔧 Load configuration
 	log.Println("🔧 Step 3/7: Loading configuration...")
@@ -107,7 +114,7 @@ func main() {
 	}
 
 	log.Println("═══════════════════════════════════════════════════════════")
-	log.Println("🌐 Bruno Site API - Ready to Accept Connections")
+	log.Println("🌐 Homepage API - Ready to Accept Connections")
 	log.Println("═══════════════════════════════════════════════════════════")
 	log.Printf("📍 Server Address: 0.0.0.0:%s", port)
 	log.Printf("🔗 Health Check: http://localhost:%s/health", port)

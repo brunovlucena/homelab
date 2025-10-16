@@ -1,5 +1,15 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios'
+import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { env } from '../utils/env'
+import { metricsCollector } from '../utils/metrics'
+
+// =============================================================================
+// 📋 TYPES
+// =============================================================================
+
+// Extend AxiosRequestConfig to include metadata
+interface RequestConfig extends InternalAxiosRequestConfig {
+  metadata?: { startTime: number }
+}
 
 // =============================================================================
 // 📋 TYPES
@@ -81,29 +91,89 @@ class ApiClient {
 
     // Request interceptor
     this.client.interceptors.request.use(
-      (config) => {
+      (config: RequestConfig) => {
         // Add auth token if available
         const token = localStorage.getItem('auth_token')
         if (token) {
           config.headers.Authorization = `Bearer ${token}`
         }
+        
+        // 📊 Add metrics tracking metadata
+        config.metadata = { startTime: Date.now() }
+        
         return config
       },
-      (error) => Promise.reject(error)
+      (error) => {
+        // Track request errors
+        metricsCollector.recordError(
+          'api_request_error',
+          error?.message || 'Request setup failed',
+          error?.stack
+        )
+        return Promise.reject(error)
+      }
     )
 
     // Response interceptor
     this.client.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        // 📊 Track successful API calls
+        const config = response.config as RequestConfig
+        if (config.metadata?.startTime) {
+          const duration = Date.now() - config.metadata.startTime
+          const endpoint = this.getEndpointPath(config.url || '')
+          const method = config.method?.toUpperCase() || 'GET'
+          
+          metricsCollector.recordAPICall(
+            endpoint,
+            method,
+            response.status,
+            duration,
+            true
+          )
+        }
+        
+        return response
+      },
       (error) => {
+        // 📊 Track failed API calls
+        const config = error.config as RequestConfig
+        if (config?.metadata?.startTime) {
+          const duration = Date.now() - config.metadata.startTime
+          const endpoint = this.getEndpointPath(config.url || '')
+          const method = config.method?.toUpperCase() || 'GET'
+          const status = error.response?.status || 0
+          
+          metricsCollector.recordAPICall(
+            endpoint,
+            method,
+            status,
+            duration,
+            false
+          )
+        }
+        
         // Handle common errors
         if (error.response?.status === 401) {
           // Handle unauthorized
           localStorage.removeItem('auth_token')
         }
+        
         return Promise.reject(error)
       }
     )
+  }
+
+  // Helper method to extract endpoint path from URL
+  private getEndpointPath(url: string): string {
+    try {
+      // Remove base URL if present
+      const path = url.replace(env.API_URL, '')
+      // Remove query parameters
+      return path.split('?')[0]
+    } catch {
+      return url
+    }
   }
 
   // =============================================================================

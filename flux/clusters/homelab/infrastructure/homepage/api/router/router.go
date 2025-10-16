@@ -1,12 +1,12 @@
 package router
 
 import (
-	"bruno-site/cache"
-	"bruno-site/cdn"
-	"bruno-site/config"
-	"bruno-site/handlers"
-	"bruno-site/middleware"
-	"bruno-site/storage"
+	"homepage/cache"
+	"homepage/cdn"
+	"homepage/config"
+	"homepage/handlers"
+	"homepage/middleware"
+	"homepage/storage"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
@@ -70,6 +70,8 @@ func SetupRouter(cfg *config.Config, db *gorm.DB, redis *redis.Client, minioClie
 	// API routes
 	api := r.Group("/api/v1")
 	{
+		// 📊 Frontend metrics collection endpoint
+		api.POST("/metrics/frontend", handlers.FrontendMetricsHandler)
 		// Projects routes
 		projects := api.Group("/projects")
 		{
