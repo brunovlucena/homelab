@@ -131,7 +131,6 @@ spec:
       plugins:
         - grafana-strava-datasource
         - grafana-llm-app
-        - grafana-periscope-app
       grafana.ini:
         # server:
         #   http_port: 30003
