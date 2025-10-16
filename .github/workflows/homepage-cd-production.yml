@@ -1,0 +1,412 @@
+name: 🚀 Homepage - CD Production
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'flux/clusters/homelab/infrastructure/homepage/api/**'
+      - 'flux/clusters/homelab/infrastructure/homepage/frontend/**'
+      - 'flux/clusters/homelab/infrastructure/homepage/chart/**'
+      - '.github/workflows/homepage-cd-production.yml'
+  push:
+    tags:
+      - 'homepage-v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy (e.g., 1.0.0)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_API: ${{ github.repository_owner }}/homelab/homepage-api
+  IMAGE_NAME_FRONTEND: ${{ github.repository_owner }}/homelab/homepage-frontend
+  WORKING_DIR: flux/clusters/homelab/infrastructure/homepage
+  ENVIRONMENT: production
+
+jobs:
+  version:
+    name: 📋 Determine Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+      api_changed: ${{ steps.changes.outputs.api }}
+      frontend_changed: ${{ steps.changes.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            api:
+              - 'flux/clusters/homelab/infrastructure/homepage/api/**'
+            frontend:
+              - 'flux/clusters/homelab/infrastructure/homepage/frontend/**'
+      
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/homepage-v}"
+          else
+            # Use chart version from Chart.yaml
+            VERSION=$(grep '^version:' ${{ env.WORKING_DIR }}/chart/Chart.yaml | awk '{print $2}')
+          fi
+          
+          # Check if prerelease
+          IS_PRERELEASE="false"
+          if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+            IS_PRERELEASE="true"
+          fi
+          
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "is_prerelease=${IS_PRERELEASE}" >> $GITHUB_OUTPUT
+          echo "Generated version: ${VERSION} (prerelease: ${IS_PRERELEASE})"
+
+  build-and-push-api:
+    name: 🏗️ Build & Push API
+    runs-on: ubuntu-latest
+    needs: version
+    if: needs.version.outputs.api_changed == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}
+          tags: |
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=raw,value=latest,enable=${{ needs.version.outputs.is_prerelease == 'false' }}
+            type=sha,prefix=${{ needs.version.outputs.version }}-
+      
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ env.WORKING_DIR }}/api
+          file: ${{ env.WORKING_DIR }}/api/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ needs.version.outputs.version }}
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+      
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  build-and-push-frontend:
+    name: 🏗️ Build & Push Frontend
+    runs-on: ubuntu-latest
+    needs: version
+    if: needs.version.outputs.frontend_changed == 'true' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
+          tags: |
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=raw,value=latest,enable=${{ needs.version.outputs.is_prerelease == 'false' }}
+            type=sha,prefix=${{ needs.version.outputs.version }}-
+      
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ env.WORKING_DIR }}/frontend
+          file: ${{ env.WORKING_DIR }}/frontend/Dockerfile
+          target: production
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ needs.version.outputs.version }}
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+      
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  update-helm-values:
+    name: 📝 Update Helm Values
+    runs-on: ubuntu-latest
+    needs: [version, build-and-push-api, build-and-push-frontend]
+    if: always() && (needs.build-and-push-api.result == 'success' || needs.build-and-push-frontend.result == 'success')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      
+      - name: Update Helm values for production
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          VALUES_FILE="${{ env.WORKING_DIR }}/chart/values.yaml"
+          
+          # Update image tags in values.yaml
+          if [ "${{ needs.version.outputs.api_changed }}" == "true" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            sed -i "s|tag: .*|tag: \"${VERSION}\"|g" "$VALUES_FILE" || true
+          fi
+          
+          echo "Updated values.yaml:"
+          cat "$VALUES_FILE"
+      
+      - name: Update Chart.yaml version
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          CHART_FILE="${{ env.WORKING_DIR }}/chart/Chart.yaml"
+          
+          # Update chart version and appVersion
+          sed -i "s|^version:.*|version: ${VERSION}|g" "$CHART_FILE"
+          sed -i "s|^appVersion:.*|appVersion: \"${VERSION}\"|g" "$CHART_FILE"
+          
+          echo "Updated Chart.yaml:"
+          cat "$CHART_FILE"
+      
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ${{ env.WORKING_DIR }}/chart/values.yaml
+          git add ${{ env.WORKING_DIR }}/chart/Chart.yaml
+          git commit -m "chore(release): homepage ${{ needs.version.outputs.version }}" || echo "No changes to commit"
+          git push
+
+  deploy-production:
+    name: 🚀 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [version, update-helm-values]
+    environment:
+      name: production
+      url: https://lucena.cloud
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+      
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+      
+      - name: Trigger Flux reconciliation
+        run: |
+          # Install Flux CLI if needed
+          curl -s https://fluxcd.io/install.sh | sudo bash
+          
+          # Reconcile GitRepository
+          flux reconcile source git homelab -n flux-system --timeout 5m
+          
+          # Reconcile HelmRelease
+          flux reconcile helmrelease homepage -n homepage --timeout 10m
+      
+      - name: Wait for deployment
+        run: |
+          kubectl rollout status deployment/homepage-api -n homepage --timeout=10m
+          kubectl rollout status deployment/homepage-frontend -n homepage --timeout=10m
+      
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n homepage -l app.kubernetes.io/version=${{ needs.version.outputs.version }}
+          kubectl get svc -n homepage
+
+  smoke-tests:
+    name: 🧪 Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [version, deploy-production]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Wait for services to be ready
+        run: sleep 60
+      
+      - name: Test API health
+        run: |
+          for i in {1..5}; do
+            if curl -f https://lucena.cloud/health; then
+              echo "✅ API health check passed"
+              exit 0
+            fi
+            echo "⏳ Waiting for API... (attempt $i/5)"
+            sleep 10
+          done
+          exit 1
+      
+      - name: Test frontend
+        run: |
+          curl -f https://lucena.cloud/ || exit 1
+      
+      - name: Test API endpoints
+        run: |
+          curl -f https://lucena.cloud/api/v1/projects || exit 1
+
+  performance-tests:
+    name: ⚡ Performance Tests
+    runs-on: ubuntu-latest
+    needs: [version, smoke-tests]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install k6
+        run: |
+          curl https://github.com/grafana/k6/releases/download/v0.48.0/k6-v0.48.0-linux-amd64.tar.gz -L | tar xvz
+          sudo mv k6-v0.48.0-linux-amd64/k6 /usr/local/bin/
+      
+      - name: Run k6 load test
+        run: |
+          cd ${{ env.WORKING_DIR }}/tests/k6
+          k6 run --out json=results.json load-test.js || true
+      
+      - name: Upload k6 results
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results
+          path: ${{ env.WORKING_DIR }}/tests/k6/results.json
+
+  create-release:
+    name: 📦 Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [version, deploy-production, smoke-tests]
+    if: needs.version.outputs.is_prerelease == 'false' && github.event_name != 'workflow_dispatch'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Generate changelog
+        id: changelog
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          
+          # Get previous tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          if [ -z "$PREVIOUS_TAG" ]; then
+            CHANGELOG="Initial release"
+          else
+            CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+          
+          # Save changelog to file
+          cat > /tmp/changelog.md <<EOF
+          ## What's Changed
+          
+          ${CHANGELOG}
+          
+          ## Docker Images
+          
+          - \`ghcr.io/${{ env.IMAGE_NAME_API }}:${VERSION}\`
+          - \`ghcr.io/${{ env.IMAGE_NAME_FRONTEND }}:${VERSION}\`
+          
+          ## Deployment
+          
+          Deployed to: https://lucena.cloud
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...homepage-v${VERSION}
+          EOF
+          
+          cat /tmp/changelog.md
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: homepage-v${{ needs.version.outputs.version }}
+          name: Homepage v${{ needs.version.outputs.version }}
+          body_path: /tmp/changelog.md
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+
+  notify:
+    name: 📢 Notify
+    runs-on: ubuntu-latest
+    needs: [version, deploy-production, smoke-tests, performance-tests]
+    if: always()
+    steps:
+      - name: Deployment summary
+        run: |
+          echo "## 🚀 Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ needs.deploy-production.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Smoke Tests:** ${{ needs.smoke-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Performance Tests:** ${{ needs.performance-tests.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Changes:**" >> $GITHUB_STEP_SUMMARY
+          echo "- API: ${{ needs.version.outputs.api_changed == 'true' && '✅' || '⏭️' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: ${{ needs.version.outputs.frontend_changed == 'true' && '✅' || '⏭️' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://lucena.cloud" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Docker Images:**" >> $GITHUB_STEP_SUMMARY
+          echo "- API: \`ghcr.io/${{ env.IMAGE_NAME_API }}:${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: \`ghcr.io/${{ env.IMAGE_NAME_FRONTEND }}:${{ needs.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+

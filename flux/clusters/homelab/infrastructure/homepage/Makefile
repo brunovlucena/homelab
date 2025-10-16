@@ -6,7 +6,22 @@ ENV ?= dev
 DOCKER_COMPOSE_FILE = docker-compose.yml
 REGISTRY ?= ghcr.io/brunovlucena/homelab
 
-.PHONY: help up down restart build-dev build-push-latest logs logs-api logs-frontend logs-postgres status-services clean psql migrate migrate-k8s redis-cli api-shell frontend-shell up-frontend-dev restart-fresh pf-api pf-redis pf-postgres tp-intercept tp-intercept-mounts tp-stop tp-connect tp-disconnect tp-status tp-list reconcile test-api-endpoints test-k6 test-k6-local test test-api-unit test-frontend-unit test-e2e test-coverage update-deps format lint cloudflare-setup cloudflare-purge cloudflare-deploy cloudflare-status optimize-images build-api run-api dev-api test-api tidy-api lint-api clean-api docker-build-api docker-run-api build-frontend dev-frontend test-frontend test-frontend-watch test-frontend-cov preview-frontend install-frontend clean-frontend docker-build-frontend build-all push-all
+# Version management
+VERSION ?= $(shell grep '^version:' chart/Chart.yaml | awk '{print $$2}')
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD)
+GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
+BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# Image tags based on branch
+ifeq ($(GIT_BRANCH),main)
+	IMAGE_TAG := $(VERSION)
+else ifeq ($(GIT_BRANCH),develop)
+	IMAGE_TAG := $(VERSION)-beta.$(shell date +%s)
+else
+	IMAGE_TAG := $(VERSION)-dev.$(GIT_COMMIT)
+endif
+
+.PHONY: help up down restart build-dev build-push-latest build-push-version logs logs-api logs-frontend logs-postgres status-services clean psql migrate migrate-k8s redis-cli api-shell frontend-shell up-frontend-dev restart-fresh pf-api pf-redis pf-postgres tp-intercept tp-intercept-mounts tp-stop tp-connect tp-disconnect tp-status tp-list reconcile test-api-endpoints test-k6 test-k6-local test test-api-unit test-frontend-unit test-e2e test-coverage update-deps format lint cloudflare-setup cloudflare-purge cloudflare-deploy cloudflare-status optimize-images build-api run-api dev-api test-api tidy-api lint-api clean-api docker-build-api docker-run-api build-frontend dev-frontend test-frontend test-frontend-watch test-frontend-cov preview-frontend install-frontend clean-frontend docker-build-frontend build-all push-all version version-bump version-info release-notes
 
 # Default target
 help:
@@ -77,6 +92,13 @@ help:
 	@echo "  make build-all             - Build both API and frontend Docker images"
 	@echo "  make push-all              - Push both API and frontend to registry"
 	@echo ""
+	@echo "Version Management Commands:"
+	@echo "  make version               - Show current version"
+	@echo "  make version-info          - Show detailed version information"
+	@echo "  make version-bump VERSION=x.y.z - Bump version to x.y.z"
+	@echo "  make build-push-version    - Build and push images with semantic version"
+	@echo "  make release-notes         - Generate release notes"
+	@echo ""
 
 # Start services (development)
 up:
@@ -118,8 +140,11 @@ build-dev:
 	@docker-compose -f $(DOCKER_COMPOSE_FILE) build
 	@echo "✅ Images built successfully"
 
-# Build and push images to registry (latest tag only)
+# Build and push images to registry (latest tag only) - DEPRECATED
 build-push-latest:
+	@echo "⚠️  WARNING: This command is deprecated!"
+	@echo "⚠️  Use 'make build-push-version' instead for semantic versioning"
+	@echo ""
 	@echo "🏗️ Building and pushing Docker images..."
 	@echo "Registry: $(REGISTRY)"
 	@echo "Tag: latest"
@@ -132,6 +157,45 @@ build-push-latest:
 	@echo "✅ Images built and pushed successfully!"
 	@echo "📋 Pushed images:"
 	@echo "  API: $(REGISTRY)/homepage-api:latest"
+	@echo "  Frontend: $(REGISTRY)/homepage-frontend:latest"
+
+# Build and push images with semantic versioning
+build-push-version:
+	@echo "🏗️ Building and pushing Docker images with semantic versioning..."
+	@echo "Registry: $(REGISTRY)"
+	@echo "Version: $(VERSION)"
+	@echo "Image Tag: $(IMAGE_TAG)"
+	@echo "Git Commit: $(GIT_COMMIT)"
+	@echo "Git Branch: $(GIT_BRANCH)"
+	@echo "Build Date: $(BUILD_DATE)"
+	@echo ""
+	@echo "🏗️ Building API image..."
+	@docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t $(REGISTRY)/homepage-api:$(IMAGE_TAG) \
+		-t $(REGISTRY)/homepage-api:latest \
+		-f api/Dockerfile api/
+	@echo "🏗️ Building Frontend image..."
+	@docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--target production \
+		-t $(REGISTRY)/homepage-frontend:$(IMAGE_TAG) \
+		-t $(REGISTRY)/homepage-frontend:latest \
+		-f frontend/Dockerfile frontend/
+	@echo "🚀 Pushing images to registry..."
+	@docker push $(REGISTRY)/homepage-api:$(IMAGE_TAG)
+	@docker push $(REGISTRY)/homepage-api:latest
+	@docker push $(REGISTRY)/homepage-frontend:$(IMAGE_TAG)
+	@docker push $(REGISTRY)/homepage-frontend:latest
+	@echo "✅ Images built and pushed successfully!"
+	@echo "📋 Pushed images:"
+	@echo "  API: $(REGISTRY)/homepage-api:$(IMAGE_TAG)"
+	@echo "  API: $(REGISTRY)/homepage-api:latest"
+	@echo "  Frontend: $(REGISTRY)/homepage-frontend:$(IMAGE_TAG)"
 	@echo "  Frontend: $(REGISTRY)/homepage-frontend:latest"
 
 # Show logs from all services
@@ -606,3 +670,104 @@ push-all: build-all
 	@echo "📋 Pushed images:"
 	@echo "  API: $(REGISTRY)/homepage-api:latest"
 	@echo "  Frontend: $(REGISTRY)/homepage-frontend:latest"
+
+# ========================================
+# Version Management Commands
+# ========================================
+
+# Show current version
+version:
+	@echo "📋 Current Version Information:"
+	@echo "Chart Version: $(VERSION)"
+	@echo "Image Tag: $(IMAGE_TAG)"
+	@echo "Git Commit: $(GIT_COMMIT)"
+	@echo "Git Branch: $(GIT_BRANCH)"
+
+# Show detailed version information
+version-info:
+	@echo "📋 Detailed Version Information"
+	@echo "================================"
+	@echo ""
+	@echo "Chart:"
+	@echo "  Version: $(VERSION)"
+	@grep '^appVersion:' chart/Chart.yaml || echo "  AppVersion: not set"
+	@echo ""
+	@echo "Git:"
+	@echo "  Branch: $(GIT_BRANCH)"
+	@echo "  Commit: $(GIT_COMMIT)"
+	@echo "  Full SHA: $(shell git rev-parse HEAD)"
+	@echo ""
+	@echo "Build:"
+	@echo "  Date: $(BUILD_DATE)"
+	@echo ""
+	@echo "Images:"
+	@echo "  API: $(REGISTRY)/homepage-api:$(IMAGE_TAG)"
+	@echo "  Frontend: $(REGISTRY)/homepage-frontend:$(IMAGE_TAG)"
+	@echo ""
+	@echo "Tags:"
+	@git tag --points-at HEAD || echo "  No tags at HEAD"
+
+# Bump version in all locations
+version-bump:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "❌ ERROR: VERSION is required"; \
+		echo "Usage: make version-bump VERSION=1.0.0"; \
+		exit 1; \
+	fi
+	@echo "🔄 Bumping version to $(VERSION)..."
+	@echo ""
+	@echo "Updating Chart.yaml..."
+	@sed -i.bak "s/^version:.*/version: $(VERSION)/" chart/Chart.yaml
+	@sed -i.bak "s/^appVersion:.*/appVersion: \"$(VERSION)\"/" chart/Chart.yaml
+	@rm -f chart/Chart.yaml.bak
+	@echo "✅ Updated Chart.yaml"
+	@echo ""
+	@echo "Updating values.yaml..."
+	@sed -i.bak "s/tag: .*/tag: \"$(VERSION)\"/" chart/values.yaml
+	@rm -f chart/values.yaml.bak
+	@echo "✅ Updated values.yaml"
+	@echo ""
+	@echo "Updating frontend package.json..."
+	@cd frontend && npm version $(VERSION) --no-git-tag-version --allow-same-version || true
+	@echo "✅ Updated frontend package.json"
+	@echo ""
+	@echo "Creating VERSION file for API..."
+	@echo "$(VERSION)" > api/VERSION
+	@echo "✅ Created api/VERSION"
+	@echo ""
+	@echo "✅ Version bumped to $(VERSION) successfully!"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Review changes: git diff"
+	@echo "  2. Commit changes: git add . && git commit -m 'chore: bump version to $(VERSION)'"
+	@echo "  3. Create tag: git tag -a homepage-v$(VERSION) -m 'Release $(VERSION)'"
+	@echo "  4. Push: git push origin main --tags"
+
+# Generate release notes
+release-notes:
+	@echo "📝 Generating release notes..."
+	@echo ""
+	@echo "## Release $(VERSION)"
+	@echo ""
+	@echo "### Changes"
+	@echo ""
+	@git log --pretty=format:"- %s (%h)" $(shell git describe --tags --abbrev=0 2>/dev/null || echo "")..HEAD || echo "No previous release found"
+	@echo ""
+	@echo ""
+	@echo "### Docker Images"
+	@echo ""
+	@echo "- \`$(REGISTRY)/homepage-api:$(VERSION)\`"
+	@echo "- \`$(REGISTRY)/homepage-frontend:$(VERSION)\`"
+	@echo ""
+	@echo "### Deployment"
+	@echo ""
+	@echo "\`\`\`bash"
+	@echo "# Update Helm values"
+	@echo "helm upgrade homepage ./chart \\"
+	@echo "  --set api.image.tag=$(VERSION) \\"
+	@echo "  --set frontend.image.tag=$(VERSION) \\"
+	@echo "  --namespace homepage"
+	@echo ""
+	@echo "# Or trigger Flux reconciliation"
+	@echo "flux reconcile helmrelease homepage -n homepage"
+	@echo "\`\`\`"

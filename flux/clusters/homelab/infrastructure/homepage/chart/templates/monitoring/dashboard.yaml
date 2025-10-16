@@ -1,13 +1,16 @@
+{{- if .Values.monitoring.dashboard.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: bruno-site-golden-signals-dashboard
-  namespace: homepage
+  name: {{ include "homepage.fullname" . }}-golden-signals-dashboard
+  namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: homepage
-    app.kubernetes.io/instance: homepage
+    {{- include "homepage.labels" . | nindent 4 }}
     app.kubernetes.io/component: monitoring
     grafana_dashboard: "1"
+  annotations:
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    helm.sh/chart: {{ include "homepage.chart" . }}
 data:
   bruno-site-golden-signals.json: |
     {
@@ -1691,3 +1694,4 @@ data:
       "uid": "bruno-site-golden-signals",
       "version": 2
     }
+{{- end }}

@@ -47,37 +47,42 @@ func InitOTel(ctx context.Context) (func(context.Context) error, error) {
 	// ═══════════════════════════════════════════════════════════════════════
 	// 📊 METRICS: Prometheus exporter for /metrics endpoint
 	// ═══════════════════════════════════════════════════════════════════════
+	// 📊 Configure explicit histogram buckets for API latency
+	// Using standard Prometheus histogram buckets optimized for API response times
+	histogramView := sdkmetric.NewView(
+		sdkmetric.Instrument{
+			Kind: sdkmetric.InstrumentKindHistogram,
+		},
+		sdkmetric.Stream{
+			Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+				Boundaries: []float64{
+					0.005, // 5ms
+					0.01,  // 10ms
+					0.025, // 25ms
+					0.05,  // 50ms
+					0.1,   // 100ms
+					0.25,  // 250ms
+					0.5,   // 500ms
+					1,     // 1s
+					2.5,   // 2.5s
+					5,     // 5s
+					10,    // 10s
+				},
+			},
+		},
+	)
+
+	// Create a custom Prometheus registry for the OpenTelemetry metrics
+	registry := prometheus.NewRegistry()
+
 	var err2 error
-	prometheusExporter, err2 := otelprometheus.New()
+	prometheusExporter, err2 := otelprometheus.New(
+		otelprometheus.WithRegisterer(registry),
+	)
 	if err2 != nil {
 		log.Printf("⚠️  WARNING: Failed to create Prometheus exporter: %v", err2)
 		prometheusHandler = promhttp.Handler() // Fallback to default Prometheus handler
 	} else {
-		// 📊 Configure explicit histogram buckets for API latency
-		// Using standard Prometheus histogram buckets optimized for API response times
-		histogramView := sdkmetric.NewView(
-			sdkmetric.Instrument{
-				Kind: sdkmetric.InstrumentKindHistogram,
-			},
-			sdkmetric.Stream{
-				Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
-					Boundaries: []float64{
-						0.005, // 5ms
-						0.01,  // 10ms
-						0.025, // 25ms
-						0.05,  // 50ms
-						0.1,   // 100ms
-						0.25,  // 250ms
-						0.5,   // 500ms
-						1,     // 1s
-						2.5,   // 2.5s
-						5,     // 5s
-						10,    // 10s
-					},
-				},
-			},
-		)
-
 		// Create meter provider with Prometheus exporter and histogram views
 		mp := sdkmetric.NewMeterProvider(
 			sdkmetric.WithResource(res),
@@ -86,13 +91,14 @@ func InitOTel(ctx context.Context) (func(context.Context) error, error) {
 		)
 		otel.SetMeterProvider(mp)
 
-		// Use the OpenTelemetry Prometheus exporter as the HTTP handler
-		// Native histograms are disabled at Prometheus level, so standard text format works
-		// Disable compression to avoid gzip parsing issues
+		// 🔧 Use the OpenTelemetry Prometheus exporter via the custom registry
+		// This ensures OpenTelemetry metrics are properly exposed in Prometheus format
+		// The exporter converts OTel metrics (e.g., http.request.duration) to Prometheus format
+		// (e.g., http_request_duration_seconds_bucket)
 		prometheusHandler = promhttp.HandlerFor(
-			prometheus.DefaultGatherer,
+			registry,
 			promhttp.HandlerOpts{
-				EnableOpenMetrics: false, // Disable OpenMetrics format, use classic Prometheus text format
+				EnableOpenMetrics:  false, // Disable OpenMetrics format, use classic Prometheus text format
 				DisableCompression: true,  // Disable gzip compression
 			},
 		)

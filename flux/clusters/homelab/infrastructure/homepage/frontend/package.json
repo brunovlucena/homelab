@@ -1,6 +1,6 @@
 {
   "name": "bruno-frontend",
-  "version": "1.0.0",
+  "version": "0.1.25",
   "description": "Dynamic Bruno site frontend built with React",
   "private": true,
   "dependencies": {

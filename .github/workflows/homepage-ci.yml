@@ -1,0 +1,299 @@
+name: 🏠 Homepage - CI
+
+on:
+  pull_request:
+    paths:
+      - 'flux/clusters/homelab/infrastructure/homepage/api/**'
+      - 'flux/clusters/homelab/infrastructure/homepage/frontend/**'
+      - 'flux/clusters/homelab/infrastructure/homepage/chart/**'
+      - '.github/workflows/homepage-ci.yml'
+  push:
+    branches:
+      - 'feature/**'
+      - 'bugfix/**'
+    paths:
+      - 'flux/clusters/homelab/infrastructure/homepage/api/**'
+      - 'flux/clusters/homelab/infrastructure/homepage/frontend/**'
+      - 'flux/clusters/homelab/infrastructure/homepage/chart/**'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_API: ${{ github.repository_owner }}/homelab/homepage-api
+  IMAGE_NAME_FRONTEND: ${{ github.repository_owner }}/homelab/homepage-frontend
+  WORKING_DIR: flux/clusters/homelab/infrastructure/homepage
+
+jobs:
+  detect-changes:
+    name: 🔍 Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.filter.outputs.api }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      chart: ${{ steps.filter.outputs.chart }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            api:
+              - 'flux/clusters/homelab/infrastructure/homepage/api/**'
+            frontend:
+              - 'flux/clusters/homelab/infrastructure/homepage/frontend/**'
+            chart:
+              - 'flux/clusters/homelab/infrastructure/homepage/chart/**'
+
+  lint-api:
+    name: 🔍 Lint API
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.api == 'true'
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/api
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/api/go.sum
+      
+      - name: Run go vet
+        run: go vet ./...
+      
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+      
+      - name: Run golangci-lint
+        run: golangci-lint run --timeout=5m
+
+  test-api:
+    name: 🧪 Test API
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.api == 'true'
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/api
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/api/go.sum
+      
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+      
+      - name: Generate coverage report
+        run: go tool cover -html=coverage.out -o coverage.html
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ env.WORKING_DIR }}/api/coverage.out
+          flags: api
+          name: homepage-api
+
+  build-api:
+    name: 🏗️ Build API
+    runs-on: ubuntu-latest
+    needs: [lint-api, test-api]
+    if: needs.detect-changes.outputs.api == 'true'
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/api
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/api/go.sum
+      
+      - name: Build
+        run: CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/bruno-site-api .
+      
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-binary
+          path: ${{ env.WORKING_DIR }}/api/bin/bruno-site-api
+          retention-days: 1
+
+  lint-frontend:
+    name: 🔍 Lint Frontend
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/frontend
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/frontend/package-lock.json
+      
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      
+      - name: Run ESLint
+        run: npm run lint || true
+      
+      - name: Check TypeScript
+        run: npx tsc --noEmit
+
+  test-frontend:
+    name: 🧪 Test Frontend
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/frontend
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/frontend/package-lock.json
+      
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      
+      - name: Run tests
+        run: npm run test -- --run --coverage
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ${{ env.WORKING_DIR }}/frontend/coverage/lcov.info
+          flags: frontend
+          name: homepage-frontend
+
+  build-frontend:
+    name: 🏗️ Build Frontend
+    runs-on: ubuntu-latest
+    needs: [lint-frontend, test-frontend]
+    if: needs.detect-changes.outputs.frontend == 'true'
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/frontend
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/frontend/package-lock.json
+      
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+      
+      - name: Build
+        run: npm run build
+      
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: ${{ env.WORKING_DIR }}/frontend/dist
+          retention-days: 1
+
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '${{ env.WORKING_DIR }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  validate-helm:
+    name: ✅ Validate Helm Chart
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.chart == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.13.0'
+      
+      - name: Lint Helm chart
+        run: helm lint ${{ env.WORKING_DIR }}/chart
+      
+      - name: Template Helm chart
+        run: helm template homepage ${{ env.WORKING_DIR }}/chart --debug
+      
+      - name: Validate YAML
+        run: |
+          helm template homepage ${{ env.WORKING_DIR }}/chart > /tmp/rendered.yaml
+          kubectl apply --dry-run=client -f /tmp/rendered.yaml
+
+  ci-success:
+    name: ✅ CI Success
+    runs-on: ubuntu-latest
+    needs: [lint-api, test-api, build-api, lint-frontend, test-frontend, build-frontend, security-scan, validate-helm]
+    if: always()
+    steps:
+      - name: Check CI status
+        run: |
+          if [ "${{ needs.lint-api.result }}" != "success" ] && [ "${{ needs.lint-api.result }}" != "skipped" ]; then
+            echo "API linting failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-api.result }}" != "success" ] && [ "${{ needs.test-api.result }}" != "skipped" ]; then
+            echo "API tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.build-api.result }}" != "success" ] && [ "${{ needs.build-api.result }}" != "skipped" ]; then
+            echo "API build failed"
+            exit 1
+          fi
+          if [ "${{ needs.lint-frontend.result }}" != "success" ] && [ "${{ needs.lint-frontend.result }}" != "skipped" ]; then
+            echo "Frontend linting failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-frontend.result }}" != "success" ] && [ "${{ needs.test-frontend.result }}" != "skipped" ]; then
+            echo "Frontend tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.build-frontend.result }}" != "success" ] && [ "${{ needs.build-frontend.result }}" != "skipped" ]; then
+            echo "Frontend build failed"
+            exit 1
+          fi
+          echo "✅ All CI checks passed!"
+

@@ -27,7 +27,7 @@ api:
   image:
     repository: ghcr.io/brunovlucena/homelab/homepage-api
     pullPolicy: Always
-    tag: "latest"
+    tag: "0.1.25"
   service:
     type: ClusterIP
     port: 8080
@@ -62,7 +62,7 @@ frontend:
   image:
     repository: ghcr.io/brunovlucena/homelab/homepage-frontend
     pullPolicy: Always
-    tag: "latest"
+    tag: "0.1.25"
   service:
     type: ClusterIP
     port: 80
@@ -171,6 +171,13 @@ monitoring:
     port: 8080
     interval: 30s
     timeout: 10s
+  
+  # Grafana Dashboard Configuration
+  dashboard:
+    enabled: true
+    namespace: homepage
+    labels:
+      grafana_dashboard: "1"
   
   # Environment and cluster labels
   environment: "production"

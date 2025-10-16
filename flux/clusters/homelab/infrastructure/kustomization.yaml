@@ -26,5 +26,4 @@ resources:
   - ../agent-bruno
   - ../homepage
   # Dashboards and monitoring (can now use Prometheus CRDs)
-  - ../dashboards
   - ../headlamp

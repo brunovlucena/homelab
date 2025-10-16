@@ -21,7 +21,7 @@ Slack User
 │     jamie-sre-chatbot (Slack Bot)       │
 │     Port: 8080                          │
 │                                         │
-│  🧠 LLM Brain (Ollama llama3.2:3b)     │
+│  🧠 LLM Brain (Ollama llama3.2:3b)      │
 │  📊 LangChain Agent with Tools          │
 │                                         │
 │  Capabilities:                          │
@@ -33,10 +33,10 @@ Slack User
     │
     │ (Can use MCP or direct API)
     │
-    ├─────────────────────┬──────────────────────────┐
-    │                     │                          │
-    │ (MCP Protocol)      │ (Direct REST API)        │
-    ▼                     ▼                          │
+    ├─────────────────────┬────────────────────────┐
+    │                     │                        │
+    │ (MCP Protocol)      │ (Direct REST API)      │
+    ▼                     ▼                        │
 ┌─────────────────┐  ┌──────────────────┐          │
 │ agent-sre-mcp-  │  │   agent-sre      │◄─────────┘
 │    server       │  │   API            │
@@ -70,10 +70,10 @@ Slack User
     ┌──────────────┼──────────────┬──────────────┐
     │              │              │              │
     ▼              ▼              ▼              ▼
-┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐
+┌──────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐
 │Prometheus│  │  Loki   │  │  Tempo  │  │ Grafana │
 │ :9090    │  │ :3100   │  │ :3100   │  │ :3000   │
-└─────────┘  └─────────┘  └─────────┘  └─────────┘
+└──────────┘  └─────────┘  └─────────┘  └─────────┘
 ```
 
 ## Components
