@@ -149,8 +149,8 @@ build-push-latest:
 	@echo "Registry: $(REGISTRY)"
 	@echo "Tag: latest"
 	@echo "🏗️ Building images..."
-	@docker build -t $(REGISTRY)/homepage-api:latest -f api/Dockerfile api/
-	@docker build -t $(REGISTRY)/homepage-frontend:latest -f frontend/Dockerfile frontend/
+	@docker buildx build --platform linux/arm64 -t $(REGISTRY)/homepage-api:latest -f api/Dockerfile api/ --load
+	@docker buildx build --platform linux/arm64 -t $(REGISTRY)/homepage-frontend:latest -f frontend/Dockerfile frontend/ --load
 	@echo "🚀 Pushing images to registry..."
 	@docker push $(REGISTRY)/homepage-api:latest
 	@docker push $(REGISTRY)/homepage-frontend:latest
@@ -170,22 +170,26 @@ build-push-version:
 	@echo "Build Date: $(BUILD_DATE)"
 	@echo ""
 	@echo "🏗️ Building API image..."
-	@docker build \
+	@docker buildx build \
+		--platform linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		-t $(REGISTRY)/homepage-api:$(IMAGE_TAG) \
 		-t $(REGISTRY)/homepage-api:latest \
-		-f api/Dockerfile api/
+		-f api/Dockerfile api/ \
+		--load
 	@echo "🏗️ Building Frontend image..."
-	@docker build \
+	@docker buildx build \
+		--platform linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		--target production \
 		-t $(REGISTRY)/homepage-frontend:$(IMAGE_TAG) \
 		-t $(REGISTRY)/homepage-frontend:latest \
-		-f frontend/Dockerfile frontend/
+		-f frontend/Dockerfile frontend/ \
+		--load
 	@echo "🚀 Pushing images to registry..."
 	@docker push $(REGISTRY)/homepage-api:$(IMAGE_TAG)
 	@docker push $(REGISTRY)/homepage-api:latest
@@ -574,7 +578,7 @@ clean-api:
 # Build API Docker image
 docker-build-api:
 	@echo "🐳 Building API Docker image..."
-	@docker build -t bruno-site-api:latest -f api/Dockerfile api/
+	@docker buildx build --platform linux/arm64 -t bruno-site-api:latest -f api/Dockerfile api/ --load
 	@echo "✅ Docker image built: bruno-site-api:latest"
 
 # Run API Docker container
@@ -641,7 +645,7 @@ clean-frontend:
 # Build frontend Docker image
 docker-build-frontend:
 	@echo "🐳 Building frontend Docker image..."
-	@docker build -t bruno-site-frontend:latest -f frontend/Dockerfile frontend/
+	@docker buildx build --platform linux/arm64 -t bruno-site-frontend:latest -f frontend/Dockerfile frontend/ --load
 	@echo "✅ Docker image built: bruno-site-frontend:latest"
 
 # ========================================
@@ -656,22 +660,24 @@ build-all:
 	@echo "Image Tag: $(IMAGE_TAG)"
 	@echo ""
 	@echo "Building API..."
-	@docker build \
+	@docker buildx build \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		-t $(REGISTRY)/homepage-api:$(IMAGE_TAG) \
 		-t $(REGISTRY)/homepage-api:latest \
-		-f api/Dockerfile api/
+		-f api/Dockerfile api/ \
+		--load
 	@echo "Building Frontend..."
-	@docker build \
+	@docker buildx build \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		--target production \
 		-t $(REGISTRY)/homepage-frontend:$(IMAGE_TAG) \
 		-t $(REGISTRY)/homepage-frontend:latest \
-		-f frontend/Dockerfile frontend/
+		-f frontend/Dockerfile frontend/ \
+		--load
 	@echo "✅ All images built successfully!"
 	@echo "📋 Built images:"
 	@echo "  API: $(REGISTRY)/homepage-api:$(IMAGE_TAG)"
