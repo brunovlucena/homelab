@@ -15,6 +15,7 @@ resources:
   - loki
   - alloy
   - tempo
+  - prometheus-operator
   - prometheus-pushgateway
   # Application infrastructure (Knative CRDs are now available)
   - knative-serving
@@ -22,6 +23,8 @@ resources:
   - postgres
   - redis
   - mongodb
+  - k6-operator
+  - headlamp
   # Applications
   - homepage
   # Agent-specific components
@@ -30,5 +33,4 @@ resources:
   # - agent-sre
   # - agent-jamie
   # Other components
-  - headlamp
-  - k6-operator
+  # - falco-operator
