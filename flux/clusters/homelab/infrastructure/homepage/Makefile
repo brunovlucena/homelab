@@ -4,7 +4,7 @@
 # Environment configuration
 ENV ?= dev
 DOCKER_COMPOSE_FILE = docker-compose.yml
-REGISTRY ?= ghcr.io/brunovlucena/homelab
+REGISTRY ?= ghcr.io/brunovlucena
 
 # Version management
 VERSION ?= $(shell grep '^version:' chart/Chart.yaml | awk '{print $$2}')
@@ -89,8 +89,8 @@ help:
 	@echo "  make docker-build-frontend - Build frontend Docker image"
 	@echo ""
 	@echo "Combined Build & Push Commands:"
-	@echo "  make build-all             - Build both API and frontend Docker images"
-	@echo "  make push-all              - Push both API and frontend to registry"
+	@echo "  make build-all             - Build both API and frontend Docker images (latest + version tag)"
+	@echo "  make push-all              - Push both API and frontend to registry (latest + version tag)"
 	@echo ""
 	@echo "Version Management Commands:"
 	@echo "  make version               - Show current version"
@@ -651,24 +651,50 @@ docker-build-frontend:
 # Build both API and frontend Docker images
 build-all:
 	@echo "🏗️ Building all Docker images..."
+	@echo "Registry: $(REGISTRY)"
+	@echo "Version: $(VERSION)"
+	@echo "Image Tag: $(IMAGE_TAG)"
+	@echo ""
 	@echo "Building API..."
-	@docker build -t $(REGISTRY)/homepage-api:latest -f api/Dockerfile api/
+	@docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t $(REGISTRY)/homepage-api:$(IMAGE_TAG) \
+		-t $(REGISTRY)/homepage-api:latest \
+		-f api/Dockerfile api/
 	@echo "Building Frontend..."
-	@docker build -t $(REGISTRY)/homepage-frontend:latest -f frontend/Dockerfile frontend/
+	@docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--target production \
+		-t $(REGISTRY)/homepage-frontend:$(IMAGE_TAG) \
+		-t $(REGISTRY)/homepage-frontend:latest \
+		-f frontend/Dockerfile frontend/
 	@echo "✅ All images built successfully!"
 	@echo "📋 Built images:"
+	@echo "  API: $(REGISTRY)/homepage-api:$(IMAGE_TAG)"
 	@echo "  API: $(REGISTRY)/homepage-api:latest"
+	@echo "  Frontend: $(REGISTRY)/homepage-frontend:$(IMAGE_TAG)"
 	@echo "  Frontend: $(REGISTRY)/homepage-frontend:latest"
 
 # Push both API and frontend to registry
 push-all: build-all
 	@echo "🚀 Pushing all images to registry..."
 	@echo "Registry: $(REGISTRY)"
+	@echo "Version: $(VERSION)"
+	@echo "Image Tag: $(IMAGE_TAG)"
+	@echo ""
+	@docker push $(REGISTRY)/homepage-api:$(IMAGE_TAG)
 	@docker push $(REGISTRY)/homepage-api:latest
+	@docker push $(REGISTRY)/homepage-frontend:$(IMAGE_TAG)
 	@docker push $(REGISTRY)/homepage-frontend:latest
 	@echo "✅ All images pushed successfully!"
 	@echo "📋 Pushed images:"
+	@echo "  API: $(REGISTRY)/homepage-api:$(IMAGE_TAG)"
 	@echo "  API: $(REGISTRY)/homepage-api:latest"
+	@echo "  Frontend: $(REGISTRY)/homepage-frontend:$(IMAGE_TAG)"
 	@echo "  Frontend: $(REGISTRY)/homepage-frontend:latest"
 
 # ========================================
