@@ -5,8 +5,10 @@ Core agent logic with homepage knowledge and memory integration.
 """
 
 import logging
+from typing import Any, Dict, Optional
+
 import httpx
-from typing import Dict, Any, Optional
+
 from ..knowledge.homepage import HomepageKnowledge
 from ..memory.manager import MemoryManager
 
@@ -20,11 +22,11 @@ class AgentBruno:
         self,
         memory_manager: MemoryManager,
         ollama_url: str = "http://ollama.homepage.svc.cluster.local:11434",
-        model: str = "llama3.2:3b"
+        model: str = "llama3.2:3b",
     ):
         """
         Initialize Agent Bruno
-        
+
         Args:
             memory_manager: Memory manager instance
             ollama_url: Ollama server URL
@@ -68,10 +70,7 @@ Remember: You have access to the user's conversation history through memory. Use
 """
 
     async def chat(
-        self,
-        message: str,
-        ip: str,
-        context: Dict[str, Any] = None
+        self, message: str, ip: str, context: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """
         Process a chat message
@@ -87,13 +86,17 @@ Remember: You have access to the user's conversation history through memory. Use
         try:
             # Get recent conversation context
             recent_messages = await self.memory.get_recent_context(ip, limit=5)
-            conversation_context = self.memory.format_context_for_prompt(recent_messages)
+            conversation_context = self.memory.format_context_for_prompt(
+                recent_messages
+            )
 
             # Search knowledge base if needed
             knowledge_context = self._get_knowledge_context(message)
 
             # Build prompt
-            full_prompt = self._build_prompt(message, conversation_context, knowledge_context)
+            full_prompt = self._build_prompt(
+                message, conversation_context, knowledge_context
+            )
 
             # Get LLM response
             response_text = await self._query_ollama(full_prompt)
@@ -107,8 +110,8 @@ Remember: You have access to the user's conversation history through memory. Use
                 "model": self.model,
                 "context_used": {
                     "recent_messages": len(recent_messages),
-                    "knowledge_context": bool(knowledge_context)
-                }
+                    "knowledge_context": bool(knowledge_context),
+                },
             }
 
         except Exception as e:
@@ -116,15 +119,25 @@ Remember: You have access to the user's conversation history through memory. Use
             return {
                 "success": False,
                 "error": str(e),
-                "response": "I'm sorry, I encountered an error processing your message. Please try again."
+                "response": "I'm sorry, I encountered an error processing your message. Please try again.",
             }
 
     def _get_knowledge_context(self, message: str) -> Optional[str]:
         """Get relevant knowledge context for message"""
         # Keywords that trigger knowledge search
         keywords = [
-            "how", "what", "where", "deploy", "api", "endpoint", "database",
-            "architecture", "component", "tech", "stack", "configuration"
+            "how",
+            "what",
+            "where",
+            "deploy",
+            "api",
+            "endpoint",
+            "database",
+            "architecture",
+            "component",
+            "tech",
+            "stack",
+            "configuration",
         ]
 
         message_lower = message.lower()
@@ -138,10 +151,7 @@ Remember: You have access to the user's conversation history through memory. Use
         return None
 
     def _build_prompt(
-        self,
-        message: str,
-        conversation_context: str,
-        knowledge_context: Optional[str]
+        self, message: str, conversation_context: str, knowledge_context: Optional[str]
     ) -> str:
         """Build complete prompt for LLM"""
         parts = [self.system_prompt]
@@ -165,11 +175,7 @@ Remember: You have access to the user's conversation history through memory. Use
             "model": self.model,
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "top_k": 40
-            }
+            "options": {"temperature": 0.7, "top_p": 0.9, "top_k": 40},
         }
 
         try:
@@ -199,7 +205,7 @@ Remember: You have access to the user's conversation history through memory. Use
             "ip": ip,
             "recent_messages": len(recent),
             "total_conversations": total,
-            "has_history": total > 0
+            "has_history": total > 0,
         }
 
     async def clear_memory(self, ip: str):

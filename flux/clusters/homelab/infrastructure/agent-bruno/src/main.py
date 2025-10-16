@@ -7,12 +7,13 @@ Main FastAPI application with chat endpoints, memory management, and observabili
 import logging
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException
+from typing import Any, Dict, Optional
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional, Dict, Any
-from prometheus_client import Counter, Histogram, Gauge, generate_latest
 from fastapi.responses import Response
+from prometheus_client import Counter, Gauge, Histogram, generate_latest
+from pydantic import BaseModel
 
 from .agent.core import AgentBruno
 from .memory.manager import MemoryManager
@@ -20,30 +21,21 @@ from .memory.manager import MemoryManager
 # Configure logging
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
 # Prometheus metrics
 requests_total = Counter(
-    "bruno_requests_total",
-    "Total requests",
-    ["method", "endpoint", "status"]
+    "bruno_requests_total", "Total requests", ["method", "endpoint", "status"]
 )
 request_duration = Histogram(
-    "bruno_request_duration_seconds",
-    "Request duration",
-    ["method", "endpoint"]
+    "bruno_request_duration_seconds", "Request duration", ["method", "endpoint"]
 )
 memory_operations = Counter(
-    "bruno_memory_operations_total",
-    "Memory operations",
-    ["operation", "status"]
+    "bruno_memory_operations_total", "Memory operations", ["operation", "status"]
 )
-active_sessions = Gauge(
-    "bruno_active_sessions",
-    "Active sessions"
-)
+active_sessions = Gauge("bruno_active_sessions", "Active sessions")
 
 # Global agent instance
 agent: Optional[AgentBruno] = None
@@ -63,7 +55,9 @@ async def lifespan(app: FastAPI):
     mongodb_url = os.getenv("MONGODB_URL", "mongodb://mongodb:27017")
     mongodb_db = os.getenv("MONGODB_DB", "agent_bruno")
     session_ttl = int(os.getenv("SESSION_TTL", "86400"))
-    ollama_url = os.getenv("OLLAMA_URL", "http://ollama.homepage.svc.cluster.local:11434")
+    ollama_url = os.getenv(
+        "OLLAMA_URL", "http://ollama.homepage.svc.cluster.local:11434"
+    )
     ollama_model = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 
     # Initialize memory manager
@@ -71,15 +65,13 @@ async def lifespan(app: FastAPI):
         redis_url=redis_url,
         mongodb_url=mongodb_url,
         mongodb_db=mongodb_db,
-        session_ttl=session_ttl
+        session_ttl=session_ttl,
     )
     await memory_manager.connect()
 
     # Initialize agent
     agent = AgentBruno(
-        memory_manager=memory_manager,
-        ollama_url=ollama_url,
-        model=ollama_model
+        memory_manager=memory_manager, ollama_url=ollama_url, model=ollama_model
     )
 
     logger.info("✅ Agent Bruno started successfully")
@@ -98,7 +90,7 @@ app = FastAPI(
     title="🤖 Agent Bruno",
     description="AI assistant with homepage knowledge and IP-based memory",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -149,15 +141,12 @@ async def metrics_middleware(request: Request, call_next):
 
     # Record metrics
     requests_total.labels(
-        method=request.method,
-        endpoint=request.url.path,
-        status=response.status_code
+        method=request.method, endpoint=request.url.path, status=response.status_code
     ).inc()
 
-    request_duration.labels(
-        method=request.method,
-        endpoint=request.url.path
-    ).observe(duration)
+    request_duration.labels(method=request.method, endpoint=request.url.path).observe(
+        duration
+    )
 
     return response
 
@@ -195,13 +184,15 @@ async def ready():
     status = "ready"
     if not health["overall"]:
         status = "degraded"
-        logger.warning(f"⚠️  Service running in degraded mode: Redis={health['redis']}, MongoDB={health['mongodb']}")
+        logger.warning(
+            f"⚠️  Service running in degraded mode: Redis={health['redis']}, MongoDB={health['mongodb']}"
+        )
 
     return {
         "status": status,
         "service": "agent-bruno",
         "health": health,
-        "degraded": not health["overall"]
+        "degraded": not health["overall"],
     }
 
 
@@ -209,24 +200,17 @@ async def ready():
 async def status():
     """Status endpoint - comprehensive service status"""
     if not memory_manager or not agent:
-        return {
-            "status": "initializing",
-            "service": "agent-bruno",
-            "ready": False
-        }
+        return {"status": "initializing", "service": "agent-bruno", "ready": False}
 
     try:
         health = await memory_manager.health_check()
-        
+
         return {
             "status": "healthy" if health["overall"] else "degraded",
             "service": "agent-bruno",
             "ready": True,
-            "health": {
-                "redis": health["redis"],
-                "mongodb": health["mongodb"]
-            },
-            "degraded": not health["overall"]
+            "health": {"redis": health["redis"], "mongodb": health["mongodb"]},
+            "degraded": not health["overall"],
         }
     except Exception as e:
         logger.error(f"❌ Status check error: {e}")
@@ -234,7 +218,7 @@ async def status():
             "status": "error",
             "service": "agent-bruno",
             "ready": False,
-            "error": str(e)
+            "error": str(e),
         }
 
 
@@ -255,29 +239,29 @@ async def chat(request: ChatRequest, req: Request):
 
     try:
         result = await agent.chat(
-            message=request.message,
-            ip=ip,
-            context=request.context
+            message=request.message, ip=ip, context=request.context
         )
 
         memory_operations.labels(operation="chat", status="success").inc()
 
         from datetime import datetime
+
         return ChatResponse(
             response=result.get("response", "Sorry, I encountered an error."),
             timestamp=datetime.utcnow().isoformat() + "Z",
             model=result.get("model"),
-            sources=["Agent Bruno"]
+            sources=["Agent Bruno"],
         )
 
     except Exception as e:
         logger.error(f"❌ Chat error: {e}")
         memory_operations.labels(operation="chat", status="error").inc()
         from datetime import datetime
+
         return ChatResponse(
             response="Sorry, I encountered an error processing your message. Please try again.",
             timestamp=datetime.utcnow().isoformat() + "Z",
-            sources=["Error Handler"]
+            sources=["Error Handler"],
         )
 
 
@@ -371,7 +355,7 @@ async def system_stats():
         return SystemStats(
             active_sessions=stats["active_sessions"],
             total_conversations=stats["total_conversations"],
-            unique_ips=stats["unique_ips"]
+            unique_ips=stats["unique_ips"],
         )
 
     except Exception as e:
@@ -394,8 +378,8 @@ async def root():
             "status": "/status",
             "metrics": "/metrics",
             "memory": "/memory/{ip}",
-            "knowledge": "/knowledge/summary"
-        }
+            "knowledge": "/knowledge/summary",
+        },
     }
 
 
@@ -403,9 +387,4 @@ if __name__ == "__main__":
     import uvicorn
 
     port = int(os.getenv("PORT", "8080"))
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=port,
-        log_level="info"
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=port, log_level="info")

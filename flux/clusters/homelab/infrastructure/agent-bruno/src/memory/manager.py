@@ -5,9 +5,10 @@ Coordinates session (Redis) and persistent (MongoDB) memory stores.
 """
 
 import logging
-from typing import List, Dict, Any
-from .redis_store import RedisStore
+from typing import Any, Dict, List
+
 from .mongo_store import MongoStore
+from .redis_store import RedisStore
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class MemoryManager:
         redis_url: str,
         mongodb_url: str,
         mongodb_db: str = "agent_bruno",
-        session_ttl: int = 86400
+        session_ttl: int = 86400,
     ):
         """
         Initialize memory manager
@@ -46,9 +47,13 @@ class MemoryManager:
         if redis_ok and mongo_ok:
             logger.info("✅ Memory manager connected to both stores")
         elif redis_ok or mongo_ok:
-            logger.warning(f"⚠️  Memory manager partially connected: Redis={redis_ok}, MongoDB={mongo_ok}")
+            logger.warning(
+                f"⚠️  Memory manager partially connected: Redis={redis_ok}, MongoDB={mongo_ok}"
+            )
         else:
-            logger.warning("⚠️  Memory manager could not connect to any stores - running in degraded mode")
+            logger.warning(
+                "⚠️  Memory manager could not connect to any stores - running in degraded mode"
+            )
 
     async def disconnect(self):
         """Disconnect from both stores"""
@@ -57,11 +62,7 @@ class MemoryManager:
         logger.info("🔌 Memory manager disconnected")
 
     async def save(
-        self,
-        ip: str,
-        message: str,
-        response: str,
-        context: Dict[str, Any] = None
+        self, ip: str, message: str, response: str, context: Dict[str, Any] = None
     ):
         """
         Save conversation to both session and persistent stores
@@ -80,11 +81,7 @@ class MemoryManager:
         except Exception as e:
             logger.warning(f"⚠️  Error saving conversation: {e}")
 
-    async def get_recent_context(
-        self,
-        ip: str,
-        limit: int = 5
-    ) -> List[Dict[str, Any]]:
+    async def get_recent_context(self, ip: str, limit: int = 5) -> List[Dict[str, Any]]:
         """
         Get recent conversation context from session store
 
@@ -98,10 +95,7 @@ class MemoryManager:
         return await self.redis_store.get_session(ip, limit)
 
     async def get_full_history(
-        self,
-        ip: str,
-        limit: int = 50,
-        skip: int = 0
+        self, ip: str, limit: int = 50, skip: int = 0
     ) -> List[Dict[str, Any]]:
         """
         Get full conversation history from persistent store
@@ -142,7 +136,7 @@ class MemoryManager:
             "active_sessions": active_sessions,
             "total_conversations": total_conversations,
             "unique_ips": len(unique_ips),
-            "unique_ip_list": unique_ips
+            "unique_ip_list": unique_ips,
         }
 
     async def health_check(self) -> Dict[str, bool]:
@@ -158,13 +152,10 @@ class MemoryManager:
         return {
             "redis": redis_healthy,
             "mongodb": mongo_healthy,
-            "overall": redis_healthy and mongo_healthy
+            "overall": redis_healthy and mongo_healthy,
         }
 
-    def format_context_for_prompt(
-        self,
-        recent_messages: List[Dict[str, Any]]
-    ) -> str:
+    def format_context_for_prompt(self, recent_messages: List[Dict[str, Any]]) -> str:
         """
         Format recent messages for LLM prompt
 

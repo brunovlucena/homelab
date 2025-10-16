@@ -7,7 +7,8 @@ Manages short-term conversation memory in Redis with TTL.
 import json
 import logging
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 import redis.asyncio as redis
 
 logger = logging.getLogger(__name__)
@@ -34,16 +35,16 @@ class RedisStore:
         """Connect to Redis (non-blocking if unavailable)"""
         try:
             self.client = await redis.from_url(
-                self.redis_url,
-                encoding="utf-8",
-                decode_responses=True
+                self.redis_url, encoding="utf-8", decode_responses=True
             )
             await self.client.ping()
             self._connected = True
             logger.info("✅ Connected to Redis")
         except Exception as e:
             self._connected = False
-            logger.warning(f"⚠️  Redis unavailable: {e} - service will continue with degraded functionality")
+            logger.warning(
+                f"⚠️  Redis unavailable: {e} - service will continue with degraded functionality"
+            )
             self.client = None
 
     async def disconnect(self):
@@ -57,15 +58,11 @@ class RedisStore:
         return f"{self.key_prefix}:{ip}"
 
     async def save_message(
-        self,
-        ip: str,
-        message: str,
-        response: str,
-        context: Dict[str, Any] = None
+        self, ip: str, message: str, response: str, context: Dict[str, Any] = None
     ):
         """
         Save a message to session
-        
+
         Args:
             ip: User IP address
             message: User message
@@ -82,16 +79,16 @@ class RedisStore:
             "timestamp": datetime.utcnow().isoformat(),
             "message": message,
             "response": response,
-            "context": context or {}
+            "context": context or {},
         }
 
         try:
             # Add to list
             await self.client.rpush(key, json.dumps(entry))
-            
+
             # Set TTL
             await self.client.expire(key, self.ttl)
-            
+
             logger.debug(f"💾 Saved message for IP: {ip}")
         except Exception as e:
             logger.warning(f"⚠️  Redis operation failed: {e}")
@@ -100,11 +97,11 @@ class RedisStore:
     async def get_session(self, ip: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
         Get recent session messages for IP
-        
+
         Args:
             ip: User IP address
             limit: Maximum number of messages to return
-            
+
         Returns:
             List of message dictionaries
         """
@@ -117,7 +114,7 @@ class RedisStore:
         try:
             # Get last N messages
             messages = await self.client.lrange(key, -limit, -1)
-            
+
             return [json.loads(msg) for msg in messages]
         except Exception as e:
             logger.warning(f"⚠️  Redis operation failed: {e}")
@@ -127,7 +124,7 @@ class RedisStore:
     async def clear_session(self, ip: str):
         """
         Clear session for IP
-        
+
         Args:
             ip: User IP address
         """
@@ -147,7 +144,7 @@ class RedisStore:
     async def get_active_sessions(self) -> int:
         """
         Get count of active sessions
-        
+
         Returns:
             Number of active sessions
         """
@@ -166,7 +163,7 @@ class RedisStore:
     async def health_check(self) -> bool:
         """
         Check Redis health (and attempt reconnection if needed)
-        
+
         Returns:
             True if healthy, False otherwise
         """
@@ -175,7 +172,7 @@ class RedisStore:
                 # Attempt reconnection
                 await self.connect()
                 return self._connected
-            
+
             await self.client.ping()
             self._connected = True
             return True
@@ -183,4 +180,3 @@ class RedisStore:
             logger.debug(f"⚠️  Redis health check failed: {e}")
             self._connected = False
             return False
-

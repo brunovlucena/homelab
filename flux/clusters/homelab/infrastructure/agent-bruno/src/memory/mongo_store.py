@@ -6,7 +6,8 @@ Manages long-term conversation memory in MongoDB.
 
 import logging
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 logger = logging.getLogger(__name__)
@@ -40,13 +41,15 @@ class MongoStore:
             await self._create_indexes()
 
             # Test connection
-            await self.client.admin.command('ping')
+            await self.client.admin.command("ping")
 
             self._connected = True
             logger.info(f"✅ Connected to MongoDB: {self.db_name}")
         except Exception as e:
             self._connected = False
-            logger.warning(f"⚠️  MongoDB unavailable: {e} - service will continue with degraded functionality")
+            logger.warning(
+                f"⚠️  MongoDB unavailable: {e} - service will continue with degraded functionality"
+            )
             self.client = None
             self.db = None
 
@@ -72,11 +75,7 @@ class MongoStore:
             logger.info("🔌 Disconnected from MongoDB")
 
     async def save_conversation(
-        self,
-        ip: str,
-        message: str,
-        response: str,
-        context: Dict[str, Any] = None
+        self, ip: str, message: str, response: str, context: Dict[str, Any] = None
     ):
         """
         Save a conversation to persistent storage
@@ -99,7 +98,7 @@ class MongoStore:
             "message": message,
             "response": response,
             "context": context or {},
-            "created_at": datetime.utcnow()
+            "created_at": datetime.utcnow(),
         }
 
         try:
@@ -110,10 +109,7 @@ class MongoStore:
             self._connected = False
 
     async def get_conversation_history(
-        self,
-        ip: str,
-        limit: int = 50,
-        skip: int = 0
+        self, ip: str, limit: int = 50, skip: int = 0
     ) -> List[Dict[str, Any]]:
         """
         Get conversation history for IP
@@ -127,15 +123,20 @@ class MongoStore:
             List of conversation dictionaries
         """
         if not self.db or not self._connected:
-            logger.debug(f"⚠️  MongoDB unavailable, returning empty history for IP: {ip}")
+            logger.debug(
+                f"⚠️  MongoDB unavailable, returning empty history for IP: {ip}"
+            )
             return []
 
         collection = self.db[self.collection_name]
 
         try:
-            cursor = collection.find(
-                {"ip": ip}
-            ).sort("timestamp", -1).skip(skip).limit(limit)
+            cursor = (
+                collection.find({"ip": ip})
+                .sort("timestamp", -1)
+                .skip(skip)
+                .limit(limit)
+            )
 
             conversations = await cursor.to_list(length=limit)
 
@@ -228,7 +229,7 @@ class MongoStore:
                 await self.connect()
                 return self._connected
 
-            await self.client.admin.command('ping')
+            await self.client.admin.command("ping")
             self._connected = True
             return True
         except Exception as e:

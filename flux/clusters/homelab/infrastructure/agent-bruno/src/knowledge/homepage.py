@@ -4,7 +4,7 @@
 This module contains comprehensive knowledge about the homepage application.
 """
 
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 
 class HomepageKnowledge:
@@ -26,84 +26,175 @@ class HomepageKnowledge:
                     "tech": "React 18 + TypeScript + Vite",
                     "description": "Static site served via Nginx",
                     "port": 80,
-                    "deployment": "2 replicas with HPA"
+                    "deployment": "2 replicas with HPA",
                 },
                 "api": {
                     "tech": "Go 1.23 + Gin + GORM",
                     "description": "RESTful API with proxy to agent services",
                     "port": 8080,
-                    "deployment": "2 replicas with HPA"
+                    "deployment": "2 replicas with HPA",
                 },
                 "database": {
                     "tech": "PostgreSQL 15",
                     "description": "Primary database for projects, skills, experiences",
                     "port": 5432,
-                    "deployment": "1 replica with persistent volume"
+                    "deployment": "1 replica with persistent volume",
                 },
                 "cache": {
                     "tech": "Redis 7",
                     "description": "Session storage and caching",
                     "port": 6379,
-                    "deployment": "1 replica with persistent volume"
+                    "deployment": "1 replica with persistent volume",
                 },
                 "storage": {
                     "tech": "MinIO",
                     "description": "S3-compatible object storage for assets",
                     "port": 9000,
-                    "deployment": "Shared MinIO service"
-                }
+                    "deployment": "Shared MinIO service",
+                },
             },
             "flow": {
                 "user_request": "User → Cloudflare CDN → Ingress → Frontend (Nginx) → API (Go) → Database/Services",
-                "chatbot": "User → Frontend → API Proxy → Agent-SRE/Agent-Bruno → Ollama/LLM"
-            }
+                "chatbot": "User → Frontend → API Proxy → Agent-SRE/Agent-Bruno → Ollama/LLM",
+            },
         }
 
     def _load_api_endpoints(self) -> Dict[str, List[Dict[str, str]]]:
         """Load API endpoints information"""
         return {
             "content": [
-                {"method": "GET", "path": "/api/v1/content", "description": "Get all dynamic content"},
-                {"method": "GET", "path": "/api/v1/content/:id", "description": "Get specific content"},
-                {"method": "POST", "path": "/api/v1/content", "description": "Create content (admin)"},
-                {"method": "PUT", "path": "/api/v1/content/:id", "description": "Update content (admin)"},
-                {"method": "DELETE", "path": "/api/v1/content/:id", "description": "Delete content (admin)"},
+                {
+                    "method": "GET",
+                    "path": "/api/v1/content",
+                    "description": "Get all dynamic content",
+                },
+                {
+                    "method": "GET",
+                    "path": "/api/v1/content/:id",
+                    "description": "Get specific content",
+                },
+                {
+                    "method": "POST",
+                    "path": "/api/v1/content",
+                    "description": "Create content (admin)",
+                },
+                {
+                    "method": "PUT",
+                    "path": "/api/v1/content/:id",
+                    "description": "Update content (admin)",
+                },
+                {
+                    "method": "DELETE",
+                    "path": "/api/v1/content/:id",
+                    "description": "Delete content (admin)",
+                },
             ],
             "projects": [
-                {"method": "GET", "path": "/api/v1/projects", "description": "Get all projects"},
-                {"method": "GET", "path": "/api/v1/projects/:id", "description": "Get specific project"},
-                {"method": "POST", "path": "/api/v1/projects", "description": "Create project"},
-                {"method": "PUT", "path": "/api/v1/projects/:id", "description": "Update project"},
-                {"method": "DELETE", "path": "/api/v1/projects/:id", "description": "Delete project"},
+                {
+                    "method": "GET",
+                    "path": "/api/v1/projects",
+                    "description": "Get all projects",
+                },
+                {
+                    "method": "GET",
+                    "path": "/api/v1/projects/:id",
+                    "description": "Get specific project",
+                },
+                {
+                    "method": "POST",
+                    "path": "/api/v1/projects",
+                    "description": "Create project",
+                },
+                {
+                    "method": "PUT",
+                    "path": "/api/v1/projects/:id",
+                    "description": "Update project",
+                },
+                {
+                    "method": "DELETE",
+                    "path": "/api/v1/projects/:id",
+                    "description": "Delete project",
+                },
             ],
             "skills": [
-                {"method": "GET", "path": "/api/v1/skills", "description": "Get all skills"},
-                {"method": "GET", "path": "/api/v1/skills/:id", "description": "Get specific skill"},
-                {"method": "POST", "path": "/api/v1/skills", "description": "Create skill"},
-                {"method": "PUT", "path": "/api/v1/skills/:id", "description": "Update skill"},
-                {"method": "DELETE", "path": "/api/v1/skills/:id", "description": "Delete skill"},
+                {
+                    "method": "GET",
+                    "path": "/api/v1/skills",
+                    "description": "Get all skills",
+                },
+                {
+                    "method": "GET",
+                    "path": "/api/v1/skills/:id",
+                    "description": "Get specific skill",
+                },
+                {
+                    "method": "POST",
+                    "path": "/api/v1/skills",
+                    "description": "Create skill",
+                },
+                {
+                    "method": "PUT",
+                    "path": "/api/v1/skills/:id",
+                    "description": "Update skill",
+                },
+                {
+                    "method": "DELETE",
+                    "path": "/api/v1/skills/:id",
+                    "description": "Delete skill",
+                },
             ],
             "experiences": [
-                {"method": "GET", "path": "/api/v1/experiences", "description": "Get all experiences"},
-                {"method": "GET", "path": "/api/v1/experiences/:id", "description": "Get specific experience"},
+                {
+                    "method": "GET",
+                    "path": "/api/v1/experiences",
+                    "description": "Get all experiences",
+                },
+                {
+                    "method": "GET",
+                    "path": "/api/v1/experiences/:id",
+                    "description": "Get specific experience",
+                },
             ],
             "agents": [
-                {"method": "POST", "path": "/api/v1/agent-bruno/chat",
-                 "description": "Chat with Agent-Bruno (Homepage chatbot)"},
+                {
+                    "method": "POST",
+                    "path": "/api/v1/agent-bruno/chat",
+                    "description": "Chat with Agent-Bruno (Homepage chatbot)",
+                },
             ],
             "health": [
                 {"method": "GET", "path": "/health", "description": "Health check"},
                 {"method": "GET", "path": "/ready", "description": "Readiness check"},
-                {"method": "GET", "path": "/metrics", "description": "Prometheus metrics"},
+                {
+                    "method": "GET",
+                    "path": "/metrics",
+                    "description": "Prometheus metrics",
+                },
             ],
             "assets": [
-                {"method": "GET", "path": "/api/v1/assets/:filename", "description": "Get asset from MinIO"},
-                {"method": "POST", "path": "/api/v1/assets", "description": "Upload asset to MinIO"},
+                {
+                    "method": "GET",
+                    "path": "/api/v1/assets/:filename",
+                    "description": "Get asset from MinIO",
+                },
+                {
+                    "method": "POST",
+                    "path": "/api/v1/assets",
+                    "description": "Upload asset to MinIO",
+                },
             ],
             "cloudflare": [
-                {"method": "POST", "path": "/api/v1/cloudflare/purge", "description": "Purge Cloudflare cache"},
-                {"method": "GET", "path": "/api/v1/cloudflare/stats", "description": "Get Cloudflare stats"},
-            ]
+                {
+                    "method": "POST",
+                    "path": "/api/v1/cloudflare/purge",
+                    "description": "Purge Cloudflare cache",
+                },
+                {
+                    "method": "GET",
+                    "path": "/api/v1/cloudflare/stats",
+                    "description": "Get Cloudflare stats",
+                },
+            ],
         }
 
     def _load_deployment_info(self) -> Dict[str, Any]:
@@ -116,8 +207,8 @@ class HomepageKnowledge:
                     "frontend": 3000,
                     "api": 8080,
                     "postgres": 5432,
-                    "redis": 6379
-                }
+                    "redis": 6379,
+                },
             },
             "kubernetes": {
                 "method": "Helm Chart",
@@ -131,23 +222,23 @@ class HomepageKnowledge:
                     "ingress",
                     "services",
                     "configmaps",
-                    "secrets"
-                ]
+                    "secrets",
+                ],
             },
             "ci_cd": {
                 "platform": "GitHub Actions",
                 "workflows": [
                     "homepage-tests.yml - Run on push/PR",
                     "homepage-pr-check.yml - Run on PR only",
-                    "homepage-nightly-tests.yml - Run daily at 2 AM UTC"
-                ]
+                    "homepage-nightly-tests.yml - Run daily at 2 AM UTC",
+                ],
             },
             "scaling": {
                 "hpa_enabled": True,
                 "min_replicas": 1,
                 "max_replicas": 3,
-                "target_cpu": "80%"
-            }
+                "target_cpu": "80%",
+            },
         }
 
     def _load_components(self) -> Dict[str, Dict[str, Any]]:
@@ -160,14 +251,14 @@ class HomepageKnowledge:
                     "src/components/Header.tsx - Header component",
                     "src/services/chatbot.ts - Chatbot service with MCP/Direct modes",
                     "src/services/api.ts - API client",
-                    "nginx.conf - Nginx configuration with proxy"
+                    "nginx.conf - Nginx configuration with proxy",
                 ],
                 "features": [
                     "Dynamic content loading",
                     "AI chatbot integration",
                     "Responsive design",
-                    "TypeScript type safety"
-                ]
+                    "TypeScript type safety",
+                ],
             },
             "api": {
                 "files": [
@@ -181,28 +272,28 @@ class HomepageKnowledge:
                     "handlers/skills.go - Skills CRUD",
                     "handlers/content.go - Content CRUD",
                     "router/router.go - Route definitions",
-                    "storage/minio.go - MinIO client"
+                    "storage/minio.go - MinIO client",
                 ],
                 "features": [
                     "OpenTelemetry tracing",
                     "CORS handling",
                     "Gzip compression",
                     "Health checks",
-                    "Prometheus metrics"
-                ]
+                    "Prometheus metrics",
+                ],
             },
             "database": {
                 "schema": {
                     "projects": "id, name, description, tech_stack, url, github_url, image_url, created_at, updated_at",
                     "skills": "id, name, category, proficiency, years, created_at, updated_at",
                     "experiences": "id, company, role, description, start_date, end_date, created_at, updated_at",
-                    "content": "id, key, value, type, created_at, updated_at"
+                    "content": "id, key, value, type, created_at, updated_at",
                 },
                 "migrations": [
                     "001_complete_schema.sql - Initial schema",
-                    "002_performance_indexes.sql - Performance indexes"
-                ]
-            }
+                    "002_performance_indexes.sql - Performance indexes",
+                ],
+            },
         }
 
     def _load_tech_stack(self) -> Dict[str, List[str]]:
@@ -214,31 +305,22 @@ class HomepageKnowledge:
                 "GORM (ORM)",
                 "Redis Client",
                 "MinIO Client",
-                "OpenTelemetry"
+                "OpenTelemetry",
             ],
             "frontend": [
                 "React 18",
                 "TypeScript",
                 "Vite",
                 "Axios",
-                "Tailwind CSS (optional)"
+                "Tailwind CSS (optional)",
             ],
-            "database": [
-                "PostgreSQL 15",
-                "Redis 7"
-            ],
-            "infrastructure": [
-                "Kubernetes",
-                "Helm",
-                "Docker",
-                "Nginx",
-                "MinIO"
-            ],
+            "database": ["PostgreSQL 15", "Redis 7"],
+            "infrastructure": ["Kubernetes", "Helm", "Docker", "Nginx", "MinIO"],
             "ai": [
                 "Agent-SRE",
                 "Agent-Bruno (Homepage chatbot & knowledge assistant)",
                 "Ollama",
-                "MCP Protocol"
+                "MCP Protocol",
             ],
             "observability": [
                 "Prometheus",
@@ -246,13 +328,9 @@ class HomepageKnowledge:
                 "Loki",
                 "Tempo",
                 "Alloy",
-                "OpenTelemetry"
+                "OpenTelemetry",
             ],
-            "cicd": [
-                "GitHub Actions",
-                "Docker Registry",
-                "Flux CD"
-            ]
+            "cicd": ["GitHub Actions", "Docker Registry", "Flux CD"],
         }
 
     def get_info(self, category: str, subcategory: str = None) -> Any:
@@ -262,7 +340,7 @@ class HomepageKnowledge:
             "api": self.api_endpoints,
             "deployment": self.deployment,
             "components": self.components,
-            "tech": self.tech_stack
+            "tech": self.tech_stack,
         }
 
         if category not in categories:
@@ -284,11 +362,13 @@ class HomepageKnowledge:
         for category in ["architecture", "api", "deployment", "components", "tech"]:
             data = self.get_info(category)
             if self._search_in_data(data, query_lower):
-                results.append({
-                    "category": category,
-                    "data": data,
-                    "relevance": self._calculate_relevance(data, query_lower)
-                })
+                results.append(
+                    {
+                        "category": category,
+                        "data": data,
+                        "relevance": self._calculate_relevance(data, query_lower),
+                    }
+                )
 
         # Sort by relevance
         results.sort(key=lambda x: x["relevance"], reverse=True)
