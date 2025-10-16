@@ -4,3 +4,4 @@ resources:
   - helmrelease.yaml
   - prometheus-nodeport.yaml
   - grafana-nodeport.yaml
+  - pushgateway-nodeport.yaml
