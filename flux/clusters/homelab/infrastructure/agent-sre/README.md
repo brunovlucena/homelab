@@ -200,6 +200,46 @@ make logs-mcp-server
 - `HTTP_HOST`: Server bind host (default: 0.0.0.0)
 - `HTTP_PORT`: Server port (default: 3000)
 
+## 🔍 Automated Investigations
+
+**NEW:** Agent-SRE now provides end-to-end automated investigation with GitHub issue creation!
+
+### Quick Example
+
+```bash
+curl -X POST http://sre-agent-service:8080/investigation/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "High error rate in homepage",
+    "description": "Error rate increased to 5%",
+    "severity": "high",
+    "component": "homepage"
+  }'
+```
+
+**What happens:**
+1. ✅ Creates GitHub issue with full context
+2. 🔬 Runs Grafana Sift analysis (error patterns + slow requests)
+3. 🧠 LLM analyzes findings for root cause
+4. 💡 Generates actionable recommendations
+5. 🔄 Updates GitHub issue with complete investigation
+
+### Trigger Methods
+
+| Method | Use Case | Guide |
+|--------|----------|-------|
+| **Alertmanager Webhook** | Automatic on alert | [Setup Guide](ALERTMANAGER_INTEGRATION.md) |
+| **Slack Command** | Manual via `@jamie investigate` | [Slack Integration](TRIGGER_INVESTIGATION_GUIDE.md#-slack-integration-jamie) |
+| **Direct API** | From any service | [API Reference](TRIGGER_INVESTIGATION_GUIDE.md#-api-reference) |
+| **MCP Tool** | Via MCP protocol | [MCP Integration](TRIGGER_INVESTIGATION_GUIDE.md#-mcp-server-integration) |
+
+### Documentation
+
+- 🚀 **[Quick Start](QUICK_START_INVESTIGATIONS.md)** - Get started in 5 minutes
+- 📘 **[Complete Guide](AUTOMATED_INVESTIGATION_GUIDE.md)** - Full architecture & details
+- 🚨 **[Alertmanager Integration](ALERTMANAGER_INTEGRATION.md)** - Automatic alert investigations
+- 🎯 **[Trigger Methods](TRIGGER_INVESTIGATION_GUIDE.md)** - API, Slack, MCP usage
+
 ## Integration with Jamie
 
 Jamie (the Slack bot) uses the Agent-SRE MCP server to query observability data. The integration works as follows:
@@ -214,6 +254,12 @@ Jamie (the Slack bot) uses the Agent-SRE MCP server to query observability data.
 async with AgentSREClient() as agent:
     result = await agent.prometheus_query("up")
     # Process and display result in Slack
+```
+
+**NEW - Investigation Command:**
+```python
+# Trigger investigation from Slack
+@jamie investigate "Database connection timeouts" severity=high component=api
 ```
 
 ## API Endpoints

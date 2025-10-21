@@ -15,6 +15,8 @@ from aiohttp.web import Request, Response
 
 # Import the SRE agent from local core
 from core import agent, logger
+from investigation_workflow import investigation_workflow
+from github_integration import github_client
 
 
 class SREAgentService:
@@ -88,6 +90,11 @@ class SREAgentService:
 
         # 🚨 Alertmanager webhook endpoint
         self.app.router.add_post("/webhook/alert", self.handle_alertmanager_webhook)
+
+        # 🔍 Investigation endpoints
+        self.app.router.add_post("/investigation/create", self.handle_create_investigation)
+        self.app.router.add_post("/investigation/workflow-failure", self.handle_workflow_failure)
+        self.app.router.add_get("/investigation/{investigation_id}", self.handle_get_investigation)
 
     async def handle_health(self, request: Request) -> Response:
         """Liveness probe endpoint."""
@@ -289,7 +296,7 @@ class SREAgentService:
             return web.json_response({"error": str(e)}, status=500)
 
     async def handle_alertmanager_webhook(self, request: Request) -> Response:
-        """🚨 Alertmanager webhook handler - receives alerts from Alertmanager."""
+        """🚨 Alertmanager webhook handler - receives alerts and triggers investigations."""
         try:
             data = await request.json()
 
@@ -304,59 +311,103 @@ class SREAgentService:
             results = []
             for alert in alerts:
                 alert_name = alert.get("labels", {}).get("alertname", "Unknown")
-                severity = alert.get("labels", {}).get("severity", "unknown")
+                severity = alert.get("labels", {}).get("severity", "warning")
                 status = alert.get("status", "unknown")  # firing or resolved
+                namespace = alert.get("labels", {}).get("namespace", "unknown")
+                pod = alert.get("labels", {}).get("pod", "")
+                job = alert.get("labels", {}).get("job", "")
 
                 logger.info(f"🔔 Received alert: {alert_name} (severity={severity}, status={status})")
 
-                # Only process firing alerts (skip resolved for now)
+                # Only process firing alerts (skip resolved)
                 if status == "firing":
                     # Build investigation context
                     annotations = alert.get("annotations", {})
                     labels = alert.get("labels", {})
 
-                    investigation_message = f"""
-🚨 ALERT INVESTIGATION REQUIRED
+                    # Determine component from labels
+                    component = namespace
+                    if not component or component == "unknown":
+                        # Try to extract from job or pod name
+                        if job:
+                            component = job.split("/")[0] if "/" in job else job
+                        elif pod:
+                            component = pod.split("-")[0]
 
-Alert: {alert_name}
-Severity: {severity}
-Status: {status}
+                    # Build detailed description with all context
+                    description = f"""## 🚨 Alert Triggered
 
-Labels:
-{chr(10).join([f"  - {k}: {v}" for k, v in labels.items()])}
+**Alert Name**: {alert_name}
+**Status**: {status}
+**Severity**: {severity}
+**Starts At**: {alert.get("startsAt", "N/A")}
+**Generator URL**: {alert.get("generatorURL", "N/A")}
+**Fingerprint**: {alert.get("fingerprint", "N/A")}
 
-Annotations:
-{chr(10).join([f"  - {k}: {v}" for k, v in annotations.items()])}
+### Labels
+"""
+                    for key, value in labels.items():
+                        description += f"- **{key}**: `{value}`\n"
 
-Starts At: {alert.get("startsAt", "N/A")}
-Generator URL: {alert.get("generatorURL", "N/A")}
+                    description += "\n### Annotations\n"
+                    for key, value in annotations.items():
+                        description += f"- **{key}**: {value}\n"
 
-Please provide:
-1. Root cause analysis
-2. Impact assessment
-3. Immediate mitigation steps
-4. Recommended investigation queries (PromQL, LogQL)
-5. Prevention recommendations
-                    """.strip()
+                    description += """
 
-                    # Execute incident analysis using the local agent
-                    analysis = await self.sre_agent.incident_response(investigation_message)
+### Investigation Tasks
+
+This alert has triggered an automated investigation:
+
+1. ✅ Analyzing error patterns in logs (via Grafana Loki)
+2. ✅ Detecting slow requests in traces (via Grafana Tempo)
+3. ✅ Running LLM-powered root cause analysis
+4. ✅ Generating actionable recommendations
+
+---
+
+_This investigation was automatically triggered by Alertmanager._
+"""
+
+                    # Map Alertmanager severity to investigation severity
+                    severity_map = {
+                        "critical": "critical",
+                        "warning": "high",
+                        "info": "medium",
+                    }
+                    investigation_severity = severity_map.get(severity.lower(), "medium")
+
+                    # Trigger automated investigation workflow
+                    logger.info(f"🔍 Triggering investigation workflow for alert: {alert_name}")
+                    
+                    investigation_result = await investigation_workflow.investigate(
+                        title=f"Alert: {alert_name}",
+                        description=description,
+                        severity=investigation_severity,
+                        component=component,
+                    )
 
                     results.append(
                         {
                             "alert_name": alert_name,
                             "severity": severity,
-                            "analysis": analysis,
+                            "investigation_id": investigation_result.get("investigation_id"),
+                            "issue_number": investigation_result.get("issue_number"),
+                            "issue_url": investigation_result.get("issue_url"),
+                            "completed": investigation_result.get("completed", False),
                             "fingerprint": alert.get("fingerprint", ""),
                         }
                     )
 
-                    logger.info(f"✅ Completed investigation for alert: {alert_name}")
+                    logger.info(
+                        f"✅ Investigation completed for alert: {alert_name} "
+                        f"(Issue: {investigation_result.get('issue_url', 'N/A')})"
+                    )
 
             return web.json_response(
                 {
                     "message": f"Processed {len(results)} alerts",
-                    "results": results,
+                    "investigations": results,
                     "service": "sre-agent",
                     "timestamp": datetime.now().isoformat(),
                 }
@@ -450,6 +501,125 @@ Please provide:
             logger.error(f"❌ Error executing Kubernetes query: {e}")
             return web.json_response({"error": str(e)}, status=500)
 
+    async def handle_create_investigation(self, request: Request) -> Response:
+        """🔍 Create a new investigation with GitHub issue"""
+        try:
+            data = await request.json()
+            title = data.get("title", "")
+            description = data.get("description", "")
+            severity = data.get("severity", "medium")
+            component = data.get("component", "unknown")
+
+            if not title:
+                return web.json_response({"error": "Title is required"}, status=400)
+
+            logger.info(f"🔍 Creating investigation: {title}")
+
+            # Run the investigation workflow
+            result = await investigation_workflow.investigate(
+                title=title, description=description, severity=severity, component=component
+            )
+
+            return web.json_response(
+                {
+                    "investigation": result,
+                    "service": "sre-agent",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Error creating investigation: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_workflow_failure(self, request: Request) -> Response:
+        """🚨 Handle workflow failure and auto-investigate"""
+        try:
+            data = await request.json()
+            workflow_name = data.get("workflow_name", "Unknown Workflow")
+            run_id = data.get("run_id")
+            job_id = data.get("job_id")
+            run_url = data.get("run_url", "")
+            job_url = data.get("job_url", "")
+            failure_details = data.get("failure_details", "")
+
+            logger.info(f"🚨 Workflow failure detected: {workflow_name} (run: {run_id})")
+
+            # Build investigation title and description
+            title = f"CI/CD Workflow Failure - Run #{run_id}"
+            description = f"""## Workflow Failure
+
+**Workflow**: {workflow_name}
+**Run ID**: {run_id}
+**Job ID**: {job_id}
+
+### Details
+
+{failure_details}
+
+### Links
+
+* **Workflow Run**: {run_url}
+* **Failed Job**: {job_url}
+
+### Next Steps
+
+1. Review the workflow logs at the link above
+2. Identify the root cause of the failure
+3. Implement a fix
+4. Re-run the workflow to verify the fix
+
+---
+
+_Note: Please review the job logs and update this issue with specific error details._
+"""
+
+            # Run investigation workflow
+            result = await investigation_workflow.investigate(
+                title=title, description=description, severity="high", component="ci-cd"
+            )
+
+            logger.info(f"✅ Workflow failure investigation completed: {result.get('issue_url', 'N/A')}")
+
+            return web.json_response(
+                {
+                    "investigation": result,
+                    "service": "sre-agent",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Error handling workflow failure: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
+    async def handle_get_investigation(self, request: Request) -> Response:
+        """🔍 Get investigation details"""
+        try:
+            investigation_id = request.match_info.get("investigation_id")
+
+            if not investigation_id:
+                return web.json_response({"error": "Investigation ID is required"}, status=400)
+
+            logger.info(f"🔍 Getting investigation: {investigation_id}")
+
+            # Call MCP server to get investigation details
+            result = await self._call_mcp_tool(
+                "sift_get_investigation", {"investigation_id": investigation_id}
+            )
+
+            return web.json_response(
+                {
+                    "investigation": result,
+                    "service": "sre-agent",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Error getting investigation: {e}", exc_info=True)
+            return web.json_response({"error": str(e)}, status=500)
+
     async def _check_mcp_server(self) -> Dict[str, Any]:
         """Check MCP server connectivity."""
         try:
@@ -527,7 +697,9 @@ Please provide:
         logger.info(f"📊 MCP Chat endpoint: http://localhost:{port}/mcp/chat")
         logger.info(f"📈 Status endpoint: http://localhost:{port}/status")
         logger.info(f"🚨 Alertmanager webhook: http://localhost:{port}/webhook/alert")
+        logger.info(f"🔍 Investigation endpoint: http://localhost:{port}/investigation/create")
         logger.info("🔇 Health/ready check logs filtered for cleaner output")
+        logger.info("✨ Alertmanager integration: Auto-investigations enabled!")
 
         return runner
 
