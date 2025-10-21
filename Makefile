@@ -25,22 +25,9 @@ up: ## Deploy homelab stack
 		exit 1; \
 	fi
 	cd pulumi && pulumi stack select homelab && pulumi refresh --yes && pulumi up --yes
-	@echo "🔐 Creating Kubernetes secrets..."
-	./scripts/create-secrets.sh
-	@echo "🔄 Reconciling Flux GitRepository..."
-	flux reconcile source git homelab -n flux-system
-	@echo "🔄 Reconciling Flux HelmRepositories..."
-	kubectl annotate helmrepository --all -n flux-system --overwrite reconcile.fluxcd.io/requestedAt="$$(date +%s)"
-	@echo "🔄 Reconciling Flux Kustomizations (this applies all manifests from Git)..."
-	@echo "  📦 Phase 1: Core infrastructure..."
-	flux reconcile kustomization homelab-phase1-core -n flux-system
-	@echo "  📊 Phase 2: Prometheus..."
-	flux reconcile kustomization homelab-phase2-prometheus -n flux-system
-	@echo "  ⚙️  Phase 3: Knative..."
-	flux reconcile kustomization homelab-phase3-knative -n flux-system
-	@echo "  🚀 Phase 4: Applications..."
-	flux reconcile kustomization homelab-phase4-apps -n flux-system
-	@echo "✅ Homelab deployment complete with full Flux reconciliation!"
+	@echo "🔄 Reconciling Flux (this will apply everything automatically)..."
+	flux reconcile kustomization homelab-root -n flux-system --with-source
+	@echo "✅ Homelab deployment complete! Flux is now managing all phases automatically."
 
 destroy: ## Destroy homelab stack
 	cd pulumi && pulumi stack select homelab && pulumi destroy --yes

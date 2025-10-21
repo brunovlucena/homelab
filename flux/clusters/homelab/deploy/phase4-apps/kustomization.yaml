@@ -6,14 +6,14 @@ kind: Kustomization
 # Deploy all applications and remaining infrastructure
 
 resources:
-  - ../homepage
-  - ../agent-bruno
-  - ../minio
-  - ../postgres
-  - ../redis
-  - ../mongodb
-  - ../lancedb
+  - ../../infrastructure/homepage
+  - ../../infrastructure/agent-bruno
+  - ../../infrastructure/minio
+  - ../../infrastructure/postgres
+  - ../../infrastructure/redis
+  - ../../infrastructure/mongodb
+  - ../../infrastructure/lancedb
   # Commented out - not ready yet
-  # - ../agent-sre
-  # - ../agent-jamie
+  # - ../../infrastructure/agent-sre
+  # - ../../infrastructure/agent-jamie
 

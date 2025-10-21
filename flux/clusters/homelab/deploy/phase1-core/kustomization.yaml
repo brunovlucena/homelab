@@ -6,9 +6,9 @@ kind: Kustomization
 # Deploy Helm repositories, CRD providers, and essential infrastructure
 
 resources:
-  - ../repositories
-  - ../prometheus-operator
-  - ../headlamp
-  - ../cert-manager
-  - ../metrics-server
-  - ../cloudflare-tunnel
+  - ../../infrastructure/repositories
+  - ../../infrastructure/prometheus-operator
+  - ../../infrastructure/headlamp
+  - ../../infrastructure/cert-manager
+  - ../../infrastructure/metrics-server
+  - ../../infrastructure/cloudflare-tunnel

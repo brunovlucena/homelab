@@ -46,7 +46,6 @@ func main() {
 		// 🔧 Install Flux
 		installFlux, err := local.NewCommand(ctx, "install-flux", &local.CommandArgs{
 			Create: pulumi.String(fmt.Sprintf(`cd ../scripts && ./install-flux.sh %s`, clusterName)),
-			// TODO: Substitute this script with a Pulumi Kubernetes resource
 		}, pulumi.DependsOn([]pulumi.Resource{createCluster}))
 		if err != nil {
 			return err
@@ -54,8 +53,7 @@ func main() {
 
 		// 🔐 Create secrets
 		createSecrets, err := local.NewCommand(ctx, "create-secrets", &local.CommandArgs{
-			Create: pulumi.String(fmt.Sprintf(`cd ../scripts && ./create-secrets.sh kind-%s`, clusterName)),
-			// TODO: Substitute this script with a Pulumi Kubernetes resource
+			Create: pulumi.String(`cd ../scripts && ./create-secrets.sh`),
 		}, pulumi.DependsOn([]pulumi.Resource{installFlux}))
 		if err != nil {
 			return err
@@ -64,7 +62,6 @@ func main() {
 		// 🔗 Install Linkerd
 		installLinkerd, err := local.NewCommand(ctx, "install-linkerd", &local.CommandArgs{
 			Create: pulumi.String(fmt.Sprintf(`cd ../scripts && ./install-linkerd.sh %s`, clusterName)),
-			// TODO: Substitute this script with a Pulumi Kubernetes resource
 		}, pulumi.DependsOn([]pulumi.Resource{createSecrets}))
 		if err != nil {
 			return err
@@ -103,8 +100,7 @@ func main() {
 			return err
 		}
 
-		// 📋 Create root Kustomization - Flux will manage the phases
-		// The phase definitions are in flux/clusters/{cluster}/flux-kustomizations/
+		// 📋 Create root Kustomization - applies kustomization.yaml which includes all phase Kustomizations
 		_, err = apiextensions.NewCustomResource(ctx, "homelab-root-kustomization", &apiextensions.CustomResourceArgs{
 			ApiVersion: pulumi.String("kustomize.toolkit.fluxcd.io/v1"),
 			Kind:       pulumi.String("Kustomization"),
@@ -114,12 +110,12 @@ func main() {
 			},
 			OtherFields: kubernetes.UntypedArgs{
 				"spec": pulumi.Map{
-					"interval": pulumi.String("10m"),
+					"interval": pulumi.String("5m"),
 					"sourceRef": pulumi.Map{
 						"kind": pulumi.String("GitRepository"),
 						"name": pulumi.String("homelab"),
 					},
-					"path":  pulumi.String(fmt.Sprintf("./flux/clusters/%s/flux-kustomizations", clusterName)),
+					"path":  pulumi.String(fmt.Sprintf("./flux/clusters/%s", clusterName)),
 					"prune": pulumi.Bool(true),
 					"wait":  pulumi.Bool(false), // Don't wait for all phases to complete
 				},

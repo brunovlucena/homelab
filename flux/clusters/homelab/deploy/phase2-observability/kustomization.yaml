@@ -6,8 +6,8 @@ kind: Kustomization
 # Deploy Prometheus Operator and observability components that depend on its CRDs
 
 resources:
-  - ../loki
-  - ../alloy
-  - ../tempo
-  - ../prometheus-pushgateway
-  - ../alerts
+  - ../../infrastructure/loki
+  - ../../infrastructure/alloy
+  - ../../infrastructure/tempo
+  - ../../infrastructure/prometheus-pushgateway
+  - ../../infrastructure/alerts

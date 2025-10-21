@@ -6,9 +6,9 @@ kind: Kustomization
 # Deploy Knative Operator and serverless components
 
 resources:
-  - ../rabbitmq-operator
-  - ../k6-operator
-  - ../knative-operator
-  - ../knative-serving
-  - ../knative-eventing
-  # - ../rabbitmq-cluster
+  - ../../infrastructure/rabbitmq-operator
+  - ../../infrastructure/k6-operator
+  - ../../infrastructure/knative-operator
+  - ../../infrastructure/knative-serving
+  - ../../infrastructure/knative-eventing
+  # - ../../infrastructure/rabbitmq-cluster
