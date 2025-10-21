@@ -16,9 +16,11 @@ spec:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: linkerd-viz-installer
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: install-viz
-        image: docker.io/linkerd/cli:stable-2.16.2
+        image: ghcr.io/brunovlucena/homelab/linkerd-cli:stable-2.16.2
         command:
         - /bin/sh
         - -c

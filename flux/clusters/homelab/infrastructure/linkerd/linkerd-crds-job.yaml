@@ -17,9 +17,11 @@ spec:
     spec:
       restartPolicy: OnFailure
       serviceAccountName: linkerd-crds-installer
+      imagePullSecrets:
+      - name: ghcr-secret
       containers:
       - name: install-crds
-        image: docker.io/linkerd/cli:stable-2.16.2
+        image: ghcr.io/brunovlucena/homelab/linkerd-cli:stable-2.16.2
         command:
         - /bin/sh
         - -c

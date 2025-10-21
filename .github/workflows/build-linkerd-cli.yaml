@@ -1,0 +1,64 @@
+name: Build and Push Linkerd CLI Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'flux/clusters/homelab/infrastructure/linkerd/docker/Dockerfile'
+      - '.github/workflows/build-linkerd-cli.yaml'
+  workflow_dispatch:
+    inputs:
+      linkerd_version:
+        description: 'Linkerd version (e.g., stable-2.16.2)'
+        required: false
+        default: 'stable-2.16.2'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/linkerd-cli
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=stable-2.16.2
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./flux/clusters/homelab/infrastructure/linkerd/docker
+          file: ./flux/clusters/homelab/infrastructure/linkerd/docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            LINKERD_VERSION=${{ github.event.inputs.linkerd_version || 'stable-2.16.2' }}
+
