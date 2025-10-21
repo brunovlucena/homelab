@@ -11,8 +11,8 @@ resources:
   - ../../infrastructure/minio
   - ../../infrastructure/postgres
   - ../../infrastructure/redis
-  - ../../infrastructure/mongodb
   - ../../infrastructure/lancedb
+  - ../../infrastructure/mongodb
   - ../../infrastructure/alerts/apps
   # Commented out - not ready yet
   # - ../../infrastructure/agent-sre
