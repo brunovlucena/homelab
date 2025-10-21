@@ -1,12 +1,3 @@
-apiVersion: source.toolkit.fluxcd.io/v1beta2
-kind: HelmRepository
-metadata:
-  name: bitnami
-  namespace: flux-system
-spec:
-  interval: 1h0m0s
-  url: oci://registry-1.docker.io/bitnamicharts
-  type: oci
 ---
 apiVersion: source.toolkit.fluxcd.io/v1beta2
 kind: HelmRepository
@@ -115,3 +106,12 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://kubernetes-sigs.github.io/headlamp/
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: rabbitmq
+  namespace: flux-system
+spec:
+  interval: 1h0m0s
+  url: https://charts.rabbitmq.com
