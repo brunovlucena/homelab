@@ -1,0 +1,18 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: lancedb
+  namespace: lancedb
+  labels:
+    app: lancedb
+    app.kubernetes.io/name: lancedb
+spec:
+  selector:
+    matchLabels:
+      app: lancedb
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics
+
