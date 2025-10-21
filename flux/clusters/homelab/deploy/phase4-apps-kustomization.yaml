@@ -17,6 +17,6 @@ spec:
     namespace: flux-system
   dependsOn:
     - name: homelab-phase1-core
-    - name: homelab-phase2-prometheus
+    - name: homelab-phase2-observability
     - name: homelab-phase3b-knative
 

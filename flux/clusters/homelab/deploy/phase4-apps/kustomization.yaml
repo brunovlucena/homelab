@@ -13,6 +13,7 @@ resources:
   - ../../infrastructure/redis
   - ../../infrastructure/mongodb
   - ../../infrastructure/lancedb
+  - ../../infrastructure/alerts/apps
   # Commented out - not ready yet
   # - ../../infrastructure/agent-sre
   # - ../../infrastructure/agent-jamie

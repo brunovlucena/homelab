@@ -12,3 +12,4 @@ resources:
   - ../../infrastructure/cert-manager
   - ../../infrastructure/metrics-server
   - ../../infrastructure/cloudflare-tunnel
+  - ../../infrastructure/alerts/core
