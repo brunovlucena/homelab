@@ -23,6 +23,8 @@ resources:
   - postgres
   - redis
   - mongodb
+  - rabbitmq-operator
+  - rabbitmq-cluster
   - k6-operator
   - headlamp
   # Applications

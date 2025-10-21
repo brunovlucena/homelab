@@ -1,0 +1,186 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: loki-alerts
+  namespace: loki
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: homelab
+    prometheus: kube-prometheus
+    release: prometheus-operator
+spec:
+  groups:
+  # =============================================================================
+  # 🚨 LOKI STORAGE & INGESTION ALERTS
+  # =============================================================================
+  - name: loki.storage
+    interval: 30s
+    rules:
+    # 🔴 CRITICAL: Loki chunk flush failures (S3/MinIO storage errors)
+    - alert: LokiChunkFlushFailures
+      expr: rate(loki_ingester_chunks_flush_failures_total[5m]) > 0
+      for: 2m
+      labels:
+        severity: critical
+        component: loki-ingester
+        category: storage
+        team: sre
+      annotations:
+        summary: "🔴 Loki is failing to flush chunks to storage"
+        description: |
+          Loki ingester {{ $labels.pod }} is experiencing chunk flush failures at {{ $value | humanize }} failures/sec.
+          
+          **Common Causes:**
+          - MinIO bucket does not exist (NoSuchBucket error)
+          - MinIO is down or unreachable
+          - S3 credentials are incorrect
+          - Network connectivity issues
+          - Disk space exhausted on MinIO
+          
+          **Impact:**
+          - Log data is being buffered in memory and WAL
+          - Risk of data loss if ingester restarts
+          - Increased memory pressure on write pods
+          
+          **Current State:**
+          Queue Length: Check loki_ingester_flush_queue_length
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/loki/loki-storage-issues.md#issue-chunk-flush-failures---nosuchbucket-errors"
+        dashboard_url: "https://grafana.bruno.com/d/loki-writes"
+    
+    # 🟡 WARNING: High flush queue length
+    - alert: LokiHighFlushQueueLength
+      expr: loki_ingester_flush_queue_length > 100
+      for: 5m
+      labels:
+        severity: warning
+        component: loki-ingester
+        category: storage
+        team: sre
+      annotations:
+        summary: "⚠️ Loki flush queue is growing"
+        description: |
+          Loki ingester {{ $labels.pod }} has {{ $value }} chunks queued for flushing.
+          
+          **Possible Causes:**
+          - Slow storage backend (MinIO)
+          - High ingestion rate
+          - Insufficient write throughput
+          - Network latency to storage
+          
+          **Action Required:**
+          - Monitor for continued growth
+          - Check MinIO performance
+          - Verify storage backend health
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/loki/loki-storage-issues.md#issue-chunk-flush-failures---nosuchbucket-errors"
+    
+    # 🔴 CRITICAL: Flush queue critically high
+    - alert: LokiFlushQueueCritical
+      expr: loki_ingester_flush_queue_length > 500
+      for: 2m
+      labels:
+        severity: critical
+        component: loki-ingester
+        category: storage
+        team: sre
+      annotations:
+        summary: "🔴 CRITICAL: Loki flush queue critically high"
+        description: |
+          Loki ingester {{ $labels.pod }} has {{ $value }} chunks queued for flushing!
+          
+          **IMMEDIATE ACTION REQUIRED:**
+          1. Check MinIO health: `kubectl get pods -n loki -l app.kubernetes.io/name=minio`
+          2. Verify bucket exists: Check MinIO console or logs
+          3. Check storage space: MinIO disk usage
+          4. Review ingester logs: `kubectl logs -n loki {{ $labels.pod }}`
+          
+          **Risk:**
+          - High memory consumption
+          - Potential OOM kills
+          - Data loss if pod restarts
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/loki/loki-storage-issues.md#issue-chunk-flush-failures---nosuchbucket-errors"
+    
+  # =============================================================================
+  # 🔧 LOKI INGESTER HEALTH
+  # =============================================================================
+  - name: loki.ingester
+    interval: 30s
+    rules:
+    # Loki Write Path Down
+    - alert: LokiWritePathDown
+      expr: up{job="loki/loki-write"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        component: loki-write
+        category: availability
+        team: sre
+      annotations:
+        summary: "🔴 Loki write path is down"
+        description: |
+          Loki write component {{ $labels.pod }} is not responding.
+          
+          **Impact:**
+          - No new logs are being ingested
+          - Applications cannot send logs
+          - Log pipeline is broken
+          
+          **Action:**
+          Check pod status: `kubectl get pods -n loki -l app.kubernetes.io/component=write`
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/loki/loki-write-path-down.md"
+    
+    # Loki Read Path Down
+    - alert: LokiReadPathDown
+      expr: up{job="loki/loki-read"} == 0
+      for: 2m
+      labels:
+        severity: warning
+        component: loki-read
+        category: availability
+        team: sre
+      annotations:
+        summary: "⚠️ Loki read path is down"
+        description: |
+          Loki read component {{ $labels.pod }} is not responding.
+          
+          **Impact:**
+          - Cannot query logs
+          - Grafana Explore won't work
+          - Historical log access unavailable
+          
+          **Action:**
+          Check pod status: `kubectl get pods -n loki -l app.kubernetes.io/component=read`
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/loki/loki-read-path-slow.md"
+    
+  # =============================================================================
+  # 💾 LOKI STORAGE BACKEND (MinIO)
+  # =============================================================================
+  - name: loki.minio
+    interval: 30s
+    rules:
+    # MinIO for Loki is down
+    - alert: LokiMinIODown
+      expr: up{job="loki/loki-minio"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        component: minio
+        category: storage
+        team: sre
+      annotations:
+        summary: "🔴 CRITICAL: Loki's MinIO storage is down"
+        description: |
+          MinIO storage backend for Loki is not responding.
+          
+          **IMMEDIATE IMPACT:**
+          - Cannot flush chunks to storage (causing the NoSuchBucket errors)
+          - Cannot query historical logs
+          - Risk of data loss if ingesters restart
+          
+          **Action:**
+          1. Check MinIO pods: `kubectl get pods -n loki -l app.kubernetes.io/name=minio`
+          2. Check MinIO logs: `kubectl logs -n loki -l app.kubernetes.io/name=minio`
+          3. Verify PVC: `kubectl get pvc -n loki`
+          4. Check disk space on node
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/loki/loki-storage-issues.md"
+

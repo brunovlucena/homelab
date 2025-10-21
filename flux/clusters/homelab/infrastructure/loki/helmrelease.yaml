@@ -74,6 +74,12 @@ spec:
         - name: loki
           policy: none
           purge: false
+        - name: chunks
+          policy: none
+          purge: false
+        - name: ruler
+          policy: none
+          purge: false
       persistence:
         enabled: true
         storageClassName: local-path
