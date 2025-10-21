@@ -106,12 +106,3 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://kubernetes-sigs.github.io/headlamp/
----
-apiVersion: source.toolkit.fluxcd.io/v1beta2
-kind: HelmRepository
-metadata:
-  name: rabbitmq
-  namespace: flux-system
-spec:
-  interval: 1h0m0s
-  url: https://charts.rabbitmq.com

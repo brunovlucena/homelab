@@ -23,8 +23,8 @@ resources:
   - postgres
   - redis
   - mongodb
-  - rabbitmq-operator
-  - rabbitmq-cluster
+  # - rabbitmq-operator  # Disabled: charts.rabbitmq.com no longer exists
+  # - rabbitmq-cluster
   - k6-operator
   - headlamp
   # Applications

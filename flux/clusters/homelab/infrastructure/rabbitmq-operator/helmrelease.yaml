@@ -27,3 +27,4 @@ spec:
     # 🐰 RabbitMQ Cluster Operator - KISS Configuration
     useCertManager: false
 
+
