@@ -106,3 +106,39 @@ metadata:
 spec:
   interval: 1h0m0s
   url: https://kubernetes-sigs.github.io/headlamp/
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: rabbitmq
+  namespace: flux-system
+spec:
+  interval: 1h0m0s
+  url: https://charts.rabbitmq.com
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: mongodb
+  namespace: flux-system
+spec:
+  interval: 1h0m0s
+  url: https://mongodb.github.io/helm-charts
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: redis
+  namespace: flux-system
+spec:
+  interval: 1h0m0s
+  url: https://charts.redis.io
+---
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: postgres
+  namespace: flux-system
+spec:
+  interval: 1h0m0s
+  url: https://charts.postgresql.org
