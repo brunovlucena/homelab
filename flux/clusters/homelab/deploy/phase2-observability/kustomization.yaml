@@ -7,6 +7,7 @@ kind: Kustomization
 
 resources:
   - ../../infrastructure/cluster-issuers
+  - ../../infrastructure/cloudflare-tunnel-monitoring
   - ../../infrastructure/loki
   - ../../infrastructure/alloy
   - ../../infrastructure/tempo

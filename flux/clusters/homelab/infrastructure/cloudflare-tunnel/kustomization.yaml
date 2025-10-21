@@ -8,7 +8,7 @@ metadata:
 resources:
   - deployment.yaml
   - service.yaml
-  - prometheus-rule.yaml
-  - servicemonitor.yaml
-  # Temporarily disable canary-monitoring until Prometheus operator is ready
+  # Prometheus monitoring resources moved to phase 2 (after prometheus-operator CRDs are ready)
+  # - prometheus-rule.yaml
+  # - servicemonitor.yaml
   # - canary-monitoring.yaml
