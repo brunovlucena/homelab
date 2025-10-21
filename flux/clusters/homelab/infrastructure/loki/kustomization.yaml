@@ -9,4 +9,3 @@ resources:
   - namespace.yaml
   - secret.yaml
   - helmrelease.yaml
-  - prometheus-rule.yaml

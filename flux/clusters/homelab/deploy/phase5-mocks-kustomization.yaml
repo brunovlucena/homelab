@@ -1,0 +1,21 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: homelab-phase5-mocks
+  namespace: flux-system
+spec:
+  interval: 5m
+  timeout: 10m
+  retryInterval: 1m
+  path: ./flux/clusters/homelab/deploy/phase5-mocks
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+    namespace: flux-system
+  dependsOn:
+    - name: homelab-phase1-core
+    - name: homelab-phase2-prometheus
+

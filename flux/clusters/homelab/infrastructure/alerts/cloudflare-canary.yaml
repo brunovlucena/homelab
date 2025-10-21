@@ -95,7 +95,7 @@ spec:
       annotations:
         summary: "Multiple lucena.cloud endpoints are down"
         description: "{{ $value }} lucena.cloud endpoints are down. The site may be completely inaccessible."
-        runbook_url: "https://github.com/brunovlucena/home/blob/main/flux/clusters/studio/infrastructure/cloudflare-tunnel/README.md#troubleshooting"
+        runbook_url: "https://github.com/brunolucena/home/blob/main/flux/clusters/studio/infrastructure/cloudflare-tunnel/README.md#troubleshooting"
 
     # External Canary - Connectivity vs Tunnel Health Correlation
     - alert: LucenaCloudTunnelCorrelationAlert
@@ -111,62 +111,3 @@ spec:
         description: "External canary shows lucena.cloud is down AND Cloudflare tunnel is down. This indicates a tunnel connectivity issue rather than internet connectivity."
         runbook_url: "https://github.com/brunovlucena/home/blob/main/flux/clusters/studio/infrastructure/cloudflare-tunnel/README.md#troubleshooting"
 
----
-apiVersion: monitoring.coreos.com/v1
-kind: Probe
-metadata:
-  name: lucena-cloud-http
-  namespace: cloudflare-tunnel
-  labels:
-    app: kube-prometheus-stack
-    release: prometheus-operator
-    component: canary-monitoring
-spec:
-  jobName: lucena-cloud-http
-  prober:
-    url: http://lucena.cloud
-  targets:
-    staticConfig:
-      static:
-      - lucena.cloud
-  interval: 30s
-
----
-apiVersion: monitoring.coreos.com/v1
-kind: Probe
-metadata:
-  name: lucena-cloud-https
-  namespace: cloudflare-tunnel
-  labels:
-    app: kube-prometheus-stack
-    release: prometheus-operator
-    component: canary-monitoring
-spec:
-  jobName: lucena-cloud-https
-  prober:
-    url: https://lucena.cloud
-  targets:
-    staticConfig:
-      static:
-      - lucena.cloud
-  interval: 30s
-
----
-apiVersion: monitoring.coreos.com/v1
-kind: Probe
-metadata:
-  name: lucena-cloud-dns
-  namespace: cloudflare-tunnel
-  labels:
-    app: kube-prometheus-stack
-    release: prometheus-operator
-    component: canary-monitoring
-spec:
-  jobName: lucena-cloud-dns
-  prober:
-    url: dns://1.1.1.1:53
-  targets:
-    staticConfig:
-      static:
-      - lucena.cloud
-  interval: 30s

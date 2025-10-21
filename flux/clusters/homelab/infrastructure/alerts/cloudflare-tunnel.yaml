@@ -142,3 +142,4 @@ spec:
         summary: "Cloudflare Tunnel high latency detected"
         description: "Cloudflare Tunnel latency is {{ $value }}ms, which is above the 1000ms threshold."
         runbook_url: "https://github.com/brunovlucena/home/blob/main/flux/clusters/studio/infrastructure/cloudflare-tunnel/README.md#troubleshooting"
+

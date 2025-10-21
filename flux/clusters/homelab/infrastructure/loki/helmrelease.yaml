@@ -46,7 +46,7 @@ spec:
       nodeSelector:
         role: observability
     read:
-      replicas: 2
+      replicas: 1
       nodeSelector:
         role: observability
     write:

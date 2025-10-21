@@ -6,7 +6,6 @@ resources:
   - deployment.yaml
   - service.yaml
   - servicemonitor.yaml
-  - prometheus-rule.yaml
 
 commonLabels:
   app.kubernetes.io/name: statuspage-exporter

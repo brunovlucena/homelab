@@ -7,5 +7,10 @@ metadata:
 
 resources:
   - infrastructure.yaml
+  - lancedb.yaml
+  - loki.yaml
+  - statuspage-exporter.yaml
+  - cloudflare-tunnel.yaml
+  - cloudflare-canary.yaml
   # - mocks-services.yaml
   # - mocks.yaml
