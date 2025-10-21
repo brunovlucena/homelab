@@ -1,0 +1,132 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: tempo-alerts
+  namespace: tempo
+  labels:
+    app.kubernetes.io/name: tempo
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: homelab
+    prometheus: kube-prometheus
+    release: prometheus-operator
+spec:
+  groups:
+  # =============================================================================
+  # 🚨 TEMPO HELMRELEASE MONITORING
+  # =============================================================================
+  - name: tempo.helmrelease
+    interval: 30s
+    rules:
+    # 🔴 CRITICAL: Tempo HelmRelease in failed state
+    - alert: TempoHelmReleaseFailed
+      expr: |
+        (
+          kube_helmrelease_status_condition{name="tempo", namespace="tempo", type="Ready", status="False"} == 1
+          and
+          kube_helmrelease_status_condition{name="tempo", namespace="tempo", type="Ready", reason="Failed"} == 1
+        )
+        or
+        (
+          kube_helmrelease_status_condition{name="tempo", namespace="tempo", type="Reconciling", status="False"} == 1
+          and
+          kube_helmrelease_status_condition{name="tempo", namespace="tempo", type="Reconciling", reason="Failed"} == 1
+        )
+      for: 2m
+      labels:
+        severity: critical
+        component: tempo
+        category: helmrelease
+        team: sre
+        service: observability
+      annotations:
+        summary: "🔴 CRITICAL: Tempo HelmRelease is in failed state"
+        description: |
+          Tempo HelmRelease has been in a failed state for more than 2 minutes.
+          
+          **Error Details:**
+          - Release: {{ $labels.name }}
+          - Namespace: {{ $labels.namespace }}
+          - Status: {{ $labels.status }}
+          - Reason: {{ $labels.reason }}
+          
+          **Common Causes:**
+          - "terminal error: exceeded maximum retries: cannot remediate failed release"
+          - "uninstall: Failed to purge the release: release: not found"
+          - Resource conflicts or dependency issues
+          - Storage/PVC problems
+          - Node scheduling issues
+          
+          **Impact:**
+          - Tempo distributed tracing is unavailable
+          - Observability stack is incomplete
+          - Application traces cannot be collected
+          
+          **Action Required:**
+          1. Check HelmRelease status: `kubectl describe helmrelease tempo -n tempo`
+          2. Check Tempo pods: `kubectl get pods -n tempo`
+          3. Review Flux logs: `kubectl logs -n flux-system -l app=flux`
+          4. Check for resource conflicts or storage issues
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/tempo/tempo-helmrelease-failed.md"
+        dashboard_url: "https://grafana.bruno.com/d/tempo-overview"
+    
+    # 🟡 WARNING: Tempo HelmRelease stuck in reconciling
+    - alert: TempoHelmReleaseStuckReconciling
+      expr: |
+        kube_helmrelease_status_condition{name="tempo", namespace="tempo", type="Reconciling", status="True"} == 1
+        and
+        kube_helmrelease_status_condition{name="tempo", namespace="tempo", type="Ready", status="False"} == 1
+      for: 10m
+      labels:
+        severity: warning
+        component: tempo
+        category: helmrelease
+        team: sre
+        service: observability
+      annotations:
+        summary: "⚠️ Tempo HelmRelease stuck in reconciling state"
+        description: |
+          Tempo HelmRelease has been reconciling for more than 10 minutes without becoming ready.
+          
+          **Possible Causes:**
+          - Slow resource provisioning
+          - Image pull issues
+          - Resource constraints
+          - Network connectivity problems
+          
+          **Action:**
+          - Monitor for progression to failed state
+          - Check resource availability
+          - Review pod events and logs
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/tempo/tempo-helmrelease-stuck.md"
+    
+    # 🔴 CRITICAL: Tempo pods not running
+    - alert: TempoPodsNotRunning
+      expr: |
+        kube_pod_status_phase{namespace="tempo", pod=~"tempo-.*", phase!="Running"} == 1
+        or
+        up{job="tempo", namespace="tempo"} == 0
+      for: 3m
+      labels:
+        severity: critical
+        component: tempo
+        category: availability
+        team: sre
+        service: observability
+      annotations:
+        summary: "🔴 CRITICAL: Tempo pods are not running"
+        description: |
+          Tempo pods are not in Running state or not responding to health checks.
+          
+          **Impact:**
+          - Distributed tracing is completely unavailable
+          - Applications cannot send traces
+          - Observability stack is broken
+          
+          **Action:**
+          1. Check pod status: `kubectl get pods -n tempo`
+          2. Check pod events: `kubectl describe pod -n tempo <pod-name>`
+          3. Check pod logs: `kubectl logs -n tempo <pod-name>`
+          4. Verify resource constraints and node capacity
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/tempo/tempo-pods-down.md"
+

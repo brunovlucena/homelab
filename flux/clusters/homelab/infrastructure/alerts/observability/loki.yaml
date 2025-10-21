@@ -184,3 +184,127 @@ spec:
           4. Check disk space on node
         runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/loki/loki-storage-issues.md"
 
+  # =============================================================================
+  # 📝 LOKI UPGRADE & HELMRELEASE MONITORING
+  # =============================================================================
+  - name: loki.upgrades
+    interval: 30s
+    rules:
+    # 🟡 WARNING: Loki frequent upgrades detected
+    - alert: LokiFrequentUpgrades
+      expr: |
+        rate(kube_helmrelease_status_condition{name="loki", namespace="loki", type="Reconciling", status="True"}[10m]) > 0.1
+        or
+        increase(kube_helmrelease_status_condition{name="loki", namespace="loki", type="Reconciling", status="True"}[1h]) > 3
+      for: 5m
+      labels:
+        severity: warning
+        component: loki
+        category: helmrelease
+        team: sre
+        service: observability
+      annotations:
+        summary: "⚠️ Loki experiencing frequent upgrades"
+        description: |
+          Loki HelmRelease is being upgraded more frequently than expected.
+          
+          **Current State:**
+          - Upgrade rate: {{ $value | humanize }} upgrades/minute
+          - Recent upgrades: {{ $value }} in the last hour
+          
+          **Common Causes:**
+          - Configuration value changes being detected repeatedly
+          - Secret value changes (MinIO credentials)
+          - Resource constraint changes
+          - Node selector changes
+          - Storage configuration updates
+          
+          **Impact:**
+          - Potential service disruption during upgrades
+          - Increased resource usage
+          - Log ingestion may be temporarily unavailable
+          
+          **Action Required:**
+          1. Check HelmRelease status: `kubectl describe helmrelease loki -n loki`
+          2. Review recent changes: `kubectl get events -n loki --sort-by='.lastTimestamp'`
+          3. Check for configuration drift: Compare current values with desired state
+          4. Monitor for pattern in upgrade triggers
+          5. Consider stabilizing configuration values
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/loki/loki-frequent-upgrades.md"
+        dashboard_url: "https://grafana.bruno.com/d/loki-overview"
+    
+    # 🔴 CRITICAL: Loki upgrade failures
+    - alert: LokiUpgradeFailures
+      expr: |
+        kube_helmrelease_status_condition{name="loki", namespace="loki", type="Ready", status="False"} == 1
+        and
+        kube_helmrelease_status_condition{name="loki", namespace="loki", type="Ready", reason="Failed"} == 1
+      for: 3m
+      labels:
+        severity: critical
+        component: loki
+        category: helmrelease
+        team: sre
+        service: observability
+      annotations:
+        summary: "🔴 CRITICAL: Loki upgrade has failed"
+        description: |
+          Loki HelmRelease upgrade has failed and is in a failed state.
+          
+          **Error Details:**
+          - Release: {{ $labels.name }}
+          - Namespace: {{ $labels.namespace }}
+          - Status: {{ $labels.status }}
+          - Reason: {{ $labels.reason }}
+          
+          **Common Causes:**
+          - Storage configuration issues (MinIO connectivity)
+          - Resource constraints during upgrade
+          - Configuration validation failures
+          - Dependency issues
+          
+          **Impact:**
+          - Log aggregation is unavailable
+          - Observability stack is incomplete
+          - Applications cannot send logs
+          
+          **Action Required:**
+          1. Check HelmRelease status: `kubectl describe helmrelease loki -n loki`
+          2. Check Loki pods: `kubectl get pods -n loki`
+          3. Review upgrade logs: `kubectl logs -n flux-system -l app=flux`
+          4. Check MinIO connectivity: `kubectl get pods -n loki -l app.kubernetes.io/name=minio`
+          5. Verify storage configuration and credentials
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/loki/loki-upgrade-failed.md"
+        dashboard_url: "https://grafana.bruno.com/d/loki-overview"
+    
+    # 🟡 WARNING: Loki configuration drift detected
+    - alert: LokiConfigurationDrift
+      expr: |
+        kube_helmrelease_status_condition{name="loki", namespace="loki", type="Reconciling", status="True"} == 1
+        and
+        kube_helmrelease_status_condition{name="loki", namespace="loki", type="Ready", status="False"} == 1
+      for: 15m
+      labels:
+        severity: warning
+        component: loki
+        category: configuration
+        team: sre
+        service: observability
+      annotations:
+        summary: "⚠️ Loki configuration drift detected"
+        description: |
+          Loki HelmRelease has been reconciling for more than 15 minutes, indicating potential configuration drift.
+          
+          **Possible Causes:**
+          - Configuration values are changing repeatedly
+          - Secret values are being updated frequently
+          - Resource constraints are causing reconciliation loops
+          - Node scheduling issues
+          
+          **Action:**
+          1. Check for configuration changes: `kubectl get helmrelease loki -n loki -o yaml`
+          2. Review recent events: `kubectl get events -n loki --sort-by='.lastTimestamp'`
+          3. Check for resource constraints
+          4. Monitor for pattern in reconciliation triggers
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/loki/loki-configuration-drift.md"
+

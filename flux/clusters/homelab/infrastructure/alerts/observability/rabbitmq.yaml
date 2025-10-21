@@ -1,0 +1,130 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: rabbitmq-operator-alerts
+  namespace: rabbitmq-operator
+  labels:
+    app.kubernetes.io/name: rabbitmq-operator
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: homelab
+    prometheus: kube-prometheus
+    release: prometheus-operator
+spec:
+  groups:
+  # =============================================================================
+  # 🐰 RABBITMQ OPERATOR MONITORING
+  # =============================================================================
+  - name: rabbitmq.operator
+    interval: 30s
+    rules:
+    # 🔴 CRITICAL: RabbitMQ operator HelmRelease failed
+    - alert: RabbitMQOperatorHelmReleaseFailed
+      expr: |
+        (
+          kube_helmrelease_status_condition{name="rabbitmq-operator", namespace="rabbitmq-operator", type="Ready", status="False"} == 1
+          and
+          kube_helmrelease_status_condition{name="rabbitmq-operator", namespace="rabbitmq-operator", type="Ready", reason="Failed"} == 1
+        )
+        or
+        (
+          kube_helmrelease_status_condition{name="rabbitmq-operator", namespace="rabbitmq-operator", type="Reconciling", status="False"} == 1
+          and
+          kube_helmrelease_status_condition{name="rabbitmq-operator", namespace="rabbitmq-operator", type="Reconciling", reason="Failed"} == 1
+        )
+      for: 2m
+      labels:
+        severity: critical
+        component: rabbitmq-operator
+        category: helmrelease
+        team: sre
+        service: messaging
+      annotations:
+        summary: "🔴 CRITICAL: RabbitMQ operator HelmRelease failed"
+        description: |
+          RabbitMQ operator HelmRelease has failed to install or is in a failed state.
+          
+          **Error Details:**
+          - Release: {{ $labels.name }}
+          - Namespace: {{ $labels.namespace }}
+          - Status: {{ $labels.status }}
+          - Reason: {{ $labels.reason }}
+          
+          **Common Causes:**
+          - "release not installed: no release in storage for object"
+          - "terminal error: exceeded maximum retries: cannot install release"
+          - CRD installation failures
+          - Resource conflicts with existing installations
+          - Insufficient permissions
+          
+          **Impact:**
+          - RabbitMQ clusters cannot be managed
+          - Message queuing infrastructure unavailable
+          - Event-driven applications affected
+          
+          **Action Required:**
+          1. Check HelmRelease status: `kubectl describe helmrelease rabbitmq-operator -n rabbitmq-operator`
+          2. Check operator pods: `kubectl get pods -n rabbitmq-operator`
+          3. Review CRD installation: `kubectl get crd | grep rabbitmq`
+          4. Check for resource conflicts: `kubectl get all -n rabbitmq-operator`
+          5. Review Flux logs: `kubectl logs -n flux-system -l app=flux`
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/rabbitmq/rabbitmq-operator-failed.md"
+        dashboard_url: "https://grafana.bruno.com/d/rabbitmq-overview"
+    
+    # 🟡 WARNING: RabbitMQ operator pods not ready
+    - alert: RabbitMQOperatorPodsNotReady
+      expr: |
+        kube_pod_status_phase{namespace="rabbitmq-operator", pod=~"rabbitmq-cluster-operator-.*", phase!="Running"} == 1
+        or
+        kube_pod_status_ready{namespace="rabbitmq-operator", pod=~"rabbitmq-cluster-operator-.*", condition="Ready"} == 0
+      for: 5m
+      labels:
+        severity: warning
+        component: rabbitmq-operator
+        category: availability
+        team: sre
+        service: messaging
+      annotations:
+        summary: "⚠️ RabbitMQ operator pods not ready"
+        description: |
+          RabbitMQ operator pods are not in Running state or not ready.
+          
+          **Impact:**
+          - RabbitMQ cluster management unavailable
+          - New RabbitMQ clusters cannot be created
+          - Existing clusters may not be properly managed
+          
+          **Action:**
+          1. Check pod status: `kubectl get pods -n rabbitmq-operator`
+          2. Check pod events: `kubectl describe pod -n rabbitmq-operator <pod-name>`
+          3. Check pod logs: `kubectl logs -n rabbitmq-operator <pod-name>`
+          4. Verify resource constraints
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/rabbitmq/rabbitmq-operator-pods-not-ready.md"
+    
+    # 🔴 CRITICAL: RabbitMQ operator completely down
+    - alert: RabbitMQOperatorDown
+      expr: up{job="rabbitmq-operator", namespace="rabbitmq-operator"} == 0
+      for: 3m
+      labels:
+        severity: critical
+        component: rabbitmq-operator
+        category: availability
+        team: sre
+        service: messaging
+      annotations:
+        summary: "🔴 CRITICAL: RabbitMQ operator is down"
+        description: |
+          RabbitMQ operator is not responding to health checks.
+          
+          **Impact:**
+          - Complete loss of RabbitMQ cluster management
+          - Cannot create or manage RabbitMQ clusters
+          - Event-driven architecture is broken
+          
+          **Action:**
+          1. Check operator deployment: `kubectl get deployment -n rabbitmq-operator`
+          2. Check operator logs: `kubectl logs -n rabbitmq-operator -l app.kubernetes.io/name=rabbitmq-cluster-operator`
+          3. Verify operator configuration
+          4. Check for resource constraints or node issues
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/rabbitmq/rabbitmq-operator-down.md"
+

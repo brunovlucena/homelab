@@ -1,0 +1,50 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: flux-alerts
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/name: flux
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: homelab
+    prometheus: kube-prometheus
+    release: prometheus-operator
+spec:
+  groups:
+  # =============================================================================
+  # 🔧 FLUX GITOPS MONITORING
+  # =============================================================================
+  - name: flux.gitops
+    interval: 30s
+    rules:
+    # 🔴 CRITICAL: Flux controller issues
+    - alert: FluxControllerIssues
+      expr: |
+        up{job="flux-controller", namespace="flux-system"} == 0
+        or
+        kube_pod_status_phase{namespace="flux-system", pod=~"flux-.*", phase!="Running"} == 1
+      for: 2m
+      labels:
+        severity: critical
+        component: flux
+        category: gitops
+        team: sre
+        service: platform
+      annotations:
+        summary: "🔴 CRITICAL: Flux controller issues detected"
+        description: |
+          Flux GitOps controller is not responding or pods are not running.
+          
+          **Impact:**
+          - GitOps deployments may be stalled
+          - Infrastructure components may not be updated
+          - Manual intervention may be required
+          
+          **Action:**
+          1. Check Flux pods: `kubectl get pods -n flux-system`
+          2. Check Flux logs: `kubectl logs -n flux-system -l app=flux`
+          3. Verify Git repository connectivity
+          4. Check for resource constraints
+        runbook_url: "https://github.com/brunolucena/homelab/blob/main/runbooks/flux/flux-controller-issues.md"
+
