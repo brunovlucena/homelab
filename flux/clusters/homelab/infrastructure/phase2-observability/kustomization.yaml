@@ -1,0 +1,12 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Phase 2: Observability Stack
+# Deploy Prometheus Operator and observability components that depend on its CRDs
+
+resources:
+  - ../loki
+  - ../alloy
+  - ../tempo
+  - ../prometheus-pushgateway

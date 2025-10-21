@@ -1,44 +1,8 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# This kustomization deploys all infrastructure components EXCEPT:
-# - repositories (deployed in phase1-core)
-# - prometheus-operator (deployed in phase2-prometheus)
-# - knative-operator (deployed in phase3-knative)
-# Those are deployed separately to ensure CRDs are available before dependent components
-
 resources:
-  # Core infrastructure (CRDs from prometheus-operator are now available)
-  - cert-manager
-  - metrics-server
-  - minio
-  - loki
-  - alloy
-  - tempo
-  - prometheus-operator
-  - prometheus-pushgateway
-  # Application infrastructure (Knative CRDs are now available)
-  - knative-serving
-  - knative-eventing
-  - postgres
-  - redis
-  - mongodb
-  # - rabbitmq-operator  # Disabled: charts.rabbitmq.com no longer exists
-  # - rabbitmq-cluster
-  - lancedb
-  - k6-operator
-  - headlamp
-  # Applications
-  - homepage
-  # Agent-specific components
-  - cloudflare-tunnel
-  - agent-bruno
-  # - agent-sre
-  # - agent-jamie
-  # Monitoring and alerts
-  - alerts
-  # Other components
-  # - falco-operator
-
-
-  # NOTE: main.go is controlling it
+  - phase1-core
+  - phase2-observability
+  - phase3-serverless
+  - phase4-apps

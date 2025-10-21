@@ -79,7 +79,7 @@ func main() {
 		}
 
 		// 📦 Apply GitRepository using Pulumi Kubernetes with Server-Side Apply
-		_, err = apiextensions.NewCustomResource(ctx, "homelab-gitrepo", &apiextensions.CustomResourceArgs{
+		gitRepo, err := apiextensions.NewCustomResource(ctx, "homelab-gitrepo", &apiextensions.CustomResourceArgs{
 			ApiVersion: pulumi.String("source.toolkit.fluxcd.io/v1"),
 			Kind:       pulumi.String("GitRepository"),
 			Metadata: &metav1.ObjectMetaArgs{
@@ -103,13 +103,13 @@ func main() {
 			return err
 		}
 
-		// 📋 Phase 1: Deploy Core Infrastructure (CRD providers and repositories)
-		// This must be deployed first to install CRDs needed by subsequent phases
-		phase1Kustomization, err := apiextensions.NewCustomResource(ctx, "homelab-phase1-kustomization", &apiextensions.CustomResourceArgs{
+		// 📋 Create root Kustomization - Flux will manage the phases
+		// The phase definitions are in flux/clusters/{cluster}/flux-kustomizations/
+		_, err = apiextensions.NewCustomResource(ctx, "homelab-root-kustomization", &apiextensions.CustomResourceArgs{
 			ApiVersion: pulumi.String("kustomize.toolkit.fluxcd.io/v1"),
 			Kind:       pulumi.String("Kustomization"),
 			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String("homelab-phase1-core"),
+				Name:      pulumi.String("homelab-root"),
 				Namespace: pulumi.String("flux-system"),
 			},
 			OtherFields: kubernetes.UntypedArgs{
@@ -119,102 +119,12 @@ func main() {
 						"kind": pulumi.String("GitRepository"),
 						"name": pulumi.String("homelab"),
 					},
-					"path":  pulumi.String(fmt.Sprintf("./flux/clusters/%s/infrastructure/repositories", clusterName)),
+					"path":  pulumi.String(fmt.Sprintf("./flux/clusters/%s/flux-kustomizations", clusterName)),
 					"prune": pulumi.Bool(true),
-					"wait":  pulumi.Bool(true),
+					"wait":  pulumi.Bool(false), // Don't wait for all phases to complete
 				},
 			},
-		}, pulumi.Provider(k8sProvider), pulumi.DependsOn([]pulumi.Resource{installFlux}))
-		if err != nil {
-			return err
-		}
-
-		// 📋 Phase 2: Deploy Prometheus Operator (provides CRDs)
-		phase2Kustomization, err := apiextensions.NewCustomResource(ctx, "homelab-phase2-kustomization", &apiextensions.CustomResourceArgs{
-			ApiVersion: pulumi.String("kustomize.toolkit.fluxcd.io/v1"),
-			Kind:       pulumi.String("Kustomization"),
-			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String("homelab-phase2-prometheus"),
-				Namespace: pulumi.String("flux-system"),
-			},
-			OtherFields: kubernetes.UntypedArgs{
-				"spec": pulumi.Map{
-					"interval": pulumi.String("10m"),
-					"sourceRef": pulumi.Map{
-						"kind": pulumi.String("GitRepository"),
-						"name": pulumi.String("homelab"),
-					},
-					"path":  pulumi.String(fmt.Sprintf("./flux/clusters/%s/infrastructure/prometheus-operator", clusterName)),
-					"prune": pulumi.Bool(true),
-					"wait":  pulumi.Bool(true),
-					"dependsOn": pulumi.Array{
-						pulumi.Map{
-							"name": pulumi.String("homelab-phase1-core"),
-						},
-					},
-				},
-			},
-		}, pulumi.Provider(k8sProvider), pulumi.DependsOn([]pulumi.Resource{phase1Kustomization}))
-		if err != nil {
-			return err
-		}
-
-		// 📋 Phase 3: Deploy Knative Operator (provides Knative CRDs)
-		phase3Kustomization, err := apiextensions.NewCustomResource(ctx, "homelab-phase3-kustomization", &apiextensions.CustomResourceArgs{
-			ApiVersion: pulumi.String("kustomize.toolkit.fluxcd.io/v1"),
-			Kind:       pulumi.String("Kustomization"),
-			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String("homelab-phase3-knative"),
-				Namespace: pulumi.String("flux-system"),
-			},
-			OtherFields: kubernetes.UntypedArgs{
-				"spec": pulumi.Map{
-					"interval": pulumi.String("10m"),
-					"sourceRef": pulumi.Map{
-						"kind": pulumi.String("GitRepository"),
-						"name": pulumi.String("homelab"),
-					},
-					"path":  pulumi.String(fmt.Sprintf("./flux/clusters/%s/infrastructure/knative-operator", clusterName)),
-					"prune": pulumi.Bool(true),
-					"wait":  pulumi.Bool(true),
-					"dependsOn": pulumi.Array{
-						pulumi.Map{
-							"name": pulumi.String("homelab-phase2-prometheus"),
-						},
-					},
-				},
-			},
-		}, pulumi.Provider(k8sProvider), pulumi.DependsOn([]pulumi.Resource{phase2Kustomization}))
-		if err != nil {
-			return err
-		}
-
-		// 📋 Phase 4: Deploy Everything Else (depends on all CRDs being available)
-		_, err = apiextensions.NewCustomResource(ctx, "homelab-phase4-kustomization", &apiextensions.CustomResourceArgs{
-			ApiVersion: pulumi.String("kustomize.toolkit.fluxcd.io/v1"),
-			Kind:       pulumi.String("Kustomization"),
-			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String("homelab-phase4-apps"),
-				Namespace: pulumi.String("flux-system"),
-			},
-			OtherFields: kubernetes.UntypedArgs{
-				"spec": pulumi.Map{
-					"interval": pulumi.String("10m"),
-					"sourceRef": pulumi.Map{
-						"kind": pulumi.String("GitRepository"),
-						"name": pulumi.String("homelab"),
-					},
-					"path":  pulumi.String(fmt.Sprintf("./flux/clusters/%s/infrastructure", clusterName)),
-					"prune": pulumi.Bool(true),
-					"wait":  pulumi.Bool(true),
-					"dependsOn": pulumi.Array{
-						pulumi.Map{
-							"name": pulumi.String("homelab-phase3-knative"),
-						},
-					},
-				},
-			},
-		}, pulumi.Provider(k8sProvider), pulumi.DependsOn([]pulumi.Resource{phase3Kustomization}))
+		}, pulumi.Provider(k8sProvider), pulumi.DependsOn([]pulumi.Resource{gitRepo}))
 		if err != nil {
 			return err
 		}
@@ -224,7 +134,7 @@ func main() {
 		ctx.Export("fluxInstalled", pulumi.String("installed"))
 		ctx.Export("linkerdInstalled", pulumi.String("installed"))
 		ctx.Export("linkerdVizInstalled", pulumi.String("installed"))
-		ctx.Export("fluxKustomizationApplied", pulumi.String("applied"))
+		ctx.Export("fluxRootKustomization", pulumi.String("applied"))
 
 		return nil
 	})
