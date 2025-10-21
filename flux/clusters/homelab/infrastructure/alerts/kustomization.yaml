@@ -7,5 +7,5 @@ metadata:
 
 resources:
   - infrastructure.yaml
-  - mocks-services.yaml
-  - mocks.yaml
+  # - mocks-services.yaml
+  # - mocks.yaml
