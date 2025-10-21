@@ -24,7 +24,7 @@ resources:
   - redis
   - mongodb
   - rabbitmq-operator
-  # - rabbitmq-cluster  # TODO: Enable after rabbitmq-operator CRDs are installed
+  - rabbitmq-cluster
   - k6-operator
   - headlamp
   # Applications
@@ -36,3 +36,6 @@ resources:
   # - agent-jamie
   # Other components
   # - falco-operator
+
+
+  # NOTE: main.go is controlling it
