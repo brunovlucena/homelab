@@ -5,5 +5,5 @@ namespace: rabbitmq-operator
 
 resources:
   - namespace.yaml
-  - manifest.yaml
+  - helmrelease.yaml
 

@@ -25,6 +25,7 @@ resources:
   - mongodb
   # - rabbitmq-operator  # Disabled: charts.rabbitmq.com no longer exists
   # - rabbitmq-cluster
+  - lancedb
   - k6-operator
   - headlamp
   # Applications
