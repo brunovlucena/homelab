@@ -15,11 +15,6 @@ spec:
         kind: HelmRepository
         name: grafana
         namespace: flux-system
-  valuesFrom:
-    - kind: Secret
-      name: loki-minio-secret
-      valuesKey: root-password
-      targetPath: storage.s3.secret_access_key
   values:
     auth_enabled: false
     storage:
