@@ -147,15 +147,18 @@ homelab/
 │   ├── 📄 Pulumi.yaml                   # ⚙️  Pulumi configuration
 │   ├── 📄 go.mod                        # 📦 Go dependencies
 │   └── 📄 go.sum                        # 🔒 Go checksums
-├── 📁 scripts/                          # 🔧 Installation scripts
-│   ├── 📄 install-linkerd.sh           # Linkerd installation
-│   └── 📄 install-linkerd-viz.sh       # Linkerd Viz installation
+├── 📁 scripts/                          # 🔧 Bootstrap & utility scripts
+│   ├── 📄 create-kind-cluster.sh       # Kind cluster creation
+│   ├── 📄 create-secrets.sh            # Kubernetes secrets setup
+│   └── 📄 install-*.sh                 # Legacy installation scripts (optional)
 └── 📁 flux/                             # 🔄 GitOps configuration
     └── 📁 clusters/                     # 🎯 Cluster-specific configs
         └── 📁 homelab/                  # 🏠 Homelab cluster
             ├── 📄 kind.yaml             # 🐳 Multi-node Kind config
             ├── 📄 kustomization.yaml
             └── 📁 infrastructure/       # 🏗️  K8s applications
+                ├── 📁 flux-bootstrap/   # 🔄 Flux self-installation
+                ├── 📁 linkerd/          # 🔗 Linkerd via GitOps Jobs
                 ├── 📁 agent-bruno/      # 🤖 Bruno AI assistant
                 ├── 📁 agent-jamie/      # 💬 Jamie Slack bot
                 ├── 📁 agent-sre/        # 🚨 SRE automation agent
@@ -242,9 +245,9 @@ make up
 
 This single command will:
 - ✅ Create a multi-node Kind cluster with specialized workers
-- ✅ Install Flux GitOps controllers
+- ✅ Install Flux GitOps controllers via Job-based bootstrap
 - ✅ **Automatically create all Kubernetes secrets** (via `scripts/create-secrets.sh`)
-- ✅ Install Linkerd service mesh + Viz
+- ✅ Install Linkerd service mesh + Viz via GitOps Jobs
 - ✅ Deploy all infrastructure components via Kustomize
 - ✅ Set up observability stack (Prometheus, Grafana, Loki, Tempo)
 - ✅ Deploy AI agents (Bruno, Jamie, SRE)
@@ -298,10 +301,17 @@ This single command will:
   - **AI Worker**: Dedicated node for AI agents (ports 30120-30124)
   - **Serverless Worker**: Knative workloads (ports 30130-30132)
   - **Observability Workers (x2)**: Monitoring stack (ports 30040-30053)
-- **Flux GitOps**: Automated deployment and reconciliation
-- **Linkerd Service Mesh**: Zero-trust networking, mTLS, observability
+- **Flux GitOps**: Automated deployment and reconciliation via Job-based bootstrap
+- **Linkerd Service Mesh**: Zero-trust networking, mTLS, observability (installed via GitOps Jobs)
 - **Cert Manager**: Automatic SSL/TLS certificate provisioning
 - **Metrics Server**: Kubernetes resource metrics API
+
+**🚀 GitOps-First Approach:**
+Both Flux and Linkerd are installed using Kubernetes Jobs that run their respective CLIs. This ensures:
+- ✅ Fully declarative and version-controlled
+- ✅ No blocking Pulumi operations (runs asynchronously)
+- ✅ Idempotent and reliable installation
+- ✅ Easy version updates via image tags
 
 ### 🤖 AI & Automation Agents
 

@@ -11,5 +11,6 @@ resources:
   - ../../infrastructure/headlamp
   - ../../infrastructure/cert-manager
   - ../../infrastructure/metrics-server
+  - ../../infrastructure/linkerd
   - ../../infrastructure/cloudflare-tunnel
   - ../../infrastructure/alerts/core

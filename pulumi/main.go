@@ -43,10 +43,26 @@ func main() {
 			return err
 		}
 
-		// 🔧 Install Flux
+		// 🔧 Install Flux via GitOps Job
+		// Apply flux-bootstrap manifests directly using kubectl
 		installFlux, err := local.NewCommand(ctx, "install-flux", &local.CommandArgs{
-			Create: pulumi.String(fmt.Sprintf(`cd ../scripts && ./install-flux.sh %s`, clusterName)),
+			Create: pulumi.String(fmt.Sprintf(
+				`cd .. && kubectl apply -k flux/clusters/%s/infrastructure/flux-bootstrap --context kind-%s`,
+				clusterName, clusterName)),
+			Update: pulumi.String(fmt.Sprintf(
+				`cd .. && kubectl apply -k flux/clusters/%s/infrastructure/flux-bootstrap --context kind-%s`,
+				clusterName, clusterName)),
 		}, pulumi.DependsOn([]pulumi.Resource{createCluster}))
+		if err != nil {
+			return err
+		}
+
+		// ⏳ Wait for flux-install Job to complete
+		waitForFluxJob, err := local.NewCommand(ctx, "wait-for-flux-job", &local.CommandArgs{
+			Create: pulumi.String(fmt.Sprintf(
+				`kubectl wait --for=condition=complete --timeout=300s job/flux-install -n flux-system --context kind-%s`,
+				clusterName)),
+		}, pulumi.DependsOn([]pulumi.Resource{installFlux}))
 		if err != nil {
 			return err
 		}
@@ -54,29 +70,38 @@ func main() {
 		// 🔐 Create secrets
 		createSecrets, err := local.NewCommand(ctx, "create-secrets", &local.CommandArgs{
 			Create: pulumi.String(`cd ../scripts && ./create-secrets.sh`),
-		}, pulumi.DependsOn([]pulumi.Resource{installFlux}))
+		}, pulumi.DependsOn([]pulumi.Resource{waitForFluxJob}))
 		if err != nil {
 			return err
 		}
 
-		// 🔗 Install Linkerd
-		installLinkerd, err := local.NewCommand(ctx, "install-linkerd", &local.CommandArgs{
-			Create: pulumi.String(fmt.Sprintf(`cd ../scripts && ./install-linkerd.sh %s`, clusterName)),
-		}, pulumi.DependsOn([]pulumi.Resource{createSecrets}))
-		if err != nil {
-			return err
-		}
+		// 🔗 Linkerd is now managed by Flux via Jobs (see infrastructure/linkerd)
+		// ✅ Flux is now also self-managed via Jobs (see infrastructure/flux-bootstrap)
+		// No need to install via scripts - everything is GitOps!
 
-		// 📊 Install Linkerd Viz
-		_, err = local.NewCommand(ctx, "install-linkerd-viz", &local.CommandArgs{
-			Create: pulumi.String(fmt.Sprintf(`cd ../scripts && ./install-linkerd-viz.sh %s`, clusterName)),
-		}, pulumi.DependsOn([]pulumi.Resource{installLinkerd}))
+		// 📚 Create GitRepository first (this was previously only in git.yaml causing chicken-egg problem)
+		gitRepo, err := apiextensions.NewCustomResource(ctx, "homelab-gitrepository", &apiextensions.CustomResourceArgs{
+			ApiVersion: pulumi.String("source.toolkit.fluxcd.io/v1beta2"),
+			Kind:       pulumi.String("GitRepository"),
+			Metadata: &metav1.ObjectMetaArgs{
+				Name:      pulumi.String("homelab"),
+				Namespace: pulumi.String("flux-system"),
+			},
+			OtherFields: kubernetes.UntypedArgs{
+				"spec": pulumi.Map{
+					"interval": pulumi.String("1m0s"),
+					"url":      pulumi.String("https://github.com/brunovlucena/homelab.git"),
+					"ref": pulumi.Map{
+						"branch": pulumi.String("main"),
+					},
+				},
+			},
+		}, pulumi.Provider(k8sProvider), pulumi.DependsOn([]pulumi.Resource{createSecrets}))
 		if err != nil {
 			return err
 		}
 
 		// 📋 Create root Kustomization - applies kustomization.yaml which includes all phase Kustomizations
-		// Note: GitRepository is managed by Flux via git.yaml in the repository
 		_, err = apiextensions.NewCustomResource(ctx, "homelab-root-kustomization", &apiextensions.CustomResourceArgs{
 			ApiVersion: pulumi.String("kustomize.toolkit.fluxcd.io/v1"),
 			Kind:       pulumi.String("Kustomization"),
@@ -96,17 +121,16 @@ func main() {
 					"wait":  pulumi.Bool(false), // Don't wait for all phases to complete
 				},
 			},
-		}, pulumi.Provider(k8sProvider), pulumi.DependsOn([]pulumi.Resource{installFlux}))
+		}, pulumi.Provider(k8sProvider), pulumi.DependsOn([]pulumi.Resource{gitRepo}))
 		if err != nil {
 			return err
 		}
 
 		// Export outputs
 		ctx.Export("clusterName", pulumi.String(clusterName))
-		ctx.Export("fluxInstalled", pulumi.String("installed"))
-		ctx.Export("linkerdInstalled", pulumi.String("installed"))
-		ctx.Export("linkerdVizInstalled", pulumi.String("installed"))
+		ctx.Export("fluxInstalled", pulumi.String("gitops-job"))
 		ctx.Export("fluxRootKustomization", pulumi.String("applied"))
+		ctx.Export("installation", pulumi.String("All components managed via Flux GitOps jobs"))
 
 		return nil
 	})

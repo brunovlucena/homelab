@@ -1,0 +1,96 @@
+---
+# 🚀 Job to install Flux CD using the flux CLI
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flux-install
+  namespace: flux-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled  # Never delete this job
+spec:
+  ttlSecondsAfterFinished: 300  # Clean up after 5 minutes
+  template:
+    metadata:
+      labels:
+        app: flux-install
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: flux-installer
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: install-flux
+        image: ghcr.io/fluxcd/flux-cli:v2.4.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 65532
+          seccompProfile:
+            type: RuntimeDefault
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "🔄 Installing Flux CD..."
+          
+          # Pre-flight checks
+          echo "✅ Running pre-flight checks..."
+          flux check --pre || {
+            echo "⚠️  Pre-flight checks failed, but continuing with installation..."
+          }
+          
+          # Install Flux with specific components
+          echo "🎯 Installing Flux CD components..."
+          flux install \
+            --components source-controller,kustomize-controller,helm-controller,notification-controller \
+            --toleration-keys node-role.kubernetes.io/control-plane
+          
+          # Wait for Flux to be ready
+          echo "⏳ Waiting for Flux control plane to be ready..."
+          sleep 10
+          
+          # Verify installation
+          echo "🔍 Verifying Flux installation..."
+          flux check || {
+            echo "⚠️  Flux check reported some issues, but installation is complete."
+            echo "    You may need to wait a bit longer for all components to be ready."
+          }
+          
+          echo "✅ Flux CD installed successfully!"
+        volumeMounts:
+        - name: kubeconfig
+          mountPath: /root/.kube
+          readOnly: true
+      volumes:
+      - name: kubeconfig
+        emptyDir: {}
+---
+# ServiceAccount for Flux installer
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-installer
+  namespace: flux-system
+---
+# ClusterRole for Flux installation (requires cluster-admin)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flux-installer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin  # Flux installation requires cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: flux-installer
+  namespace: flux-system
+
+

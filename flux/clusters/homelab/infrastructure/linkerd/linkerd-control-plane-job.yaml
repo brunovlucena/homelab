@@ -1,0 +1,65 @@
+---
+# 🚀 Job to install Linkerd Control Plane using the linkerd CLI
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: linkerd-control-plane-install
+  namespace: linkerd
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: linkerd-control-plane-install
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: linkerd-installer
+      containers:
+      - name: install-control-plane
+        image: cr.l5d.io/linkerd/cli:stable-2.16.2
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "🎯 Installing Linkerd control plane..."
+          /linkerd install --ignore-cluster | kubectl apply -f -
+          echo "✅ Linkerd control plane installed successfully"
+        volumeMounts:
+        - name: kubeconfig
+          mountPath: /root/.kube
+          readOnly: true
+      volumes:
+      - name: kubeconfig
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: linkerd-installer
+  namespace: linkerd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: linkerd-installer
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: linkerd-installer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: linkerd-installer
+subjects:
+- kind: ServiceAccount
+  name: linkerd-installer
+  namespace: linkerd
+

@@ -3,4 +3,3 @@ kind: Kustomization
 resources:
   - git.yaml
   - helm.yaml
-  - oci.yaml
