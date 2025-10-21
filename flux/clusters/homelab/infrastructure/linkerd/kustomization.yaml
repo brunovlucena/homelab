@@ -9,15 +9,12 @@ resources:
   # 1. Create namespaces first
   - namespace.yaml
   
-  # 2. Install Gateway API CRDs (prerequisite)
-  - gateway-api-crds.yaml
-  
-  # 3. Install Linkerd CRDs
+  # 2. Install Linkerd CRDs (includes Gateway API CRDs)
   - linkerd-crds-job.yaml
   
-  # 4. Install Linkerd Control Plane
+  # 3. Install Linkerd Control Plane
   - linkerd-control-plane-job.yaml
   
-  # 5. Install Linkerd Viz
+  # 4. Install Linkerd Viz
   - linkerd-viz-job.yaml
 
