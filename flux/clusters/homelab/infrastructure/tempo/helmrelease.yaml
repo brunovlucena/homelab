@@ -16,8 +16,6 @@ spec:
         namespace: flux-system
   values:
     tempo:
-      # Use latest stable version
-      tag: ""
       # Configure Tempo container port
       server:
         http_listen_port: 3200

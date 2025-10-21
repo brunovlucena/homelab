@@ -24,38 +24,6 @@ spec:
         namespace: flux-system
       interval: 5m
   values:
-    # 🐰 RabbitMQ Cluster Operator Configuration
-    useCertManager: true
-    
-    # 🎯 Tolerations for knative nodes
-    tolerations:
-      - key: "knative"
-        operator: Equal
-        value: "true"
-        effect: NoSchedule
-    
-    # 🖼️ Override image to use official RabbitMQ operator (Bitnami deprecated Debian images)
-    msgTopologyOperator:
-      image:
-        registry: docker.io
-        repository: rabbitmqoperator/messaging-topology-operator
-        tag: 1.17.4
-    
-    # 📊 Operator Metrics Configuration
-    clusterOperator:
-      metrics:
-        service:
-          enabled: true
-        serviceMonitor:
-          enabled: true
-          namespace: rabbitmq-operator
-    
-    # 🔧 Resource Configuration
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+    # 🐰 RabbitMQ Cluster Operator - KISS Configuration
+    useCertManager: false
 
