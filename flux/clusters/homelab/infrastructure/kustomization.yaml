@@ -24,7 +24,7 @@ resources:
   - redis
   - mongodb
   - rabbitmq-operator
-  - rabbitmq-cluster
+  # - rabbitmq-cluster  # TODO: Enable after rabbitmq-operator CRDs are installed
   - k6-operator
   - headlamp
   # Applications
