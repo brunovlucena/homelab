@@ -1,26 +1,13 @@
-# Dockerfile to build a custom Linkerd CLI image
-# This solves registry authentication issues by hosting on our own GHCR
-FROM curlimages/curl:latest as downloader
-
-ARG LINKERD_VERSION=stable-2.16.2
-ARG TARGETARCH
-
-WORKDIR /tmp
-RUN curl -fsSLO "https://github.com/linkerd/linkerd2/releases/download/${LINKERD_VERSION}/linkerd2-cli-${LINKERD_VERSION}-linux-${TARGETARCH}" && \
-    chmod +x linkerd2-cli-${LINKERD_VERSION}-linux-${TARGETARCH}
-
+# Multi-arch Linkerd CLI image
 FROM alpine:latest
 
+ARG LINKERD_VERSION=edge-25.9.1
 ARG TARGETARCH
 
-RUN apk add --no-cache bash curl ca-certificates
-
-COPY --from=downloader /tmp/linkerd2-cli-* /linkerd
-
-# Install kubectl
-RUN curl -fsSLO "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/${TARGETARCH}/kubectl" && \
-    chmod +x kubectl && \
-    mv kubectl /usr/local/bin/
+RUN apk add --no-cache bash curl ca-certificates kubectl && \
+    curl -fsSL "https://github.com/linkerd/linkerd2/releases/download/${LINKERD_VERSION}/linkerd2-cli-${LINKERD_VERSION}-linux-${TARGETARCH}" \
+        -o /usr/local/bin/linkerd && \
+    chmod +x /usr/local/bin/linkerd
 
 ENTRYPOINT ["/bin/bash"]
 

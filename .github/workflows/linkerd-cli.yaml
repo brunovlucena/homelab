@@ -10,9 +10,9 @@ on:
   workflow_dispatch:
     inputs:
       linkerd_version:
-        description: 'Linkerd version (e.g., stable-2.16.2)'
+        description: 'Linkerd version (e.g., edge-25.9.1)'
         required: false
-        default: 'stable-2.16.2'
+        default: 'edge-25.9.1'
 
 env:
   REGISTRY: ghcr.io
@@ -45,7 +45,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=stable-2.16.2
+            type=raw,value=edge-25.9.1
             type=raw,value=latest
             type=sha,prefix={{branch}}-
 
@@ -61,5 +61,5 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            LINKERD_VERSION=${{ github.event.inputs.linkerd_version || 'stable-2.16.2' }}
+            LINKERD_VERSION=${{ github.event.inputs.linkerd_version || 'edge-25.9.1' }}
 
