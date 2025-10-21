@@ -29,7 +29,7 @@ spec:
           echo "📊 Installing Linkerd Viz extension..."
           # Wait a bit for control plane to be ready
           sleep 10
-          /linkerd viz install --ignore-cluster | kubectl apply -f -
+          linkerd viz install --ignore-cluster | kubectl apply -f -
           echo "✅ Linkerd Viz installed successfully"
         volumeMounts:
         - name: kubeconfig

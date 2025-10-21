@@ -27,7 +27,7 @@ spec:
         - |
           set -e
           echo "🎯 Installing Linkerd control plane..."
-          /linkerd install --ignore-cluster | kubectl apply -f -
+          linkerd install --ignore-cluster | kubectl apply -f -
           echo "✅ Linkerd control plane installed successfully"
         volumeMounts:
         - name: kubeconfig

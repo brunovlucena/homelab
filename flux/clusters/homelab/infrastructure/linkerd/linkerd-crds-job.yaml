@@ -28,7 +28,7 @@ spec:
         - |
           set -e
           echo "📦 Installing Linkerd CRDs..."
-          /linkerd install --crds --ignore-cluster | kubectl apply -f -
+          linkerd install --crds --ignore-cluster | kubectl apply -f -
           echo "✅ Linkerd CRDs installed successfully"
         volumeMounts:
         - name: kubeconfig
