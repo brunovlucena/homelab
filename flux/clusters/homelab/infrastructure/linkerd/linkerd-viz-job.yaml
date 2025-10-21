@@ -18,7 +18,7 @@ spec:
       serviceAccountName: linkerd-viz-installer
       containers:
       - name: install-viz
-        image: cr.l5d.io/linkerd/cli:stable-2.16.2
+        image: docker.io/linkerd/cli:stable-2.16.2
         command:
         - /bin/sh
         - -c
