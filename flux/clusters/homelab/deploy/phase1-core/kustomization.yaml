@@ -13,4 +13,3 @@ resources:
   - ../../infrastructure/metrics-server
   - ../../infrastructure/linkerd
   - ../../infrastructure/cloudflare-tunnel
-  - ../../infrastructure/alerts/core
