@@ -75,32 +75,8 @@ func main() {
 			return err
 		}
 
-		// 📦 Apply GitRepository using Pulumi Kubernetes with Server-Side Apply
-		gitRepo, err := apiextensions.NewCustomResource(ctx, "homelab-gitrepo", &apiextensions.CustomResourceArgs{
-			ApiVersion: pulumi.String("source.toolkit.fluxcd.io/v1"),
-			Kind:       pulumi.String("GitRepository"),
-			Metadata: &metav1.ObjectMetaArgs{
-				Name:      pulumi.String("homelab"),
-				Namespace: pulumi.String("flux-system"),
-				Annotations: pulumi.StringMap{
-					"pulumi.com/patchForce": pulumi.String("true"),
-				},
-			},
-			OtherFields: kubernetes.UntypedArgs{
-				"spec": pulumi.Map{
-					"interval": pulumi.String("1m"),
-					"url":      pulumi.String("https://github.com/brunovlucena/homelab"),
-					"ref": pulumi.Map{
-						"branch": pulumi.String("main"),
-					},
-				},
-			},
-		}, pulumi.Provider(k8sProvider), pulumi.DependsOn([]pulumi.Resource{installFlux}))
-		if err != nil {
-			return err
-		}
-
 		// 📋 Create root Kustomization - applies kustomization.yaml which includes all phase Kustomizations
+		// Note: GitRepository is managed by Flux via git.yaml in the repository
 		_, err = apiextensions.NewCustomResource(ctx, "homelab-root-kustomization", &apiextensions.CustomResourceArgs{
 			ApiVersion: pulumi.String("kustomize.toolkit.fluxcd.io/v1"),
 			Kind:       pulumi.String("Kustomization"),
@@ -120,7 +96,7 @@ func main() {
 					"wait":  pulumi.Bool(false), // Don't wait for all phases to complete
 				},
 			},
-		}, pulumi.Provider(k8sProvider), pulumi.DependsOn([]pulumi.Resource{gitRepo}))
+		}, pulumi.Provider(k8sProvider), pulumi.DependsOn([]pulumi.Resource{installFlux}))
 		if err != nil {
 			return err
 		}
