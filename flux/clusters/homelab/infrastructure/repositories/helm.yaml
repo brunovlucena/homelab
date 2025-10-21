@@ -114,7 +114,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h0m0s
-  url: https://charts.rabbitmq.com
+  url: https://charts.bitnami.com/bitnami
 ---
 apiVersion: source.toolkit.fluxcd.io/v1beta2
 kind: HelmRepository
@@ -132,7 +132,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h0m0s
-  url: https://charts.redis.io
+  url: https://charts.bitnami.com/bitnami
 ---
 apiVersion: source.toolkit.fluxcd.io/v1beta2
 kind: HelmRepository
@@ -141,4 +141,4 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1h0m0s
-  url: https://charts.postgresql.org
+  url: https://charts.bitnami.com/bitnami
