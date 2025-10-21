@@ -17,10 +17,9 @@ spec:
   chart:
     spec:
       chart: rabbitmq-cluster-operator
-      version: "4.4.34"
       sourceRef:
-        kind: HelmRepository
-        name: rabbitmq
+        kind: OCIRepository
+        name: rabbitmq-cluster-operator
         namespace: flux-system
       interval: 5m
   values:
