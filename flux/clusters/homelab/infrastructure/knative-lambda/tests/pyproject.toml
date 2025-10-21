@@ -1,0 +1,7 @@
+[project]
+name = "knative-lambda-tests"
+version = "0.1.0"
+dependencies = [
+  "pika",
+  "requests",
+]

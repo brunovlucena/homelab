@@ -1,0 +1,2411 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: knative-lambda-monitoring-alerts
+  namespace: knative-lambda-{{ .Values.environment }}
+  labels:
+    release: "prometheus"
+    app: "knative-lambda"
+    component: "alerts"
+    environment: {{ .Values.environment }}
+spec:
+  groups:
+  - name: knative-lambda.golden-signals
+    rules:
+    # Golden Signal: Availability
+    - alert: KnativeLambdaBuilderDown
+      expr: up{namespace="knative-lambda-{{ .Values.environment }}", job=~".*builder.*"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        golden_signal: availability
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder is down"
+        description: "Knative Lambda Builder service has been down for more than 2 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-down"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Golden Signal: Error Rate
+    - alert: KnativeLambdaBuilderHighErrorRate
+      expr: |
+        (
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", status=~"5..", service=~".*builder.*"}[5m]))
+          /
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", service=~".*builder.*"}[5m]))
+        ) * 100 > 5
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        golden_signal: errors
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder high error rate"
+        description: "Knative Lambda Builder error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuilderCriticalErrorRate
+      expr: |
+        (
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", status=~"5..", service=~".*builder.*"}[5m]))
+          /
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", service=~".*builder.*"}[5m]))
+        ) * 100 > 20
+      for: 2m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        golden_signal: errors
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder critical error rate"
+        description: "Knative Lambda Builder error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-critical-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Golden Signal: Latency
+    - alert: KnativeLambdaBuilderHighLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}", service=~".*builder.*"}[5m])) by (le)) > 30
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        golden_signal: latency
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder high latency"
+        description: "Knative Lambda Builder p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-high-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuilderCriticalLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}", service=~".*builder.*"}[5m])) by (le)) > 120
+      for: 2m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        golden_signal: latency
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder critical latency"
+        description: "Knative Lambda Builder p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-critical-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Golden Signal: Saturation
+    - alert: KnativeLambdaBuilderHighCPUUsage
+      expr: |
+        rate(container_cpu_usage_seconds_total{namespace="knative-lambda-{{ .Values.environment }}", pod=~".*builder.*"}[5m]) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        golden_signal: saturation
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder high CPU usage"
+        description: "Knative Lambda Builder is using {{ `{{ $value | printf \"%.1f\" }}` }} CPU cores."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-high-cpu-usage"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuilderHighMemoryUsage
+      expr: |
+        container_memory_usage_bytes{namespace="knative-lambda-{{ .Values.environment }}", pod=~".*builder.*"} / container_spec_memory_limit_bytes{namespace="knative-lambda-{{ .Values.environment }}", pod=~".*builder.*"} > 0.85
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        golden_signal: saturation
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder high memory usage"
+        description: "Knative Lambda Builder is using {{ `{{ $value | printf \"%.1f\" }}` }}% of memory limit."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-high-memory-usage"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+  - name: knative-lambda.build-metrics
+    rules:
+    - alert: KnativeLambdaBuildSuccessRateLow
+      expr: |
+        (
+          sum(rate(knative_lambda_build_success_total[5m]))
+          /
+          (sum(rate(knative_lambda_build_success_total[5m])) + sum(rate(knative_lambda_build_failure_total[5m])))
+        ) * 100 < 90
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda build success rate is low"
+        description: "Knative Lambda build success rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-success-rate-low"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildSuccessRateCritical
+      expr: |
+        (
+          sum(rate(knative_lambda_build_success_total[5m]))
+          /
+          (sum(rate(knative_lambda_build_success_total[5m])) + sum(rate(knative_lambda_build_failure_total[5m])))
+        ) * 100 < 70
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda build success rate is critical"
+        description: "Knative Lambda build success rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-success-rate-critical"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildDurationHigh
+      expr: |
+        histogram_quantile(0.95, sum(rate(knative_lambda_build_duration_seconds_bucket[5m])) by (le)) > 300
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda build duration is high"
+        description: "Knative Lambda build p95 duration is {{ `{{ $value | printf \"%.0f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-duration-high"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildQueueDepthHigh
+      expr: |
+        knative_lambda_build_queue_depth > 50
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda build queue depth is high"
+        description: "Knative Lambda build queue has {{ `{{ $value }}` }} builds waiting."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-queue-depth-high"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildQueueDepthCritical
+      expr: |
+        knative_lambda_build_queue_depth > 200
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda build queue depth is critical"
+        description: "Knative Lambda build queue has {{ `{{ $value }}` }} builds waiting."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-queue-depth-critical"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaActiveBuildsHigh
+      expr: |
+        knative_lambda_active_builds > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda active builds is high"
+        description: "Knative Lambda has {{ `{{ $value }}` }} active builds running."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/active-builds-high"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+  - name: knative-lambda.service-creation
+    rules:
+    - alert: KnativeLambdaServiceCreationSuccessRateLow
+      expr: |
+        (
+          sum(rate(knative_lambda_service_creation_success_total[5m]))
+          /
+          (sum(rate(knative_lambda_service_creation_success_total[5m])) + sum(rate(knative_lambda_service_creation_failure_total[5m])))
+        ) * 100 < 90
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-creation
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda service creation success rate is low"
+        description: "Knative Lambda service creation success rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-creation-success-rate-low"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaServiceCreationDurationHigh
+      expr: |
+        histogram_quantile(0.95, sum(rate(knative_lambda_service_creation_duration_seconds_bucket[5m])) by (le)) > 60
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-creation
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda service creation duration is high"
+        description: "Knative Lambda service creation p95 duration is {{ `{{ $value | printf \"%.0f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-creation-duration-high"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaActiveServicesHigh
+      expr: |
+        knative_lambda_active_services > 500
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-creation
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda active services count is high"
+        description: "Knative Lambda has {{ `{{ $value }}` }} active services running."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/active-services-high"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+  - name: knative-lambda.infrastructure
+    rules:
+    - alert: KnativeLambdaComponentRestartLoop
+      expr: |
+        increase(kube_pod_container_status_restarts_total{namespace="knative-lambda-{{ .Values.environment }}"}[10m]) > 3
+      for: 2m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: infrastructure
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda component is in restart loop"
+        description: "Knative Lambda component {{ `{{ $labels.container }}` }} has restarted {{ `{{ $value }}` }} times in the last 10 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/component-restart-loop"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaComponentNotReady
+      expr: |
+        kube_pod_status_ready{condition="false", namespace="knative-lambda-{{ .Values.environment }}"} == 1
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: infrastructure
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda component is not ready"
+        description: "Knative Lambda component {{ `{{ $labels.pod }}` }} has been not ready for more than 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/component-not-ready"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaHighGCPressure
+      expr: |
+        go_gc_cpu_fraction{namespace="knative-lambda-{{ .Values.environment }}"} * 100 > 20
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: infrastructure
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda component experiencing high GC pressure"
+        description: "Knative Lambda component is spending {{ `{{ $value | printf \"%.1f\" }}` }}% of CPU time on garbage collection."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/high-gc-pressure"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+  - name: knative-lambda.external-dependencies
+    rules:
+    - alert: KnativeLambdaECRErrors
+      expr: |
+        rate(knative_lambda_ecr_operations_total{status="error"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: external-dependencies
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda ECR operation errors"
+        description: "Knative Lambda ECR operation error rate is {{ `{{ $value | printf \"%.2f\" }}` }} errors/sec over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/ecr-errors"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaS3Errors
+      expr: |
+        rate(knative_lambda_s3_operations_total{status="error"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: external-dependencies
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda S3 operation errors"
+        description: "Knative Lambda S3 operation error rate is {{ `{{ $value | printf \"%.2f\" }}` }} errors/sec over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/s3-errors"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaK8sErrors
+      expr: |
+        rate(knative_lambda_k8s_operations_total{status="error"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: external-dependencies
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Kubernetes operation errors"
+        description: "Knative Lambda Kubernetes operation error rate is {{ `{{ $value | printf \"%.2f\" }}` }} errors/sec over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/k8s-errors"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+  - name: knative-lambda.business
+    rules:
+    - alert: KnativeLambdaNoBuildActivity
+      expr: |
+        sum(rate(knative_lambda_build_success_total[15m])) + sum(rate(knative_lambda_build_failure_total[15m])) == 0
+      for: 30m
+      labels:
+        severity: info
+        service: knative-lambda-builder
+        component: business
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "No build activity detected on Knative Lambda"
+        description: "No build activity has been detected on Knative Lambda for the last 30 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/no-build-activity"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaHighBuildRate
+      expr: |
+        sum(rate(knative_lambda_build_success_total[5m])) + sum(rate(knative_lambda_build_failure_total[5m])) > 10
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: business
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High build rate detected"
+        description: "Knative Lambda is experiencing {{ `{{ $value | printf \"%.1f\" }}` }} builds per second."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/high-build-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}" 
+
+    - alert: KnativeLambdaEventingHighEventFailureRate
+      expr: |
+        (
+          sum(rate(eventing_events_failed_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          sum(rate(eventing_events_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+        ) * 100 > 5
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-eventing
+        component: eventing
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Eventing high event failure rate"
+        description: "Knative Lambda Eventing event failure rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/eventing-high-event-failure-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+  - name: knative-lambda.build-context-manager
+    rules:
+    # Build Context Creation Alerts
+    - alert: KnativeLambdaBuildContextCreationHighErrorRate
+      expr: |
+        (
+          sum(rate(build_context_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(build_context_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(build_context_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high creation error rate"
+        description: "Build context creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-creation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildContextCreationCriticalErrorRate
+      expr: |
+        (
+          sum(rate(build_context_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(build_context_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(build_context_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 30
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager critical creation error rate"
+        description: "Build context creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-creation-critical-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # S3 Operations Alerts
+    - alert: KnativeLambdaBuildContextS3UploadHighErrorRate
+      expr: |
+        (
+          sum(rate(aws_s3_upload_total{namespace="knative-lambda-{{ .Values.environment }}", status="error", operation="build_context_upload"}[5m]))
+          /
+          sum(rate(aws_s3_upload_total{namespace="knative-lambda-{{ .Values.environment }}", operation="build_context_upload"}[5m]))
+        ) * 100 > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high S3 upload error rate"
+        description: "Build context S3 upload error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-s3-upload-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildContextS3DownloadHighErrorRate
+      expr: |
+        (
+          sum(rate(aws_s3_download_total{namespace="knative-lambda-{{ .Values.environment }}", status="error", operation="parser_files_download"}[5m]))
+          /
+          sum(rate(aws_s3_download_total{namespace="knative-lambda-{{ .Values.environment }}", operation="parser_files_download"}[5m]))
+        ) * 100 > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high S3 download error rate"
+        description: "Parser files S3 download error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-s3-download-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Build Context Archive Alerts
+    - alert: KnativeLambdaBuildContextArchiveCreationHighErrorRate
+      expr: |
+        (
+          sum(rate(build_context_archive_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(build_context_archive_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(build_context_archive_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high archive creation error rate"
+        description: "Build context archive creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-archive-creation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildContextArchiveSizeHigh
+      expr: |
+        histogram_quantile(0.95, sum(rate(build_context_archive_size_bytes_bucket{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) by (le)) > 100e6
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high archive size"
+        description: "Build context archive p95 size is {{ `{{ $value | printf \"%.0f\" }}` }} bytes ({{ `{{ $value | printf \"%.1f\" }}` }} MB)."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-archive-size-high"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Template Processing Alerts
+    - alert: KnativeLambdaBuildContextTemplateProcessingHighErrorRate
+      expr: |
+        (
+          sum(rate(template_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="build_context_manager"}[5m]))
+          /
+          (sum(rate(template_processing_success_total{namespace="knative-lambda-{{ .Values.environment }}", component="build_context_manager"}[5m])) + sum(rate(template_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="build_context_manager"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high template processing error rate"
+        description: "Template processing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-template-processing-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Validation Alerts
+    - alert: KnativeLambdaBuildContextValidationHighErrorRate
+      expr: |
+        (
+          sum(rate(build_request_validation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(build_request_validation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(build_request_validation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high validation error rate"
+        description: "Build request validation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-validation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Performance Alerts
+    - alert: KnativeLambdaBuildContextCreationHighLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(build_context_creation_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) by (le)) > 60
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high creation latency"
+        description: "Build context creation p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-creation-high-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildContextS3UploadHighLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(aws_s3_upload_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}", operation="build_context_upload"}[5m])) by (le)) > 30
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high S3 upload latency"
+        description: "Build context S3 upload p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-s3-upload-high-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Rate Limiting Alerts
+    - alert: KnativeLambdaBuildContextRateLimitExceeded
+      expr: |
+        rate(build_context_rate_limit_exceeded_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager rate limit exceeded"
+        description: "Build context rate limit is being exceeded at {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-rate-limit-exceeded"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Source URL Parsing Alerts
+    - alert: KnativeLambdaBuildContextSourceURLParsingHighErrorRate
+      expr: |
+        (
+          sum(rate(source_url_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(source_url_parsing_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(source_url_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high source URL parsing error rate"
+        description: "Source URL parsing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-source-url-parsing-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # File Processing Alerts
+    - alert: KnativeLambdaBuildContextFileProcessingHighErrorRate
+      expr: |
+        (
+          sum(rate(parser_file_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(parser_file_processing_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(parser_file_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high file processing error rate"
+        description: "Parser file processing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-file-processing-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Runtime Support Alerts
+    - alert: KnativeLambdaBuildContextUnsupportedRuntimeHighRate
+      expr: |
+        rate(unsupported_runtime_detected_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0.1
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Context Manager high unsupported runtime rate"
+        description: "Unsupported runtime detection rate is {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-unsupported-runtime-high-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Business Logic Alerts
+    - alert: KnativeLambdaBuildContextNoActivity
+      expr: |
+        sum(rate(build_context_creation_success_total[15m])) + sum(rate(build_context_creation_failure_total[15m])) == 0
+      for: 30m
+      labels:
+        severity: info
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "No build context creation activity detected"
+        description: "No build context creation activity has been detected for the last 30 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-no-activity"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildContextHighCreationRate
+      expr: |
+        sum(rate(build_context_creation_success_total[5m])) + sum(rate(build_context_creation_failure_total[5m])) > 5
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build-context-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High build context creation rate detected"
+        description: "Build context creation rate is {{ `{{ $value | printf \"%.1f\" }}` }} events per second."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-context-high-creation-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+  - name: knative-lambda.event-handler
+    rules:
+    # Event Processing Alerts
+    - alert: KnativeLambdaEventHandlerHighErrorRate
+      expr: |
+        (
+          sum(rate(event_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="event_handler"}[5m]))
+          /
+          (sum(rate(event_processing_success_total{namespace="knative-lambda-{{ .Values.environment }}", component="event_handler"}[5m])) + sum(rate(event_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="event_handler"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Event Handler high error rate"
+        description: "Event processing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/event-handler-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaEventHandlerCriticalErrorRate
+      expr: |
+        (
+          sum(rate(event_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="event_handler"}[5m]))
+          /
+          (sum(rate(event_processing_success_total{namespace="knative-lambda-{{ .Values.environment }}", component="event_handler"}[5m])) + sum(rate(event_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="event_handler"}[5m])))
+        ) * 100 > 30
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Event Handler critical error rate"
+        description: "Event processing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/event-handler-critical-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Event Type Processing Alerts
+    - alert: KnativeLambdaBuildStartEventHighErrorRate
+      expr: |
+        (
+          sum(rate(build_start_event_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(build_start_event_processing_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(build_start_event_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Start Event high error rate"
+        description: "Build start event processing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-start-event-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildCompleteEventHighErrorRate
+      expr: |
+        (
+          sum(rate(build_complete_event_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(build_complete_event_processing_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(build_complete_event_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Complete Event high error rate"
+        description: "Build complete event processing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-complete-event-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaParserEventHighErrorRate
+      expr: |
+        (
+          sum(rate(parser_event_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(parser_event_processing_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(parser_event_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Parser Event high error rate"
+        description: "Parser event processing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/parser-event-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Event Validation Alerts
+    - alert: KnativeLambdaEventValidationHighErrorRate
+      expr: |
+        (
+          sum(rate(event_validation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(event_validation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(event_validation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Event Handler high validation error rate"
+        description: "Event validation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/event-validation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Event Parsing Alerts
+    - alert: KnativeLambdaEventParsingHighErrorRate
+      expr: |
+        (
+          sum(rate(event_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(event_parsing_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(event_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Event Handler high parsing error rate"
+        description: "Event parsing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/event-parsing-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Performance Alerts
+    - alert: KnativeLambdaEventHandlerHighLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(event_processing_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}", component="event_handler"}[5m])) by (le)) > 30
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Event Handler high latency"
+        description: "Event processing p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/event-handler-high-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildStartEventHighLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(build_start_event_processing_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) by (le)) > 60
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Build Start Event high latency"
+        description: "Build start event processing p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-start-event-high-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Job Management Alerts
+    - alert: KnativeLambdaJobCreationHighErrorRate
+      expr: |
+        (
+          sum(rate(k8s_job_creation_total{namespace="knative-lambda-{{ .Values.environment }}", status="error"}[5m]))
+          /
+          sum(rate(k8s_job_creation_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Creation high error rate"
+        description: "Kubernetes job creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-creation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaJobDeletionHighErrorRate
+      expr: |
+        (
+          sum(rate(job_deletion_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(job_deletion_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(job_deletion_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Deletion high error rate"
+        description: "Job deletion error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-deletion-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaJobDeletionTimeout
+      expr: |
+        rate(job_deletion_timeout_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Deletion timeout rate high"
+        description: "Job deletion timeout rate is {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-deletion-timeout"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Service Creation Alerts
+    - alert: KnativeLambdaServiceCreationHighErrorRate
+      expr: |
+        (
+          sum(rate(service_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(service_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(service_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Creation high error rate"
+        description: "Service creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-creation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Rate Limiting Alerts
+    - alert: KnativeLambdaEventHandlerRateLimitExceeded
+      expr: |
+        rate(event_handler_rate_limit_exceeded_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Event Handler rate limit exceeded"
+        description: "Event handler rate limit is being exceeded at {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/event-handler-rate-limit-exceeded"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Component Container Alerts
+    - alert: KnativeLambdaComponentContainerValidationFailed
+      expr: |
+        rate(component_container_validation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Component Container validation failed"
+        description: "Component container validation is failing at {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/component-container-validation-failed"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaEventHandlerNotAvailable
+      expr: |
+        rate(event_handler_not_available_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Event Handler not available"
+        description: "Event handler is not available at {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/event-handler-not-available"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Business Logic Alerts
+    - alert: KnativeLambdaEventHandlerNoActivity
+      expr: |
+        sum(rate(event_processing_success_total[15m])) + sum(rate(event_processing_failure_total[15m])) == 0
+      for: 30m
+      labels:
+        severity: info
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "No event processing activity detected"
+        description: "No event processing activity has been detected for the last 30 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/event-handler-no-activity"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaEventHandlerHighEventRate
+      expr: |
+        sum(rate(event_processing_success_total[5m])) + sum(rate(event_processing_failure_total[5m])) > 10
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High event processing rate detected"
+        description: "Event processing rate is {{ `{{ $value | printf \"%.1f\" }}` }} events per second."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/event-handler-high-event-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Unsupported Event Type Alerts
+    - alert: KnativeLambdaUnsupportedEventTypeHighRate
+      expr: |
+        rate(unsupported_event_type_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0.1
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda high unsupported event type rate"
+        description: "Unsupported event type detection rate is {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/unsupported-event-type-high-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+  - name: knative-lambda.job-manager
+    rules:
+    # Job Creation Alerts
+    - alert: KnativeLambdaJobManagerHighCreationErrorRate
+      expr: |
+        (
+          sum(rate(k8s_job_creation_total{namespace="knative-lambda-{{ .Values.environment }}", status="error"}[5m]))
+          /
+          sum(rate(k8s_job_creation_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager high creation error rate"
+        description: "Kubernetes job creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-high-creation-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaJobManagerCriticalCreationErrorRate
+      expr: |
+        (
+          sum(rate(k8s_job_creation_total{namespace="knative-lambda-{{ .Values.environment }}", status="error"}[5m]))
+          /
+          sum(rate(k8s_job_creation_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+        ) * 100 > 30
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager critical creation error rate"
+        description: "Kubernetes job creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-critical-creation-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Job Lifecycle Alerts
+    - alert: KnativeLambdaJobManagerHighDeletionErrorRate
+      expr: |
+        (
+          sum(rate(k8s_job_deletion_total{namespace="knative-lambda-{{ .Values.environment }}", status="error"}[5m]))
+          /
+          sum(rate(k8s_job_deletion_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager high deletion error rate"
+        description: "Kubernetes job deletion error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-high-deletion-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaJobManagerHighRetrievalErrorRate
+      expr: |
+        (
+          sum(rate(k8s_job_retrieval_total{namespace="knative-lambda-{{ .Values.environment }}", status="error"}[5m]))
+          /
+          sum(rate(k8s_job_retrieval_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager high retrieval error rate"
+        description: "Kubernetes job retrieval error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-high-retrieval-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaJobManagerHighListingErrorRate
+      expr: |
+        (
+          sum(rate(k8s_job_listing_total{namespace="knative-lambda-{{ .Values.environment }}", status="error"}[5m]))
+          /
+          sum(rate(k8s_job_listing_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager high listing error rate"
+        description: "Kubernetes job listing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-high-listing-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Job Status Alerts
+    - alert: KnativeLambdaJobManagerHighFailedJobRate
+      expr: |
+        (
+          sum(rate(k8s_job_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(k8s_job_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(k8s_job_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 20
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager high failed job rate"
+        description: "Kubernetes job failure rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-high-failed-job-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaJobManagerCriticalFailedJobRate
+      expr: |
+        (
+          sum(rate(k8s_job_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(k8s_job_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(k8s_job_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 50
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager critical failed job rate"
+        description: "Kubernetes job failure rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-critical-failed-job-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Concurrent Job Limits Alerts
+    - alert: KnativeLambdaJobManagerConcurrentJobLimitReached
+      expr: |
+        rate(concurrent_job_limit_reached_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager concurrent job limit reached"
+        description: "Concurrent job limit is being exceeded at {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-concurrent-job-limit-reached"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaJobManagerHighActiveJobCount
+      expr: |
+        sum(kube_job_status_active{namespace="knative-lambda-{{ .Values.environment }}"}) > 80
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager high active job count"
+        description: "Active job count is {{ `{{ $value | printf \"%.0f\" }}` }} jobs."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-high-active-job-count"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Job Performance Alerts
+    - alert: KnativeLambdaJobManagerHighCreationLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(k8s_job_creation_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) by (le)) > 30
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager high creation latency"
+        description: "Job creation p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-high-creation-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaJobManagerHighJobDuration
+      expr: |
+        histogram_quantile(0.95, sum(rate(k8s_job_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) by (le)) > 1800
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager high job duration"
+        description: "Job p95 duration is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-high-job-duration"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Job Cleanup Alerts
+    - alert: KnativeLambdaJobManagerHighCleanupErrorRate
+      expr: |
+        (
+          sum(rate(job_cleanup_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(job_cleanup_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(job_cleanup_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager high cleanup error rate"
+        description: "Job cleanup error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-high-cleanup-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Job Spec Validation Alerts
+    - alert: KnativeLambdaJobManagerHighSpecValidationErrorRate
+      expr: |
+        (
+          sum(rate(job_spec_validation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(job_spec_validation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(job_spec_validation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager high spec validation error rate"
+        description: "Job spec validation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-high-spec-validation-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Resource Requirements Alerts
+    - alert: KnativeLambdaJobManagerResourceParsingErrorRate
+      expr: |
+        (
+          sum(rate(resource_requirements_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(resource_requirements_parsing_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(resource_requirements_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager resource parsing error rate"
+        description: "Resource requirements parsing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-resource-parsing-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Kaniko Job Creation Alerts
+    - alert: KnativeLambdaJobManagerKanikoJobCreationHighErrorRate
+      expr: |
+        (
+          sum(rate(kaniko_job_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(kaniko_job_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(kaniko_job_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager Kaniko job creation high error rate"
+        description: "Kaniko job creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-kaniko-job-creation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Container Creation Alerts
+    - alert: KnativeLambdaJobManagerContainerCreationHighErrorRate
+      expr: |
+        (
+          sum(rate(container_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(container_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(container_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager container creation high error rate"
+        description: "Container creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-container-creation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Image URI Generation Alerts
+    - alert: KnativeLambdaJobManagerImageURIGenerationHighErrorRate
+      expr: |
+        (
+          sum(rate(image_uri_generation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(image_uri_generation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(image_uri_generation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager image URI generation high error rate"
+        description: "Image URI generation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-image-uri-generation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Business Logic Alerts
+    - alert: KnativeLambdaJobManagerNoActivity
+      expr: |
+        sum(rate(k8s_job_creation_total[15m])) + sum(rate(k8s_job_success_total[15m])) + sum(rate(k8s_job_failure_total[15m])) == 0
+      for: 30m
+      labels:
+        severity: info
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "No job management activity detected"
+        description: "No job management activity has been detected for the last 30 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-no-activity"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaJobManagerHighJobCreationRate
+      expr: |
+        sum(rate(k8s_job_creation_total[5m])) > 5
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High job creation rate detected"
+        description: "Job creation rate is {{ `{{ $value | printf \"%.1f\" }}` }} jobs per second."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-high-job-creation-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Configuration Alerts
+    - alert: KnativeLambdaJobManagerConfigurationError
+      expr: |
+        rate(job_manager_configuration_error_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: job-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Job Manager configuration error"
+        description: "Job manager configuration error rate is {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/job-manager-configuration-error"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+  - name: knative-lambda.service-manager
+    rules:
+    # Service Creation Alerts
+    - alert: KnativeLambdaServiceManagerHighCreationErrorRate
+      expr: |
+        (
+          sum(rate(knative_service_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(knative_service_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(knative_service_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high creation error rate"
+        description: "Knative service creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-high-creation-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaServiceManagerCriticalCreationErrorRate
+      expr: |
+        (
+          sum(rate(knative_service_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(knative_service_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(knative_service_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 30
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager critical creation error rate"
+        description: "Knative service creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-critical-creation-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Resource Creation Alerts
+    - alert: KnativeLambdaServiceManagerServiceAccountCreationHighErrorRate
+      expr: |
+        (
+          sum(rate(service_account_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(service_account_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(service_account_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high service account creation error rate"
+        description: "Service account creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-service-account-creation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaServiceManagerConfigMapCreationHighErrorRate
+      expr: |
+        (
+          sum(rate(config_map_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(config_map_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(config_map_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high config map creation error rate"
+        description: "Config map creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-config-map-creation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaServiceManagerTriggerCreationHighErrorRate
+      expr: |
+        (
+          sum(rate(trigger_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(trigger_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(trigger_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high trigger creation error rate"
+        description: "Trigger creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-trigger-creation-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Service Existence Check Alerts
+    - alert: KnativeLambdaServiceManagerHighExistenceCheckErrorRate
+      expr: |
+        (
+          sum(rate(service_existence_check_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(service_existence_check_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(service_existence_check_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high existence check error rate"
+        description: "Service existence check error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-high-existence-check-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Resource Application Alerts
+    - alert: KnativeLambdaServiceManagerHighResourceApplicationErrorRate
+      expr: |
+        (
+          sum(rate(k8s_resource_application_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="service_manager"}[5m]))
+          /
+          (sum(rate(k8s_resource_application_success_total{namespace="knative-lambda-{{ .Values.environment }}", component="service_manager"}[5m])) + sum(rate(k8s_resource_application_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="service_manager"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high resource application error rate"
+        description: "Kubernetes resource application error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-high-resource-application-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaServiceManagerHighResourceCreationErrorRate
+      expr: |
+        (
+          sum(rate(k8s_resource_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="service_manager"}[5m]))
+          /
+          (sum(rate(k8s_resource_creation_success_total{namespace="knative-lambda-{{ .Values.environment }}", component="service_manager"}[5m])) + sum(rate(k8s_resource_creation_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="service_manager"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high resource creation error rate"
+        description: "Kubernetes resource creation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-high-resource-creation-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaServiceManagerHighResourceUpdateErrorRate
+      expr: |
+        (
+          sum(rate(k8s_resource_update_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="service_manager"}[5m]))
+          /
+          (sum(rate(k8s_resource_update_success_total{namespace="knative-lambda-{{ .Values.environment }}", component="service_manager"}[5m])) + sum(rate(k8s_resource_update_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="service_manager"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high resource update error rate"
+        description: "Kubernetes resource update error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-high-resource-update-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Performance Alerts
+    - alert: KnativeLambdaServiceManagerHighCreationLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(knative_service_creation_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) by (le)) > 60
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high creation latency"
+        description: "Knative service creation p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-high-creation-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaServiceManagerHighResourceApplicationLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(k8s_resource_application_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}", component="service_manager"}[5m])) by (le)) > 30
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high resource application latency"
+        description: "Kubernetes resource application p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-high-resource-application-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # API Version Parsing Alerts
+    - alert: KnativeLambdaServiceManagerHighAPIVersionParsingErrorRate
+      expr: |
+        (
+          sum(rate(api_version_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(api_version_parsing_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(api_version_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high API version parsing error rate"
+        description: "API version parsing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-high-api-version-parsing-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # GVR Resolution Alerts
+    - alert: KnativeLambdaServiceManagerHighGVRResolutionErrorRate
+      expr: |
+        (
+          sum(rate(gvr_resolution_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(gvr_resolution_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(gvr_resolution_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager high GVR resolution error rate"
+        description: "GroupVersionResource resolution error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-high-gvr-resolution-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Knative Configuration Alerts
+    - alert: KnativeLambdaServiceManagerKnativeConfigurationError
+      expr: |
+        rate(knative_configuration_error_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager Knative configuration error"
+        description: "Knative configuration error rate is {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-knative-configuration-error"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaServiceManagerBrokerNotFound
+      expr: |
+        rate(broker_not_found_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager broker not found"
+        description: "Broker not found rate is {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-broker-not-found"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Metrics Pusher Sidecar Alerts
+    - alert: KnativeLambdaServiceManagerMetricsPusherImagePullError
+      expr: |
+        rate(metrics_pusher_image_pull_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager metrics pusher image pull error"
+        description: "Metrics pusher image pull failure rate is {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-metrics-pusher-image-pull-error"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Business Logic Alerts
+    - alert: KnativeLambdaServiceManagerNoActivity
+      expr: |
+        sum(rate(knative_service_creation_success_total[15m])) + sum(rate(knative_service_creation_failure_total[15m])) == 0
+      for: 30m
+      labels:
+        severity: info
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "No service management activity detected"
+        description: "No service management activity has been detected for the last 30 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-no-activity"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaServiceManagerHighServiceCreationRate
+      expr: |
+        sum(rate(knative_service_creation_success_total[5m])) + sum(rate(knative_service_creation_failure_total[5m])) > 3
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High service creation rate detected"
+        description: "Service creation rate is {{ `{{ $value | printf \"%.1f\" }}` }} services per second."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-high-service-creation-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Configuration Alerts
+    - alert: KnativeLambdaServiceManagerConfigurationError
+      expr: |
+        rate(service_manager_configuration_error_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: service-manager
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Service Manager configuration error"
+        description: "Service manager configuration error rate is {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-manager-configuration-error"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+  - name: knative-lambda.cloud-event-handler
+    rules:
+    # HTTP Request Processing Alerts
+    - alert: KnativeLambdaCloudEventHandlerHighErrorRate
+      expr: |
+        (
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", endpoint="cloud_event", status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", endpoint="cloud_event"}[5m]))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high error rate"
+        description: "CloudEvent HTTP error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaCloudEventHandlerCriticalErrorRate
+      expr: |
+        (
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", endpoint="cloud_event", status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", endpoint="cloud_event"}[5m]))
+        ) * 100 > 30
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler critical error rate"
+        description: "CloudEvent HTTP error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-critical-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # CloudEvent Parsing Alerts
+    - alert: KnativeLambdaCloudEventHandlerHighParsingErrorRate
+      expr: |
+        (
+          sum(rate(cloud_event_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(cloud_event_parsing_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(cloud_event_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high parsing error rate"
+        description: "CloudEvent parsing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-parsing-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaCloudEventHandlerHighJSONDecodingErrorRate
+      expr: |
+        (
+          sum(rate(json_decoding_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="cloud_event_handler"}[5m]))
+          /
+          (sum(rate(json_decoding_success_total{namespace="knative-lambda-{{ .Values.environment }}", component="cloud_event_handler"}[5m])) + sum(rate(json_decoding_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="cloud_event_handler"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high JSON decoding error rate"
+        description: "JSON decoding error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-json-decoding-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # CloudEvent Validation Alerts
+    - alert: KnativeLambdaCloudEventHandlerHighValidationErrorRate
+      expr: |
+        (
+          sum(rate(cloud_event_validation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(cloud_event_validation_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(cloud_event_validation_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high validation error rate"
+        description: "CloudEvent validation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-validation-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Event Handler Availability Alerts
+    - alert: KnativeLambdaCloudEventHandlerEventHandlerNotAvailable
+      expr: |
+        rate(event_handler_not_available_total{namespace="knative-lambda-{{ .Values.environment }}", component="cloud_event_handler"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler event handler not available"
+        description: "Event handler not available rate is {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-event-handler-not-available"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Performance Alerts
+    - alert: KnativeLambdaCloudEventHandlerHighLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}", endpoint="cloud_event"}[5m])) by (le)) > 30
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high latency"
+        description: "CloudEvent processing p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaCloudEventHandlerHighParsingLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(cloud_event_parsing_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) by (le)) > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high parsing latency"
+        description: "CloudEvent parsing p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-parsing-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Response Generation Alerts
+    - alert: KnativeLambdaCloudEventHandlerHighResponseEncodingErrorRate
+      expr: |
+        (
+          sum(rate(response_encoding_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="cloud_event_handler"}[5m]))
+          /
+          (sum(rate(response_encoding_success_total{namespace="knative-lambda-{{ .Values.environment }}", component="cloud_event_handler"}[5m])) + sum(rate(response_encoding_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="cloud_event_handler"}[5m])))
+        ) * 100 > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high response encoding error rate"
+        description: "Response encoding error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-response-encoding-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # CloudEvent Header Processing Alerts
+    - alert: KnativeLambdaCloudEventHandlerHighHeaderProcessingErrorRate
+      expr: |
+        (
+          sum(rate(cloud_event_header_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(cloud_event_header_processing_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(cloud_event_header_processing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high header processing error rate"
+        description: "CloudEvent header processing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-header-processing-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaCloudEventHandlerHighTimeParsingErrorRate
+      expr: |
+        (
+          sum(rate(cloud_event_time_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          (sum(rate(cloud_event_time_parsing_success_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) + sum(rate(cloud_event_time_parsing_failure_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high time parsing error rate"
+        description: "CloudEvent time parsing error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-time-parsing-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Trace Propagation Alerts
+    - alert: KnativeLambdaCloudEventHandlerHighTracePropagationErrorRate
+      expr: |
+        (
+          sum(rate(trace_propagation_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="cloud_event_handler"}[5m]))
+          /
+          (sum(rate(trace_propagation_success_total{namespace="knative-lambda-{{ .Values.environment }}", component="cloud_event_handler"}[5m])) + sum(rate(trace_propagation_failure_total{namespace="knative-lambda-{{ .Values.environment }}", component="cloud_event_handler"}[5m])))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high trace propagation error rate"
+        description: "Trace propagation error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-trace-propagation-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # HTTP Status Code Alerts
+    - alert: KnativeLambdaCloudEventHandlerHigh4xxErrorRate
+      expr: |
+        (
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", endpoint="cloud_event", status=~"4.."}[5m]))
+          /
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", endpoint="cloud_event"}[5m]))
+        ) * 100 > 20
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high 4xx error rate"
+        description: "4xx error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-4xx-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaCloudEventHandlerHighBadRequestRate
+      expr: |
+        (
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", endpoint="cloud_event", status="400"}[5m]))
+          /
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", endpoint="cloud_event"}[5m]))
+        ) * 100 > 15
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high bad request rate"
+        description: "Bad request (400) rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-bad-request-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Business Logic Alerts
+    - alert: KnativeLambdaCloudEventHandlerNoActivity
+      expr: |
+        sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", endpoint="cloud_event"}[15m])) == 0
+      for: 30m
+      labels:
+        severity: info
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "No CloudEvent processing activity detected"
+        description: "No CloudEvent processing activity has been detected for the last 30 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-no-activity"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaCloudEventHandlerHighRequestRate
+      expr: |
+        sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", endpoint="cloud_event"}[5m])) > 10
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High CloudEvent request rate detected"
+        description: "CloudEvent request rate is {{ `{{ $value | printf \"%.1f\" }}` }} requests per second."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-request-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Configuration Alerts
+    - alert: KnativeLambdaCloudEventHandlerConfigurationError
+      expr: |
+        rate(cloud_event_handler_configuration_error_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler configuration error"
+        description: "CloudEvent handler configuration error rate is {{ `{{ $value | printf \"%.2f\" }}` }} events/sec."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-configuration-error"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}" 
+
+  - name: security.alerts
+    rules:
+      # High Security Threat Rate Alerts
+      - alert: HighSecurityThreatRate
+        expr: rate(security_threats_detected_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High security threat detection rate detected"
+          description: "Security threats are being detected at a rate of {{ `{{ $value }}` }} threats per second for the last 5 minutes"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Critical Security Threats Alert
+      - alert: CriticalSecurityThreatsDetected
+        expr: rate(security_critical_threats_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Critical security threats detected"
+          description: "Critical security threats are being detected at a rate of {{ `{{ $value }}` }} threats per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # SQL Injection Detection Alert
+      - alert: SQLInjectionAttemptsDetected
+        expr: rate(security_threats_detected_total{event_type="sql_injection_detected"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+          attack_type: sql_injection
+        annotations:
+          summary: "SQL injection attempts detected"
+          description: "SQL injection attempts are being detected at a rate of {{ `{{ $value }}` }} attempts per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # XSS Attack Detection Alert
+      - alert: XSSAttackAttemptsDetected
+        expr: rate(security_threats_detected_total{event_type="xss_detected"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+          attack_type: xss
+        annotations:
+          summary: "XSS attack attempts detected"
+          description: "XSS attack attempts are being detected at a rate of {{ `{{ $value }}` }} attempts per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Path Traversal Detection Alert
+      - alert: PathTraversalAttemptsDetected
+        expr: rate(security_threats_detected_total{event_type="path_traversal_detected"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: high
+          category: security
+          attack_type: path_traversal
+        annotations:
+          summary: "Path traversal attempts detected"
+          description: "Path traversal attempts are being detected at a rate of {{ `{{ $value }}` }} attempts per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Malicious Content Detection Alert
+      - alert: MaliciousContentDetected
+        expr: rate(security_threats_detected_total{event_type="malicious_content_detected"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: high
+          category: security
+          attack_type: malicious_content
+        annotations:
+          summary: "Malicious content detected"
+          description: "Malicious content is being detected at a rate of {{ `{{ $value }}` }} detections per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # High Security Validation Failure Rate
+      - alert: HighSecurityValidationFailureRate
+        expr: (rate(security_validation_failures_total[5m]) / rate(security_validations_total[5m])) * 100 > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High security validation failure rate"
+          description: "Security validation failure rate is {{ `{{ $value }}` }}% over the last 5 minutes"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Security Validation Performance Degradation
+      - alert: SecurityValidationPerformanceDegradation
+        expr: histogram_quantile(0.95, rate(security_validation_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Security validation performance degradation"
+          description: "Security validation P95 duration is {{ `{{ $value }}` }} seconds, indicating performance issues"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # High Threat Level Distribution Alert
+      - alert: HighThreatLevelDistribution
+        expr: rate(security_threats_by_level_total{threat_level="high"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: high
+          category: security
+        annotations:
+          summary: "High threat level attacks detected"
+          description: "High threat level attacks are being detected at a rate of {{ `{{ $value }}` }} attacks per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Security Validation Service Down
+      - alert: SecurityValidationServiceDown
+        expr: rate(security_validations_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Security validation service appears to be down"
+          description: "No security validations have been recorded in the last 5 minutes"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Unusual Security Activity Pattern
+      - alert: UnusualSecurityActivityPattern
+        expr: abs(rate(security_validations_total[5m]) - avg_over_time(security_validations_total[1h])) > avg_over_time(security_validations_total[1h]) * 0.5
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Unusual security activity pattern detected"
+          description: "Security validation rate has deviated significantly from the 1-hour average"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Input Validation Failures
+      - alert: HighInputValidationFailures
+        expr: rate(security_validation_failures_total{operation="input_validation"}[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High input validation failure rate"
+          description: "Input validation failures are occurring at a rate of {{ `{{ $value }}` }} failures per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Image Validation Failures
+      - alert: HighImageValidationFailures
+        expr: rate(security_validation_failures_total{operation="image_name_validation"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High image validation failure rate"
+          description: "Image validation failures are occurring at a rate of {{ `{{ $value }}` }} failures per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Namespace Validation Failures
+      - alert: HighNamespaceValidationFailures
+        expr: rate(security_validation_failures_total{operation="namespace_validation"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High namespace validation failure rate"
+          description: "Namespace validation failures are occurring at a rate of {{ `{{ $value }}` }} failures per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Event Data Validation Failures
+      - alert: HighEventDataValidationFailures
+        expr: rate(security_validation_failures_total{operation="event_data_validation"}[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High event data validation failure rate"
+          description: "Event data validation failures are occurring at a rate of {{ `{{ $value }}` }} failures per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # ID Validation Failures
+      - alert: HighIDValidationFailures
+        expr: rate(security_validation_failures_total{operation="id_validation"}[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High ID validation failure rate"
+          description: "ID validation failures are occurring at a rate of {{ `{{ $value }}` }} failures per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Security Threat Level Distribution Alert
+      - alert: CriticalThreatLevelDistribution
+        expr: rate(security_threats_by_level_total{threat_level="critical"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Critical threat level attacks detected"
+          description: "Critical threat level attacks are being detected at a rate of {{ `{{ $value }}` }} attacks per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Security Metrics Collection Failure
+      - alert: SecurityMetricsCollectionFailure
+        expr: changes(security_validations_total[5m]) == 0 and rate(security_validations_total[5m]) == 0
+        for: 10m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Security metrics collection appears to have failed"
+          description: "No security metrics have been collected in the last 10 minutes"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response" 

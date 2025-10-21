@@ -1,0 +1,117 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: knative-lambda-build-metrics-alerts
+  namespace: knative-lambda-{{ .Values.environment }}
+  labels:
+    release: "prometheus"
+    app: "knative-lambda"
+    component: "alerts"
+    environment: {{ .Values.environment }}
+spec:
+  groups:
+  - name: knative-lambda.build-metrics
+    rules:
+    - alert: KnativeLambdaBuildSuccessRateLow
+      expr: |
+        (
+          sum(rate(knative_lambda_build_success_total[5m]))
+          /
+          (sum(rate(knative_lambda_build_success_total[5m])) + sum(rate(knative_lambda_build_failure_total[5m])))
+        ) * 100 < 90
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda build success rate is low"
+        description: "Knative Lambda build success rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-success-rate-low"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildSuccessRateCritical
+      expr: |
+        (
+          sum(rate(knative_lambda_build_success_total[5m]))
+          /
+          (sum(rate(knative_lambda_build_success_total[5m])) + sum(rate(knative_lambda_build_failure_total[5m])))
+        ) * 100 < 70
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda build success rate is critical"
+        description: "Knative Lambda build success rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-success-rate-critical"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildDurationHigh
+      expr: |
+        histogram_quantile(0.95, sum(rate(knative_lambda_build_duration_seconds_bucket[5m])) by (le)) > 300
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda build duration is high"
+        description: "Knative Lambda build p95 duration is {{ `{{ $value | printf \"%.0f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-duration-high"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildQueueDepthHigh
+      expr: |
+        knative_lambda_build_queue_depth > 50
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda build queue depth is high"
+        description: "Knative Lambda build queue has {{ `{{ $value }}` }} builds waiting."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-queue-depth-high"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuildQueueDepthCritical
+      expr: |
+        knative_lambda_build_queue_depth > 200
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda build queue depth is critical"
+        description: "Knative Lambda build queue has {{ `{{ $value }}` }} builds waiting."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/build-queue-depth-critical"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaActiveBuildsHigh
+      expr: |
+        knative_lambda_active_builds > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: build
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda active builds is high"
+        description: "Knative Lambda has {{ `{{ $value }}` }} active builds running."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/active-builds-high"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}" 

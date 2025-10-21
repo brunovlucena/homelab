@@ -1,0 +1,23 @@
+apiVersion: v2
+name: knative-lambda
+description: A Helm chart for Knative Lambda Builder service
+
+type: application
+
+version: 0.1.0
+
+appVersion: "1.0.0"
+
+maintainers:
+  - name: Notifi Infrastructure Team
+    email: infra@notifi.network
+
+keywords:
+  - knative
+  - lambda
+  - serverless
+  - builder
+
+home: https://github.com/notifi-network/infra
+sources:
+  - https://github.com/notifi-network/infra/tree/main/20-platform/services/knative-lambda 

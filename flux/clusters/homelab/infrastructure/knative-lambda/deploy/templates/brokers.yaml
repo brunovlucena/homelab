@@ -1,0 +1,43 @@
+---
+# RabbitMQ Broker Configuration for Lambda Service Events
+apiVersion: eventing.knative.dev/v1alpha1
+kind: RabbitmqBrokerConfig
+metadata:
+  name: {{ .Values.app.name }}-broker-config-{{ .Values.environment }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+  labels:
+    {{- include "knative-lambda.labels" . | nindent 4 }}
+    app.kubernetes.io/component: event-broker
+spec:
+  rabbitmqClusterReference:
+    name: {{ printf "rabbitmq-cluster-%s" .Values.environment }}
+    namespace: {{ include "knative-lambda.rabbitmqNamespace" . }}
+  queueType: quorum
+
+---
+# RabbitMQ Broker for Lambda Service Events
+apiVersion: eventing.knative.dev/v1
+kind: Broker
+metadata:
+  name: {{ .Values.app.name }}-broker-{{ .Values.environment }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+  labels:
+    {{- include "knative-lambda.labels" . | nindent 4 }}
+    app.kubernetes.io/component: event-broker
+  annotations:
+    eventing.knative.dev/broker.class: RabbitMQBroker
+    eventing.knative.dev/enable-dead-letter-queue: "true"
+    eventing.knative.dev/retry-policy: "exponential"
+    eventing.knative.dev/retry-max-attempts: "5"
+    eventing.knative.dev/retry-backoff-delay: "PT1S"
+    eventing.knative.dev/retry-backoff-multiplier: "2.0"
+spec:
+  config:
+    apiVersion: eventing.knative.dev/v1alpha1
+    kind: RabbitmqBrokerConfig
+    name: {{ .Values.app.name }}-broker-config-{{ .Values.environment }}
+    namespace: {{ include "knative-lambda.namespace" . }}
+  delivery:
+    retry: 5
+    backoffPolicy: exponential
+    backoffDelay: "PT1S"

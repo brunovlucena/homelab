@@ -1,0 +1,105 @@
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Values.app.name }}-builder-{{ .Values.environment }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: {{ .Values.rabbitmq.eventing.parallelism | quote }}
+spec:
+  broker: {{ .Values.env.brokerName | default (printf "%s-broker-%s" .Values.app.name .Values.environment) }}
+  filter:
+    attributes:
+      type: "network.notifi.lambda.build.start"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .Values.builder.name }}-{{ .Values.environment }}
+      namespace: {{ include "knative-lambda.namespace" . }}
+
+---
+# Trigger for build completion events (creates services)
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Values.app.name }}-build-complete-{{ .Values.environment }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: {{ .Values.rabbitmq.eventing.parallelism | quote }}
+spec:
+  broker: {{ .Values.env.brokerName | default (printf "%s-broker-%s" .Values.app.name .Values.environment) }}
+  filter:
+    attributes:
+      type: "network.notifi.lambda.build.complete"
+      source: "network.notifi.builder"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .Values.builder.name }}-{{ .Values.environment }}
+      namespace: {{ include "knative-lambda.namespace" . }}
+
+---
+# Trigger for build failed events (for debugging)
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Values.app.name }}-build-failed-{{ .Values.environment }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: {{ .Values.rabbitmq.eventing.parallelism | quote }}
+spec:
+  broker: {{ .Values.env.brokerName | default (printf "%s-broker-%s" .Values.app.name .Values.environment) }}
+  filter:
+    attributes:
+      type: "network.notifi.lambda.build.failed"
+      source: "network.notifi.builder"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .Values.builder.name }}-{{ .Values.environment }}
+      namespace: {{ include "knative-lambda.namespace" . }}
+
+---
+# Trigger for build timeout events (for debugging)
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Values.app.name }}-build-timeout-{{ .Values.environment }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: {{ .Values.rabbitmq.eventing.parallelism | quote }}
+spec:
+  broker: {{ .Values.env.brokerName | default (printf "%s-broker-%s" .Values.app.name .Values.environment) }}
+  filter:
+    attributes:
+      type: "network.notifi.lambda.build.timeout"
+      source: "network.notifi.builder"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .Values.builder.name }}-{{ .Values.environment }}
+      namespace: {{ include "knative-lambda.namespace" . }}
+
+---
+# Trigger for service delete events (deletes lambda services)
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Values.app.name }}-service-delete-{{ .Values.environment }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: {{ .Values.rabbitmq.eventing.parallelism | quote }}
+spec:
+  broker: {{ .Values.env.brokerName | default (printf "%s-broker-%s" .Values.app.name .Values.environment) }}
+  filter:
+    attributes:
+      type: "network.notifi.lambda.service.delete"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .Values.builder.name }}-{{ .Values.environment }}
+      namespace: {{ include "knative-lambda.namespace" . }}

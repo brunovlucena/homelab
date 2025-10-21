@@ -1,0 +1,355 @@
+# Production environment values for knative-lambda
+# Override default values for production environment
+#
+# 🚨 CRITICAL FIXES APPLIED (2024-12-19):
+# 🚨 1. target: "0.01" → "1" (FIXED: was creating 100x more pods than needed)
+# 🚨 2. containerConcurrency: "0" (KEPT: correct for unlimited concurrency per container)
+# 🚨 3. targetConcurrency: 0 → "2" (FIXED: was invalid value)
+#
+# 📊 EXPECTED IMPACT:
+# 📊 - Pod count should reduce by ~90% for same traffic
+# 📊 - Cost reduction: ~90% fewer pods = ~90% lower resource usage
+# 📊 - Performance: Slightly higher latency but much better resource efficiency
+# 📊 - Stability: More predictable scaling behavior
+#
+# ⚠️  MONITORING REQUIRED:
+# ⚠️  - Watch pod count after deployment
+# ⚠️  - Monitor response times for any degradation
+# ⚠️  - Check resource utilization metrics
+
+# Production environment
+environment: prd
+
+# Production RabbitMQ Configuration
+rabbitmq:
+  clusterName: "rabbitmq-cluster-prd"
+  namespace: "rabbitmq-prd"
+  connectionSecretName: "rabbitmq-connection"
+
+# Production builder configuration - Aligned with main values.yaml
+# 🚨 UPDATED (2024-12-19): Aligned with values.yaml builder configuration
+builder:
+  minScale: 0  # ✅ KEPT: 0 (aligned with values.yaml)
+  maxScale: 10  # 🚨 UPDATED: 3 → 10 (aligned with values.yaml)
+  targetConcurrency: 5  # 🚨 UPDATED: 2 → 5 (aligned with values.yaml)
+  scaleToZeroGracePeriod: "30s"  # ✅ KEPT: "30s" (aligned with values.yaml)
+  scaleDownDelay: "0s"  # 🚨 UPDATED: "10s" → "0s" (aligned with values.yaml)
+  stableWindow: "10s"  # 🚨 UPDATED: "15s" → "10s" (aligned with values.yaml)
+  # Resource configuration - Aligned with base values.yaml
+  resources:
+    requests:
+      memory: "256Mi"  # 🚨 UPDATED: "1024Mi" → "256Mi" (aligned with values.yaml)
+      cpu: "250m"  # 🚨 UPDATED: "100m" → "250m" (aligned with values.yaml)
+    limits:
+      memory: "256Mi"  # 🚨 UPDATED: "2048Mi" → "256Mi" (aligned with values.yaml)
+      cpu: "250m"  # 🚨 UPDATED: "1000m" → "250m" (aligned with values.yaml)
+  # Timeout configuration - Aligned with base values.yaml
+  timeouts:
+    response: "300"  # 🚨 UPDATED: "180s" → "300" (aligned with values.yaml)
+    idle: "60s"  # 🚨 UPDATED: "30s" → "60s" (aligned with values.yaml)
+
+# Production Builder Service configuration - Aligned with main values.yaml
+builderService:
+  # 🔥 TARGET CONCURRENCY: How many requests each pod can handle
+  #    ✅ 70 requests per pod = aggressive scaling for lambda workloads
+  #    📊 Impact: Higher = fewer pods, lower cost, potential latency
+  #    📊 Impact: Lower = more pods, higher cost, better responsiveness
+  #    🚨 UPDATED: "2" → "70" (aligned with values.yaml)
+  targetConcurrency: 70
+  
+  # 📈 TARGET UTILIZATION: When to create new pods (% of target concurrency)
+  #    🎯 50% means new pod when current pod reaches 35 requests (70 * 0.5)
+  #    📊 Impact: Higher = less aggressive scaling up, more aggressive scaling down
+  #    🚨 UPDATED: "60" → "50" (aligned with values.yaml)
+  targetUtilization: 50
+  
+  # 🎯 TARGET: The actual concurrency threshold for autoscaling
+  #    🚀 70 = aggressive scaling for lambda workloads
+  #    📊 Impact: "0.01" = very aggressive (any traffic creates pods)
+  #    📊 Impact: "70" = aggressive scaling for lambda workloads
+  #    🚨 UPDATED: "1" → "70" (aligned with values.yaml)
+  target: 70
+  
+  # 🔧 CONTAINER CONCURRENCY: How many requests one container can handle
+  #    ✅ 50 = limited concurrency per container (optimal for lambda workloads)
+  #    📊 Impact: Higher values = limited concurrency per pod
+  #    🚨 UPDATED: "0" → 50 (aligned with values.yaml)
+  containerConcurrency: 50
+  
+  # 🔽 MIN SCALE: Minimum number of pods (0 = scale to zero)
+  #    💰 Cost savings: Can scale to zero when no traffic
+  #    ✅ KEPT: "0" (aligned with values.yaml)
+  minScale: "0"
+  
+  # 🔼 MAX SCALE: Maximum number of pods (safety limit)
+  #    🛡️  Safety: Max 50 pods (safety limit)
+  #    📊 Impact: Prevents runaway scaling
+  #    🚨 UPDATED: "20" → "50" (aligned with values.yaml)
+  maxScale: "50"
+  
+  # ⏰ SCALE TO ZERO GRACE PERIOD: How long to wait before scaling to zero
+  #    🕐 Wait 30s before scaling to zero (cost savings)
+  #    ✅ KEPT: "30s" (aligned with values.yaml)
+  scaleToZeroGracePeriod: "30s"
+  
+  # ⏱️ SCALE DOWN DELAY: How long to wait before scaling down
+  #    🛡️  Stability: Scale down immediately (base config)
+  #    📊 Impact: Prevents thrashing (up/down/up/down)
+  #    🚨 UPDATED: "10s" → "0s" (aligned with values.yaml)
+  scaleDownDelay: "0s"
+  
+  # 📊 STABLE WINDOW: Time window for scaling decisions
+  #    🕐 10s window for scaling decisions (base config)
+  #    📊 Impact: Shorter = more responsive, longer = more stable
+  #    ✅ KEPT: "10s" (aligned with values.yaml)
+  stableWindow: "10s"
+
+# Production Lambda Services Configuration - Aligned with main values.yaml
+# 🚨 CRITICAL: This controls scaling for dynamically created lambda services
+lambdaServices:
+  # Default configuration for generated lambda services
+  defaults:
+    # 🔧 AUTOSCALING: Configuration for lambda service autoscaling
+    # 🚨 CRITICAL FIX: Updated for proper concurrency handling
+    minScale: 0  # ✅ KnativeMinScaleDefault = "0"
+    maxScale: 50  # ✅ KnativeMaxScaleDefault = "50"
+    targetConcurrency: 1  # 🚨 FIXED: 1 request per pod for aggressive scaling
+    targetUtilization: 51  # 🚨 FIXED: 51% of target concurrency triggers new pod
+    target: 1  # 🚨 FIXED: Autoscaling target of 1 concurrent request
+    containerConcurrency: 1  # 🚨 FIXED: 1 request per container for maximum distribution
+    scaleToZeroGracePeriod: "30s"  # ✅ KnativeScaleToZeroGracePeriodDefault = "30s"
+    scaleDownDelay: "0s"  # ✅ KnativeScaleDownDelayDefault = "0s"
+    stableWindow: "10s"  # ✅ KnativeStableWindowDefault = "10s"
+    # 🚀 PANIC MODE: For rapid scaling during traffic spikes
+    panicWindowPercentage: "10.0"  # 10% of stable window for panic mode
+    panicThresholdPercentage: "200.0"  # 200% of target triggers panic mode
+    
+    # 📦 RESOURCE CONFIGURATION - Specific to lambda services
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "150m"
+      limits:
+        memory: "2Gi"
+        cpu: "1000m"
+    
+    # ⏰ TIMEOUT CONFIGURATION - Specific to lambda services
+    timeouts:
+      response: "300s"
+      idle: "30s"
+  
+  # 📊 STABLE WINDOW: Time window for scaling decisions
+  #    🧠 Decision making: 10s window for scaling decisions
+  #    📊 Impact: More stable, less reactive to temporary spikes
+  #    🚨 UPDATED: "15s" → "10s" (aligned with values.yaml)
+  stableWindow: "10s"
+
+# Production environment variables
+env:
+  # Override base configuration for production
+  namespace: "knative-lambda-prd"
+  environment: "prd"
+  s3SourceBucket: "notifi-uw2-prd-fusion-modules"
+  s3TmpBucket: "knative-lambda-prd-context-tmp"
+  brokerName: "knative-lambda-broker-prd"
+  
+  # RabbitMQ Source Configuration
+  rabbitmqNamespace: "rabbitmq-prd"
+  
+  # Override configuration for production - More efficient
+  jobTTLSeconds: "1800"  # Reduced from base 3600 for faster cleanup
+  
+  # Production-specific exemplars configuration (disabled for efficiency)
+  exemplarsEnabled: "false"  # Disabled from base true
+  exemplarsMaxPerMetric: "5"  # Reduced from base 10
+  exemplarsSampleRate: "0.005"  # Reduced from base 0.1
+  exemplarsTraceIDLabel: "trace_id"
+  exemplarsSpanIDLabel: "span_id"
+  exemplarsIncludeLabels: "third_party_id,parser_id,job_type,status,component,error_type,region,account_id"
+  
+  # Lambda Function Configuration
+  lambdaTrigger: "http"
+  lambdaRuntime: "nodejs22"            # 🚀 Lambda runtime (Node.js 22)
+  lambdaHandler: "index.handler"       # 🚀 Lambda handler function
+  lambdaFunctionMemoryLimit: "256Mi"   # 🚀 Memory limit for lambda functions
+  lambdaFunctionCpuLimit: "100m"       # 🚀 CPU limit for lambda functions
+  lambdaFunctionMemoryRequest: "64Mi"  # 🚀 Memory request for lambda functions
+  lambdaFunctionCpuRequest: "50m"      # 🚀 CPU request for lambda functions
+  functionMemoryLimitMi: "256"         # 🚀 Memory limit in Mi
+  functionCpuLimitM: "100"             # 🚀 CPU limit in millicores
+  
+  # 🔐 ENCRYPTION CONFIGURATION
+  encryptionKey: "cHJvZC1lbmNyeXB0aW9uLWtleS1mb3ItcHJvZHVjdGlvbi1lbnZpcm9ubWVudA=="  # 🔐 Base64 encoded 32-byte key for production
+  
+  # 🐰 RABBITMQ CONFIGURATION
+  rabbitmqNamespace: "rabbitmq-prd"    # 🐰 RabbitMQ namespace
+  
+  # 📡 SCHEDULER CONFIGURATION
+  schedulerUrl: "http://notifi-scheduler.notifi.svc.cluster.local/fusion/execution/response"  # ⏰ Scheduler service URL
+  
+  # 📊 OBSERVABILITY CONFIGURATION
+  otelExporterOtlpEndpoint: "tempo-distributor.tempo.svc.cluster.local:4317"  # 📊 OpenTelemetry endpoint
+  
+  # 🏗️  BUILD CONFIGURATION
+  kanikoEnabled: "true"                # 🏗️  Enable Kaniko builds
+  kanikoTimeout: "30m"                 # ⏰ Kaniko build timeout
+  kanikoCache: "true"                  # 🏗️  Enable Kaniko caching
+  kanikoCacheTtl: "24h"                # ⏰ Kaniko cache TTL
+  kanikoSkipTlsVerify: "false"         # 🔒 Skip TLS verification
+  kanikoInsecureRegistry: "false"      # 🔒 Insecure registry
+  kanikoBuildContextSizeLimit: "2Gi"   # 📦 Build context size limit
+  kanikoBuildContextTimeout: "10m"     # ⏰ Build context timeout
+  kanikoDestination: "339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambdas"  # 🏗️  Build destination
+  kanikoRunAsUser: "1000"              # 👤 Kaniko run as user
+  kanikoRunAsGroup: "1000"             # 👤 Kaniko run as group
+  kanikoSecurityContextRunAsNonRoot: "true"  # 🔒 Run as non-root
+  kanikoSecurityContextReadOnlyRootFilesystem: "true"  # 🔒 Read-only root filesystem
+  
+  # 📦 NPM CONFIGURATION
+  kanikoNpmRegistry: "https://registry.npmjs.org/"  # 📦 NPM registry
+  kanikoNpmTimeout: "60000"            # ⏰ NPM timeout
+  kanikoNpmFetchRetries: "5"           # 🔄 NPM fetch retries
+  kanikoNpmFetchRetryMintimeout: "10000"  # ⏰ NPM fetch retry min timeout
+  kanikoNpmFetchRetryMaxtimeout: "60000"  # ⏰ NPM fetch retry max timeout
+  kanikoNpmFetchRetryFactor: "2"       # 🔄 NPM fetch retry factor
+  kanikoNpmPreferOffline: "true"       # 📦 NPM prefer offline
+  kanikoNpmAudit: "false"              # 🔍 NPM audit
+  kanikoNpmFund: "false"               # 💰 NPM fund
+  kanikoNpmUpdateNotifier: "false"     # 🔔 NPM update notifier
+  kanikoNpmLoglevel: "warn"            # 📝 NPM log level
+  
+  # 🔧 REGISTRY CONFIGURATION
+  registryMirror: ""                   # 🔧 Registry mirror (empty for default)
+  skipTlsVerifyRegistry: ""            # 🔧 Skip TLS verify registry (empty for default)
+  
+  # Notifi Service Addresses - Required for lambda function connectivity
+  subscriptionManagerAddress: "notifi-subscription-manager.notifi.svc.cluster.local:4000"
+  ephemeralStorageAddress: "notifi-storage-manager.notifi.svc.cluster.local:4000"
+  persistentStorageAddress: "notifi-storage-manager.notifi.svc.cluster.local:4000"
+  fusionFetchProxyAddress: "notifi-fetch-proxy.notifi.svc.cluster.local:4000"
+  evmRpcAddress: "notifi-blockchain-manager.notifi.svc.cluster.local:4000"
+  solanaRpcAddress: "notifi-blockchain-manager.notifi.svc.cluster.local:4000"
+  suiRpcAddress: "notifi-blockchain-manager.notifi.svc.cluster.local:4000"
+  grpcInsecure: "true"
+
+# Production service account
+serviceAccount:
+  annotations: {}
+  # EKS Pod Identity is configured at the cluster level
+
+# Production namespace with environment suffix
+namespace:
+  name: knative-lambda-prd
+
+# Enable HPA for production scaling - More conservative
+hpa:
+  enabled: true
+  minReplicas: 1  # Reduced from base 2
+  maxReplicas: 5  # Reduced from base 10
+  targetCPUUtilizationPercentage: 85  # Increased from base 80
+  targetMemoryUtilizationPercentage: 85  # Increased from base 80
+
+# Production pod disruption budget - More conservative
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1  # Keep current value
+
+# Production affinity settings - More flexible for resource efficiency
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:  # Changed from required to preferred
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: knative-lambda
+          topologyKey: kubernetes.io/hostname
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/arch
+              operator: In
+              values:
+                - amd64
+                - arm64  # Added ARM support for cost efficiency
+            - key: node.kubernetes.io/instance-type
+              operator: In
+              values:
+                - m5.large
+                - m5.xlarge
+                - m5.2xlarge
+                - m6g.large  # Added ARM instances for cost efficiency
+                - m6g.xlarge
+                - m6g.2xlarge
+                - c6g.large  # Added compute-optimized ARM instances
+                - c6g.xlarge
+
+# Enable SLO monitoring for production - Reduced overhead
+monitoring:
+  slos:
+    enabled: true
+    # Reduced metrics collection for efficiency
+    metricsInterval: "60s"  # Increased from default
+    retentionPeriod: "24h"  # Reduced from default
+
+# Production-specific rate limiting - More conservative
+rateLimiting:
+  enabled: true
+  buildContext:
+    requestsPerMin: 3  # Reduced from base 5
+    burstSize: 1  # Reduced from base 2
+  k8sJob:
+    requestsPerMin: 5  # Reduced from base 10
+    burstSize: 2  # Reduced from base 3
+  client:
+    requestsPerMin: 3  # Reduced from base 5
+    burstSize: 1  # Reduced from base 2
+  s3Upload:
+    requestsPerMin: 25  # Reduced from base 50
+    burstSize: 5  # Reduced from base 10
+  memory:
+    maxUsagePercent: 75.0  # Reduced from base 80.0
+    checkInterval: "30s"
+  cleanup:
+    interval: "10m"  # Increased from base 5m
+    clientTTL: "2h"  # Increased from base 1h
+
+# Production security configuration - More restrictive
+security:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    readOnlyRootFilesystem: true  # Added for security
+    allowPrivilegeEscalation: false  # Added for security
+    capabilities:
+      drop:
+        - ALL  # Added for security
+
+# Production node selector - Prefer ARM for cost efficiency
+nodeSelector:
+  kubernetes.io/arch: arm64  # Prefer ARM instances for cost efficiency
+
+# Production tolerations - More restrictive
+tolerations:
+  - key: node.kubernetes.io/not-ready
+    operator: Exists
+    effect: NoExecute
+    tolerationSeconds: 300
+  - key: node.kubernetes.io/unreachable
+    operator: Exists
+    effect: NoExecute
+    tolerationSeconds: 300
+  - key: node.kubernetes.io/disk-pressure  # Added for resource management
+    operator: Exists
+    effect: NoSchedule
+  - key: node.kubernetes.io/memory-pressure  # Added for resource management
+    operator: Exists
+    effect: NoSchedule
+
+

@@ -1,0 +1,136 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: knative-lambda-golden-signals-alerts
+  namespace: knative-lambda-{{ .Values.environment }}
+  labels:
+    release: "prometheus"
+    app: "knative-lambda"
+    component: "alerts"
+    environment: {{ .Values.environment }}
+spec:
+  groups:
+  - name: knative-lambda.golden-signals
+    rules:
+    # Golden Signal: Availability
+    - alert: KnativeLambdaBuilderDown
+      expr: up{namespace="knative-lambda-{{ .Values.environment }}", job=~".*builder.*"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        golden_signal: availability
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder is down"
+        description: "Knative Lambda Builder service has been down for more than 2 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-down"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Golden Signal: Error Rate
+    - alert: KnativeLambdaBuilderHighErrorRate
+      expr: |
+        (
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", status=~"5..", service=~".*builder.*"}[5m]))
+          /
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", service=~".*builder.*"}[5m]))
+        ) * 100 > 5
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        golden_signal: errors
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder high error rate"
+        description: "Knative Lambda Builder error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuilderCriticalErrorRate
+      expr: |
+        (
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", status=~"5..", service=~".*builder.*"}[5m]))
+          /
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", service=~".*builder.*"}[5m]))
+        ) * 100 > 20
+      for: 2m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        golden_signal: errors
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder critical error rate"
+        description: "Knative Lambda Builder error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-critical-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Golden Signal: Latency
+    - alert: KnativeLambdaBuilderHighLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}", service=~".*builder.*"}[5m])) by (le)) > 30
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        golden_signal: latency
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder high latency"
+        description: "Knative Lambda Builder p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-high-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuilderCriticalLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}", service=~".*builder.*"}[5m])) by (le)) > 120
+      for: 2m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        golden_signal: latency
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder critical latency"
+        description: "Knative Lambda Builder p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-critical-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Golden Signal: Saturation
+    - alert: KnativeLambdaBuilderHighCPUUsage
+      expr: |
+        rate(container_cpu_usage_seconds_total{namespace="knative-lambda-{{ .Values.environment }}", pod=~".*builder.*"}[5m]) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        golden_signal: saturation
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder high CPU usage"
+        description: "Knative Lambda Builder is using {{ `{{ $value | printf \"%.1f\" }}` }} CPU cores."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-high-cpu-usage"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaBuilderHighMemoryUsage
+      expr: |
+        container_memory_usage_bytes{namespace="knative-lambda-{{ .Values.environment }}", pod=~".*builder.*"} / container_spec_memory_limit_bytes{namespace="knative-lambda-{{ .Values.environment }}", pod=~".*builder.*"} > 0.85
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        golden_signal: saturation
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder high memory usage"
+        description: "Knative Lambda Builder is using {{ `{{ $value | printf \"%.1f\" }}` }}% of memory limit."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-high-memory-usage"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}" 

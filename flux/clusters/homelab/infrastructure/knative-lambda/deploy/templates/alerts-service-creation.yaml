@@ -1,0 +1,65 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: knative-lambda-service-creation-alerts
+  namespace: knative-lambda-{{ .Values.environment }}
+  labels:
+    release: "prometheus"
+    app: "knative-lambda"
+    component: "alerts"
+    environment: {{ .Values.environment }}
+spec:
+  groups:
+  - name: knative-lambda.service-creation
+    rules:
+    - alert: KnativeLambdaServiceCreationSuccessRateLow
+      expr: |
+        (
+          sum(rate(knative_lambda_service_creation_success_total[5m]))
+          /
+          (sum(rate(knative_lambda_service_creation_success_total[5m])) + sum(rate(knative_lambda_service_creation_failure_total[5m])))
+        ) * 100 < 90
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-creation
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda service creation success rate is low"
+        description: "Knative Lambda service creation success rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-creation-success-rate-low"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaServiceCreationDurationHigh
+      expr: |
+        histogram_quantile(0.95, sum(rate(knative_lambda_service_creation_duration_seconds_bucket[5m])) by (le)) > 60
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-creation
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda service creation duration is high"
+        description: "Knative Lambda service creation p95 duration is {{ `{{ $value | printf \"%.0f\" }}` }}s over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-creation-duration-high"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaActiveServicesHigh
+      expr: |
+        knative_lambda_active_services > 500
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: service-creation
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda active services count is high"
+        description: "Knative Lambda has {{ `{{ $value }}` }} active services running."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/active-services-high"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}" 

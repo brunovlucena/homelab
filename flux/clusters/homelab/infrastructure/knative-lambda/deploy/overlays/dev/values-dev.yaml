@@ -1,0 +1,295 @@
+# 🚀 KNATIVE LAMBDA - Development Environment Configuration
+# 🎯 Purpose: Override default values for development environment
+# 💡 Strategy: Debug logging, higher limits, faster iteration
+
+# 🏷️  ENVIRONMENT IDENTIFICATION
+environment: dev                # 🏷️  Development environment
+
+# 🐰 RABBITMQ CONFIGURATION - Development Environment
+rabbitmq:
+  clusterName: "rabbitmq-cluster-dev"
+  namespace: "rabbitmq-dev"
+  connectionSecretName: "rabbitmq-connection"
+
+# 🐳 CONTAINER IMAGE CONFIGURATION
+# 🎯 Purpose: Use development-tagged images for testing
+image:
+  tag: "dev"                    # 🏷️  Development image tag
+
+# 🔧 SIDECAR CONTAINER CONFIGURATION
+# 🎯 Purpose: Monitoring and build support container
+sidecar:
+  image:
+    tag: "dev"                  # 🏷️  Development sidecar image tag
+
+# 🌍 ENVIRONMENT VARIABLES - Development Configuration
+# 🎯 Purpose: Override base configuration for development environment
+# 💡 Strategy: Higher limits, debug logging, faster cleanup
+env:
+  # 🔧 BASIC CONFIGURATION
+  logLevel: "debug"                    # 📝 Debug logging for development
+  namespace: "knative-lambda-dev"      # 🏷️  Development namespace
+  environment: "dev"                   # 🏷️  Environment identifier
+  
+  # 🗄️  STORAGE CONFIGURATION
+  s3SourceBucket: "knative-lambda-dev-fusion-modules-tmp"  # 📦 Source code bucket
+  s3TmpBucket: "knative-lambda-dev-context-tmp"           # 📦 Temporary files bucket
+  brokerName: "knative-lambda-broker-dev"          # 📡 Event broker name
+  triggerNamespace: "knative-lambda-dev"                  # 🏷️  Trigger namespace
+  
+  # 📊 OBSERVABILITY CONFIGURATION
+  exemplarsEnabled: "true"             # 📈 Enable exemplars for debugging
+  exemplarsMaxPerMetric: "5"           # 📊 Max 5 exemplars per metric
+  exemplarsSampleRate: "0.2"           # 📊 20% sample rate for exemplars
+  exemplarsTraceIDLabel: "trace_id"    # 🏷️  Trace ID label
+  exemplarsSpanIDLabel: "span_id"      # 🏷️  Span ID label
+  exemplarsIncludeLabels: "third_party_id,parser_id,job_type,status,component,error_type,environment"
+  
+  # 🐰 MESSAGE QUEUE CONFIGURATION
+  rabbitmqNamespace: "rabbitmq-dev"    # 🐰 RabbitMQ namespace
+  
+  # 🔗 EXTERNAL SERVICE CONFIGURATION
+  schedulerUrl: "http://notifi-scheduler.notifi.svc.cluster.local/fusion/execution/response"  # ⏰ Scheduler service URL
+  encryptionKey: "dGVzdC1lbmNyeXB0aW9uLWtleS1mb3ItZGV2LWVudmlyb25tZW50"  # 🔐 Base64 encoded 32-byte key
+  
+  # 🔗 NOTIFI SERVICE ADDRESSES - Required for lambda function connectivity
+  subscriptionManagerAddress: "notifi-subscription-manager.notifi.svc.cluster.local:4000"
+  ephemeralStorageAddress: "notifi-storage-manager.notifi.svc.cluster.local:4000"
+  persistentStorageAddress: "notifi-storage-manager.notifi.svc.cluster.local:4000"
+  fusionFetchProxyAddress: "notifi-fetch-proxy.notifi.svc.cluster.local:4000"
+  evmRpcAddress: "notifi-blockchain-manager.notifi.svc.cluster.local:4000"
+  solanaRpcAddress: "notifi-blockchain-manager.notifi.svc.cluster.local:4000"
+  suiRpcAddress: "notifi-blockchain-manager.notifi.svc.cluster.local:4000"
+  grpcInsecure: "true"
+  
+  # ⚡ PERFORMANCE CONFIGURATION - Higher limits for development
+  maxConcurrentJobs: "50"              # 🚀 Increased from 5 to 50 (10x)
+  maxConcurrentBuilds: "30"            # 🚀 Increased from 10 to 30 (3x)
+  jobTTLSeconds: "1800"                # ⏰ Reduced from 3600 to 1800 for faster cleanup
+  
+  # 🚀 LAMBDA FUNCTION CONFIGURATION
+  lambdaTrigger: "http"                # 🌐 HTTP trigger for lambda functions
+  lambdaRuntime: "nodejs22"            # 🚀 Lambda runtime (Node.js 22)
+  lambdaHandler: "index.handler"       # 🚀 Lambda handler function
+  lambdaFunctionMemoryLimit: "256Mi"   # 🚀 Memory limit for lambda functions
+  lambdaFunctionCpuLimit: "100m"       # 🚀 CPU limit for lambda functions
+  lambdaFunctionMemoryRequest: "64Mi"  # 🚀 Memory request for lambda functions
+  lambdaFunctionCpuRequest: "50m"      # 🚀 CPU request for lambda functions
+  functionMemoryLimitMi: "256"         # 🚀 Memory limit in Mi
+  functionCpuLimitM: "100"             # 🚀 CPU limit in millicores
+  
+  # 🔐 ENCRYPTION CONFIGURATION
+  encryptionKey: "dGVzdC1lbmNyeXB0aW9uLWtleS1mb3ItZGV2LWVudmlyb25tZW50"  # 🔐 Base64 encoded 32-byte key
+  
+  # 🐰 RABBITMQ CONFIGURATION
+  rabbitmqNamespace: "rabbitmq-dev"    # 🐰 RabbitMQ namespace
+  
+  # 📡 SCHEDULER CONFIGURATION
+  schedulerUrl: "http://notifi-scheduler.notifi.svc.cluster.local/fusion/execution/response"  # ⏰ Scheduler service URL
+  
+  # 📊 OBSERVABILITY CONFIGURATION
+  otelExporterOtlpEndpoint: "tempo-distributor.tempo.svc.cluster.local:4317"  # 📊 OpenTelemetry endpoint
+  
+  # 🏗️  BUILD CONFIGURATION
+  kanikoEnabled: "true"                # 🏗️  Enable Kaniko builds
+  kanikoTimeout: "30m"                 # ⏰ Kaniko build timeout
+  kanikoCache: "true"                  # 🏗️  Enable Kaniko caching
+  kanikoCacheTtl: "24h"                # ⏰ Kaniko cache TTL
+  kanikoSkipTlsVerify: "false"         # 🔒 Skip TLS verification
+  kanikoInsecureRegistry: "false"      # 🔒 Insecure registry
+  kanikoBuildContextSizeLimit: "2Gi"   # 📦 Build context size limit
+  kanikoBuildContextTimeout: "10m"     # ⏰ Build context timeout
+  kanikoDestination: "339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambdas"  # 🏗️  Build destination
+  kanikoRunAsUser: "1000"              # 👤 Kaniko run as user
+  kanikoRunAsGroup: "1000"             # 👤 Kaniko run as group
+  kanikoSecurityContextRunAsNonRoot: "true"  # 🔒 Run as non-root
+  kanikoSecurityContextReadOnlyRootFilesystem: "true"  # 🔒 Read-only root filesystem
+  
+  # 📦 NPM CONFIGURATION
+  kanikoNpmRegistry: "https://registry.npmjs.org/"  # 📦 NPM registry
+  kanikoNpmTimeout: "60000"            # ⏰ NPM timeout
+  kanikoNpmFetchRetries: "5"           # 🔄 NPM fetch retries
+  kanikoNpmFetchRetryMintimeout: "10000"  # ⏰ NPM fetch retry min timeout
+  kanikoNpmFetchRetryMaxtimeout: "60000"  # ⏰ NPM fetch retry max timeout
+  kanikoNpmFetchRetryFactor: "2"       # 🔄 NPM fetch retry factor
+  kanikoNpmPreferOffline: "true"       # 📦 NPM prefer offline
+  kanikoNpmAudit: "false"              # 🔍 NPM audit
+  kanikoNpmFund: "false"               # 💰 NPM fund
+  kanikoNpmUpdateNotifier: "false"     # 🔔 NPM update notifier
+  kanikoNpmLoglevel: "warn"            # 📝 NPM log level
+  
+  # 🔧 REGISTRY CONFIGURATION
+  registryMirror: ""                   # 🔧 Registry mirror (empty for default)
+  skipTlsVerifyRegistry: ""            # 🔧 Skip TLS verify registry (empty for default)
+
+# 🏗️  BUILDER CONFIGURATION - Development Environment
+# 🎯 Purpose: Control the main builder service scaling behavior
+# 💡 Strategy: Aligned with main values.yaml configuration
+# 🚨 UPDATED (2024-12-19): Aligned with values.yaml builder configuration
+builder:
+  # 🔽 MIN SCALE: Minimum number of pods (0 = scale to zero)
+  #    💰 Cost savings: Can scale to zero when no traffic
+  #    ✅ KEPT: 0 (aligned with values.yaml)
+  minScale: 0
+  
+  # 🔼 MAX SCALE: Maximum number of pods (safety limit)
+  #    🛡️  Safety: Max 10 pods (safety limit)
+  #    📊 Impact: Prevents runaway scaling
+  #    🚨 UPDATED: 20 → 10 (aligned with values.yaml)
+  maxScale: 10
+  
+  # 🔥 TARGET CONCURRENCY: How many requests each pod can handle
+  #    ✅ 0 = unlimited concurrency per pod (optimal for lambda workloads)
+  #    📊 Impact: Higher = fewer pods, lower cost, potential latency
+  #    🚨 UPDATED: 5 → 0 (aligned with values.yaml)
+  targetConcurrency: 5
+  
+  # ⏰ SCALE TO ZERO GRACE PERIOD: How long to wait before scaling to zero
+  #    🕐 Wait 30s before scaling to zero (cost savings)
+  #    ✅ KEPT: "30s" (aligned with values.yaml)
+  scaleToZeroGracePeriod: "30s"
+  
+  # ⏱️ SCALE DOWN DELAY: How long to wait before scaling down
+  #    🛡️  Stability: Scale down immediately (base config)
+  #    📊 Impact: Prevents thrashing (up/down/up/down)
+  #    🚨 UPDATED: "10s" → "0s" (aligned with values.yaml)
+  scaleDownDelay: "0s"
+  
+  # 📊 STABLE WINDOW: Time window for scaling decisions
+  #    🧠 Decision making: 10s window for scaling decisions
+  #    📊 Impact: More stable, less reactive to temporary spikes
+  #    🚨 UPDATED: "15s" → "10s" (aligned with values.yaml)
+  stableWindow: "10s"
+
+# 🚀 BUILDER SERVICE - Development Environment
+builderService:
+  targetConcurrency: 70
+  
+  targetUtilization: 50
+  
+  target: 70
+  
+  containerConcurrency: 50
+  
+  minScale: "0"
+  
+  maxScale: "50"
+  
+  # ⏰ SCALE TO ZERO GRACE PERIOD: How long to wait before scaling to zero
+  #    🕐 Wait 30s before scaling to zero (cost savings)
+  #    ✅ KEPT: "30s" (aligned with values.yaml)
+  scaleToZeroGracePeriod: "30s"
+  
+  # ⏱️ SCALE DOWN DELAY: How long to wait before scaling down
+  #    🛡️  Stability: Scale down immediately (base config)
+  #    📊 Impact: Prevents thrashing (up/down/up/down)
+  #    🚨 UPDATED: "10s" → "0s" (aligned with values.yaml)
+  scaleDownDelay: "0s"
+  
+  # 📊 STABLE WINDOW: Time window for scaling decisions
+  #    🧠 Decision making: 10s window for scaling decisions
+  #    📊 Impact: More stable, less reactive to temporary spikes
+  #    🚨 UPDATED: "15s" → "10s" (aligned with values.yaml)
+  stableWindow: "10s"
+  
+# 🐰 MESSAGE QUEUE CONFIGURATION - REMOVED
+# ℹ️  Using Knative brokers and triggers instead of RabbitMQ
+
+# 🔐 SERVICE ACCOUNT CONFIGURATION
+# 🎯 Purpose: Kubernetes service account for the builder service
+serviceAccount:
+  annotations: {}              # 🏷️  No custom annotations needed
+  # ℹ️  EKS Pod Identity is configured at the cluster level
+
+# 🏷️  NAMESPACE CONFIGURATION
+# 🎯 Purpose: Kubernetes namespace for the development environment
+namespace:
+  name: knative-lambda-dev     # 🏷️  Development namespace name
+
+# 📈 HORIZONTAL POD AUTOSCALER (HPA) - Development Configuration
+# 🎯 Purpose: CPU-based autoscaling for additional scaling control
+# 💡 Strategy: Conservative scaling for development
+hpa:
+  enabled: true                # ✅ Enable HPA for development testing
+  minReplicas: 1               # 🔽 Minimum 1 replica always running
+  maxReplicas: 5               # 🔼 Maximum 5 replicas (increased from 3)
+  targetCPUUtilizationPercentage: 80  # 📊 Scale at 80% CPU (increased from 70%)
+
+# 📊 MONITORING CONFIGURATION
+# 🎯 Purpose: Service Level Objectives (SLO) monitoring
+monitoring:
+  slos:
+    enabled: true              # ✅ Enable SLO monitoring for development
+
+# 🚦 RATE LIMITING CONFIGURATION - Development Optimized
+# 🎯 Purpose: Prevent resource exhaustion and ensure fair usage
+# 💡 Strategy: Higher limits for development, prevent abuse
+rateLimiting:
+  enabled: true                # ✅ Enable rate limiting
+  
+  # 🏗️  BUILD CONTEXT RATE LIMITING
+  buildContext:
+    requestsPerMin: 50         # 🚀 Increased from 5 to 50 (10x)
+    burstSize: 20              # 🚀 Increased from 2 to 20 (10x)
+  
+  # ⚙️  KUBERNETES JOB RATE LIMITING
+  k8sJob:
+    requestsPerMin: 100        # 🚀 Increased from 10 to 100 (10x)
+    burstSize: 30              # 🚀 Increased from 3 to 30 (10x)
+  
+  # 👤 CLIENT RATE LIMITING
+  client:
+    requestsPerMin: 50         # 🚀 Increased from 5 to 50 (10x)
+    burstSize: 20              # 🚀 Increased from 2 to 20 (10x)
+  
+  # ☁️  S3 UPLOAD RATE LIMITING
+  s3Upload:
+    requestsPerMin: 200        # 🚀 Increased from 50 to 200 (4x)
+    burstSize: 50              # 🚀 Increased from 10 to 50 (5x)
+  
+  # 💾 MEMORY USAGE MONITORING
+  memory:
+    maxUsagePercent: 80.0      # 📊 Alert at 80% memory usage
+    checkInterval: "30s"       # ⏰ Check every 30 seconds
+  
+  # 🧹 CLEANUP CONFIGURATION
+  cleanup:
+    interval: "5m"             # ⏰ Cleanup every 5 minutes
+    clientTTL: "1h"            # ⏰ Client data expires after 1 hour
+
+# 🚀 LAMBDA SERVICES CONFIGURATION - Development Environment
+# 🎯 Purpose: Proper concurrency configuration for lambda services in development
+# 💡 Strategy: Allow concurrent processing while maintaining reasonable scaling
+lambdaServices:
+  # Default configuration for generated lambda services
+  defaults:
+    # 🔧 AUTOSCALING: Configuration for lambda service autoscaling
+    # 🚨 CRITICAL FIX: Updated for proper concurrency handling
+    minScale: 0  # ✅ Can scale to zero when no traffic
+    maxScale: 20  # 🚨 REDUCED: Max 20 pods for development (safety limit)
+    targetConcurrency: 10  # 🚨 FIXED: Allow 10 concurrent requests per pod
+    targetUtilization: 70  # 🚨 FIXED: 70% utilization triggers new pod
+    target: 10  # 🚨 FIXED: 10 concurrent requests triggers new pod creation
+    containerConcurrency: 10  # 🚨 FIXED: Allow 10 concurrent requests per container
+    scaleToZeroGracePeriod: "30s"  # ✅ Wait 30s before scaling to zero
+    scaleDownDelay: "0s"  # ✅ Scale down immediately
+    stableWindow: "10s"  # ✅ 10s window for scaling decisions
+    
+    # 📦 RESOURCE CONFIGURATION - Specific to lambda services
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "256Mi"
+        cpu: "100m"
+    
+    # ⏰ TIMEOUT CONFIGURATION - Specific to lambda services
+    timeouts:
+      response: "300"
+      idle: "30"
+
+# 🧪 TESTING CONFIGURATION
+# 🎯 Purpose: Enable K6 load testing for development
+k6Tests:
+  enabled: true                # ✅ Enable K6 tests for development

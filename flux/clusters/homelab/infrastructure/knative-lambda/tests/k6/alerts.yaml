@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knative-lambda-k6-alerts
+  namespace: knative-lambda-dev
+data:
+  alerts.yaml: |
+    groups:
+    - name: knative-lambda-k6
+      rules:
+      # Knative Lambda Builder k6 test failures
+      - alert: KnativeLambdaBuilderK6TestFailure
+        expr: k6_check_failures{test_type="knative-lambda-builder"} > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: knative-lambda-builder
+        annotations:
+          summary: "Knative Lambda Builder k6 test failures detected"
+          description: "Knative Lambda Builder k6 test {{ `{{ $labels.check_name }}` }} has {{ `{{ $value }}` }} failures in the last 5 minutes."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdabuilderk6testfailure
+
+      # Knative Lambda Builder k6 high response time
+      - alert: KnativeLambdaBuilderK6HighResponseTime
+        expr: k6_http_req_duration_avg{test_type="knative-lambda-builder"} > 3000
+        for: 3m
+        labels:
+          severity: warning
+          service: knative-lambda-builder
+        annotations:
+          summary: "Knative Lambda Builder k6 high response time"
+          description: "Knative Lambda Builder k6 test {{ `{{ $labels.scenario }}` }} for endpoint {{ `{{ $labels.url }}` }} has average response time of {{ `{{ $value | printf \"%.2f\" }}` }}ms."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdabuilderk6highresponsetime
+
+      # Knative Lambda Builder k6 high error rate
+      - alert: KnativeLambdaBuilderK6HighErrorRate
+        expr: rate(k6_http_req_failed{test_type="knative-lambda-builder"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          service: knative-lambda-builder
+        annotations:
+          summary: "Knative Lambda Builder k6 high error rate"
+          description: "Knative Lambda Builder k6 test is experiencing a high error rate of {{ `{{ $value | printf \"%.2f\" }}` }}% for more than 3 minutes."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdabuilderk6higherrorrate
+
+      # Knative Lambda Builder k6 test not running
+      - alert: KnativeLambdaBuilderK6TestNotRunning
+        expr: absent(k6_http_req_duration_avg{test_type="knative-lambda-builder"})
+        for: 10m
+        labels:
+          severity: warning
+          service: knative-lambda-builder
+        annotations:
+          summary: "Knative Lambda Builder k6 test not running"
+          description: "Knative Lambda Builder k6 test has not been running for more than 10 minutes."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdabuilderk6testnotrunning
+
+      # Knative Lambda Builder k6 low throughput
+      - alert: KnativeLambdaBuilderK6LowThroughput
+        expr: rate(k6_http_reqs_total{test_type="knative-lambda-builder"}[5m]) < 1
+        for: 5m
+        labels:
+          severity: warning
+          service: knative-lambda-builder
+        annotations:
+          summary: "Knative Lambda Builder k6 low throughput"
+          description: "Knative Lambda Builder k6 test is processing less than 1 request per second for more than 5 minutes."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdabuilderk6lowthroughput
+
+      # Knative Lambda Service k6 test failures
+      - alert: KnativeLambdaServiceK6TestFailure
+        expr: k6_check_failures{test_type="knative-lambda-service"} > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: knative-lambda-service
+        annotations:
+          summary: "Knative Lambda Service k6 test failures detected"
+          description: "Knative Lambda Service k6 test {{ `{{ $labels.check_name }}` }} has {{ `{{ $value }}` }} failures in the last 5 minutes."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdaservicek6testfailure
+
+      # Knative Lambda Service k6 high response time
+      - alert: KnativeLambdaServiceK6HighResponseTime
+        expr: k6_http_req_duration_avg{test_type="knative-lambda-service"} > 8000
+        for: 3m
+        labels:
+          severity: warning
+          service: knative-lambda-service
+        annotations:
+          summary: "Knative Lambda Service k6 high response time"
+          description: "Knative Lambda Service k6 test {{ `{{ $labels.scenario }}` }} for endpoint {{ `{{ $labels.url }}` }} has average response time of {{ `{{ $value | printf \"%.2f\" }}` }}ms."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdaservicek6highresponsetime
+
+      # Knative Lambda Service k6 high error rate
+      - alert: KnativeLambdaServiceK6HighErrorRate
+        expr: rate(k6_http_req_failed{test_type="knative-lambda-service"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          service: knative-lambda-service
+        annotations:
+          summary: "Knative Lambda Service k6 high error rate"
+          description: "Knative Lambda Service k6 test is experiencing a high error rate of {{ `{{ $value | printf \"%.2f\" }}` }}% for more than 3 minutes."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdaservicek6higherrorrate
+
+      # Knative Lambda Service k6 test not running
+      - alert: KnativeLambdaServiceK6TestNotRunning
+        expr: absent(k6_http_req_duration_avg{test_type="knative-lambda-service"})
+        for: 10m
+        labels:
+          severity: warning
+          service: knative-lambda-service
+        annotations:
+          summary: "Knative Lambda Service k6 test not running"
+          description: "Knative Lambda Service k6 test has not been running for more than 10 minutes."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdaservicek6testnotrunning
+
+      # Knative Lambda Service k6 low throughput
+      - alert: KnativeLambdaServiceK6LowThroughput
+        expr: rate(k6_http_reqs_total{test_type="knative-lambda-service"}[5m]) < 1
+        for: 5m
+        labels:
+          severity: warning
+          service: knative-lambda-service
+        annotations:
+          summary: "Knative Lambda Service k6 low throughput"
+          description: "Knative Lambda Service k6 test is processing less than 1 request per second for more than 5 minutes."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdaservicek6lowthroughput
+
+      # Custom metrics alerts for builder
+      - alert: KnativeLambdaBuilderK6HighErrorRate
+        expr: rate(builder_error_rate{test_type="knative-lambda-builder"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          service: knative-lambda-builder
+        annotations:
+          summary: "Knative Lambda Builder k6 custom error rate high"
+          description: "Knative Lambda Builder k6 test custom error rate is {{ `{{ $value | printf \"%.2f\" }}` }}% for more than 3 minutes."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdabuilderk6customerrorrate
+
+      # Custom metrics alerts for lambda service
+      - alert: KnativeLambdaServiceK6HighErrorRate
+        expr: rate(lambda_error_rate{test_type="knative-lambda-service"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          service: knative-lambda-service
+        annotations:
+          summary: "Knative Lambda Service k6 custom error rate high"
+          description: "Knative Lambda Service k6 test custom error rate is {{ `{{ $value | printf \"%.2f\" }}` }}% for more than 3 minutes."
+          runbook: https://github.com/notifi-network/notifi-infra/blob/main/platform/services/knative-lambda/RUNBOOK.md#knativelambdaservicek6customerrorrate 

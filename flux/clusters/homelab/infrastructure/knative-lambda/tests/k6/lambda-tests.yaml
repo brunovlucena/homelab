@@ -1,0 +1,244 @@
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: knative-lambda-service-load-tests
+  namespace: knative-lambda-dev
+spec:
+  parallelism: 1
+  arguments: --tag test_type=knative-lambda-service --tag scenario=lambda_load_test
+  runner:
+    image: grafana/k6:latest
+    env:
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: http://prometheus-kube-prometheus-prometheus.prometheus:9090/api/v1/write
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+      - name: RABBITMQ_URL
+        value: http://notifi:notifi@rabbitmq-cluster-dev.rabbitmq-dev:15672
+  script:
+    configMap:
+      name: knative-lambda-service-k6-tests
+      file: lambda-load-test.js
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knative-lambda-service-k6-tests
+  namespace: knative-lambda-dev
+data:
+  lambda-load-test.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+
+    // Define custom metrics
+    const errorRate = new Rate('lambda_error_rate');
+    const eventCounter = new Counter('lambda_events_total');
+    const publishDuration = new Trend('lambda_publish_duration');
+
+    // Lambda Stress Test configuration - HIGH LOAD for Parser Events
+    export const options = {
+      scenarios: {
+        // Scenario 1: Parser event burst test
+        parser_burst_test: {
+          executor: 'ramping-vus',
+          startVUs: 15,
+          stages: [
+            { duration: '1m', target: 75 },    // Ramp up to 75 VUs
+            { duration: '3m', target: 150 },   // Ramp up to 150 VUs
+            { duration: '5m', target: 300 },   // Ramp up to 300 VUs (PARSER STRESS)
+            { duration: '10m', target: 300 },  // Stay at 300 VUs (SUSTAINED PARSER STRESS)
+            { duration: '2m', target: 150 },   // Ramp down to 150 VUs
+            { duration: '1m', target: 0 },     // Ramp down to 0 VUs
+          ],
+          tags: {
+            scenario: 'parser_burst_test',
+            test_type: 'knative_lambda_parser'
+          },
+        },
+        // Scenario 2: High-frequency parser events (blockchain parsing)
+        blockchain_parsing_test: {
+          executor: 'constant-arrival-rate',
+          rate: 800,                           // 800 parser events per second
+          timeUnit: '1s',
+          duration: '15m',                     // 15 minutes of constant parsing load
+          preAllocatedVUs: 150,
+          maxVUs: 400,
+          tags: {
+            scenario: 'blockchain_parsing',
+            test_type: 'knative_lambda_parser'
+          },
+        },
+        // Scenario 3: Block processing spike (simulating new block events)
+        block_processing_spike: {
+          executor: 'ramping-arrival-rate',
+          startRate: 200,
+          stages: [
+            { duration: '2m', target: 800 },   // Ramp to 800 events/sec
+            { duration: '1m', target: 1500 },  // SPIKE to 1500 events/sec (new block surge)
+            { duration: '3m', target: 1500 },  // Sustain block processing spike
+            { duration: '1m', target: 800 },   // Ramp down
+            { duration: '2m', target: 200 },   // Return to baseline
+          ],
+          preAllocatedVUs: 300,
+          maxVUs: 600,
+          tags: {
+            scenario: 'block_processing_spike',
+            test_type: 'knative_lambda_parser'
+          },
+        },
+        // Scenario 4: Real-time trading events
+        trading_events_test: {
+          executor: 'constant-arrival-rate',
+          rate: 1200,                          // 1200 trading events per second
+          timeUnit: '1s',
+          duration: '10m',                     // 10 minutes of trading load
+          preAllocatedVUs: 200,
+          maxVUs: 500,
+          tags: {
+            scenario: 'trading_events',
+            test_type: 'knative_lambda_parser'
+          },
+        },
+      },
+      thresholds: {
+        http_req_duration: ['p(95)<15000'],    // Relaxed to 15s for parser stress test
+        http_req_failed: ['rate<0.15'],        // Allow up to 15% failures during parser stress
+        lambda_error_rate: ['rate<0.15'],      // Allow up to 15% custom errors for parsers
+        lambda_publish_duration: ['p(95)<10000'], // Relaxed to 10s for parser stress conditions
+        checks: ['rate>0.85'],                 // 85% of checks should pass (parsers are more complex)
+      },
+    };
+
+    // Test data - same as in the Python script
+    const testEvents = [
+      {
+        third_party_id: "0307ea43639b4616b044d190310a26bd",
+        parser_id: "0197ad6c10b973b2b854a0e652155b7e"
+      },
+      {
+        third_party_id: "0307ea43639b4616b044d190310a26bd",
+        parser_id: "c42d2e6ca3214f4b8d28a2cab47beecf"
+      },
+      {
+        third_party_id: "0307ea43639b4616b044d190310a26bd",
+        parser_id: "e0a711bde5d748009a995432acbf590b"
+      },
+    ];
+
+    // Context data from Python script
+    const contextData = [
+      "1FV29-cJHSIOOuk-gJPFHrnAhhEBFA36Rs90PlyvrlcEvke0ZHvoDP90c117FEgYPH1699JMgv2soU0Vz49qH-ZK_EFvwMD_wo_u0KQo5PYNV1F9UG1Wjb0nynbAyS1bIH-w7b--TGYLYZHo1rLAsl4EeRAl2OZYRWDhwJy7",
+      "fLk7FvaIsE-bhBvyf7M3u2eOC-tCiUonUwTlpjK6MtGfQm4chBNTdY7dS6z3hVr8C0NBX5bCsPxgosJUKJUnaEtI_fFh1tDxTnUMJNkBwda_yqqgV0fh6XzAeq5FvZoP7ThPGRZhpKVeF0rotd6wfkhx-ZBl7IM_ZgQeY5wE",
+      "j1LbXVXBHnvT574YvpHcB6pJfQWJAr0YBdU7NVhFgDLOVyKC3LfvYDPwTJJRFb9VpddeF4p9HbYIrKJ995YQaUkr23ymIpVRsRw1yVjidPYbgRrQvP9o7a8iScI5SxJd0Ey7vZRtbhI1Ep9soCpIqzwWiKJFqiOYY5tSBVvP"
+    ];
+
+    // RabbitMQ configuration - using URL with credentials
+    const RABBITMQ_URL = __ENV.RABBITMQ_URL || 'http://notifi:notifi@rabbitmq-cluster-dev.rabbitmq-dev:15672';
+    const EXCHANGE_NAME = 'cloud-events';
+    const ROUTING_KEY = 'network.notifi.lambda.parser.start';
+
+    // Helper function to create CloudEvent (same structure as Python script)
+    function createCloudEvent(thirdPartyId, parserId, contextId, blockId) {
+      const now = new Date().toISOString();
+      const eventId = randomString(32);
+      
+      return {
+        specversion: "1.0",
+        id: eventId,
+        source: `network.notifi.parsers.${thirdPartyId}`,
+        subject: parserId,
+        type: "network.notifi.lambda.parser.start",
+        time: now,
+        data: {
+          contextId: contextId,
+          parameters: {
+            blockId: blockId,
+            blockchainType: 52,
+            urlForBlob: "redis://ephemeralblock/Botanix/659780",
+            logIndices: [0]
+          },
+        },
+        datacontenttype: "application/json"
+      };
+    }
+
+    export default function () {
+      // Select random test data
+      const testEvent = testEvents[Math.floor(Math.random() * testEvents.length)];
+      const contextId = contextData[Math.floor(Math.random() * contextData.length)];
+      const baseBlockId = 659780 + Math.floor(Math.random() * 1000);
+      
+      // Create CloudEvent
+      const cloudEvent = createCloudEvent(
+        testEvent.third_party_id, 
+        testEvent.parser_id, 
+        contextId, 
+        baseBlockId.toString()
+      );
+      
+      // Prepare RabbitMQ Management API request to publish message
+      const publishUrl = `${RABBITMQ_URL}/api/exchanges/%2F/${EXCHANGE_NAME}/publish`;
+      
+      const publishPayload = {
+        properties: {
+          content_type: "application/cloudevents+json",
+          delivery_mode: 2
+        },
+        routing_key: ROUTING_KEY,
+        payload: JSON.stringify(cloudEvent),
+        payload_encoding: "string"
+      };
+      
+      // Publish the CloudEvent to RabbitMQ
+      const startTime = Date.now();
+      const publishResponse = http.post(publishUrl, JSON.stringify(publishPayload), {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: '30s',
+      });
+      
+      const publishTime = Date.now() - startTime;
+      publishDuration.add(publishTime);
+      
+      const publishCheck = check(publishResponse, {
+        'lambda event published successfully': (r) => r.status === 200,
+        'lambda event publish response time < 3s': (r) => r.timings.duration < 3000,
+        'lambda event has correct structure': () => {
+          return cloudEvent.specversion === "1.0" && 
+                 cloudEvent.type === "network.notifi.lambda.parser.start" &&
+                 cloudEvent.data.contextId === contextId &&
+                 cloudEvent.data.parameters.blockId === baseBlockId.toString();
+        },
+      });
+      
+      if (publishCheck) {
+        eventCounter.add(1);
+      } else {
+        errorRate.add(1);
+        console.error('Failed to publish event:', publishResponse.body);
+      }
+      
+      // Add a standard K6 HTTP request to ensure scenario labels are applied
+      // This helps the dashboard detect the scenario properly
+      const healthCheckUrl = `${RABBITMQ_URL}/api/overview`;
+      const healthResponse = http.get(healthCheckUrl, {
+        timeout: '10s',
+      });
+      
+      check(healthResponse, {
+        'rabbitmq health check successful': (r) => r.status === 200,
+      });
+      
+      // Random sleep between requests to simulate real usage
+      sleep(Math.random() * 2 + 1);
+    }
+
+    export function handleSummary(data) {
+      return {
+        'stdout': JSON.stringify(data),
+        [`/tmp/lambda-load-test-${Date.now()}.json`]: JSON.stringify(data),
+      };
+    } 

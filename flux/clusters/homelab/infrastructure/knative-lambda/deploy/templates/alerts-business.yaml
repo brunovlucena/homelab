@@ -1,0 +1,65 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: knative-lambda-business-alerts
+  namespace: knative-lambda-{{ .Values.environment }}
+  labels:
+    release: "prometheus"
+    app: "knative-lambda"
+    component: "alerts"
+    environment: {{ .Values.environment }}
+spec:
+  groups:
+  - name: knative-lambda.business
+    rules:
+    - alert: KnativeLambdaNoBuildActivity
+      expr: |
+        sum(rate(knative_lambda_build_success_total[15m])) + sum(rate(knative_lambda_build_failure_total[15m])) == 0
+      for: 30m
+      labels:
+        severity: info
+        service: knative-lambda-builder
+        component: business
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "No build activity detected on Knative Lambda"
+        description: "No build activity has been detected on Knative Lambda for the last 30 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/no-build-activity"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaHighBuildRate
+      expr: |
+        sum(rate(knative_lambda_build_success_total[5m])) + sum(rate(knative_lambda_build_failure_total[5m])) > 10
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: business
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High build rate detected"
+        description: "Knative Lambda is experiencing {{ `{{ $value | printf \"%.1f\" }}` }} builds per second."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/high-build-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}" 
+
+    - alert: KnativeLambdaEventingHighEventFailureRate
+      expr: |
+        (
+          sum(rate(eventing_events_failed_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+          /
+          sum(rate(eventing_events_total{namespace="knative-lambda-{{ .Values.environment }}"}[5m]))
+        ) * 100 > 5
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-eventing
+        component: eventing
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Eventing high event failure rate"
+        description: "Knative Lambda Eventing event failure rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/eventing-high-event-failure-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}" 

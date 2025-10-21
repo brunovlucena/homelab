@@ -1,0 +1,49 @@
+{{- if .Values.jobManagement.cleanup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "knative-lambda.fullname" . }}-job-cleanup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "knative-lambda.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cleanup
+spec:
+  schedule: {{ .Values.jobManagement.cleanup.schedule | default "0 2 * * *" | quote }}  # Default: Daily at 2 AM
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ include "knative-lambda.serviceAccountName" . }}
+          containers:
+          - name: cleanup
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              # Clean up completed jobs older than 1 hour
+              kubectl delete jobs --field-selector status.successful=1 --field-selector metadata.creationTimestamp<$(date -d '1 hour ago' -Iseconds) -n {{ .Release.Namespace }} --ignore-not-found=true
+              
+              # Clean up failed jobs older than 24 hours
+              kubectl delete jobs --field-selector status.failed=1 --field-selector metadata.creationTimestamp<$(date -d '24 hours ago' -Iseconds) -n {{ .Release.Namespace }} --ignore-not-found=true
+              
+              # Clean up pending jobs older than 30 minutes
+              kubectl delete jobs --field-selector status.conditions[0].type=Complete --field-selector status.conditions[0].status=False --field-selector metadata.creationTimestamp<$(date -d '30 minutes ago' -Iseconds) -n {{ .Release.Namespace }} --ignore-not-found=true
+              
+              echo "Job cleanup completed at $(date)"
+            env:
+            - name: NAMESPACE
+              value: {{ .Release.Namespace }}
+          restartPolicy: OnFailure
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

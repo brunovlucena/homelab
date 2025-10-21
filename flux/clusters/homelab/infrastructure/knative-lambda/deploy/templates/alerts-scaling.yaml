@@ -1,0 +1,114 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: knative-lambda-scaling-alerts
+  namespace: knative-lambda-{{ .Values.environment }}
+  labels:
+    release: "prometheus"
+    app: "knative-lambda"
+    component: "alerts"
+    environment: {{ .Values.environment }}
+spec:
+  groups:
+  - name: knative-lambda.scaling
+    rules:
+    # Service Not Scaling Down Alert
+    - alert: KnativeLambdaServiceNotScalingDown
+      expr: |
+        (
+          kube_pod_status_ready{namespace="knative-lambda-{{ .Values.environment }}", pod=~"lambda-.*"} == 1
+        ) and (
+          rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", pod=~"lambda-.*"}[5m]) == 0
+        ) and (
+          time() - kube_pod_start_time{namespace="knative-lambda-{{ .Values.environment }}", pod=~"lambda-.*"} > 300
+        )
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: scaling
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda service is not scaling down despite no traffic"
+        description: "Service {{ `{{ $labels.pod }}` }} has been idle for more than 5 minutes but is not scaling down."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/service-not-scaling-down"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # High Scale Down Delay Alert
+    - alert: KnativeLambdaHighScaleDownDelay
+      expr: |
+        (
+          kube_pod_status_ready{namespace="knative-lambda-{{ .Values.environment }}", pod=~"lambda-.*"} == 1
+        ) and (
+          rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", pod=~"lambda-.*"}[5m]) == 0
+        ) and (
+          time() - kube_pod_start_time{namespace="knative-lambda-{{ .Values.environment }}", pod=~"lambda-.*"} > 600
+        )
+      for: 5m
+      labels:
+        severity: critical
+        service: knative-lambda-builder
+        component: scaling
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda service has been idle for too long"
+        description: "Service {{ `{{ $labels.pod }}` }} has been idle for more than 10 minutes and should have scaled down."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/high-scale-down-delay"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Autoscaler Work Queue Depth Alert
+    - alert: KnativeLambdaAutoscalerHighQueueDepth
+      expr: |
+        sum(autoscaler_work_queue_depth{namespace="knative-lambda-{{ .Values.environment }}"}) > 50
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: scaling
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda autoscaler work queue depth is high"
+        description: "Autoscaler work queue depth is {{ `{{ $value }}` }}, indicating scaling decisions may be delayed."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/autoscaler-high-queue-depth"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Scaling Decision Latency Alert
+    - alert: KnativeLambdaScalingDecisionLatency
+      expr: |
+        histogram_quantile(0.95, sum(rate(autoscaler_scaling_decision_latency_seconds_bucket{namespace="knative-lambda-{{ .Values.environment }}"}[5m])) by (le)) > 30
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: scaling
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda scaling decision latency is high"
+        description: "Scaling decision p95 latency is {{ `{{ $value | printf \"%.2f\" }}` }}s, indicating slow scaling responses."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/scaling-decision-latency"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Idle Pod Count Alert
+    - alert: KnativeLambdaHighIdlePodCount
+      expr: |
+        sum(
+          kube_pod_status_ready{namespace="knative-lambda-{{ .Values.environment }}", pod=~"lambda-.*"} == 1
+        ) * (
+          rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", pod=~"lambda-.*"}[5m]) == 0
+        ) > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: scaling
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High number of idle Knative Lambda pods"
+        description: "{{ `{{ $value }}` }} pods are idle and should be scaling down."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/high-idle-pod-count"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}" 
