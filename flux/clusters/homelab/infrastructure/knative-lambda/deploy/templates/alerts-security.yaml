@@ -1,0 +1,233 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: knative-lambda-security-alerts
+  namespace: knative-lambda-{{ .Values.environment }}
+  labels:
+    release: "prometheus"
+    app: "knative-lambda"
+    component: "alerts"
+    environment: {{ .Values.environment }}
+spec:
+  groups:
+  - name: security.alerts
+    rules:
+      # High Security Threat Rate Alerts
+      - alert: HighSecurityThreatRate
+        expr: rate(security_threats_detected_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High security threat detection rate detected"
+          description: "Security threats are being detected at a rate of {{ `{{ $value }}` }} threats per second for the last 5 minutes"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Critical Security Threats Alert
+      - alert: CriticalSecurityThreatsDetected
+        expr: rate(security_critical_threats_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Critical security threats detected"
+          description: "Critical security threats are being detected at a rate of {{ `{{ $value }}` }} threats per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # SQL Injection Detection Alert
+      - alert: SQLInjectionAttemptsDetected
+        expr: rate(security_threats_detected_total{event_type="sql_injection_detected"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+          attack_type: sql_injection
+        annotations:
+          summary: "SQL injection attempts detected"
+          description: "SQL injection attempts are being detected at a rate of {{ `{{ $value }}` }} attempts per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # XSS Attack Detection Alert
+      - alert: XSSAttackAttemptsDetected
+        expr: rate(security_threats_detected_total{event_type="xss_detected"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+          attack_type: xss
+        annotations:
+          summary: "XSS attack attempts detected"
+          description: "XSS attack attempts are being detected at a rate of {{ `{{ $value }}` }} attempts per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Path Traversal Detection Alert
+      - alert: PathTraversalAttemptsDetected
+        expr: rate(security_threats_detected_total{event_type="path_traversal_detected"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: high
+          category: security
+          attack_type: path_traversal
+        annotations:
+          summary: "Path traversal attempts detected"
+          description: "Path traversal attempts are being detected at a rate of {{ `{{ $value }}` }} attempts per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Malicious Content Detection Alert
+      - alert: MaliciousContentDetected
+        expr: rate(security_threats_detected_total{event_type="malicious_content_detected"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: high
+          category: security
+          attack_type: malicious_content
+        annotations:
+          summary: "Malicious content detected"
+          description: "Malicious content is being detected at a rate of {{ `{{ $value }}` }} detections per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # High Security Validation Failure Rate
+      - alert: HighSecurityValidationFailureRate
+        expr: (rate(security_validation_failures_total[5m]) / rate(security_validations_total[5m])) * 100 > 10
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High security validation failure rate"
+          description: "Security validation failure rate is {{ `{{ $value }}` }}% over the last 5 minutes"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Security Validation Performance Degradation
+      - alert: SecurityValidationPerformanceDegradation
+        expr: histogram_quantile(0.95, rate(security_validation_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Security validation performance degradation"
+          description: "Security validation P95 duration is {{ `{{ $value }}` }} seconds, indicating performance issues"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # High Threat Level Distribution Alert
+      - alert: HighThreatLevelDistribution
+        expr: rate(security_threats_by_level_total{threat_level="high"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: high
+          category: security
+        annotations:
+          summary: "High threat level attacks detected"
+          description: "High threat level attacks are being detected at a rate of {{ `{{ $value }}` }} attacks per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Security Validation Service Down
+      - alert: SecurityValidationServiceDown
+        expr: rate(security_validations_total[5m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Security validation service appears to be down"
+          description: "No security validations have been recorded in the last 5 minutes"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Unusual Security Activity Pattern
+      - alert: UnusualSecurityActivityPattern
+        expr: abs(rate(security_validations_total[5m]) - avg_over_time(security_validations_total[1h])) > avg_over_time(security_validations_total[1h]) * 0.5
+        for: 5m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "Unusual security activity pattern detected"
+          description: "Security validation rate has deviated significantly from the 1-hour average"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Input Validation Failures
+      - alert: HighInputValidationFailures
+        expr: rate(security_validation_failures_total{operation="input_validation"}[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High input validation failure rate"
+          description: "Input validation failures are occurring at a rate of {{ `{{ $value }}` }} failures per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Image Validation Failures
+      - alert: HighImageValidationFailures
+        expr: rate(security_validation_failures_total{operation="image_name_validation"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High image validation failure rate"
+          description: "Image validation failures are occurring at a rate of {{ `{{ $value }}` }} failures per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Namespace Validation Failures
+      - alert: HighNamespaceValidationFailures
+        expr: rate(security_validation_failures_total{operation="namespace_validation"}[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High namespace validation failure rate"
+          description: "Namespace validation failures are occurring at a rate of {{ `{{ $value }}` }} failures per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Event Data Validation Failures
+      - alert: HighEventDataValidationFailures
+        expr: rate(security_validation_failures_total{operation="event_data_validation"}[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High event data validation failure rate"
+          description: "Event data validation failures are occurring at a rate of {{ `{{ $value }}` }} failures per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # ID Validation Failures
+      - alert: HighIDValidationFailures
+        expr: rate(security_validation_failures_total{operation="id_validation"}[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          category: security
+        annotations:
+          summary: "High ID validation failure rate"
+          description: "ID validation failures are occurring at a rate of {{ `{{ $value }}` }} failures per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Security Threat Level Distribution Alert
+      - alert: CriticalThreatLevelDistribution
+        expr: rate(security_threats_by_level_total{threat_level="critical"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Critical threat level attacks detected"
+          description: "Critical threat level attacks are being detected at a rate of {{ `{{ $value }}` }} attacks per second"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response"
+
+      # Security Metrics Collection Failure
+      - alert: SecurityMetricsCollectionFailure
+        expr: changes(security_validations_total[5m]) == 0 and rate(security_validations_total[5m]) == 0
+        for: 10m
+        labels:
+          severity: critical
+          category: security
+        annotations:
+          summary: "Security metrics collection appears to have failed"
+          description: "No security metrics have been collected in the last 10 minutes"
+          runbook_url: "https://github.com/notifi/notifi-network/infra/wiki/Security-Incident-Response" 

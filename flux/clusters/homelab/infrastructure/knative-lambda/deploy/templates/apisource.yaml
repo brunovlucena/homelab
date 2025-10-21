@@ -1,0 +1,79 @@
+# DISABLED: ApiServerSource causing "unsupported event type" errors
+# The service receives dev.knative.apiserver.resource.update events from this source
+# but only supports network.notifi.lambda.* event types from RabbitMQ
+# 
+# apiVersion: sources.knative.dev/v1
+# kind: ApiServerSource
+# metadata:
+#   name: job-watcher-{{ .Values.environment }}
+#   namespace: {{ include "knative-lambda.namespace" . }}
+# spec:
+#   resources:
+#   - apiVersion: batch/v1
+#     kind: Job
+#   serviceAccountName: k8s-job-watcher-sa
+#   mode: Resource # Watch specific resources
+#   sink:
+#     ref:
+#       apiVersion: serving.knative.dev/v1
+#       kind: Service
+#       name: {{ .Values.builder.name }}-{{ .Values.environment }}
+#       namespace: {{ include "knative-lambda.namespace" . }}
+
+# Keep RBAC resources for potential future use
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8s-job-watcher-sa
+  namespace: {{ include "knative-lambda.namespace" . }}
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: job-watcher-role-{{ .Values.environment }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - get
+  - list
+  - watch
+# temporary role for testing
+- apiGroups:
+  - ""
+  resources:
+  - "*"
+  verbs:
+  - "*"
+- apiGroups:
+  - v1
+  resources:
+  - "*"
+  verbs:
+  - "*"
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-watcher-binding-{{ .Values.environment }}
+subjects:
+- kind: ServiceAccount
+  name: k8s-job-watcher-sa
+  namespace: {{ include "knative-lambda.namespace" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: job-watcher-role-{{ .Values.environment }} 

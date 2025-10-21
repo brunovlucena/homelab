@@ -1,0 +1,46 @@
+{{- if .Values.jobManagement.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "knative-lambda.fullname" . }}-job-management
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "knative-lambda.labels" . | nindent 4 }}
+    app.kubernetes.io/component: job-management
+data:
+  job-management.yaml: |
+    # Job Management Configuration
+    jobManagement:
+      # Maximum number of concurrent jobs
+      maxConcurrentJobs: {{ .Values.jobManagement.maxConcurrentJobs | default 20 }}
+      
+      # Job timeout configuration
+      jobTimeout: {{ .Values.jobManagement.jobTimeout | default "1h" | quote }}
+      
+      # Job cleanup configuration
+      cleanup:
+        enabled: {{ .Values.jobManagement.cleanup.enabled | default true }}
+        ttlSecondsAfterFinished: {{ .Values.jobManagement.cleanup.ttlSecondsAfterFinished | default 3600 }}
+        maxJobsToKeep: {{ .Values.jobManagement.cleanup.maxJobsToKeep | default 10 }}
+        maxFailedJobsToKeep: {{ .Values.jobManagement.cleanup.maxFailedJobsToKeep | default 5 }}
+        
+      # Job deduplication configuration
+      deduplication:
+        enabled: {{ .Values.jobManagement.deduplication.enabled | default true }}
+        checkExistingJobs: {{ .Values.jobManagement.deduplication.checkExistingJobs | default true }}
+        skipIfJobExists: {{ .Values.jobManagement.deduplication.skipIfJobExists | default true }}
+        jobNamePrefix: {{ .Values.jobManagement.deduplication.jobNamePrefix | default "build-" | quote }}
+        
+      # Job lifecycle management
+      lifecycle:
+        # Automatically clean up completed jobs
+        autoCleanup: {{ .Values.jobManagement.lifecycle.autoCleanup | default true }}
+        cleanupInterval: {{ .Values.jobManagement.lifecycle.cleanupInterval | default "5m" | quote }}
+        cleanupBatchSize: {{ .Values.jobManagement.lifecycle.cleanupBatchSize | default 50 }}
+        
+        # Job retention policies
+        retention:
+          successfulJobs: {{ .Values.jobManagement.lifecycle.retention.successfulJobs | default "1h" | quote }}
+          failedJobs: {{ .Values.jobManagement.lifecycle.retention.failedJobs | default "24h" | quote }}
+          pendingJobs: {{ .Values.jobManagement.lifecycle.retention.pendingJobs | default "30m" | quote }}
+{{- end }}

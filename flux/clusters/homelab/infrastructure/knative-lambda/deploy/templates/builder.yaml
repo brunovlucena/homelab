@@ -1,0 +1,592 @@
+{{- /* 🚨 VALIDATION: Prevent Knative configuration errors */ -}}
+{{- include "preventKnativeErrors" . -}}
+
+---
+# Knative Service for Lambda Builder
+# This service receives CloudEvents and creates new Knative services dynamically
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: {{ .Values.builder.name }}-{{ .Values.environment }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+  labels:
+    {{- include "knative-lambda.labels" . | nindent 4 }}
+    app.kubernetes.io/component: builder
+  annotations:
+    {{- include "knative-lambda.prometheusAnnotations" . | nindent 4 }}
+spec:
+  template:
+    metadata:
+      annotations:
+        # Autoscaling annotations
+        autoscaling.knative.dev/class: "kpa.autoscaling.knative.dev"
+        autoscaling.knative.dev/minScale: {{ include "validateScaling" (dict "value" .Values.builder.minScale "default" 0) | quote }}
+        autoscaling.knative.dev/maxScale: {{ include "validateScaling" (dict "value" .Values.builder.maxScale "default" 10) | quote }}
+        autoscaling.knative.dev/target: {{ include "validateConcurrency" (dict "value" .Values.builder.targetConcurrency "default" 5) | quote }}
+        autoscaling.knative.dev/scaleToZeroGracePeriod: {{ .Values.builder.scaleToZeroGracePeriod | quote }}
+        autoscaling.knative.dev/scaleDownDelay: {{ .Values.builder.scaleDownDelay | quote }}
+        autoscaling.knative.dev/stableWindow: {{ .Values.builder.stableWindow | quote }}
+        # Networking annotations removed - no ingress needed
+        # Force redeployment trigger - Using deterministic value to prevent sync loops
+        network.notifi.lambda.build.builder/deployment-id: {{ .Values.environment }}-{{ .Values.builder.name }}-{{ .Values.image.tag | default "latest" }}
+        # Force new revision - Only when image changes to prevent sync loops
+        {{- if .Values.builder.forceRevision }}
+        serving.knative.dev/force-revision: "true"
+        {{- end }}
+        # Metrics configuration
+        queue.knative.dev/metrics-port: {{ .Values.env.metricsPort | quote }}
+        # Disable health checks - builder doesn't need them
+        # queue.knative.dev/health-port: "0"
+        # # Disable Knative health checks completely
+        # serving.knative.dev/enable-probes: "false"
+        # serving.knative.dev/disable-probes: "true"
+        # # Security annotations
+        # run.googleapis.com/execution-environment: gen2
+        # run.googleapis.com/cpu-throttling: "false"
+        {{- if .Values.security.securityContext.runAsNonRoot }}
+        run.googleapis.com/execution-environment: gen2
+        {{- end }}
+      labels:
+        {{- include "knative-lambda.labels" . | nindent 8 }}
+        app.kubernetes.io/component: builder
+    spec:
+      serviceAccountName: {{ .Values.builder.name }}
+      timeoutSeconds: {{ .Values.builder.timeouts.response | default "300" | int }}
+      # Node scheduling configuration
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}
+      tolerations:
+        - key: knative-spot
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+        {{- if .Values.tolerations }}
+        {{- range .Values.tolerations }}
+        - {{- toYaml . | nindent 10 }}
+        {{- end }}
+        {{- end }}
+      containers:
+      - name: builder
+        image: {{ include "knative-lambda.image" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http1
+          containerPort: {{ .Values.env.httpPort | int }}
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.env.httpPort | int }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ .Values.env.httpPort | int }}
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        env:
+        # Service Configuration
+        - name: HTTP_PORT
+          value: {{ .Values.env.httpPort | quote }}
+        - name: METRICS_PORT
+          value: {{ .Values.env.metricsPort | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.env.logLevel | quote }}
+        - name: NAMESPACE
+          value: {{ include "knative-lambda.namespace" . }}
+        - name: ENVIRONMENT
+          value: {{ .Values.environment | quote }}
+        
+        # HTTP Configuration - Missing variables
+        - name: TIMEOUT
+          value: {{ .Values.env.timeout | quote }}
+        - name: API_TIMEOUT
+          value: {{ .Values.env.apiTimeout | quote }}
+        - name: MAX_REQUEST_SIZE
+          value: {{ .Values.env.maxRequestSize | quote }}
+        - name: DEFAULT_LIST_LIMIT
+          value: {{ .Values.env.defaultListLimit | quote }}
+        - name: MAX_LIST_LIMIT
+          value: {{ .Values.env.maxListLimit | quote }}
+        - name: VALIDATE_INPUT
+          value: {{ .Values.env.validateInput | quote }}
+        
+        # Service Information - Missing variables
+        - name: SERVICE_NAME
+          value: {{ .Values.builder.name | quote }}
+        - name: SERVICE_VERSION
+          value: {{ .Values.env.serviceVersion | quote }}
+        
+        # Observability Configuration - Missing variables
+        - name: METRICS_ENABLED
+          value: {{ .Values.env.metricsEnabled | quote }}
+        - name: TRACING_ENABLED
+          value: {{ .Values.env.tracingEnabled | quote }}
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: {{ .Values.env.otelExporterOtlpEndpoint | quote }}
+        - name: SAMPLE_RATE
+          value: {{ .Values.env.sampleRate | quote }}
+        - name: EXEMPLARS_ENABLED
+          value: {{ .Values.env.exemplarsEnabled | quote }}
+        - name: EXEMPLARS_MAX_PER_METRIC
+          value: {{ .Values.env.exemplarsMaxPerMetric | quote }}
+        - name: EXEMPLARS_SAMPLE_RATE
+          value: {{ .Values.env.exemplarsSampleRate | quote }}
+        - name: EXEMPLARS_TRACE_ID_LABEL
+          value: {{ .Values.env.exemplarsTraceIDLabel | quote }}
+        - name: EXEMPLARS_SPAN_ID_LABEL
+          value: {{ .Values.env.exemplarsSpanIDLabel | quote }}
+        - name: EXEMPLARS_INCLUDE_LABELS
+          value: {{ .Values.env.exemplarsIncludeLabels | quote }}
+        
+        # AWS Configuration
+        - name: AWS_REGION
+          value: {{ .Values.aws.region | quote }}
+        - name: AWS_ACCOUNT_ID
+          value: {{ .Values.aws.accountId | quote }}
+        - name: ECR_REGISTRY
+          value: {{ .Values.env.ecrBaseRegistry | quote }}
+        - name: ECR_REPOSITORY_NAME
+          value: {{ .Values.env.ecrRepositoryName | quote }}
+        - name: S3_SOURCE_BUCKET
+          value: {{ .Values.env.s3SourceBucket | quote }}
+        - name: S3_TEMP_BUCKET
+          value: {{ .Values.env.s3TmpBucket | quote }}
+        
+        # EKS Pod Identity Configuration
+        - name: USE_EKS_POD_IDENTITY
+          value: {{ .Values.env.useEksPodIdentity | quote }}
+        - name: POD_IDENTITY_ROLE
+          value: {{ .Values.env.podIdentityRole | quote }}
+        
+        # Storage Configuration
+        - name: STORAGE_PROVIDER
+          value: {{ .Values.env.storageProvider | quote }}
+        - name: S3_ENDPOINT
+          value: {{ .Values.env.s3Endpoint | quote }}
+        
+        # CloudEvents Broker Configuration
+        - name: BROKER_URL
+          value: {{ include "knative-lambda.brokerUrl" . | quote }}
+        - name: BROKER_PORT
+          value: {{ include "knative-lambda.brokerPort" . | quote }}
+        - name: BROKER_TOPIC
+          value: {{ .Values.env.brokerTopic | quote }}
+        - name: BROKER_NAME
+          value: {{ .Values.env.brokerName | quote }}
+        
+        # Monitoring Configuration
+        - name: RATE_LIMITING_ENABLED
+          value: {{ .Values.rateLimiting.enabled | quote }}
+        
+
+        
+        # Lambda Function Configuration
+        - name: LAMBDA_RUNTIME
+          value: {{ .Values.env.lambdaRuntime | quote }}
+        - name: LAMBDA_HANDLER
+          value: {{ .Values.env.lambdaHandler | quote }}
+        - name: LAMBDA_TRIGGER
+          value: {{ .Values.env.lambdaTrigger | quote }}
+        - name: LAMBDA_FUNCTION_MEMORY_LIMIT
+          value: {{ .Values.env.lambdaFunctionMemoryLimit | quote }}
+        - name: LAMBDA_FUNCTION_CPU_LIMIT
+          value: {{ .Values.env.lambdaFunctionCpuLimit | quote }}
+        - name: LAMBDA_FUNCTION_MEMORY_REQUEST
+          value: {{ .Values.env.lambdaFunctionMemoryRequest | quote }}
+        - name: LAMBDA_FUNCTION_CPU_REQUEST
+          value: {{ .Values.env.lambdaFunctionCpuRequest | quote }}
+        - name: FUNCTION_MEMORY_LIMIT_MI
+          value: {{ .Values.env.functionMemoryLimitMi | quote }}
+        - name: FUNCTION_CPU_LIMIT_M
+          value: {{ .Values.env.functionCpuLimitM | quote }}
+        
+        # Lambda Worker Pool Configuration
+        - name: LAMBDA_WORKER_POOL_SIZE
+          value: {{ .Values.env.lambdaWorkerPoolSize | quote }}
+        - name: LAMBDA_WORKER_POOL_CAPACITY
+          value: {{ .Values.env.lambdaWorkerPoolCapacity | quote }}
+        - name: LAMBDA_EVENT_QUEUE_SIZE
+          value: {{ .Values.env.lambdaEventQueueSize | quote }}
+        
+        # Kaniko Build Configuration
+        - name: KANIKO_ENABLED
+          value: {{ .Values.env.kanikoEnabled | quote }}
+        - name: KANIKO_TIMEOUT
+          value: {{ .Values.env.kanikoTimeout | quote }}
+        - name: KANIKO_CACHE
+          value: {{ .Values.env.kanikoCache | quote }}
+        - name: KANIKO_CACHE_TTL
+          value: {{ .Values.env.kanikoCacheTtl | quote }}
+        - name: KANIKO_SKIP_TLS_VERIFY
+          value: {{ .Values.env.kanikoSkipTlsVerify | quote }}
+        - name: KANIKO_INSECURE_REGISTRY
+          value: {{ .Values.env.kanikoInsecureRegistry | quote }}
+        
+        # Kaniko NPM Configuration
+        - name: KANIKO_NPM_REGISTRY
+          value: {{ .Values.env.kanikoNpmRegistry | quote }}
+        - name: KANIKO_NPM_TIMEOUT
+          value: {{ .Values.env.kanikoNpmTimeout | quote }}
+        - name: KANIKO_NPM_FETCH_RETRIES
+          value: {{ .Values.env.kanikoNpmFetchRetries | quote }}
+        - name: KANIKO_NPM_FETCH_RETRY_MINTIMEOUT
+          value: {{ .Values.env.kanikoNpmFetchRetryMintimeout | quote }}
+        - name: KANIKO_NPM_FETCH_RETRY_MAXTIMEOUT
+          value: {{ .Values.env.kanikoNpmFetchRetryMaxtimeout | quote }}
+        - name: KANIKO_NPM_FETCH_RETRY_FACTOR
+          value: {{ .Values.env.kanikoNpmFetchRetryFactor | quote }}
+        - name: KANIKO_NPM_PREFER_OFFLINE
+          value: {{ .Values.env.kanikoNpmPreferOffline | quote }}
+        - name: KANIKO_NPM_AUDIT
+          value: {{ .Values.env.kanikoNpmAudit | quote }}
+        - name: KANIKO_NPM_FUND
+          value: {{ .Values.env.kanikoNpmFund | quote }}
+        - name: KANIKO_NPM_UPDATE_NOTIFIER
+          value: {{ .Values.env.kanikoNpmUpdateNotifier | quote }}
+        - name: KANIKO_NPM_LOGLEVEL
+          value: {{ .Values.env.kanikoNpmLoglevel | quote }}
+        
+        # Kaniko Build Context Configuration
+        - name: KANIKO_BUILD_CONTEXT_SIZE_LIMIT
+          value: {{ .Values.env.kanikoBuildContextSizeLimit | quote }}
+        - name: KANIKO_BUILD_CONTEXT_TIMEOUT
+          value: {{ .Values.env.kanikoBuildContextTimeout | quote }}
+        - name: KANIKO_DESTINATION
+          value: {{ .Values.env.kanikoDestination | quote }}
+        
+        # Kaniko Security Configuration
+        - name: KANIKO_RUN_AS_USER
+          value: {{ .Values.env.kanikoRunAsUser | quote }}
+        - name: KANIKO_RUN_AS_GROUP
+          value: {{ .Values.env.kanikoRunAsGroup | quote }}
+        - name: KANIKO_SECURITY_CONTEXT_RUN_AS_NON_ROOT
+          value: {{ .Values.env.kanikoSecurityContextRunAsNonRoot | quote }}
+        - name: KANIKO_SECURITY_CONTEXT_READ_ONLY_ROOT_FILESYSTEM
+          value: {{ .Values.env.kanikoSecurityContextReadOnlyRootFilesystem | quote }}
+        
+        # Builder Service Configuration (for main builder service)
+        - name: KUBERNETES_TARGET_CONCURRENCY
+          value: {{ .Values.builderService.targetConcurrency | quote }}
+        - name: KUBERNETES_TARGET_UTILIZATION
+          value: {{ .Values.builderService.targetUtilization | quote }}
+        - name: KUBERNETES_TARGET
+          value: {{ .Values.builderService.target | quote }}
+        - name: KUBERNETES_CONTAINER_CONCURRENCY
+          value: {{ .Values.builderService.containerConcurrency | quote }}
+        - name: KUBERNETES_MIN_SCALE
+          value: {{ .Values.builderService.minScale | quote }}
+        - name: KUBERNETES_MAX_SCALE
+          value: {{ .Values.builderService.maxScale | quote }}
+        - name: KUBERNETES_SCALE_TO_ZERO_GRACE_PERIOD
+          value: {{ .Values.builderService.scaleToZeroGracePeriod | quote }}
+        - name: KUBERNETES_SCALE_DOWN_DELAY
+          value: {{ .Values.builderService.scaleDownDelay | quote }}
+        - name: KUBERNETES_STABLE_WINDOW
+          value: {{ .Values.builderService.stableWindow | quote }}
+        
+        # Lambda Services Configuration (for dynamically created lambda services)
+        - name: LAMBDA_SERVICES_MIN_SCALE
+          value: {{ .Values.lambdaServices.defaults.minScale | quote }}
+        - name: LAMBDA_SERVICES_MAX_SCALE
+          value: {{ .Values.lambdaServices.defaults.maxScale | quote }}
+        - name: LAMBDA_SERVICES_TARGET_CONCURRENCY
+          value: {{ .Values.lambdaServices.defaults.targetConcurrency | quote }}
+        - name: LAMBDA_SERVICES_TARGET_UTILIZATION
+          value: {{ .Values.lambdaServices.defaults.targetUtilization | quote }}
+        - name: LAMBDA_SERVICES_TARGET
+          value: {{ .Values.lambdaServices.defaults.target | quote }}
+        - name: LAMBDA_SERVICES_CONTAINER_CONCURRENCY
+          value: {{ .Values.lambdaServices.defaults.containerConcurrency | quote }}
+        - name: LAMBDA_SERVICES_SCALE_TO_ZERO_GRACE_PERIOD
+          value: {{ .Values.lambdaServices.defaults.scaleToZeroGracePeriod | quote }}
+        - name: LAMBDA_SERVICES_SCALE_DOWN_DELAY
+          value: {{ .Values.lambdaServices.defaults.scaleDownDelay | quote }}
+        - name: LAMBDA_SERVICES_STABLE_WINDOW
+          value: {{ .Values.lambdaServices.defaults.stableWindow | quote }}
+        - name: LAMBDA_SERVICES_PANIC_WINDOW_PERCENTAGE
+          value: {{ .Values.lambdaServices.defaults.panicWindowPercentage | quote }}
+        - name: LAMBDA_SERVICES_PANIC_THRESHOLD_PERCENTAGE
+          value: {{ .Values.lambdaServices.defaults.panicThresholdPercentage | quote }}
+        - name: LAMBDA_SERVICES_RESOURCE_MEMORY_REQUEST
+          value: {{ .Values.lambdaServices.defaults.resources.requests.memory | quote }}
+        - name: LAMBDA_SERVICES_RESOURCE_CPU_REQUEST
+          value: {{ .Values.lambdaServices.defaults.resources.requests.cpu | quote }}
+        - name: LAMBDA_SERVICES_RESOURCE_MEMORY_LIMIT
+          value: {{ .Values.lambdaServices.defaults.resources.limits.memory | quote }}
+        - name: LAMBDA_SERVICES_RESOURCE_CPU_LIMIT
+          value: {{ .Values.lambdaServices.defaults.resources.limits.cpu | quote }}
+        - name: LAMBDA_SERVICES_TIMEOUT_RESPONSE
+          value: {{ .Values.lambdaServices.defaults.timeouts.response | quote }}
+        - name: LAMBDA_SERVICES_TIMEOUT_IDLE
+          value: {{ .Values.lambdaServices.defaults.timeouts.idle | quote }}
+        
+        # Scheduler Service Configuration
+        - name: SCHEDULER_URL
+          value: {{ .Values.env.schedulerUrl | quote }}
+        - name: ENCRYPTION_KEY
+          value: {{ .Values.env.encryptionKey | quote }}
+        
+        # Notifi Service Addresses Configuration
+        - name: SUBSCRIPTION_MANAGER_ADDRESS
+          value: {{ .Values.env.subscriptionManagerAddress | quote }}
+        - name: EPHEMERAL_STORAGE_ADDRESS
+          value: {{ .Values.env.ephemeralStorageAddress | quote }}
+        - name: PERSISTENT_STORAGE_ADDRESS
+          value: {{ .Values.env.persistentStorageAddress | quote }}
+        - name: FUSION_FETCH_PROXY_ADDRESS
+          value: {{ .Values.env.fusionFetchProxyAddress | quote }}
+        - name: EVM_RPC_ADDRESS
+          value: {{ .Values.env.evmRpcAddress | quote }}
+        - name: SOLANA_RPC_ADDRESS
+          value: {{ .Values.env.solanaRpcAddress | quote }}
+        - name: SUI_RPC_ADDRESS
+          value: {{ .Values.env.suiRpcAddress | quote }}
+        - name: GRPC_INSECURE
+          value: {{ .Values.env.grpcInsecure | quote }}
+        
+        # Builder Service Scaling
+        - name: LAMBDA_BUILDER_MIN_SCALE
+          value: {{ .Values.builder.minScale | quote }}
+        - name: LAMBDA_BUILDER_MAX_SCALE
+          value: {{ .Values.builder.maxScale | quote }}
+        - name: LAMBDA_BUILDER_TARGET_CONCURRENCY
+          value: {{ .Values.builder.targetConcurrency | quote }}
+        - name: LAMBDA_BUILDER_SCALE_TO_ZERO_GRACE_PERIOD
+          value: {{ .Values.builder.scaleToZeroGracePeriod | quote }}
+        - name: LAMBDA_BUILDER_SCALE_DOWN_DELAY
+          value: {{ .Values.builder.scaleDownDelay | quote }}
+        - name: LAMBDA_BUILDER_STABLE_WINDOW
+          value: {{ .Values.builder.stableWindow | quote }}
+        
+        # HPA Configuration
+        - name: LAMBDA_HPA_ENABLED
+          value: {{ .Values.hpa.enabled | quote }}
+        - name: LAMBDA_HPA_MIN_REPLICAS
+          value: {{ .Values.hpa.minReplicas | quote }}
+        - name: LAMBDA_HPA_MAX_REPLICAS
+          value: {{ .Values.hpa.maxReplicas | quote }}
+        - name: LAMBDA_HPA_TARGET_CPU_UTILIZATION_PERCENTAGE
+          value: {{ .Values.hpa.targetCPUUtilizationPercentage | quote }}
+        - name: LAMBDA_HPA_TARGET_MEMORY_UTILIZATION_PERCENTAGE
+          value: {{ .Values.hpa.targetMemoryUtilizationPercentage | quote }}
+        
+        # Rate Limiting Configuration
+        - name: BUILD_CONTEXT_REQUESTS_PER_MIN
+          value: {{ .Values.rateLimiting.buildContext.requestsPerMin | quote }}
+        - name: BUILD_CONTEXT_BURST_SIZE
+          value: {{ .Values.rateLimiting.buildContext.burstSize | quote }}
+        - name: K8S_JOB_REQUESTS_PER_MIN
+          value: {{ .Values.rateLimiting.k8sJob.requestsPerMin | quote }}
+        - name: K8S_JOB_BURST_SIZE
+          value: {{ .Values.rateLimiting.k8sJob.burstSize | quote }}
+        - name: CLIENT_REQUESTS_PER_MIN
+          value: {{ .Values.rateLimiting.client.requestsPerMin | quote }}
+        - name: CLIENT_BURST_SIZE
+          value: {{ .Values.rateLimiting.client.burstSize | quote }}
+        - name: S3_UPLOAD_REQUESTS_PER_MIN
+          value: {{ .Values.rateLimiting.s3Upload.requestsPerMin | quote }}
+        - name: S3_UPLOAD_BURST_SIZE
+          value: {{ .Values.rateLimiting.s3Upload.burstSize | quote }}
+        - name: MAX_MEMORY_USAGE_PERCENT
+          value: {{ .Values.rateLimiting.memory.maxUsagePercent | quote }}
+        - name: MEMORY_CHECK_INTERVAL
+          value: {{ .Values.rateLimiting.memory.checkInterval | quote }}
+        - name: CLEANUP_INTERVAL
+          value: {{ .Values.rateLimiting.cleanup.interval | quote }}
+        - name: CLIENT_TTL
+          value: {{ .Values.rateLimiting.cleanup.clientTTL | quote }}
+        
+        # Sidecar configuration for Kaniko jobs
+        - name: SIDECAR_IMAGE
+          value: {{ include "knative-lambda.sidecarImage" . }}
+        - name: SIDECAR_IMAGE_PULL_POLICY
+          value: {{ .Values.sidecar.image.pullPolicy | quote }}
+        - name: SIDECAR_MEMORY_REQUEST
+          value: {{ .Values.sidecar.resources.requests.memory | quote }}
+        - name: SIDECAR_CPU_REQUEST
+          value: {{ .Values.sidecar.resources.requests.cpu | quote }}
+        - name: SIDECAR_MEMORY_LIMIT
+          value: {{ .Values.sidecar.resources.limits.memory | quote }}
+        - name: SIDECAR_CPU_LIMIT
+          value: {{ .Values.sidecar.resources.limits.cpu | quote }}
+        - name: SIDECAR_KANIKO_CONTAINER_NAME
+          value: {{ .Values.sidecar.monitoring.kanikoContainerName | quote }}
+        - name: SIDECAR_POLL_INTERVAL
+          value: {{ .Values.sidecar.monitoring.pollInterval | quote }}
+        - name: SIDECAR_BUILD_TIMEOUT
+          value: {{ .Values.sidecar.monitoring.buildTimeout | quote }}
+        - name: SIDECAR_LOG_LEVEL
+          value: {{ .Values.sidecar.logging.level | quote }}
+        - name: SIDECAR_LOG_FORMAT
+          value: {{ .Values.sidecar.logging.format | quote }}
+        - name: SIDECAR_RUN_AS_USER
+          value: {{ .Values.sidecar.security.runAsUser | quote }}
+        - name: SIDECAR_RUN_AS_GROUP
+          value: {{ .Values.sidecar.security.runAsGroup | quote }}
+        
+        # Knative broker configuration
+        - name: SIDECAR_BROKER_URL
+          value: {{ include "knative-lambda.brokerUrl" . }}
+        
+        # RabbitMQ Configuration
+        - name: RABBITMQ_EVENTING_PARALLELISM
+          value: {{ .Values.env.rabbitmqEventingParallelism | quote }}
+        
+        # Registry mirror configuration
+        - name: REGISTRY_MIRROR
+          value: {{ .Values.env.registryMirror | quote }}
+        - name: SKIP_TLS_VERIFY_REGISTRY
+          value: {{ .Values.env.skipTlsVerifyRegistry | quote }}
+        
+        # Base Image Configuration
+        - name: NODE_BASE_IMAGE
+          value: {{ .Values.env.nodeBaseImage | quote }}
+        - name: PYTHON_BASE_IMAGE
+          value: {{ .Values.env.pythonBaseImage | quote }}
+        - name: GO_BASE_IMAGE
+          value: {{ .Values.env.goBaseImage | quote }}
+
+
+        {{- if .Values.additionalEnv }}
+        {{- range .Values.additionalEnv }}
+        - name: {{ .name }}
+          value: {{ .value | quote }}
+        {{- end }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.builder.resources | nindent 10 }}
+        volumeMounts:
+        {{- if .Values.volumeMounts.tmp }}
+        - name: tmp
+          mountPath: {{ .Values.volumeMounts.tmp.mountPath }}
+        {{- end }}
+        {{- if .Values.volumeMounts.cache }}
+        - name: cache
+          mountPath: {{ .Values.volumeMounts.cache.mountPath }}
+        {{- end }}
+
+      # Metrics Pusher Sidecar
+      - name: metrics-pusher
+        image: {{ include "knative-lambda.metricsPusherImage" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: PROMETHEUS_REMOTE_WRITE_URL
+          value: "http://prometheus-kube-prometheus-prometheus.prometheus:9090/api/v1/write"
+        - name: PUSH_INTERVAL
+          value: {{ .Values.metricsPusher.config.pushInterval | quote }}
+        - name: TIMEOUT
+          value: {{ .Values.metricsPusher.config.timeout | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.metricsPusher.config.logLevel | quote }}
+        - name: NAMESPACE
+          value: {{ include "knative-lambda.namespace" . }}
+        - name: SERVICE_NAME
+          value: {{ .Values.builder.name }}-{{ .Values.environment }}
+        - name: METRICS_PORT
+          value: {{ .Values.env.metricsPort | quote }}
+        - name: METRICS_PATH
+          value: "/metrics"
+        - name: QUEUE_PROXY_METRICS_PORT
+          value: "9091"
+        - name: QUEUE_PROXY_METRICS_PATH
+          value: "/metrics"
+        resources:
+          {{- toYaml .Values.metricsPusher.resources | nindent 10 }}
+      volumes:
+      {{- if .Values.volumes.tmp.enabled }}
+      - name: tmp
+        emptyDir: {{- toYaml .Values.volumes.tmp.emptyDir | nindent 10 }}
+      {{- end }}
+      {{- if .Values.volumes.cache.enabled }}
+      - name: cache
+        emptyDir: {{- toYaml .Values.volumes.cache.emptyDir | nindent 10 }}
+      {{- end }}
+
+
+---
+# ServiceAccount for the Builder
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.builder.name }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+  labels:
+    {{- include "knative-lambda.labels" . | nindent 4 }}
+    app.kubernetes.io/component: builder
+  annotations:
+    {{- if .Values.serviceAccount.annotations }}
+    {{- toYaml .Values.serviceAccount.annotations | nindent 4 }}
+    {{- end }}
+    eks.amazonaws.com/role-arn: {{ include "knative-lambda.awsRoleArn" . }}
+---
+# ClusterRole for the Builder
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.builder.name }}-{{ .Values.environment }}
+  labels:
+    {{- include "knative-lambda.labels" . | nindent 4 }}
+    app.kubernetes.io/component: builder
+rules:
+# Knative Serving permissions
+- apiGroups: ["serving.knative.dev"]
+  resources: ["services", "configurations", "routes", "revisions"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Knative Eventing permissions  
+- apiGroups: ["eventing.knative.dev"]
+  resources: ["brokers", "triggers", "subscriptions"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Event sources permissions
+- apiGroups: ["sources.knative.dev"]
+  resources: ["rabbitmqsources", "apiserversources", "containersources"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Kubernetes core resources
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints", "configmaps", "secrets", "namespaces", "serviceaccounts"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Batch resources for Kaniko jobs
+- apiGroups: ["batch"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Apps resources
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+# Metrics and monitoring
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+# Prometheus monitoring permissions
+- apiGroups: ["monitoring.coreos.com"]
+  resources: ["servicemonitors", "prometheusrules", "alertmanagers", "podmonitors"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Events for debugging
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch", "create"]
+---
+# ClusterRoleBinding for the Builder
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.builder.name }}-{{ .Values.environment }}
+  labels:
+    {{- include "knative-lambda.labels" . | nindent 4 }}
+    app.kubernetes.io/component: builder
+subjects:
+- kind: ServiceAccount
+  name: {{ .Values.builder.name }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Values.builder.name }}-{{ .Values.environment }}
+  apiGroup: rbac.authorization.k8s.io

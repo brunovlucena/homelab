@@ -1,0 +1,96 @@
+# Local development values for knative-lambda
+# Override default values for local development
+
+# Local environment
+environment: local
+
+# Use local Docker image
+image:
+  registry: "kind-registry:5001"
+  repository: "knative-lambda/builder"
+  tag: "local"
+  pullPolicy: Never
+
+# Use local sidecar image
+sidecar:
+  image:
+    registry: "kind-registry:5001"
+    repository: "knative-lambda/sidecar"
+    tag: "local"
+    pullPolicy: Never
+
+# Reduce resources for local development
+deployment:
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Use NodePort for local access
+service:
+  type: NodePort
+  annotations: {}
+
+# Local environment variables
+env:
+  httpPort: "8081"
+  metricsPort: "9092"
+  s3SourceBucket: "notifi-local-fusion-modules"
+  s3TmpBucket: "notifi-local-tmp"
+  ecrBaseRegistry: "kind-registry:5001"
+  baseImageRegistry: "kind-registry:5001/kaniko-deps"
+  registryMirror: "kind-registry:5001"
+  skipTlsVerifyRegistry: "kind-registry:5001"
+  awsRegion: "us-west-2"
+  logLevel: "debug"
+  tracingEnabled: "false"
+  otelExporterOtlpEndpoint: "localhost:4317"
+  rabbitmqHost: "rabbitmq-cluster-local.rabbitmq-local.svc.cluster.local"
+  kubernetesNamespace: "knative-lambda-local"
+
+  # EKS Pod Identity Configuration (disabled for local)
+  useEksPodIdentity: "false"
+  podIdentityRole: ""
+  # RabbitMQ Configuration (disabled for local)
+  rabbitmqUrl: ""
+  
+  # Lambda Function Configuration
+  lambdaTrigger: "http"
+  
+  # Notifi Service Addresses - Required for lambda function connectivity
+  subscriptionManagerAddress: "notifi-subscription-manager.notifi.svc.cluster.local:4000"
+  ephemeralStorageAddress: "notifi-storage-manager.notifi.svc.cluster.local:4000"
+  persistentStorageAddress: "notifi-storage-manager.notifi.svc.cluster.local:4000"
+  fusionFetchProxyAddress: "notifi-fetch-proxy.notifi.svc.cluster.local:4000"
+  evmRpcAddress: "notifi-blockchain-manager.notifi.svc.cluster.local:4000"
+  solanaRpcAddress: "notifi-blockchain-manager.notifi.svc.cluster.local:4000"
+  suiRpcAddress: "notifi-blockchain-manager.notifi.svc.cluster.local:4000"
+  grpcInsecure: "true"
+
+# Local RabbitMQ configuration - REMOVED: Using Knative brokers and triggers instead
+
+# Disable features not needed for local development
+podDisruptionBudget:
+  enabled: false
+
+hpa:
+  enabled: false
+
+# Use local namespace
+namespace:
+  create: true
+  name: knative-lambda-local
+
+# Disable service account creation for local development
+serviceAccount:
+  create: false
+  name: "default"
+  annotations: {}
+
+# Enable k6 tests for local development with increased memory limits
+k6Tests:
+  enabled: true

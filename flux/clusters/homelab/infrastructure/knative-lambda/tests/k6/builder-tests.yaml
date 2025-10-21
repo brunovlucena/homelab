@@ -1,0 +1,210 @@
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: knative-lambda-builder-load-tests
+  namespace: knative-lambda-dev
+spec:
+  parallelism: 1
+  arguments: --tag test_type=knative-lambda-builder
+  runner:
+    image: grafana/k6:latest
+    env:
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: http://prometheus-kube-prometheus-prometheus.prometheus:9090/api/v1/write
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+      - name: RABBITMQ_URL
+        value: http://notifi:notifi@rabbitmq-cluster-dev.rabbitmq-dev:15672
+  script:
+    configMap:
+      name: knative-lambda-builder-k6-tests
+      file: builder-load-test.js
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knative-lambda-builder-k6-tests
+  namespace: knative-lambda-dev
+data:
+  builder-load-test.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+
+
+
+    // Define custom metrics
+    const errorRate = new Rate('builder_error_rate');
+    const eventCounter = new Counter('builder_events_total');
+    const publishDuration = new Trend('builder_publish_duration');
+
+    // Stress Test configuration - HIGH LOAD
+    export const options = {
+      scenarios: {
+        // Scenario 1: High-intensity burst test
+        burst_load_test: {
+          executor: 'ramping-vus',
+          startVUs: 10,
+          stages: [
+            { duration: '1m', target: 50 },    // Ramp up to 50 VUs
+            { duration: '2m', target: 100 },   // Ramp up to 100 VUs
+            { duration: '5m', target: 200 },   // Ramp up to 200 VUs (STRESS)
+            { duration: '10m', target: 200 },  // Stay at 200 VUs (SUSTAINED STRESS)
+            { duration: '2m', target: 100 },   // Ramp down to 100 VUs
+            { duration: '1m', target: 0 },     // Ramp down to 0 VUs
+          ],
+        },
+        // Scenario 2: Constant high-rate test
+        constant_rate_test: {
+          executor: 'constant-arrival-rate',
+          rate: 500,                           // 500 events per second
+          timeUnit: '1s',
+          duration: '15m',                     // 15 minutes of constant load
+          preAllocatedVUs: 100,
+          maxVUs: 300,
+        },
+        // Scenario 3: Spike test for peak handling
+        spike_test: {
+          executor: 'ramping-arrival-rate',
+          startRate: 100,
+          stages: [
+            { duration: '2m', target: 500 },   // Ramp to 500 events/sec
+            { duration: '1m', target: 1000 },  // SPIKE to 1000 events/sec
+            { duration: '2m', target: 1000 },  // Sustain spike
+            { duration: '1m', target: 500 },   // Ramp down
+            { duration: '2m', target: 100 },   // Return to baseline
+          ],
+          preAllocatedVUs: 200,
+          maxVUs: 500,
+        },
+      },
+      thresholds: {
+        http_req_duration: ['p(95)<10000'],    // Relaxed to 10s for stress test
+        http_req_failed: ['rate<0.1'],        // Allow up to 10% failures during stress
+        builder_error_rate: ['rate<0.1'],     // Allow up to 10% custom errors
+        builder_publish_duration: ['p(95)<8000'], // Relaxed to 8s for stress conditions
+        checks: ['rate>0.9'],                 // 90% of checks should pass
+      },
+    };
+
+    // Expanded test data for stress testing - simulating many customers and parsers
+    const testEvents = [
+      // Customer 1 - Multiple parsers
+      { third_party_id: "0307ea43639b4616b044d190310a26bd", parser_id: "0197ad6c10b973b2b854a0e652155b7e" },
+      { third_party_id: "0307ea43639b4616b044d190310a26bd", parser_id: "c42d2e6ca3214f4b8d28a2cab47beecf" },
+      { third_party_id: "0307ea43639b4616b044d190310a26bd", parser_id: "e0a711bde5d748009a995432acbf590b" },
+      
+      // Customer 2 - Enterprise customer
+      { third_party_id: "1234567890abcdef1234567890abcdef", parser_id: "enterprise-parser-001" },
+      { third_party_id: "1234567890abcdef1234567890abcdef", parser_id: "enterprise-parser-002" },
+      { third_party_id: "1234567890abcdef1234567890abcdef", parser_id: "enterprise-parser-003" },
+      { third_party_id: "1234567890abcdef1234567890abcdef", parser_id: "enterprise-parser-004" },
+      { third_party_id: "1234567890abcdef1234567890abcdef", parser_id: "enterprise-parser-005" },
+      
+      // Customer 3 - High-frequency trader
+      { third_party_id: "fedcba0987654321fedcba0987654321", parser_id: "trading-bot-alpha" },
+      { third_party_id: "fedcba0987654321fedcba0987654321", parser_id: "trading-bot-beta" },
+      { third_party_id: "fedcba0987654321fedcba0987654321", parser_id: "trading-bot-gamma" },
+      
+      // Customer 4 - Gaming platform
+      { third_party_id: "abcdef1234567890abcdef1234567890", parser_id: "game-events-parser" },
+      { third_party_id: "abcdef1234567890abcdef1234567890", parser_id: "player-stats-parser" },
+      { third_party_id: "abcdef1234567890abcdef1234567890", parser_id: "leaderboard-parser" },
+      
+      // Customer 5 - E-commerce platform
+      { third_party_id: "9876543210fedcba9876543210fedcba", parser_id: "order-processor" },
+      { third_party_id: "9876543210fedcba9876543210fedcba", parser_id: "inventory-tracker" },
+      { third_party_id: "9876543210fedcba9876543210fedcba", parser_id: "payment-processor" },
+      { third_party_id: "9876543210fedcba9876543210fedcba", parser_id: "recommendation-engine" },
+      
+      // Customer 6 - IoT platform
+      { third_party_id: "aaaabbbbccccddddeeeeffffgggghhii", parser_id: "sensor-data-parser" },
+      { third_party_id: "aaaabbbbccccddddeeeeffffgggghhii", parser_id: "device-telemetry" },
+      { third_party_id: "aaaabbbbccccddddeeeeffffgggghhii", parser_id: "alert-processor" },
+    ];
+
+    // RabbitMQ configuration - using URL with credentials
+    const RABBITMQ_URL = __ENV.RABBITMQ_URL || 'http://notifi:notifi@rabbitmq-cluster-dev.rabbitmq-dev:15672';
+    const EXCHANGE_NAME = 'cloud-events';
+    const ROUTING_KEY = 'network.notifi.lambda.build.start';
+
+    // Helper function to create CloudEvent (same structure as Python script)
+    function createCloudEvent(thirdPartyId, parserId) {
+      const now = new Date().toISOString();
+      const eventId = randomString(32);
+      
+      return {
+        specversion: "1.0",
+        id: eventId,
+        source: `network.notifi.parsers.${thirdPartyId}.${parserId}`,
+        type: "network.notifi.lambda.build.start",
+        time: now,
+        data: {
+          third_party_id: thirdPartyId,
+          parser_id: parserId,
+        },
+        datacontenttype: "application/json"
+      };
+    }
+
+    export default function () {
+      // Select a random test event
+      const testEvent = testEvents[Math.floor(Math.random() * testEvents.length)];
+      
+      // Create CloudEvent
+      const cloudEvent = createCloudEvent(testEvent.third_party_id, testEvent.parser_id);
+      
+      // Prepare RabbitMQ Management API request to publish message
+      const publishUrl = `${RABBITMQ_URL}/api/exchanges/%2F/${EXCHANGE_NAME}/publish`;
+      
+      const publishPayload = {
+        properties: {
+          content_type: "application/cloudevents+json",
+          delivery_mode: 2
+        },
+        routing_key: ROUTING_KEY,
+        payload: JSON.stringify(cloudEvent),
+        payload_encoding: "string"
+      };
+      
+      // Publish the CloudEvent to RabbitMQ
+      const startTime = Date.now();
+      const publishResponse = http.post(publishUrl, JSON.stringify(publishPayload), {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: '30s',
+      });
+      
+      const publishTime = Date.now() - startTime;
+      publishDuration.add(publishTime);
+      
+      const publishCheck = check(publishResponse, {
+        'builder event published successfully': (r) => r.status === 200,
+        'builder event publish response time < 3s': (r) => r.timings.duration < 3000,
+        'builder event has correct structure': () => {
+          return cloudEvent.specversion === "1.0" && 
+                 cloudEvent.type === "network.notifi.lambda.build.start" &&
+                 cloudEvent.data.third_party_id === testEvent.third_party_id &&
+                 cloudEvent.data.parser_id === testEvent.parser_id;
+        },
+      });
+      
+      if (publishCheck) {
+        eventCounter.add(1);
+      } else {
+        errorRate.add(1);
+        console.error('Failed to publish event:', publishResponse.body);
+      }
+      
+      // Reduced sleep for stress testing - more aggressive event generation
+      sleep(Math.random() * 0.5 + 0.1);  // 0.1-0.6 seconds (much faster)
+    }
+
+    export function handleSummary(data) {
+      return {
+        'stdout': JSON.stringify(data),
+        [`/tmp/builder-load-test-${Date.now()}.json`]: JSON.stringify(data),
+      };
+    } 

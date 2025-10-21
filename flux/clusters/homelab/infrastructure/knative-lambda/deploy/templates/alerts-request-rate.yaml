@@ -1,0 +1,123 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: knative-lambda-request-rate-alerts
+  namespace: knative-lambda-{{ .Values.environment }}
+  labels:
+    release: "prometheus"
+    app: "knative-lambda"
+    component: "alerts"
+    environment: {{ .Values.environment }}
+spec:
+  groups:
+  - name: knative-lambda.request-rate
+    rules:
+    # High Request Rate Alert for Lambda Services
+    - alert: KnativeLambdaHighRequestRate
+      expr: |
+        sum(rate(revision_request_count{namespace="knative-lambda-{{ .Values.environment }}", revision_name=~"lambda-.*"}[5m])) > 1000
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-lambda
+        component: request-rate
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda services experiencing high request rate"
+        description: "Lambda services are receiving {{ `{{ $value | printf \"%.0f\" }}` }} requests per second, which is above the normal threshold."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/high-request-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Critical Request Rate Alert for Lambda Services
+    - alert: KnativeLambdaCriticalRequestRate
+      expr: |
+        sum(rate(revision_request_count{namespace="knative-lambda-{{ .Values.environment }}", revision_name=~"lambda-.*"}[5m])) > 2000
+      for: 2m
+      labels:
+        severity: critical
+        service: knative-lambda-lambda
+        component: request-rate
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda services experiencing critical request rate"
+        description: "Lambda services are receiving {{ `{{ $value | printf \"%.0f\" }}` }} requests per second, which is critically high."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/critical-request-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # High Request Rate Alert for Builder Service
+    - alert: KnativeLambdaBuilderHighRequestRate
+      expr: |
+        sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", service=~".*builder.*"}[5m])) > 500
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: request-rate
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Builder experiencing high request rate"
+        description: "Builder service is receiving {{ `{{ $value | printf \"%.0f\" }}` }} requests per second, which is above the normal threshold."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/builder-high-request-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Request Rate Spike Detection
+    - alert: KnativeLambdaRequestRateSpike
+      expr: |
+        (
+          sum(rate(revision_request_count{namespace="knative-lambda-{{ .Values.environment }}", revision_name=~"lambda-.*"}[1m]))
+          /
+          sum(rate(revision_request_count{namespace="knative-lambda-{{ .Values.environment }}", revision_name=~"lambda-.*"}[5m]))
+        ) > 3
+      for: 2m
+      labels:
+        severity: warning
+        service: knative-lambda-lambda
+        component: request-rate
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda services experiencing request rate spike"
+        description: "Request rate has increased by {{ `{{ $value | printf \"%.1f\" }}` }}x in the last minute compared to the 5-minute average."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/request-rate-spike"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Low Request Rate Alert (for monitoring service health)
+    - alert: KnativeLambdaLowRequestRate
+      expr: |
+        sum(rate(revision_request_count{namespace="knative-lambda-{{ .Values.environment }}", revision_name=~"lambda-.*"}[10m])) < 10
+      for: 15m
+      labels:
+        severity: info
+        service: knative-lambda-lambda
+        component: request-rate
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda services experiencing low request rate"
+        description: "Lambda services are receiving only {{ `{{ $value | printf \"%.1f\" }}` }} requests per second, which may indicate reduced traffic or service issues."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/low-request-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    # Request Rate Trend Analysis
+    - alert: KnativeLambdaRequestRateTrendingUp
+      expr: |
+        (
+          sum(rate(revision_request_count{namespace="knative-lambda-{{ .Values.environment }}", revision_name=~"lambda-.*"}[5m]))
+          /
+          sum(rate(revision_request_count{namespace="knative-lambda-{{ .Values.environment }}", revision_name=~"lambda-.*"}[15m]))
+        ) > 1.5
+      for: 10m
+      labels:
+        severity: info
+        service: knative-lambda-lambda
+        component: request-rate
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda services showing upward request rate trend"
+        description: "Request rate is trending upward with {{ `{{ $value | printf \"%.1f\" }}` }}x increase in 5-minute vs 15-minute average."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/request-rate-trending-up"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}" 

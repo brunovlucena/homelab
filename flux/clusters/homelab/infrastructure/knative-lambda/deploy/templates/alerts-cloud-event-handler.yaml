@@ -1,0 +1,34 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: knative-lambda-cloud-event-handler-alerts
+  namespace: knative-lambda-{{ .Values.environment }}
+  labels:
+    release: "prometheus"
+    app: "knative-lambda"
+    component: "alerts"
+    environment: {{ .Values.environment }}
+spec:
+  groups:
+  - name: knative-lambda.cloud-event-handler
+    rules:
+    # HTTP Request Processing Alerts
+    - alert: KnativeLambdaCloudEventHandlerHighErrorRate
+      expr: |
+        (
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", status=~"5..", service=~".*cloud-event.*"}[5m]))
+          /
+          sum(rate(http_requests_total{namespace="knative-lambda-{{ .Values.environment }}", service=~".*cloud-event.*"}[5m]))
+        ) * 100 > 10
+      for: 10m
+      labels:
+        severity: warning
+        service: knative-lambda-cloud-event-handler
+        component: cloud-event-handler
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda Cloud Event Handler high error rate"
+        description: "Cloud event handler error rate is {{ `{{ $value | printf \"%.1f\" }}` }}% over the last 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/cloud-event-handler-high-error-rate"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}" 

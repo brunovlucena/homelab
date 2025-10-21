@@ -1,0 +1,28 @@
+{
+  "name": "knative-lambda-load-tests",
+  "version": "1.0.0",
+  "description": "Load testing scripts for knative-lambda service",
+  "main": "send-1000-events.js",
+  "scripts": {
+    "test": "node send-1000-events.js",
+    "test:1000": "TOTAL_EVENTS=1000 node send-1000-events.js",
+    "test:fast": "TOTAL_EVENTS=100 BATCH_SIZE=20 DELAY_MS=50 node send-1000-events.js",
+    "test:slow": "TOTAL_EVENTS=1000 BATCH_SIZE=10 DELAY_MS=500 node send-1000-events.js",
+    "fuzzy": "node fuzzy-rabbitmq-test.js",
+    "test:amqp": "node rabbitmq-1000-events-amqp.node.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.3",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "rabbitmq",
+    "cloudevents",
+    "load-testing",
+    "knative",
+    "lambda"
+  ],
+  "author": "Notifi Network",
+  "license": "MIT"
+}

@@ -1,0 +1,59 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - gosimple
+    - unused
+    - deadcode
+    - structcheck
+    - varcheck
+    - ineffassign
+    - typecheck
+    - gocritic
+    - gofmt
+    - goimports
+    - misspell
+    - unparam
+    - gocyclo
+    - dupl
+    - gosec
+    - revive
+    - depguard
+    - dogsled
+    - exportloopref
+    - nakedret
+    - prealloc
+    - scopelint
+    - bodyclose
+    - asasalint
+    - forbidigo
+    - funlen
+    - goconst
+    - godot
+    - godox
+    - nolintlint
+    - stylecheck
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  funlen:
+    lines: 50
+    statements: 40
+  gosec:
+    exclude:
+      - G104 # Ignore errors not checked for some exec calls if intentional
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+output:
+  format: colored-line-number
+  print-issued-lines: true 

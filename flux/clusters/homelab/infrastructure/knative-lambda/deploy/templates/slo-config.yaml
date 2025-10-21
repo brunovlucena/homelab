@@ -1,0 +1,178 @@
+{{- if .Values.monitoring.slos.enabled -}}
+# Service Level Objectives (SLOs) and Service Level Indicators (SLIs) Configuration
+# This file defines the SLOs and SLIs for the Knative Lambda service
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Values.builder.name }}-slos-{{ .Values.environment }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+  labels:
+    {{- include "knative-lambda.labels" . | nindent 4 }}
+    prometheus: kube-prometheus
+    role: slo-rules
+spec:
+  groups:
+  - name: knative-lambda.slos
+    rules:
+    # Availability SLO (99.9% uptime)
+    - record: slo:service:availability:ratio
+      expr: |
+        sum(rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}", status!~"5.."}[5m]))
+        /
+        sum(rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]))
+
+    - record: slo:service:availability:target
+      expr: "{{ .Values.monitoring.slos.availability | default 0.999 }}"
+
+    - record: slo:service:availability:window
+      expr: "5m"
+
+    # Latency SLO (95th percentile < 2s)
+    - record: slo:service:latency:p95
+      expr: |
+        histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]))
+
+    - record: slo:service:latency:target
+      expr: "{{ .Values.monitoring.slos.latencyP95 | default 2 }}"
+
+    - record: slo:service:latency:window
+      expr: "5m"
+
+    # Error Rate SLO (< 0.1% error rate)
+    - record: slo:service:error_rate:ratio
+      expr: |
+        sum(rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}", status=~"5.."}[5m]))
+        /
+        sum(rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]))
+
+    - record: slo:service:error_rate:target
+      expr: "{{ .Values.monitoring.slos.errorRate | default 0.001 }}"
+
+    - record: slo:service:error_rate:window
+      expr: "5m"
+
+    # Request Volume SLO (< 100 requests per second)
+    - record: slo:service:request_volume:current
+      expr: |
+        sum(rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]))
+
+    - record: slo:service:request_volume:target
+      expr: "{{ .Values.monitoring.slos.requestVolume | default 100 }}"
+
+    - record: slo:service:request_volume:window
+      expr: "5m"
+
+    # In-Flight Requests SLO (< 50 concurrent requests)
+    - record: slo:service:in_flight_requests:current
+      expr: |
+        sum(http_requests_in_flight{job="{{ .Values.builder.name }}-{{ .Values.environment }}"})
+
+    - record: slo:service:in_flight_requests:target
+      expr: "{{ .Values.monitoring.slos.inFlightRequests | default 50 }}"
+
+    - record: slo:service:in_flight_requests:window
+      expr: "1m"
+
+  - name: knative-lambda.error_budgets
+    rules:
+    # Error Budget Calculations
+    - record: slo:service:availability:error_budget
+      expr: 1 - slo:service:availability:ratio
+
+    - record: slo:service:availability:error_budget_remaining
+      expr: slo:service:availability:target - slo:service:availability:ratio
+
+    - record: slo:service:latency:error_budget
+      expr: slo:service:latency:p95 - slo:service:latency:target
+
+    - record: slo:service:error_rate:error_budget
+      expr: slo:service:error_rate:ratio - slo:service:error_rate:target
+
+    - record: slo:service:request_volume:error_budget
+      expr: slo:service:request_volume:current - slo:service:request_volume:target
+
+    - record: slo:service:in_flight_requests:error_budget
+      expr: slo:service:in_flight_requests:current - slo:service:in_flight_requests:target
+
+  - name: knative-lambda.sli_metrics
+    rules:
+    # Service Level Indicators (SLIs)
+    - record: sli:service:availability
+      expr: |
+        sum(rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}", status!~"5.."}[5m]))
+        /
+        sum(rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]))
+
+    - record: sli:service:latency_p95
+      expr: |
+        histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]))
+
+    - record: sli:service:latency_p99
+      expr: |
+        histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]))
+
+    - record: sli:service:error_rate
+      expr: |
+        sum(rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}", status=~"5.."}[5m]))
+        /
+        sum(rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]))
+
+    - record: sli:service:throughput
+      expr: |
+        sum(rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]))
+
+    - record: sli:service:in_flight_requests
+      expr: |
+        sum(http_requests_in_flight{job="{{ .Values.builder.name }}-{{ .Values.environment }}"})
+
+    # Circuit Breaker SLIs
+    - record: sli:circuit_breaker:open_state
+      expr: |
+        knative_lambda_circuit_breaker_current_state{job="{{ .Values.builder.name }}-{{ .Values.environment }}", state="open"}
+
+    - record: sli:circuit_breaker:half_open_state
+      expr: |
+        knative_lambda_circuit_breaker_current_state{job="{{ .Values.builder.name }}-{{ .Values.environment }}", state="half_open"}
+
+    - record: sli:circuit_breaker:closed_state
+      expr: |
+        knative_lambda_circuit_breaker_current_state{job="{{ .Values.builder.name }}-{{ .Values.environment }}", state="closed"}
+
+    - record: sli:circuit_breaker:failure_rate
+      expr: |
+        knative_lambda_circuit_breaker_failure_rate{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}
+
+    - record: sli:circuit_breaker:concurrent_requests
+      expr: |
+        knative_lambda_circuit_breaker_concurrent_requests{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}
+
+    - record: sli:circuit_breaker:rejected_requests_rate
+      expr: |
+        rate(knative_lambda_circuit_breaker_requests_rejected_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m])
+
+    # Performance SLIs
+    - record: sli:performance:request_duration_p50
+      expr: |
+        knative_lambda_circuit_breaker_request_duration_p50_seconds{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}
+
+    - record: sli:performance:request_duration_p95
+      expr: |
+        knative_lambda_circuit_breaker_request_duration_p95_seconds{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}
+
+    - record: sli:performance:request_duration_p99
+      expr: |
+        knative_lambda_circuit_breaker_request_duration_p99_seconds{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}
+
+    - record: sli:performance:request_rate
+      expr: |
+        knative_lambda_circuit_breaker_request_rate{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}
+
+    - record: sli:performance:success_rate
+      expr: |
+        rate(knative_lambda_circuit_breaker_requests_success_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]) / rate(knative_lambda_circuit_breaker_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m])
+
+    - record: sli:performance:failure_rate
+      expr: |
+        rate(knative_lambda_circuit_breaker_requests_failure_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]) / rate(knative_lambda_circuit_breaker_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m])
+{{- end -}} 

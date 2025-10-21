@@ -1,0 +1,61 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: knative-lambda-infrastructure-alerts
+  namespace: knative-lambda-{{ .Values.environment }}
+  labels:
+    release: "prometheus"
+    app: "knative-lambda"
+    component: "alerts"
+    environment: {{ .Values.environment }}
+spec:
+  groups:
+  - name: knative-lambda.infrastructure
+    rules:
+    - alert: KnativeLambdaComponentRestartLoop
+      expr: |
+        increase(kube_pod_container_status_restarts_total{namespace="knative-lambda-{{ .Values.environment }}"}[10m]) > 3
+      for: 2m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: infrastructure
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda component is in restart loop"
+        description: "Knative Lambda component {{ `{{ $labels.container }}` }} has restarted {{ `{{ $value }}` }} times in the last 10 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/component-restart-loop"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaComponentNotReady
+      expr: |
+        kube_pod_status_ready{condition="false", namespace="knative-lambda-{{ .Values.environment }}"} == 1
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: infrastructure
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda component is not ready"
+        description: "Knative Lambda component {{ `{{ $labels.pod }}` }} has been not ready for more than 5 minutes."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/component-not-ready"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}"
+
+    - alert: KnativeLambdaHighGCPressure
+      expr: |
+        go_gc_cpu_fraction{namespace="knative-lambda-{{ .Values.environment }}"} * 100 > 20
+      for: 5m
+      labels:
+        severity: warning
+        service: knative-lambda-builder
+        component: infrastructure
+        team: platform
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda component experiencing high GC pressure"
+        description: "Knative Lambda component is spending {{ `{{ $value | printf \"%.1f\" }}` }}% of CPU time on garbage collection."
+        runbook_url: "https://runbooks.notifi.network/knative/lambda/high-gc-pressure"
+        dashboard_url: "https://grafana.notifi.network/d/knative-lambda-builder-{{ .Values.environment }}/knative-lambda-builder-dashboard-{{ .Values.environment }}" 

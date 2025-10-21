@@ -1,4 +1,4 @@
-.PHONY: help secret-argocd pf-argocd bootstrap-flux-dev bootstrap-flux-prd flux-status flux-logs init-studio init-homelab up-studio up-homelab destroy-studio destroy-homelab cancel clean logs-dev logs-prd status-dev status-prd setup-env flux-refresh flux-refresh-bruno reconcile rollout flagger-status flagger-logs promote-canary rollback-canary istio-status istio-logs istio-proxy-status linkerd-install linkerd-install-clean linkerd-uninstall linkerd-status linkerd-dashboard linkerd-check
+.PHONY: help secret-argocd pf-argocd bootstrap-flux-dev bootstrap-flux-prd flux-status flux-logs init-studio init-homelab up-studio up-homelab destroy-studio destroy-homelab cancel clean logs-dev logs-prd status-dev status-prd setup-env flux-refresh flux-refresh-bruno reconcile rollout flagger-status flagger-logs promote-canary rollback-canary istio-status istio-logs istio-proxy-status linkerd-install linkerd-install-clean linkerd-uninstall linkerd-status linkerd-dashboard linkerd-check fix-loki-nosuchbucket
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -127,6 +127,14 @@ rollout: ## Rollout restart a deployment (usage: make rollout homepage-api)
 # Catch-all target to prevent "No rule to make target" errors when passing deployment names
 %:
 	@:
+
+# =============================================================================
+# Troubleshooting & Diagnostics
+# =============================================================================
+
+fix-loki-nosuchbucket: ## Fix Loki NoSuchBucket storage errors (automated)
+	@echo "🔧 Running Loki NoSuchBucket fix script..."
+	./scripts/fix-loki-nosuchbucket.sh
 
 # =============================================================================
 # Linkerd Operations

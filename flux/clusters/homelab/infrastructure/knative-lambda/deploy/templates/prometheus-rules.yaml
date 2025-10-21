@@ -1,0 +1,153 @@
+{{- if .Values.monitoring.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Values.builder.name }}-alerts-{{ .Values.environment }}
+  namespace: {{ include "knative-lambda.namespace" . }}
+  labels:
+    {{- include "knative-lambda.labels" . | nindent 4 }}
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  - name: knative-lambda.service
+    rules:
+    # Service Availability Alerts
+    - alert: KnativeLambdaServiceDown
+      expr: up{job="{{ .Values.builder.name }}-{{ .Values.environment }}"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: knative-lambda
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Knative Lambda service is down"
+        description: "The Knative Lambda service has been down for more than 1 minute"
+        runbook_url: "https://github.com/notifi/infra/tree/main/20-platform/services/knative-lambda/RUNBOOK.md"
+
+    - alert: KnativeLambdaHighErrorRate
+      expr: rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}", status=~"5.."}[5m]) / rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]) > 0.05
+      for: 2m
+      labels:
+        severity: warning
+        service: knative-lambda
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High error rate detected"
+        description: "Error rate is above 5% for the last 5 minutes"
+        runbook_url: "https://github.com/notifi/infra/tree/main/20-platform/services/knative-lambda/RUNBOOK.md"
+
+    - alert: KnativeLambdaHighLatency
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m])) > 2
+      for: 2m
+      labels:
+        severity: warning
+        service: knative-lambda
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High latency detected"
+        description: "95th percentile latency is above 2 seconds"
+        runbook_url: "https://github.com/notifi/infra/tree/main/20-platform/services/knative-lambda/RUNBOOK.md"
+
+    - alert: KnativeLambdaHighRequestVolume
+      expr: rate(http_requests_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]) > 100
+      for: 2m
+      labels:
+        severity: warning
+        service: knative-lambda
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High request volume detected"
+        description: "Request rate is above 100 requests per second"
+        runbook_url: "https://github.com/notifi/infra/tree/main/20-platform/services/knative-lambda/RUNBOOK.md"
+
+    - alert: KnativeLambdaHighInFlightRequests
+      expr: http_requests_in_flight{job="{{ .Values.builder.name }}-{{ .Values.environment }}"} > 50
+      for: 2m
+      labels:
+        severity: warning
+        service: knative-lambda
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High number of in-flight requests"
+        description: "More than 50 requests are currently being processed"
+        runbook_url: "https://github.com/notifi/infra/tree/main/20-platform/services/knative-lambda/RUNBOOK.md"
+
+  - name: knative-lambda.circuit_breaker
+    rules:
+    # Circuit Breaker Alerts (using enhanced metrics)
+    - alert: KnativeLambdaCircuitBreakerOpen
+      expr: knative_lambda_circuit_breaker_current_state{job="{{ .Values.builder.name }}-{{ .Values.environment }}", state="open"} > 0
+      for: 1m
+      labels:
+        severity: critical
+        service: knative-lambda
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Circuit breaker is open"
+        description: "Circuit breaker has opened due to high failure rate"
+        runbook_url: "https://github.com/notifi/infra/tree/main/20-platform/services/knative-lambda/RUNBOOK.md"
+
+    - alert: KnativeLambdaCircuitBreakerHalfOpen
+      expr: knative_lambda_circuit_breaker_current_state{job="{{ .Values.builder.name }}-{{ .Values.environment }}", state="half_open"} > 0
+      for: 1m
+      labels:
+        severity: warning
+        service: knative-lambda
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "Circuit breaker is half-open"
+        description: "Circuit breaker is testing if the service has recovered"
+        runbook_url: "https://github.com/notifi/infra/tree/main/20-platform/services/knative-lambda/RUNBOOK.md"
+
+    - alert: KnativeLambdaHighFailureRate
+      expr: knative_lambda_circuit_breaker_failure_rate{job="{{ .Values.builder.name }}-{{ .Values.environment }}"} > 0.1
+      for: 2m
+      labels:
+        severity: warning
+        service: knative-lambda
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High failure rate detected"
+        description: "Failure rate is above 10%"
+        runbook_url: "https://github.com/notifi/infra/tree/main/20-platform/services/knative-lambda/RUNBOOK.md"
+
+  - name: knative-lambda.performance
+    rules:
+    # Performance Alerts
+    - alert: KnativeLambdaHighLatencyP99
+      expr: knative_lambda_circuit_breaker_request_duration_p99_seconds{job="{{ .Values.builder.name }}-{{ .Values.environment }}"} > 5
+      for: 2m
+      labels:
+        severity: warning
+        service: knative-lambda
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High P99 latency detected"
+        description: "99th percentile latency is above 5 seconds"
+        runbook_url: "https://github.com/notifi/infra/tree/main/20-platform/services/knative-lambda/RUNBOOK.md"
+
+    - alert: KnativeLambdaHighConcurrentRequests
+      expr: knative_lambda_circuit_breaker_concurrent_requests{job="{{ .Values.builder.name }}-{{ .Values.environment }}"} > 100
+      for: 2m
+      labels:
+        severity: warning
+        service: knative-lambda
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High concurrent requests"
+        description: "More than 100 concurrent requests are being processed"
+        runbook_url: "https://github.com/notifi/infra/tree/main/20-platform/services/knative-lambda/RUNBOOK.md"
+
+    - alert: KnativeLambdaHighRejectionRate
+      expr: rate(knative_lambda_circuit_breaker_requests_rejected_total{job="{{ .Values.builder.name }}-{{ .Values.environment }}"}[5m]) > 10
+      for: 2m
+      labels:
+        severity: warning
+        service: knative-lambda
+        environment: {{ .Values.environment }}
+      annotations:
+        summary: "High request rejection rate"
+        description: "More than 10 requests per second are being rejected"
+        runbook_url: "https://github.com/notifi/infra/tree/main/20-platform/services/knative-lambda/RUNBOOK.md"
+{{- end -}} 
