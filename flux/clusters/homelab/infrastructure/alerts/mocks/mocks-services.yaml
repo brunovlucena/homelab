@@ -7,7 +7,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: linkerd-service-specific-monitoring
-  namespace: mocks
+  namespace: notifi-test
   labels:
     app.kubernetes.io/name: linkerd-monitoring
     app.kubernetes.io/component: prometheus-rules
@@ -18,7 +18,7 @@ spec:
     # Test Infrastructure Services (port 8080)
     - alert: LinkerdTestInfrastructureDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*test-infrastructure.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*test-infrastructure.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -32,7 +32,7 @@ spec:
     # Gateway Services (port 80)
     - alert: LinkerdGatewayServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*gateway.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*gateway.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -46,7 +46,7 @@ spec:
     # gRPC Services (port 4000)
     - alert: LinkerdGRPCServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*manager.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*manager.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -60,7 +60,7 @@ spec:
     # Messenger Services (port 5000)
     - alert: LinkerdMessengerServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*messenger.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*messenger.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -74,7 +74,7 @@ spec:
     # Proxy Services (port 7000)
     - alert: LinkerdProxyServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*proxy.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*proxy.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -88,7 +88,7 @@ spec:
     # Database Services (port 8123)
     - alert: LinkerdDatabaseServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*database.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*database.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -102,7 +102,7 @@ spec:
     # Cache Services (port 6379)
     - alert: LinkerdCacheServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*cache.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*cache.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -116,7 +116,7 @@ spec:
     # Monitoring Services (port 5000)
     - alert: LinkerdMonitoringServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*monitoring.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*monitoring.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -130,7 +130,7 @@ spec:
     # Scheduler Services (port 4000)
     - alert: LinkerdSchedulerServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*scheduler.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*scheduler.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -144,7 +144,7 @@ spec:
     # Processor Services (port 5000)
     - alert: LinkerdProcessorServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*processor.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*processor.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -158,7 +158,7 @@ spec:
     # Broker Services (port 4000)
     - alert: LinkerdBrokerServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*broker.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*broker.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -172,7 +172,7 @@ spec:
     # Handler Services (port 5000)
     - alert: LinkerdHandlerServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*handler.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*handler.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -186,7 +186,7 @@ spec:
     # Service Components (port 5000)
     - alert: LinkerdServiceComponentDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*service.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*service.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -200,7 +200,7 @@ spec:
     # Storage Services (port 9000)
     - alert: LinkerdStorageServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*storage.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*storage.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -214,7 +214,7 @@ spec:
     # Analytics Services (port 8080)
     - alert: LinkerdAnalyticsServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*analytics.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*analytics.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -228,7 +228,7 @@ spec:
     # Worker Services (port 8080)
     - alert: LinkerdWorkerServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*worker.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*worker.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -242,7 +242,7 @@ spec:
     # API Services (port 80)
     - alert: LinkerdAPIServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*api.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*api.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -256,7 +256,7 @@ spec:
     # WebSocket Services (port 8080)
     - alert: LinkerdWebSocketServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*websocket.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*websocket.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -270,7 +270,7 @@ spec:
     # Queue Services (port 5672)
     - alert: LinkerdQueueServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*queue.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*queue.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -284,7 +284,7 @@ spec:
     # Search Services (port 9200)
     - alert: LinkerdSearchServiceDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",pod=~".*search.*"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",pod=~".*search.*"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -298,7 +298,7 @@ spec:
     # Critical: Any Service Type Completely Down
     - alert: LinkerdAnyServiceTypeDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test"}[5m]))
       for: 1m
       labels:
         severity: critical

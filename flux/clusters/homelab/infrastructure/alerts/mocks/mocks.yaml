@@ -7,7 +7,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: linkerd-network-connectivity
-  namespace: mocks
+  namespace: notifi-test
   labels:
     app.kubernetes.io/name: linkerd-monitoring
     app.kubernetes.io/component: prometheus-rules
@@ -18,7 +18,7 @@ spec:
     # Critical: Service-to-Service Connectivity
     - alert: LinkerdServiceConnectivityDown
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test"}[5m]))
       for: 30s
       labels:
         severity: critical
@@ -31,7 +31,7 @@ spec:
     # Critical: Policy Enforcement Failures
     - alert: LinkerdPolicyEnforcementFailure
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure"}[5m]) > 0.1
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure"}[5m]) > 0.1
       for: 1m
       labels:
         severity: critical
@@ -44,7 +44,7 @@ spec:
     # Critical: Server Authorization Failures
     - alert: LinkerdServerAuthFailure
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",authorization="denied"}[5m]) > 0.05
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",authorization="denied"}[5m]) > 0.05
       for: 1m
       labels:
         severity: critical
@@ -57,7 +57,7 @@ spec:
     # Critical: Mesh TLS Failures
     - alert: LinkerdMeshTLSFailure
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",tls="error"}[5m]) > 0.05
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",tls="error"}[5m]) > 0.05
       for: 1m
       labels:
         severity: critical
@@ -71,7 +71,7 @@ spec:
     - alert: LinkerdPolicyLatencyHigh
       expr: |
         histogram_quantile(0.95, 
-          rate(linkerd_proxy_request_duration_seconds_bucket{namespace="mocks"}[5m])
+          rate(linkerd_proxy_request_duration_seconds_bucket{namespace="notifi-test"}[5m])
         ) > 1.0
       for: 2m
       labels:
@@ -84,7 +84,7 @@ spec:
     # Critical: Network Policy Blocking Traffic
     - alert: LinkerdNetworkPolicyBlocking
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="network_policy_denied"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="network_policy_denied"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -96,7 +96,7 @@ spec:
     # Critical: Service Discovery Failures
     - alert: LinkerdServiceDiscoveryFailure
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="service_discovery"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="service_discovery"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -108,7 +108,7 @@ spec:
     # Critical: Port Access Denied
     - alert: LinkerdPortAccessDenied
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="port_access_denied"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="port_access_denied"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -120,7 +120,7 @@ spec:
     # Critical: Proxy Protocol Mismatch
     - alert: LinkerdProxyProtocolMismatch
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="proxy_protocol_mismatch"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="proxy_protocol_mismatch"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -132,7 +132,7 @@ spec:
     # Critical: Client Authentication Failures
     - alert: LinkerdClientAuthFailure
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="client_auth_failed"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="client_auth_failed"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -144,7 +144,7 @@ spec:
     # Critical: Server Authorization Timeout
     - alert: LinkerdServerAuthTimeout
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="server_auth_timeout"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="server_auth_timeout"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -156,7 +156,7 @@ spec:
     # Critical: Network CIDR Blocking
     - alert: LinkerdNetworkCIDRBlocked
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="network_cidr_blocked"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="network_cidr_blocked"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -168,7 +168,7 @@ spec:
     # Critical: Service Mesh Connectivity Lost
     - alert: LinkerdServiceMeshDown
       expr: |
-        up{job="linkerd-proxy",namespace="mocks"} == 0
+        up{job="linkerd-proxy",namespace="notifi-test"} == 0
       for: 1m
       labels:
         severity: critical
@@ -181,8 +181,8 @@ spec:
     - alert: LinkerdHighErrorRate
       expr: |
         (
-          rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure"}[5m]) /
-          rate(linkerd_proxy_requests_total{namespace="mocks"}[5m])
+          rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure"}[5m]) /
+          rate(linkerd_proxy_requests_total{namespace="notifi-test"}[5m])
         ) > 0.1
       for: 2m
       labels:
@@ -195,9 +195,9 @@ spec:
     # Critical: Complete Service Isolation
     - alert: LinkerdServiceIsolated
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",direction="inbound"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",direction="inbound"}[5m]))
         and
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks",direction="outbound"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test",direction="outbound"}[5m]))
       for: 2m
       labels:
         severity: critical
@@ -209,7 +209,7 @@ spec:
     # Critical: Policy Configuration Error
     - alert: LinkerdPolicyConfigError
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="policy_config_error"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="policy_config_error"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -221,7 +221,7 @@ spec:
     # Critical: Service Endpoint Unreachable
     - alert: LinkerdServiceEndpointUnreachable
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="endpoint_unreachable"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="endpoint_unreachable"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -233,7 +233,7 @@ spec:
     # Critical: DNS Resolution Failure
     - alert: LinkerdDNSResolutionFailure
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="dns_resolution_failed"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="dns_resolution_failed"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -245,7 +245,7 @@ spec:
     # Critical: Connection Pool Exhaustion
     - alert: LinkerdConnectionPoolExhausted
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="connection_pool_exhausted"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="connection_pool_exhausted"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -257,7 +257,7 @@ spec:
     # Critical: Circuit Breaker Open
     - alert: LinkerdCircuitBreakerOpen
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="circuit_breaker_open"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="circuit_breaker_open"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -269,7 +269,7 @@ spec:
     # Critical: Rate Limiting Active
     - alert: LinkerdRateLimitingActive
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="rate_limited"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="rate_limited"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -281,7 +281,7 @@ spec:
     # Critical: Service Mesh Policy Violation
     - alert: LinkerdServiceMeshPolicyViolation
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="policy_violation"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="policy_violation"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -293,7 +293,7 @@ spec:
     # Critical: Network Segmentation Failure
     - alert: LinkerdNetworkSegmentationFailure
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="network_segmentation_failed"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="network_segmentation_failed"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -305,7 +305,7 @@ spec:
     # Critical: Service Identity Mismatch
     - alert: LinkerdServiceIdentityMismatch
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="service_identity_mismatch"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="service_identity_mismatch"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -317,7 +317,7 @@ spec:
     # Critical: Network Policy Denial
     - alert: LinkerdNetworkPolicyDenial
       expr: |
-        rate(linkerd_proxy_requests_total{namespace="mocks",classification="failure",error="network_policy_denial"}[5m]) > 0.01
+        rate(linkerd_proxy_requests_total{namespace="notifi-test",classification="failure",error="network_policy_denial"}[5m]) > 0.01
       for: 30s
       labels:
         severity: critical
@@ -329,9 +329,9 @@ spec:
     # Critical: Service Mesh Connectivity Critical
     - alert: LinkerdServiceMeshConnectivityCritical
       expr: |
-        absent(rate(linkerd_proxy_requests_total{namespace="mocks"}[5m]))
+        absent(rate(linkerd_proxy_requests_total{namespace="notifi-test"}[5m]))
         and
-        up{job="linkerd-proxy",namespace="mocks"} == 1
+        up{job="linkerd-proxy",namespace="notifi-test"} == 1
       for: 1m
       labels:
         severity: critical
