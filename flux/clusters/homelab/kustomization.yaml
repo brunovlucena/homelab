@@ -2,4 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - infrastructure/
+  - deploy/phase1-core-kustomization.yaml
+  - deploy/phase2-observability-kustomization.yaml
+  - deploy/phase3-serverless-kustomization.yaml
+  - deploy/phase4-apps-kustomization.yaml

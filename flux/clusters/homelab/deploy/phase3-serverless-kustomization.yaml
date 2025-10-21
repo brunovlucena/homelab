@@ -1,0 +1,20 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: homelab-phase3-knative
+  namespace: flux-system
+spec:
+  interval: 5m
+  timeout: 10m
+  retryInterval: 1m
+  path: ./flux/clusters/homelab/deploy/phase3-serverless
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+    namespace: flux-system
+  dependsOn:
+    - name: homelab-phase1-core
+

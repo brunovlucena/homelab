@@ -11,3 +11,4 @@ resources:
   - ../knative-operator
   - ../knative-serving
   - ../knative-eventing
+  # - ../rabbitmq-cluster

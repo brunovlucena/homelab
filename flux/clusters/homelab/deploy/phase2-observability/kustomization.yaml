@@ -10,3 +10,4 @@ resources:
   - ../alloy
   - ../tempo
   - ../prometheus-pushgateway
+  - ../alerts
