@@ -6,7 +6,6 @@ resources:
   - pvc.yaml
   - deployment.yaml
   - service.yaml
-  - setup-job.yaml
 
 images:
   - name: minio/minio

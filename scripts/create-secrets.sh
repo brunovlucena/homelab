@@ -293,8 +293,9 @@ POSTGRES_DB=$(extract_env_value "POSTGRES_DB")
 POSTGRES_USER="postgres"
 POSTGRES_PASSWORD=$(extract_env_value "POSTGRES_PASSWORD")
 REDIS_PASSWORD=$(extract_env_value "REDIS_PASSWORD")
-HOMEPAGE_MINIO_ACCESS_KEY=$(extract_env_value "HOMEPAGE_MINIO_ACCESS_KEY")
-HOMEPAGE_MINIO_SECRET_KEY=$(extract_env_value "HOMEPAGE_MINIO_SECRET_KEY")
+# Use the same MinIO credentials as the MinIO server
+HOMEPAGE_MINIO_ACCESS_KEY=$(extract_env_value "MINIO_ROOT_USER")
+HOMEPAGE_MINIO_SECRET_KEY=$(extract_env_value "MINIO_ROOT_PASSWORD")
 
 # Create the secret in the cluster with individual fields (no hardcoded database-url)
 # The application constructs the DATABASE_URL programmatically from these components
