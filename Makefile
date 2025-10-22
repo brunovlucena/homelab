@@ -161,3 +161,23 @@ linkerd-dashboard: ## Access Linkerd dashboard
 	@echo "🌐 Opening Linkerd dashboard..."
 	@echo "Dashboard will be available at: http://localhost:8084"
 	linkerd viz dashboard --context kind-homelab --port 8084
+
+# =============================================================================
+# Cloudflare Tunnel Operations
+# =============================================================================
+
+update-tunnel: ## Update Cloudflare tunnel routes with current service IPs
+	@echo "🚀 Updating Cloudflare tunnel routes..."
+	@if [ -z "$$CLOUDFLARE_API_TOKEN" ]; then \
+		echo "❌ Error: CLOUDFLARE_API_TOKEN environment variable is required"; \
+		echo "Get your API token from: https://dash.cloudflare.com/profile/api-tokens"; \
+		exit 1; \
+	fi
+	@if [ -z "$$CLOUDFLARE_ACCOUNT_ID" ]; then \
+		echo "❌ Error: CLOUDFLARE_ACCOUNT_ID environment variable is required"; \
+		echo "Get your Account ID from: https://dash.cloudflare.com/"; \
+		exit 1; \
+	fi
+	@echo "🔧 Running tunnel update script..."
+	./scripts/update-cloudflare-tunnel.sh
+	@echo "✅ Cloudflare tunnel routes updated successfully!"

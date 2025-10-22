@@ -11,7 +11,7 @@ resources:
   - ../../infrastructure/minio
   - ../../infrastructure/postgres
   - ../../infrastructure/redis
-  - ../../infrastructure/lancedb
+  # - ../../infrastructure/lancedb  # Commented out - no official Docker image exists
   - ../../infrastructure/mongodb
   - ../../infrastructure/alerts/apps
   # Commented out - not ready yet
