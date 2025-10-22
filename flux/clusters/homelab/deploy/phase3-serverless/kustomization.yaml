@@ -6,9 +6,6 @@ kind: Kustomization
 # Deploy operators that will install CRDs
 
 resources:
-  # - ../../infrastructure/rabbitmq-operator
   - ../../infrastructure/k6-operator
   - ../../infrastructure/knative-operator
-  # Note: knative-serving and knative-eventing moved to phase3b
-  # They depend on CRDs installed by knative-operator
-  # - ../../infrastructure/rabbitmq-cluster
+  # - ../../infrastructure/rabbitmq-operator

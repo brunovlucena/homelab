@@ -8,4 +8,5 @@ kind: Kustomization
 resources:
   - ../../infrastructure/knative-serving
   - ../../infrastructure/knative-eventing
+  # - ../../infrastructure/rabbitmq-cluster
 
