@@ -12,5 +12,3 @@ resources:
   - ../../infrastructure/alloy
   - ../../infrastructure/tempo
   - ../../infrastructure/prometheus-pushgateway
-  - ../../infrastructure/alerts/core
-  - ../../infrastructure/alerts/observability

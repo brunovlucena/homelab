@@ -9,4 +9,6 @@ resources:
   - ../../infrastructure/knative-serving
   - ../../infrastructure/knative-eventing
   # - ../../infrastructure/rabbitmq-cluster
+  - ../../infrastructure/alerts/core
+  - ../../infrastructure/alerts/observability
 
