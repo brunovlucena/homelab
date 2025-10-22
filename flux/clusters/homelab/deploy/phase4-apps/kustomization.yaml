@@ -13,7 +13,7 @@ resources:
   - ../../infrastructure/homepage
   - ../../infrastructure/agent-bruno
   # - ../../infrastructure/lancedb  # Commented out - no official Docker image exists
-  - ../../infrastructure/alerts/apps
+  # - ../../infrastructure/alerts/apps  # Commented out - only contains LanceDB alerts
   # Commented out - not ready yet
   # - ../../infrastructure/agent-sre
   # - ../../infrastructure/agent-jamie
