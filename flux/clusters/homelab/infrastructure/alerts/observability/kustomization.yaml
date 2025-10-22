@@ -4,6 +4,5 @@ kind: Kustomization
 resources:
   - flux.yaml
   - loki.yaml
-  - rabbitmq.yaml
   - tempo.yaml
 
