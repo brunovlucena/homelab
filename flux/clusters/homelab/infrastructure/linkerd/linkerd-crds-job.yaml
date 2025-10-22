@@ -8,9 +8,7 @@ metadata:
   namespace: linkerd
   annotations:
     kustomize.toolkit.fluxcd.io/prune: disabled  # Never delete this job
-    kustomize.toolkit.fluxcd.io/reconcile: disabled  # Skip health checks for ephemeral job
 spec:
-  ttlSecondsAfterFinished: 300  # Clean up after 5 minutes
   template:
     metadata:
       labels:
