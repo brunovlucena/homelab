@@ -6,13 +6,13 @@ kind: Kustomization
 # Deploy all applications and remaining infrastructure
 
 resources:
-  - ../../infrastructure/homepage
-  - ../../infrastructure/agent-bruno
+  - ../../infrastructure/mongodb
   - ../../infrastructure/minio
   - ../../infrastructure/postgres
   - ../../infrastructure/redis
+  - ../../infrastructure/homepage
+  - ../../infrastructure/agent-bruno
   # - ../../infrastructure/lancedb  # Commented out - no official Docker image exists
-  - ../../infrastructure/mongodb
   - ../../infrastructure/alerts/apps
   # Commented out - not ready yet
   # - ../../infrastructure/agent-sre
