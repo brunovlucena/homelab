@@ -484,7 +484,7 @@ metadata:
   name: ambassador
 ---
 # flux/clusters/homelab/infrastructure/ambassador/helmrepository.yaml
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: datawire

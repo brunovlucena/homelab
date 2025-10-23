@@ -88,7 +88,7 @@ spec:
     - cidr: 10.0.0.0/8
     - cidr: 172.16.0.0/12
     - cidr: 192.168.0.0/16
-    unauthenticated: true  # Allow K6 test pods without meshTLS
+    unauthenticated: false
     meshTLS:
       identities:
       - "*.notifi.svc.cluster.local"
@@ -156,7 +156,7 @@ spec:
     - cidr: 10.0.0.0/8
     - cidr: 172.16.0.0/12
     - cidr: 192.168.0.0/16
-    unauthenticated: true  # Allow K6 test pods without meshTLS
+    unauthenticated: false
     meshTLS:
       identities:
       - "*.notifi.svc.cluster.local"
@@ -257,7 +257,7 @@ spec:
     - cidr: 10.0.0.0/8
     - cidr: 172.16.0.0/12
     - cidr: 192.168.0.0/16
-    unauthenticated: true  # Allow K6 test pods without meshTLS
+    unauthenticated: false
     meshTLS:
       identities:
       - "*.notifi.svc.cluster.local"
@@ -675,7 +675,7 @@ spec:
     - cidr: 10.0.0.0/8
     - cidr: 172.16.0.0/12
     - cidr: 192.168.0.0/16
-    unauthenticated: true  # Allow K6 test pods without meshTLS
+    unauthenticated: false
     meshTLS:
       identities:
       - "*.notifi.svc.cluster.local"
