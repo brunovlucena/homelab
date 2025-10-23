@@ -17,27 +17,15 @@ spec:
   chart:
     spec:
       chart: rabbitmq-cluster-operator
-      version: "4.4.34"
+      version: "4.4.26"  # Using stable version
       sourceRef:
         kind: HelmRepository
         name: rabbitmq
         namespace: flux-system
       interval: 5m
   values:
-    # 🐰 RabbitMQ Cluster Operator - Bitnami Chart (using default images)
+    # 🐰 RabbitMQ Cluster Operator - Bitnami Chart
+    # Chart 4.4.26 uses stable images: cluster-operator:2.15.0-debian-12-r1, topology-operator:1.17.3-debian-12-r0
     useCertManager: true
-    
-    # Override image tags to use available versions
-    clusterOperator:
-      image:
-        registry: docker.io
-        repository: bitnami/rabbitmq-cluster-operator
-        tag: 2.16.1-debian-12-r0
-    
-    msgTopologyOperator:
-      image:
-        registry: docker.io
-        repository: bitnami/rmq-messaging-topology-operator
-        tag: 1.17.0-debian-12-r1
 
 

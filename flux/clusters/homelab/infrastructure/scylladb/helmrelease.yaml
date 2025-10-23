@@ -10,7 +10,7 @@ spec:
   chart:
     spec:
       chart: scylladb
-      version: 5.0.6
+      version: 5.0.5
       sourceRef:
         kind: HelmRepository
         name: bitnami
@@ -77,10 +77,6 @@ spec:
         cql: 9042
         # Alternator port (DynamoDB protocol)
         alternator: 8000
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "9180"
-        prometheus.io/path: "/metrics"
     
     # 📈 Metrics and monitoring
     metrics:
