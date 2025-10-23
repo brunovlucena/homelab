@@ -79,14 +79,11 @@ spec:
         alternator: 8000
     
     # 📈 Metrics and monitoring
+    # ServiceMonitor disabled due to duplicate label bug in chart
     metrics:
       enabled: true
       serviceMonitor:
-        enabled: true
-        namespace: scylladb
-        interval: 30s
-        labels:
-          release: prometheus-operator
+        enabled: false
     
     # 🏥 Health checks
     livenessProbe:
