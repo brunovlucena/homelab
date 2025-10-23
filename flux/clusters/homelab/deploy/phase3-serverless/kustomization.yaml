@@ -8,4 +8,4 @@ kind: Kustomization
 resources:
   - ../../infrastructure/k6-operator
   - ../../infrastructure/knative-operator
-  # - ../../infrastructure/rabbitmq-operator
+  - ../../infrastructure/rabbitmq-operator

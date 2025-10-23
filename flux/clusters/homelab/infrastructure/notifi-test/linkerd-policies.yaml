@@ -88,9 +88,11 @@ spec:
     - cidr: 10.0.0.0/8
     - cidr: 172.16.0.0/12
     - cidr: 192.168.0.0/16
+    unauthenticated: true  # Allow K6 test pods without meshTLS
     meshTLS:
       identities:
       - "*.notifi.svc.cluster.local"
+      - "*.notifi-test.svc.cluster.local"
 
 ---
 # Server for gRPC Services
@@ -154,9 +156,11 @@ spec:
     - cidr: 10.0.0.0/8
     - cidr: 172.16.0.0/12
     - cidr: 192.168.0.0/16
+    unauthenticated: true  # Allow K6 test pods without meshTLS
     meshTLS:
       identities:
       - "*.notifi.svc.cluster.local"
+      - "*.notifi-test.svc.cluster.local"
 
 ---
 # Server for Proxy Services
@@ -253,9 +257,11 @@ spec:
     - cidr: 10.0.0.0/8
     - cidr: 172.16.0.0/12
     - cidr: 192.168.0.0/16
+    unauthenticated: true  # Allow K6 test pods without meshTLS
     meshTLS:
       identities:
       - "*.notifi.svc.cluster.local"
+      - "*.notifi-test.svc.cluster.local"
 
 ---
 # Server for Monitoring Services
@@ -669,9 +675,11 @@ spec:
     - cidr: 10.0.0.0/8
     - cidr: 172.16.0.0/12
     - cidr: 192.168.0.0/16
+    unauthenticated: true  # Allow K6 test pods without meshTLS
     meshTLS:
       identities:
       - "*.notifi.svc.cluster.local"
+      - "*.notifi-test.svc.cluster.local"
       - "*.prometheus.svc.cluster.local"
       - "*.loki.svc.cluster.local"
       - "*.grafana.svc.cluster.local"

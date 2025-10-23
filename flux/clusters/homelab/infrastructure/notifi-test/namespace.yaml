@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   name: notifi-test
   annotations:
-    linkerd.io/inject: enabled
+    linkerd.io/inject: disabled
   labels:
     name: notifi-test
-    linkerd.io/inject: enabled
+    linkerd.io/inject: disabled
