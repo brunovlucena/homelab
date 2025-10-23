@@ -1,0 +1,70 @@
+name: Build and Push kubectl Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'flux/clusters/homelab/infrastructure/rabbitmq-operator/docker/Dockerfile'
+      - '.github/workflows/kubectl.yaml'
+  workflow_dispatch:
+    inputs:
+      kubectl_version:
+        description: 'kubectl version (e.g., v1.34.0)'
+        required: false
+        default: 'v1.34.0'
+      krew_version:
+        description: 'krew version (e.g., v0.4.4)'
+        required: false
+        default: 'v0.4.4'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: brunovlucena/kubectl
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=v1.34.0
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./flux/clusters/homelab/infrastructure/rabbitmq-operator/docker
+          file: ./flux/clusters/homelab/infrastructure/rabbitmq-operator/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            KUBECTL_VERSION=${{ github.event.inputs.kubectl_version || 'v1.34.0' }}
+            KREW_VERSION=${{ github.event.inputs.krew_version || 'v0.4.4' }}
+

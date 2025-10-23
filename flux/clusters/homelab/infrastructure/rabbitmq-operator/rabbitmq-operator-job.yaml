@@ -19,7 +19,7 @@ spec:
       - name: ghcr-secret
       containers:
       - name: install-operator
-        image: ghcr.io/brunovlucena/homelab/kubectl:v1.31.0
+        image: ghcr.io/brunovlucena/kubectl:v1.34.0
         command:
         - /bin/sh
         - -c

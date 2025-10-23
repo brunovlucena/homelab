@@ -6,7 +6,7 @@ This directory contains the official RabbitMQ Cluster Operator installation usin
 
 - **Namespace**: `rabbitmq-operator`
 - **Installation Method**: kubectl krew plugin (`kubectl rabbitmq install-cluster-operator`)
-- **Custom Image**: `ghcr.io/brunovlucena/homelab/kubectl:v1.31.0` (kubectl + krew + rabbitmq plugin)
+- **Custom Image**: `ghcr.io/brunovlucena/kubectl:v1.34.0` (kubectl + krew + rabbitmq plugin)
 
 ## 🚀 Installation
 
@@ -19,7 +19,7 @@ The operator is installed via a Kubernetes Job that:
 ## 🐳 Docker Image
 
 The custom kubectl image includes:
-- kubectl v1.31.0
+- kubectl v1.34.0
 - krew plugin manager
 - RabbitMQ kubectl plugin
 
@@ -27,7 +27,7 @@ Build the image:
 ```bash
 cd docker/
 docker buildx build --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/brunovlucena/homelab/kubectl:v1.31.0 \
+  -t ghcr.io/brunovlucena/kubectl:v1.34.0 \
   --push .
 ```
 

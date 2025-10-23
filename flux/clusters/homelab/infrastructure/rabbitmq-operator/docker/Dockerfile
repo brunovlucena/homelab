@@ -1,7 +1,7 @@
 # 🐰 kubectl image with krew and RabbitMQ plugin
 FROM alpine:latest
 
-ARG KUBECTL_VERSION=v1.31.0
+ARG KUBECTL_VERSION=v1.34.0
 ARG KREW_VERSION=v0.4.4
 ARG TARGETARCH
 
