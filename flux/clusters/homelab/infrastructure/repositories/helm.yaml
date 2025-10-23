@@ -107,7 +107,7 @@ spec:
   interval: 1h0m0s
   url: https://kubernetes-sigs.github.io/headlamp/
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: rabbitmq
@@ -126,7 +126,7 @@ spec:
   interval: 1h0m0s
   url: https://mongodb.github.io/helm-charts
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: redis
@@ -136,7 +136,7 @@ spec:
   interval: 1h0m0s
   url: oci://registry-1.docker.io/bitnamicharts
 ---
-apiVersion: source.toolkit.fluxcd.io/v1beta2
+apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: postgres
