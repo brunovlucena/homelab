@@ -31,6 +31,7 @@ func NewConfigBuilder() *ConfigBuilder {
 			HTTP:       NewHTTPConfig(),
 			Kubernetes: NewKubernetesConfig(),
 			AWS:        NewAWSConfig(),
+			Storage:    NewStorageConfig(),
 
 			Observability:  NewObservabilityConfig(),
 			Build:          NewBuildConfig(),
@@ -149,6 +150,9 @@ func (b *ConfigBuilder) LoadFromEnvironment() *ConfigBuilder {
 	if b.err != nil {
 		return b
 	}
+
+	// Load environment
+	b.config.Environment = getEnv("ENVIRONMENT", constants.EnvironmentDev)
 
 	// Load HTTP configuration
 	b.loadHTTPFromEnvironment()

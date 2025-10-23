@@ -28,11 +28,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"knative-lambda-new/internal/aws"
 	"knative-lambda-new/internal/config"
 	"knative-lambda-new/internal/errors"
 	"knative-lambda-new/internal/observability"
 	"knative-lambda-new/internal/resilience"
+	"knative-lambda-new/internal/storage"
 	"knative-lambda-new/internal/templates"
 	"knative-lambda-new/pkg/builds"
 	"strings"
@@ -40,9 +40,9 @@ import (
 
 // 📦 BuildContextManagerImpl - "Focused build context and archive management"
 type BuildContextManagerImpl struct {
-	awsClient *aws.Client
-	config    *config.Config
-	obs       *observability.Observability
+	storage storage.ObjectStorage // 💾 Storage abstraction (S3 or MinIO)
+	config  *config.Config
+	obs     *observability.Observability
 	// 🛡️ Rate Limiting Protection
 	rateLimiter *resilience.MultiLevelRateLimiter
 	// 📄 Template Processing
@@ -51,7 +51,7 @@ type BuildContextManagerImpl struct {
 
 // 📦 BuildContextManagerConfig - "Configuration for creating build context manager"
 type BuildContextManagerConfig struct {
-	AWSClient     *aws.Client
+	Storage       storage.ObjectStorage // 💾 Storage interface (S3 or MinIO)
 	Config        *config.Config
 	Observability *observability.Observability
 	RateLimiter   *resilience.MultiLevelRateLimiter
@@ -59,8 +59,8 @@ type BuildContextManagerConfig struct {
 
 // 🏗️ NewBuildContextManager - "Create new build context manager with dependencies"
 func NewBuildContextManager(config BuildContextManagerConfig) (BuildContextManager, error) {
-	if config.AWSClient == nil {
-		return nil, errors.NewConfigurationError("build_context_manager", "aws_client", "AWS client cannot be nil")
+	if config.Storage == nil {
+		return nil, errors.NewConfigurationError("build_context_manager", "storage", "storage client cannot be nil")
 	}
 
 	if config.Config == nil {
@@ -75,7 +75,7 @@ func NewBuildContextManager(config BuildContextManagerConfig) (BuildContextManag
 	templateProcessor := templates.NewTemplateProcessor(config.Observability)
 
 	return &BuildContextManagerImpl{
-		awsClient:         config.AWSClient,
+		storage:           config.Storage,
 		config:            config.Config,
 		obs:               config.Observability,
 		rateLimiter:       config.RateLimiter,
@@ -220,8 +220,8 @@ func (b *BuildContextManagerImpl) CreateBuildContext(ctx context.Context, buildR
 		"parser_id", buildRequest.ParserID,
 		"correlation_id", buildRequest.CorrelationID)
 
-	// 📤 Upload build context archive to S3 temp bucket
-	tempBucket := b.config.AWS.GetS3TempBucket()
+	// 📤 Upload build context archive to storage temp bucket
+	tempBucket := b.config.Storage.GetTempBucket()
 
 	// 🗑️ Delete old build context if it exists to ensure fresh upload
 	b.obs.Info(ctx, "Checking for existing build context to delete",
@@ -229,10 +229,11 @@ func (b *BuildContextManagerImpl) CreateBuildContext(ctx context.Context, buildR
 		"build_context_key", buildContextKey,
 		"third_party_id", buildRequest.ThirdPartyID,
 		"parser_id", buildRequest.ParserID,
-		"correlation_id", buildRequest.CorrelationID)
+		"correlation_id", buildRequest.CorrelationID,
+		"storage_provider", b.storage.GetProvider())
 
 	// Check if the object exists before trying to delete it
-	objectExists, existsErr := b.awsClient.ObjectExists(ctx, tempBucket, buildContextKey)
+	objectExists, existsErr := b.storage.ObjectExists(ctx, tempBucket, buildContextKey)
 	if existsErr != nil {
 		b.obs.Error(ctx, existsErr, "Failed to check if old build context exists",
 			"temp_bucket", tempBucket,
@@ -259,7 +260,7 @@ func (b *BuildContextManagerImpl) CreateBuildContext(ctx context.Context, buildR
 		"parser_id", buildRequest.ParserID,
 		"correlation_id", buildRequest.CorrelationID)
 
-	deleteErr := b.awsClient.DeleteObject(ctx, tempBucket, buildContextKey)
+	deleteErr := b.storage.DeleteObject(ctx, tempBucket, buildContextKey)
 	if deleteErr != nil {
 		// Log the error but don't fail - the object might not exist
 		b.obs.Error(ctx, deleteErr, "Failed to delete old build context",
@@ -290,26 +291,28 @@ func (b *BuildContextManagerImpl) CreateBuildContext(ctx context.Context, buildR
 			"correlation_id", buildRequest.CorrelationID)
 	}
 
-	b.obs.Info(ctx, "Uploading build context archive to S3 temp bucket",
+	b.obs.Info(ctx, "Uploading build context archive to storage temp bucket",
 		"temp_bucket", tempBucket,
 		"build_context_key", buildContextKey,
 		"archive_size", archiveBuffer.Len(),
 		"third_party_id", buildRequest.ThirdPartyID,
 		"parser_id", buildRequest.ParserID,
-		"correlation_id", buildRequest.CorrelationID)
+		"correlation_id", buildRequest.CorrelationID,
+		"storage_provider", b.storage.GetProvider())
 
 	archiveReader := bytes.NewReader(archiveBuffer.Bytes())
-	err = b.awsClient.UploadObjectWithSize(ctx, tempBucket, buildContextKey, archiveReader, "application/gzip", int64(archiveBuffer.Len()))
+	err = b.storage.UploadObject(ctx, tempBucket, buildContextKey, archiveReader, "application/gzip", int64(archiveBuffer.Len()))
 	if err != nil {
-		b.obs.Error(ctx, err, "Failed to upload build context archive to S3",
+		b.obs.Error(ctx, err, "Failed to upload build context archive to storage",
 			"temp_bucket", tempBucket,
 			"build_context_key", buildContextKey,
 			"archive_size", archiveBuffer.Len(),
 			"third_party_id", buildRequest.ThirdPartyID,
 			"parser_id", buildRequest.ParserID,
 			"correlation_id", buildRequest.CorrelationID,
+			"storage_provider", b.storage.GetProvider(),
 			"error_details", err.Error())
-		return "", fmt.Errorf("failed to upload build context archive to S3: %w", err)
+		return "", fmt.Errorf("failed to upload build context archive to storage: %w", err)
 	}
 
 	b.obs.Info(ctx, "Build context created and uploaded successfully",
@@ -322,7 +325,7 @@ func (b *BuildContextManagerImpl) CreateBuildContext(ctx context.Context, buildR
 		"s3_location", fmt.Sprintf("s3://%s/%s", tempBucket, buildContextKey))
 
 	// Verify the new context was uploaded successfully
-	uploadedExists, verifyErr := b.awsClient.ObjectExists(ctx, tempBucket, buildContextKey)
+	uploadedExists, verifyErr := b.storage.ObjectExists(ctx, tempBucket, buildContextKey)
 	if verifyErr != nil {
 		b.obs.Error(ctx, verifyErr, "Failed to verify uploaded build context",
 			"temp_bucket", tempBucket,
@@ -540,9 +543,10 @@ func (b *BuildContextManagerImpl) downloadParserFiles(ctx context.Context, sourc
 		"source_bucket", sourceBucket,
 		"file_key", sourceKey,
 		"parser_filename", parserFileName,
-		"full_s3_path", fmt.Sprintf("s3://%s/%s", sourceBucket, sourceKey))
+		"full_path", fmt.Sprintf("%s/%s", sourceBucket, sourceKey),
+		"storage_provider", b.storage.GetProvider())
 
-	reader, objectSize, err := b.awsClient.GetObject(ctx, sourceBucket, sourceKey)
+	reader, metadata, err := b.storage.GetObject(ctx, sourceBucket, sourceKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download parser file %s: %w", sourceKey, err)
 	}
@@ -560,22 +564,24 @@ func (b *BuildContextManagerImpl) downloadParserFiles(ctx context.Context, sourc
 	b.obs.Info(ctx, "Successfully downloaded parser file",
 		"file_key", sourceKey,
 		"parser_filename", parserFileName,
-		"size", objectSize.Size)
+		"size", metadata.Size,
+		"storage_provider", b.storage.GetProvider())
 
 	return parserFiles, nil
 }
 
-// 🔧 generateContentHash - "Generate content hash from S3 parser file"
+// 🔧 generateContentHash - "Generate content hash from storage parser file"
 func (b *BuildContextManagerImpl) generateContentHash(ctx context.Context, sourceBucket, sourceKey string) (string, error) {
 	ctx, span := b.obs.StartSpan(ctx, "generate_content_hash")
 	defer span.End()
 
-	b.obs.Info(ctx, "Generating content hash from S3 parser",
+	b.obs.Info(ctx, "Generating content hash from storage parser",
 		"source_bucket", sourceBucket,
-		"source_key", sourceKey)
+		"source_key", sourceKey,
+		"storage_provider", b.storage.GetProvider())
 
-	// Download parser file from S3
-	reader, _, err := b.awsClient.GetObject(ctx, sourceBucket, sourceKey)
+	// Download parser file from storage
+	reader, _, err := b.storage.GetObject(ctx, sourceBucket, sourceKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to download parser for hash: %w", err)
 	}

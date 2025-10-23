@@ -115,17 +115,18 @@ func (s *SecurityValidator) ValidateInput(ctx context.Context, input string) *Se
 	}
 
 	// Check for potential injection attacks
-	if containsSQLInjection(input) {
-		result.Valid = false
-		result.Error = fmt.Errorf("input contains potential SQL injection")
-		s.recordSecurityThreat(ctx, EventTypeSQLInjectionDetected, "sql_injection", ThreatLevelHigh, input)
-		return result
-	}
-
+	// Check XSS first as it's more specific (looks for <script> tags, not just "script" word)
 	if containsXSS(input) {
 		result.Valid = false
 		result.Error = fmt.Errorf("input contains potential XSS attack")
 		s.recordSecurityThreat(ctx, EventTypeXSSDetected, "xss_attack", ThreatLevelHigh, input)
+		return result
+	}
+
+	if containsSQLInjection(input) {
+		result.Valid = false
+		result.Error = fmt.Errorf("input contains potential SQL injection")
+		s.recordSecurityThreat(ctx, EventTypeSQLInjectionDetected, "sql_injection", ThreatLevelHigh, input)
 		return result
 	}
 
@@ -343,17 +344,20 @@ func (s *SecurityValidator) recordValidationSuccess(ctx context.Context, eventTy
 		"details":   details,
 	})
 
-	// Record metrics
+	// Record metrics using labels that match errorTotal metric definition
+	// errorTotal expects: component, error_type, severity, knative_service_name
 	s.obs.RecordMetric("counter", "security_validations_total", 1, map[string]string{
+		"component":  "security",
+		"error_type": operation,
+		"severity":   "info",
 		"event_type": string(eventType),
-		"operation":  operation,
-		"status":     "success",
 	})
 
 	s.obs.RecordMetric("histogram", "security_validation_duration_seconds", duration.Seconds(), map[string]string{
+		"component":  "security",
+		"error_type": operation,
+		"severity":   "info",
 		"event_type": string(eventType),
-		"operation":  operation,
-		"status":     "success",
 	})
 
 	s.obs.Info(ctx, "Security validation successful",
@@ -372,18 +376,20 @@ func (s *SecurityValidator) recordValidationFailure(ctx context.Context, eventTy
 		"error":        err.Error(),
 	})
 
-	// Record metrics
+	// Record metrics using labels that match errorTotal metric definition
+	// errorTotal expects: component, error_type, severity, knative_service_name
 	s.obs.RecordMetric("counter", "security_validations_total", 1, map[string]string{
-		"event_type":   string(eventType),
-		"operation":    operation,
-		"status":       "failure",
-		"threat_level": string(threatLevel),
+		"component":  "security",
+		"error_type": operation,
+		"severity":   string(threatLevel),
+		"event_type": string(eventType),
 	})
 
 	s.obs.RecordMetric("counter", "security_validation_failures_total", 1, map[string]string{
-		"event_type":   string(eventType),
-		"operation":    operation,
-		"threat_level": string(threatLevel),
+		"component":  "security",
+		"error_type": operation,
+		"severity":   string(threatLevel),
+		"event_type": string(eventType),
 	})
 
 	s.obs.Error(ctx, err, "Security validation failed",
@@ -402,22 +408,29 @@ func (s *SecurityValidator) recordSecurityThreat(ctx context.Context, eventType 
 		"content_length": len(content),
 	})
 
-	// Record metrics
+	// Record metrics using labels that match errorTotal metric definition
+	// errorTotal expects: component, error_type, severity, knative_service_name
 	s.obs.RecordMetric("counter", "security_threats_detected_total", 1, map[string]string{
-		"event_type":   string(eventType),
-		"operation":    operation,
-		"threat_level": string(threatLevel),
+		"component":  "security",
+		"error_type": operation,
+		"severity":   string(threatLevel),
+		"event_type": string(eventType),
 	})
 
 	s.obs.RecordMetric("counter", "security_threats_by_level_total", 1, map[string]string{
+		"component":    "security",
+		"error_type":   "threat_detection",
+		"severity":     string(threatLevel),
 		"threat_level": string(threatLevel),
 	})
 
 	// Record high-priority alert for critical threats
 	if threatLevel == ThreatLevelCritical {
 		s.obs.RecordMetric("counter", "security_critical_threats_total", 1, map[string]string{
+			"component":  "security",
+			"error_type": operation,
+			"severity":   "critical",
 			"event_type": string(eventType),
-			"operation":  operation,
 		})
 	}
 
@@ -470,17 +483,19 @@ func containsXSS(input string) bool {
 
 // containsPathTraversal checks for potential path traversal attacks
 func containsPathTraversal(input string) bool {
+	// Check for literal path traversal patterns
 	traversalPatterns := []string{
-		`\.\./`,
-		`\.\.\\`,
-		`%2e%2e%2f`,
-		`%2e%2e%5c`,
-		`\.\.%2f`,
-		`\.\.%5c`,
+		"../",
+		"..\\",
+		"%2e%2e%2f",
+		"%2e%2e%5c",
+		"..%2f",
+		"..%5c",
 	}
 
+	lowerInput := strings.ToLower(input)
 	for _, pattern := range traversalPatterns {
-		if strings.Contains(strings.ToLower(input), pattern) {
+		if strings.Contains(lowerInput, pattern) {
 			return true
 		}
 	}

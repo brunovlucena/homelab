@@ -17,8 +17,16 @@ func TestLoadConfig(t *testing.T) {
 		{
 			name: "valid configuration",
 			envVars: map[string]string{
-				"ENVIRONMENT": "test",
-				"NAMESPACE":   "test-namespace",
+				"ENVIRONMENT":          "test",
+				"NAMESPACE":            "test-namespace",
+				"AWS_REGION":           "us-west-2",
+				"AWS_ACCOUNT_ID":       "123456789012",
+				"ECR_REGISTRY":         "123456789012.dkr.ecr.us-west-2.amazonaws.com",
+				"ECR_REPOSITORY_NAME":  "test-repo",
+				"S3_SOURCE_BUCKET":     "test-source-bucket",
+				"S3_TEMP_BUCKET":       "test-temp-bucket",
+				"USE_EKS_POD_IDENTITY": "false",
+				"SIDECAR_IMAGE":        "test-sidecar:latest",
 			},
 			wantErr: false,
 		},
@@ -47,8 +55,8 @@ func TestLoadConfig(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
-			assert.NotNil(t, config)
+			require.NoError(t, err)
+			require.NotNil(t, config)
 			assert.Equal(t, tt.envVars["ENVIRONMENT"], config.Environment)
 			if tt.envVars["NAMESPACE"] != "" {
 				assert.Equal(t, tt.envVars["NAMESPACE"], config.Kubernetes.Namespace)
@@ -57,13 +65,40 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
-func TestConfig_Environment(t *testing.T) {
-	os.Setenv("ENVIRONMENT", "test-env")
+// setupMinimalTestEnv sets up the minimal environment variables required for config tests
+func setupMinimalTestEnv(t *testing.T) func() {
+	t.Helper()
+
+	os.Setenv("ENVIRONMENT", "test")
 	os.Setenv("NAMESPACE", "test-namespace")
-	defer func() {
+	os.Setenv("AWS_REGION", "us-west-2")
+	os.Setenv("AWS_ACCOUNT_ID", "123456789012")
+	os.Setenv("ECR_REGISTRY", "123456789012.dkr.ecr.us-west-2.amazonaws.com")
+	os.Setenv("ECR_REPOSITORY_NAME", "test-repo")
+	os.Setenv("S3_SOURCE_BUCKET", "test-source-bucket")
+	os.Setenv("S3_TEMP_BUCKET", "test-temp-bucket")
+	os.Setenv("USE_EKS_POD_IDENTITY", "false")
+	os.Setenv("SIDECAR_IMAGE", "test-sidecar:latest")
+
+	return func() {
 		os.Unsetenv("ENVIRONMENT")
 		os.Unsetenv("NAMESPACE")
-	}()
+		os.Unsetenv("AWS_REGION")
+		os.Unsetenv("AWS_ACCOUNT_ID")
+		os.Unsetenv("ECR_REGISTRY")
+		os.Unsetenv("ECR_REPOSITORY_NAME")
+		os.Unsetenv("S3_SOURCE_BUCKET")
+		os.Unsetenv("S3_TEMP_BUCKET")
+		os.Unsetenv("USE_EKS_POD_IDENTITY")
+		os.Unsetenv("SIDECAR_IMAGE")
+	}
+}
+
+func TestConfig_Environment(t *testing.T) {
+	cleanup := setupMinimalTestEnv(t)
+	defer cleanup()
+
+	os.Setenv("ENVIRONMENT", "test-env")
 
 	config, err := LoadConfig()
 	require.NoError(t, err)
@@ -72,12 +107,8 @@ func TestConfig_Environment(t *testing.T) {
 }
 
 func TestConfig_Namespace(t *testing.T) {
-	os.Setenv("ENVIRONMENT", "test")
-	os.Setenv("NAMESPACE", "test-namespace")
-	defer func() {
-		os.Unsetenv("ENVIRONMENT")
-		os.Unsetenv("NAMESPACE")
-	}()
+	cleanup := setupMinimalTestEnv(t)
+	defer cleanup()
 
 	config, err := LoadConfig()
 	require.NoError(t, err)
@@ -86,35 +117,21 @@ func TestConfig_Namespace(t *testing.T) {
 }
 
 func TestConfig_HTTP(t *testing.T) {
-	os.Setenv("ENVIRONMENT", "test")
-	os.Setenv("NAMESPACE", "test-namespace")
+	cleanup := setupMinimalTestEnv(t)
+	defer cleanup()
+
 	os.Setenv("HTTP_PORT", "8080")
-	defer func() {
-		os.Unsetenv("ENVIRONMENT")
-		os.Unsetenv("NAMESPACE")
-		os.Unsetenv("HTTP_PORT")
-	}()
 
 	config, err := LoadConfig()
 	require.NoError(t, err)
 
 	assert.NotNil(t, config.HTTP)
-	assert.Equal(t, "8080", config.HTTP.Port)
+	assert.Equal(t, 8080, config.HTTP.Port)
 }
 
 func TestConfig_AWS(t *testing.T) {
-	os.Setenv("ENVIRONMENT", "test")
-	os.Setenv("NAMESPACE", "test-namespace")
-	os.Setenv("AWS_REGION", "us-west-2")
-	os.Setenv("AWS_ACCOUNT_ID", "123456789012")
-	os.Setenv("ECR_REGISTRY", "123456789012.dkr.ecr.us-west-2.amazonaws.com")
-	defer func() {
-		os.Unsetenv("ENVIRONMENT")
-		os.Unsetenv("NAMESPACE")
-		os.Unsetenv("AWS_REGION")
-		os.Unsetenv("AWS_ACCOUNT_ID")
-		os.Unsetenv("ECR_REGISTRY")
-	}()
+	cleanup := setupMinimalTestEnv(t)
+	defer cleanup()
 
 	config, err := LoadConfig()
 	require.NoError(t, err)
@@ -124,12 +141,8 @@ func TestConfig_AWS(t *testing.T) {
 }
 
 func TestConfig_Kubernetes(t *testing.T) {
-	os.Setenv("ENVIRONMENT", "test")
-	os.Setenv("NAMESPACE", "test-namespace")
-	defer func() {
-		os.Unsetenv("ENVIRONMENT")
-		os.Unsetenv("NAMESPACE")
-	}()
+	cleanup := setupMinimalTestEnv(t)
+	defer cleanup()
 
 	config, err := LoadConfig()
 	require.NoError(t, err)
@@ -139,14 +152,10 @@ func TestConfig_Kubernetes(t *testing.T) {
 }
 
 func TestConfig_Observability(t *testing.T) {
-	os.Setenv("ENVIRONMENT", "test")
-	os.Setenv("NAMESPACE", "test-namespace")
+	cleanup := setupMinimalTestEnv(t)
+	defer cleanup()
+
 	os.Setenv("LOG_LEVEL", "debug")
-	defer func() {
-		os.Unsetenv("ENVIRONMENT")
-		os.Unsetenv("NAMESPACE")
-		os.Unsetenv("LOG_LEVEL")
-	}()
 
 	config, err := LoadConfig()
 	require.NoError(t, err)
@@ -156,12 +165,8 @@ func TestConfig_Observability(t *testing.T) {
 }
 
 func TestConfig_Validate(t *testing.T) {
-	os.Setenv("ENVIRONMENT", "test")
-	os.Setenv("NAMESPACE", "test-namespace")
-	defer func() {
-		os.Unsetenv("ENVIRONMENT")
-		os.Unsetenv("NAMESPACE")
-	}()
+	cleanup := setupMinimalTestEnv(t)
+	defer cleanup()
 
 	config, err := LoadConfig()
 	require.NoError(t, err)
@@ -171,12 +176,8 @@ func TestConfig_Validate(t *testing.T) {
 }
 
 func TestConfig_ReloadFromEnvironment(t *testing.T) {
-	os.Setenv("ENVIRONMENT", "test")
-	os.Setenv("NAMESPACE", "test-namespace")
-	defer func() {
-		os.Unsetenv("ENVIRONMENT")
-		os.Unsetenv("NAMESPACE")
-	}()
+	cleanup := setupMinimalTestEnv(t)
+	defer cleanup()
 
 	config, err := LoadConfig()
 	require.NoError(t, err)

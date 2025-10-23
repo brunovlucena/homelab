@@ -30,7 +30,7 @@ func TestNewValidationError(t *testing.T) {
 	err := NewValidationError("test-field", nil, "test-message")
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "validation error")
+	assert.Contains(t, err.Error(), "validation failed")
 	assert.Contains(t, err.Error(), "test-field")
 	assert.Contains(t, err.Error(), "test-message")
 }

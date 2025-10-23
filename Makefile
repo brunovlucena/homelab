@@ -27,6 +27,13 @@ up: ## Deploy homelab stack
 	cd pulumi && pulumi stack select homelab && pulumi refresh --yes && pulumi up --yes
 	@echo "🔄 Reconciling Flux (this will apply everything automatically)..."
 	flux reconcile kustomization homelab-root -n flux-system --with-source
+	@echo "🔄 Reconciling all phase kustomizations..."
+	flux reconcile kustomization homelab-phase1-core -n flux-system
+	flux reconcile kustomization homelab-phase2-observability -n flux-system
+	flux reconcile kustomization homelab-phase3-serverless -n flux-system
+	flux reconcile kustomization homelab-phase3b-knative -n flux-system
+	flux reconcile kustomization homelab-phase4-apps -n flux-system
+	flux reconcile kustomization homelab-phase5-mocks -n flux-system
 	@echo "✅ Homelab deployment complete! Flux is now managing all phases automatically."
 
 destroy: ## Destroy homelab stack

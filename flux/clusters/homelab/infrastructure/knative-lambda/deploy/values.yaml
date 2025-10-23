@@ -260,8 +260,22 @@ env:
   podIdentityRole: "knative-lambda-builder"
   
   # Storage Configuration
-  storageProvider: "aws-s3"
+  # 💾 STORAGE PROVIDER - Switch between AWS S3 and local MinIO
+  # Options: "aws-s3" (default for production) or "minio" (local/homelab)
+  storageProvider: "aws-s3"  # 🔧 Change to "minio" for homelab/local dev
+  
+  # S3 Configuration (used when storageProvider: "aws-s3")
   s3Endpoint: "https://s3.us-west-2.amazonaws.com"
+  
+  # MinIO Configuration (used when storageProvider: "minio")
+  # 🏠 MinIO is S3-compatible object storage for on-premises/homelab deployments
+  minioEndpoint: "minio.minio.svc.cluster.local:9000"  # MinIO service endpoint
+  minioAccessKey: "minioadmin"  # MinIO access key (override via secret)
+  minioSecretKey: "minioadmin"  # MinIO secret key (override via secret)
+  minioUseSSL: "false"  # Use HTTP for internal cluster communication
+  minioRegion: "us-east-1"  # MinIO default region
+  minioSourceBucket: "knative-lambda-source"  # Source code bucket in MinIO
+  minioTempBucket: "knative-lambda-tmp"  # Temporary build context bucket in MinIO
   
   # CloudEvents Broker Configuration
   brokerTopic: "parser-results"

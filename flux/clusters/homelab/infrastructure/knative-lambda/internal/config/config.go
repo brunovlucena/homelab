@@ -43,6 +43,7 @@ type Config struct {
 	HTTP       *HTTPConfig       `json:"http"`
 	Kubernetes *KubernetesConfig `json:"kubernetes"`
 	AWS        *AWSConfig        `json:"aws"`
+	Storage    *StorageConfig    `json:"storage"`
 
 	Observability  *ObservabilityConfig  `json:"observability"`
 	Build          *BuildConfig          `json:"build"`
@@ -58,7 +59,7 @@ type Config struct {
 // ReloadFromEnvironment reloads the configuration from environment variables at runtime.
 // This allows for dynamic configuration updates without service restart.
 func (c *Config) ReloadFromEnvironment() error {
-	builder := NewConfigBuilder().WithEnvironment(c.Environment)
+	builder := NewConfigBuilder()
 	builder.LoadFromEnvironment().Validate()
 	if builder.err != nil {
 		return builder.err
@@ -98,6 +99,10 @@ func (c *Config) Validate() error {
 
 	if err := c.AWS.Validate(); err != nil {
 		return errors.NewConfigurationError("aws", "validation", fmt.Sprintf("AWS config validation failed: %v", err))
+	}
+
+	if err := c.Storage.Validate(); err != nil {
+		return errors.NewConfigurationError("storage", "validation", fmt.Sprintf("Storage config validation failed: %v", err))
 	}
 
 	if err := c.Observability.Validate(); err != nil {

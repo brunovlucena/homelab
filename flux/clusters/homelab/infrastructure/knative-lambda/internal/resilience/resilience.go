@@ -75,10 +75,17 @@ func NewMultiLevelRateLimiter(config MultiLevelRateLimiterConfig) (*MultiLevelRa
 
 // NewRateLimiter creates a new rate limiter
 func NewRateLimiter(requestsPerMin, burstSize int) *RateLimiter {
+	tokens := make(chan struct{}, burstSize)
+
+	// Pre-fill the token bucket with initial tokens
+	for i := 0; i < burstSize; i++ {
+		tokens <- struct{}{}
+	}
+
 	return &RateLimiter{
 		requestsPerMin: requestsPerMin,
 		burstSize:      burstSize,
-		tokens:         make(chan struct{}, burstSize),
+		tokens:         tokens,
 		lastRefill:     time.Now(),
 	}
 }
@@ -106,7 +113,7 @@ func (m *MultiLevelRateLimiter) Allow(operationType string) bool {
 	case "s3_upload":
 		return m.s3UploadLimiter.Allow()
 	default:
-		return true
+		return false
 	}
 }
 

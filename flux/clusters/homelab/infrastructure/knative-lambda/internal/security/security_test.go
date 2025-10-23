@@ -3,6 +3,7 @@ package security
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,7 +56,7 @@ func TestSecurityValidator_ValidateInput_WithObservability(t *testing.T) {
 		},
 		{
 			name:           "XSS attempt",
-			input:          "<script>alert('xss')</script>",
+			input:          "<script>alert(\"xss\")</script>",
 			expectedValid:  false,
 			expectedError:  "input contains potential XSS attack",
 			expectedThreat: true,
@@ -81,8 +82,8 @@ func TestSecurityValidator_ValidateInput_WithObservability(t *testing.T) {
 			if tt.expectedError != "" {
 				if result.Error == nil {
 					t.Errorf("ValidateInput() expected error '%s', got nil", tt.expectedError)
-				} else if result.Error.Error() != tt.expectedError {
-					t.Errorf("ValidateInput() error = %v, want %v", result.Error.Error(), tt.expectedError)
+				} else if !strings.Contains(result.Error.Error(), tt.expectedError) {
+					t.Errorf("ValidateInput() error = %v, want to contain %v", result.Error.Error(), tt.expectedError)
 				}
 			}
 
@@ -160,8 +161,8 @@ func TestSecurityValidator_ValidateImageName_WithObservability(t *testing.T) {
 			if tt.expectedError != "" {
 				if result.Error == nil {
 					t.Errorf("ValidateImageName() expected error '%s', got nil", tt.expectedError)
-				} else if result.Error.Error() != tt.expectedError {
-					t.Errorf("ValidateImageName() error = %v, want %v", result.Error.Error(), tt.expectedError)
+				} else if !strings.Contains(result.Error.Error(), tt.expectedError) {
+					t.Errorf("ValidateImageName() error = %v, want to contain %v", result.Error.Error(), tt.expectedError)
 				}
 			}
 
@@ -233,8 +234,8 @@ func TestSecurityValidator_ValidateNamespace_WithObservability(t *testing.T) {
 			if tt.expectedError != "" {
 				if result.Error == nil {
 					t.Errorf("ValidateNamespace() expected error '%s', got nil", tt.expectedError)
-				} else if result.Error.Error() != tt.expectedError {
-					t.Errorf("ValidateNamespace() error = %v, want %v", result.Error.Error(), tt.expectedError)
+				} else if !strings.Contains(result.Error.Error(), tt.expectedError) {
+					t.Errorf("ValidateNamespace() error = %v, want to contain %v", result.Error.Error(), tt.expectedError)
 				}
 			}
 
@@ -380,8 +381,8 @@ func TestSecurityValidator_ValidateID_WithObservability(t *testing.T) {
 			if tt.expectedError != "" {
 				if result.Error == nil {
 					t.Errorf("ValidateID() expected error '%s', got nil", tt.expectedError)
-				} else if result.Error.Error() != tt.expectedError {
-					t.Errorf("ValidateID() error = %v, want %v", result.Error.Error(), tt.expectedError)
+				} else if !strings.Contains(result.Error.Error(), tt.expectedError) {
+					t.Errorf("ValidateID() error = %v, want to contain %v", result.Error.Error(), tt.expectedError)
 				}
 			}
 

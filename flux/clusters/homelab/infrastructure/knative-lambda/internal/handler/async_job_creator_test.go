@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,13 +14,16 @@ import (
 
 // MockJobManager implements JobManager for testing
 type MockJobManager struct {
+	mu              sync.Mutex
 	createJobCalled bool
 	createJobError  error
 	createJobResult *builds.HandlerResponse
 }
 
 func (m *MockJobManager) CreateJob(ctx context.Context, jobName string, buildRequest *builds.BuildRequest) (*batchv1.Job, error) {
+	m.mu.Lock()
 	m.createJobCalled = true
+	m.mu.Unlock()
 	if m.createJobError != nil {
 		return nil, m.createJobError
 	}
@@ -115,7 +119,10 @@ func TestAsyncJobCreator(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		// Check if job creation was called
-		if !mockJobManager.createJobCalled {
+		mockJobManager.mu.Lock()
+		called := mockJobManager.createJobCalled
+		mockJobManager.mu.Unlock()
+		if !called {
 			t.Error("Job creation was not called")
 		}
 	})

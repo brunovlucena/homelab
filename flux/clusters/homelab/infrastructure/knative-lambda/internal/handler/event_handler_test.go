@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"knative-lambda-new/internal/errors"
+	testhelpers "knative-lambda-new/internal/testing"
 	"knative-lambda-new/pkg/builds"
 )
 
@@ -34,8 +35,13 @@ func TestParseBuildRequest_ValidData(t *testing.T) {
 	event.SetTime(time.Now())
 	event.SetData(cloudevents.ApplicationJSON, eventData)
 
-	// Create a mock handler (you'll need to implement this based on your actual handler structure)
-	handler := &EventHandlerImpl{} // This would need proper initialization in a real test
+	// Create a properly initialized handler with observability and config
+	obs := testhelpers.CreateTestObservability(t)
+	cfg := testhelpers.CreateTestConfig(t)
+	handler := &EventHandlerImpl{
+		obs:    obs,
+		config: cfg,
+	}
 
 	// Test the parsing
 	buildRequest, err := handler.ParseBuildRequest(context.Background(), &event)

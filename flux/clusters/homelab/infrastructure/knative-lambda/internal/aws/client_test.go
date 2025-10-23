@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"knative-lambda-new/internal/observability"
+	testhelpers "knative-lambda-new/internal/testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,16 +24,18 @@ func TestNewClient(t *testing.T) {
 		{
 			name:    "empty region",
 			region:  "",
-			wantErr: true,
+			wantErr: false, // AWS SDK will use default region
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
+			obs := testhelpers.CreateTestObservability(t)
+
 			cfg := ClientConfig{
 				Region:        tt.region,
-				Observability: &observability.Observability{},
+				Observability: obs,
 			}
 
 			client, err := NewClient(ctx, cfg)
@@ -51,11 +53,13 @@ func TestNewClient(t *testing.T) {
 
 func TestClient_GetImageURI(t *testing.T) {
 	ctx := context.Background()
+	obs := testhelpers.CreateTestObservability(t)
+
 	cfg := ClientConfig{
 		Region:            "us-west-2",
 		ECRRegistry:       "123456789012.dkr.ecr.us-west-2.amazonaws.com",
 		ECRRepositoryName: "test-repo",
-		Observability:     &observability.Observability{},
+		Observability:     obs,
 	}
 
 	client, err := NewClient(ctx, cfg)
