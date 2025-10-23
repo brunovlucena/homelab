@@ -145,3 +145,12 @@ spec:
   type: oci
   interval: 1h0m0s
   url: oci://registry-1.docker.io/bitnamicharts
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: localstack
+  namespace: flux-system
+spec:
+  interval: 1h0m0s
+  url: https://localstack.github.io/helm-charts
