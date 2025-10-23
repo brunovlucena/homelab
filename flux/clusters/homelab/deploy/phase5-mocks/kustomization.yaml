@@ -9,4 +9,5 @@ resources:
   - ../../infrastructure/notifi-test
   - ../../infrastructure/alerts/mocks
   - ../../infrastructure/localstack
+  - ../../infrastructure/scylladb
 
