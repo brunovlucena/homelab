@@ -1,34 +1,43 @@
 # 🐰 RabbitMQ Cluster Operator
 
-This directory contains the Flux HelmRelease for the RabbitMQ Cluster Operator, which enables managing RabbitMQ clusters as Kubernetes custom resources.
+This directory contains the official RabbitMQ Cluster Operator installation using `kubectl krew` plugin, which enables managing RabbitMQ clusters as Kubernetes custom resources.
 
 ## 📦 Components
 
 - **Namespace**: `rabbitmq-operator`
-- **Helm Chart**: `bitnami/rabbitmq-cluster-operator`
-- **Version**: `>=4.4.34`
+- **Installation Method**: kubectl krew plugin (`kubectl rabbitmq install-cluster-operator`)
+- **Custom Image**: `ghcr.io/brunovlucena/homelab/kubectl:v1.31.0` (kubectl + krew + rabbitmq plugin)
 
-## ⚙️ Configuration
+## 🚀 Installation
 
-The operator is configured with:
+The operator is installed via a Kubernetes Job that:
 
-- ✅ **Cert-Manager Integration**: Enabled for TLS certificate management
-- 🎯 **Node Tolerations**: Configured to run on nodes with `knative` taint
-- 📊 **Metrics**: ServiceMonitor enabled for Prometheus scraping
-- 🔧 **Resources**: 
-  - Requests: 100m CPU, 128Mi memory
-  - Limits: 500m CPU, 512Mi memory
+1. Uses a custom kubectl image with krew and the rabbitmq plugin pre-installed
+2. Runs `kubectl rabbitmq install-cluster-operator` to deploy the official operator
+3. Creates the operator in the `rabbitmq-system` namespace (as per RabbitMQ defaults)
 
-## 🚀 Usage
+## 🐳 Docker Image
+
+The custom kubectl image includes:
+- kubectl v1.31.0
+- krew plugin manager
+- RabbitMQ kubectl plugin
+
+Build the image:
+```bash
+cd docker/
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/brunovlucena/homelab/kubectl:v1.31.0 \
+  --push .
+```
+
+## 🔧 Usage
 
 Once deployed, the operator watches for `RabbitmqCluster` custom resources in the cluster and manages RabbitMQ clusters accordingly.
 
-## 🔍 Monitoring
-
-The operator exposes metrics that are scraped by Prometheus through the ServiceMonitor configured in the operator namespace.
-
 ## 📚 References
 
-- [RabbitMQ Cluster Operator](https://www.rabbitmq.com/kubernetes/operator/operator-overview.html)
-- [Bitnami Helm Chart](https://github.com/bitnami/charts/tree/main/bitnami/rabbitmq-cluster-operator)
+- [Official RabbitMQ Cluster Operator Installation](https://www.rabbitmq.com/kubernetes/operator/install-operator)
+- [RabbitMQ kubectl Plugin](https://www.rabbitmq.com/kubernetes/operator/kubectl-plugin)
+- [RabbitMQ Operator GitHub](https://github.com/rabbitmq/cluster-operator)
 
