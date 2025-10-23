@@ -27,6 +27,11 @@ spec:
     # 🐰 RabbitMQ Cluster Operator - KISS Configuration
     useCertManager: true
 
+    # Allow non-Bitnami images (required for official RabbitMQ operator images)
+    global:
+      security:
+        allowInsecureImages: true
+
     # Use official RabbitMQ operator images (Bitnami deprecated)
     clusterOperator:
       image:
