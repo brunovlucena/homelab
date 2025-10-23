@@ -107,11 +107,6 @@ spec:
       timeoutSeconds: 5
       failureThreshold: 3
     
-    # 📝 Pod annotations
-    podAnnotations:
-      prometheus.io/scrape: "true"
-      prometheus.io/port: "9180"
-    
     # 🔐 Security context
     securityContext:
       enabled: false
