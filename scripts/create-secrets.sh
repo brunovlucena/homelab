@@ -20,6 +20,7 @@ NAMESPACE_ALLOY="alloy"
 NAMESPACE_MINIO="minio"
 NAMESPACE_CLOUDFLARE_TUNNEL="cloudflare-tunnel"
 NAMESPACE_LINKERD="linkerd"
+NAMESPACE_RABBITMQ_OPERATOR="rabbitmq-operator"
 
 # Check if kubectl is installed
 if ! command -v kubectl &> /dev/null; then
@@ -95,6 +96,7 @@ ensure_namespace "${NAMESPACE_ALLOY}"
 ensure_namespace "${NAMESPACE_MINIO}"
 ensure_namespace "${NAMESPACE_CLOUDFLARE_TUNNEL}"
 ensure_namespace "${NAMESPACE_LINKERD}"
+ensure_namespace "${NAMESPACE_RABBITMQ_OPERATOR}"
 echo ""
 
 # ============================================================================
@@ -155,6 +157,16 @@ kubectl create secret docker-registry ghcr-secret \
   --docker-password="${GHCR_TOKEN}" \
   --dry-run=client -o yaml | kubectl apply -f -
 echo -e "${GREEN}✅ Secret created in cluster: ghcr-secret (${NAMESPACE_LINKERD})${NC}"
+
+# Create ghcr-secret for rabbitmq-operator namespace
+echo "Creating ghcr-secret in rabbitmq-operator namespace..."
+kubectl create secret docker-registry ghcr-secret \
+  --namespace="${NAMESPACE_RABBITMQ_OPERATOR}" \
+  --docker-server=ghcr.io \
+  --docker-username="${GHCR_USERNAME}" \
+  --docker-password="${GHCR_TOKEN}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+echo -e "${GREEN}✅ Secret created in cluster: ghcr-secret (${NAMESPACE_RABBITMQ_OPERATOR})${NC}"
 
 # ============================================================================
 # 2. Create prometheus-secrets (consolidated: grafana, pagerduty, slack, strava)
@@ -380,21 +392,23 @@ echo "  4. ghcr-secret (${NAMESPACE_HOMEPAGE} namespace)"
 echo "     └─ GitHub Container Registry credentials"
 echo "  5. ghcr-secret (${NAMESPACE_LINKERD} namespace)"
 echo "     └─ GitHub Container Registry credentials"
-echo "  6. prometheus-secrets (${NAMESPACE_PROMETHEUS} namespace)"
+echo "  6. ghcr-secret (${NAMESPACE_RABBITMQ_OPERATOR} namespace)"
+echo "     └─ GitHub Container Registry credentials"
+echo "  7. prometheus-secrets (${NAMESPACE_PROMETHEUS} namespace)"
 echo "     └─ Grafana, PagerDuty, Slack, Strava credentials"
-echo "  7. agent-sre-secrets (${NAMESPACE_AGENT_SRE} namespace)"
+echo "  8. agent-sre-secrets (${NAMESPACE_AGENT_SRE} namespace)"
 echo "     └─ GitHub, HuggingFace, LangSmith, Logfire (LOGFIRE_TOKEN), PagerDuty, Twingate credentials"
-echo "  8. jamie-secrets (${NAMESPACE_JAMIE} namespace)"
+echo "  9. jamie-secrets (${NAMESPACE_JAMIE} namespace)"
 echo "     └─ Slack and Logfire (LOGFIRE_TOKEN) credentials"
-echo "  9. bruno-site-secret (${NAMESPACE_HOMEPAGE} namespace)"
+echo "  10. bruno-site-secret (${NAMESPACE_HOMEPAGE} namespace)"
 echo "     └─ PostgreSQL, Redis, MinIO, Logfire, and OTEL endpoint credentials"
-echo "  10. alloy-secrets (alloy namespace)"
+echo "  11. alloy-secrets (alloy namespace)"
 echo "     └─ Logfire (LOGFIRE_TOKEN) for Alloy → Logfire forwarding"
-echo "  11. loki-minio-secret (${NAMESPACE_LOKI} namespace)"
+echo "  12. loki-minio-secret (${NAMESPACE_LOKI} namespace)"
 echo "     └─ Loki MinIO credentials"
-echo "  12. minio-secret (minio namespace)"
+echo "  13. minio-secret (minio namespace)"
 echo "     └─ MinIO root credentials"
-echo "  13. cloudflare-tunnel-credentials (cloudflare-tunnel namespace)"
+echo "  14. cloudflare-tunnel-credentials (cloudflare-tunnel namespace)"
 echo "     └─ Cloudflare Tunnel token"
 echo ""
 
