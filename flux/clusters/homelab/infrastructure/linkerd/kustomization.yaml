@@ -17,4 +17,7 @@ resources:
   
   # 4. Install Linkerd Viz
   - linkerd-viz-job.yaml
+  
+  # 5. Prometheus monitoring and alerts
+  - prometheus-rules.yaml
 

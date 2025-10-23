@@ -1,0 +1,280 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: linkerd-certificate-alerts
+  namespace: linkerd
+  labels:
+    app.kubernetes.io/name: linkerd
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  # =============================================================================
+  # 🔒 LINKERD CERTIFICATE ALERTS - CRITICAL SECURITY MONITORING
+  # =============================================================================
+  - name: linkerd.certificates
+    rules:
+    # Critical: Linkerd Certificate Expiry
+    - alert: LinkerdCertificateExpired
+      expr: |
+        (
+          increase(linkerd_proxy_connect_errors_total{error="invalid peer certificate: certificate expired"}[5m]) > 0
+        ) or (
+          increase(linkerd_proxy_connect_errors_total{error=~".*certificate expired.*"}[5m]) > 0
+        ) or (
+          increase(linkerd_proxy_connect_errors_total{error=~".*certificate is not valid after.*"}[5m]) > 0
+        )
+      for: 0m
+      labels:
+        severity: critical
+        service: linkerd
+        component: certificate
+        category: security
+      annotations:
+        summary: "🚨 Linkerd certificate has expired - mTLS failing"
+        description: |
+          Linkerd certificate has expired causing mTLS connection failures.
+          
+          **Error Details:**
+          - Certificate verification time: {{ $labels.verification_time | default "unknown" }}
+          - Certificate not valid after: {{ $labels.expiry_time | default "unknown" }}
+          - Time difference: {{ $labels.time_diff | default "unknown" }} seconds ago
+          
+          **Affected Components:**
+          - Service: {{ $labels.service | default "unknown" }}
+          - Namespace: {{ $labels.namespace | default "unknown" }}
+          - Pod: {{ $labels.pod | default "unknown" }}
+          
+          **Immediate Action Required:**
+          1. Restart affected pods to get fresh certificates
+          2. Verify trust anchor is valid
+          3. Check certificate rotation status
+        runbook_url: "https://github.com/brunovlucena/homelab/blob/main/runbooks/linkerd/certificate-expired.md"
+
+    # Critical: Linkerd Certificate Bad Signature
+    - alert: LinkerdCertificateBadSignature
+      expr: |
+        increase(linkerd_proxy_connect_errors_total{error=~".*BadSignature.*"}[5m]) > 0
+      for: 0m
+      labels:
+        severity: critical
+        service: linkerd
+        component: certificate
+        category: security
+      annotations:
+        summary: "🚨 Linkerd certificate has bad signature - mTLS failing"
+        description: |
+          Linkerd certificate has bad signature causing mTLS connection failures.
+          
+          **Error Details:**
+          - Error: {{ $labels.error }}
+          - Service: {{ $labels.service | default "unknown" }}
+          - Namespace: {{ $labels.namespace | default "unknown" }}
+          - Pod: {{ $labels.pod | default "unknown" }}
+          
+          **Possible Causes:**
+          1. Trust anchor rotation in progress
+          2. Certificate corruption
+          3. Clock skew between nodes
+          4. Malformed certificate chain
+          
+          **Immediate Action Required:**
+          1. Check trust anchor status
+          2. Restart affected pods
+          3. Verify system time synchronization
+        runbook_url: "https://github.com/brunovlucena/homelab/blob/main/runbooks/linkerd/certificate-bad-signature.md"
+
+    # Critical: Linkerd Certificate Invalid
+    - alert: LinkerdCertificateInvalid
+      expr: |
+        (
+          increase(linkerd_proxy_connect_errors_total{error=~".*invalid peer certificate.*"}[5m]) > 0
+        ) and not (
+          increase(linkerd_proxy_connect_errors_total{error=~".*certificate expired.*"}[5m]) > 0
+        ) and not (
+          increase(linkerd_proxy_connect_errors_total{error=~".*BadSignature.*"}[5m]) > 0
+        )
+      for: 0m
+      labels:
+        severity: critical
+        service: linkerd
+        component: certificate
+        category: security
+      annotations:
+        summary: "🚨 Linkerd certificate is invalid - mTLS failing"
+        description: |
+          Linkerd certificate is invalid causing mTLS connection failures.
+          
+          **Error Details:**
+          - Error: {{ $labels.error }}
+          - Service: {{ $labels.service | default "unknown" }}
+          - Namespace: {{ $labels.namespace | default "unknown" }}
+          - Pod: {{ $labels.pod | default "unknown" }}
+          
+          **Possible Causes:**
+          1. Certificate not signed by current trust anchor
+          2. Certificate format issues
+          3. Certificate chain problems
+          4. Trust anchor mismatch
+          
+          **Immediate Action Required:**
+          1. Verify trust anchor configuration
+          2. Check certificate chain validity
+          3. Restart affected components
+        runbook_url: "https://github.com/brunovlucena/homelab/blob/main/runbooks/linkerd/certificate-invalid.md"
+
+    # Warning: Linkerd Certificate Expiring Soon
+    - alert: LinkerdCertificateExpiringSoon
+      expr: |
+        (
+          time() - linkerd_identity_cert_expiry_timestamp_seconds
+        ) > (86400 * 7)  # 7 days
+      for: 0m
+      labels:
+        severity: warning
+        service: linkerd
+        component: certificate
+        category: maintenance
+      annotations:
+        summary: "⚠️ Linkerd certificate expiring in 7 days"
+        description: |
+          Linkerd certificate will expire soon and needs renewal.
+          
+          **Certificate Details:**
+          - Expiry: {{ $labels.expiry_time | default "unknown" }}
+          - Days remaining: {{ $labels.days_remaining | default "unknown" }}
+          - Service: {{ $labels.service | default "unknown" }}
+          
+          **Preventive Action:**
+          1. Monitor certificate rotation
+          2. Prepare for potential pod restarts
+          3. Verify backup procedures
+        runbook_url: "https://github.com/brunovlucena/homelab/blob/main/runbooks/linkerd/certificate-expiring-soon.md"
+
+  # =============================================================================
+  # 🔍 LINKERD CONNECTIVITY ALERTS - SERVICE MESH HEALTH
+  # =============================================================================
+  - name: linkerd.connectivity
+    rules:
+    # Critical: Linkerd Proxy Connection Failures
+    - alert: LinkerdProxyConnectionFailures
+      expr: |
+        rate(linkerd_proxy_connect_errors_total[5m]) > 0.1
+      for: 2m
+      labels:
+        severity: critical
+        service: linkerd
+        component: proxy
+        category: connectivity
+      annotations:
+        summary: "🚨 High rate of Linkerd proxy connection failures"
+        description: |
+          Linkerd proxies are experiencing high connection failure rates.
+          
+          **Metrics:**
+          - Failure rate: {{ $value | humanizePercentage }} per second
+          - Service: {{ $labels.service | default "unknown" }}
+          - Namespace: {{ $labels.namespace | default "unknown" }}
+          
+          **Common Causes:**
+          1. Certificate issues (expired/invalid)
+          2. Network connectivity problems
+          3. Service discovery issues
+          4. Resource constraints
+          
+          **Investigation Steps:**
+          1. Check certificate status
+          2. Verify network connectivity
+          3. Review proxy logs
+          4. Check resource usage
+        runbook_url: "https://github.com/brunovlucena/homelab/blob/main/runbooks/linkerd/proxy-connection-failures.md"
+
+    # Warning: Linkerd Identity Service Issues
+    - alert: LinkerdIdentityServiceIssues
+      expr: |
+        up{job="linkerd-identity"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: linkerd
+        component: identity
+        category: availability
+      annotations:
+        summary: "🚨 Linkerd identity service is down"
+        description: |
+          Linkerd identity service is unavailable, preventing certificate issuance.
+          
+          **Impact:**
+          - New pods cannot get certificates
+          - mTLS connections will fail
+          - Service mesh security compromised
+          
+          **Immediate Action:**
+          1. Check identity service logs
+          2. Verify pod status
+          3. Check resource constraints
+          4. Restart if necessary
+        runbook_url: "https://github.com/brunovlucena/homelab/blob/main/runbooks/linkerd/identity-service-down.md"
+
+  # =============================================================================
+  # 📊 LINKERD PERFORMANCE ALERTS - SERVICE MESH PERFORMANCE
+  # =============================================================================
+  - name: linkerd.performance
+    rules:
+    # Warning: High Linkerd Proxy Latency
+    - alert: LinkerdProxyHighLatency
+      expr: |
+        histogram_quantile(0.95, 
+          rate(linkerd_proxy_request_duration_seconds_bucket[5m])
+        ) > 1
+      for: 5m
+      labels:
+        severity: warning
+        service: linkerd
+        component: proxy
+        category: performance
+      annotations:
+        summary: "⚠️ High Linkerd proxy latency detected"
+        description: |
+          Linkerd proxy is experiencing high latency.
+          
+          **Metrics:**
+          - 95th percentile latency: {{ $value }}s
+          - Service: {{ $labels.service | default "unknown" }}
+          - Namespace: {{ $labels.namespace | default "unknown" }}
+          
+          **Investigation:**
+          1. Check resource usage
+          2. Review network conditions
+          3. Analyze request patterns
+          4. Consider scaling
+        runbook_url: "https://github.com/brunovlucena/homelab/blob/main/runbooks/linkerd/proxy-high-latency.md"
+
+    # Warning: Linkerd Proxy High Error Rate
+    - alert: LinkerdProxyHighErrorRate
+      expr: |
+        rate(linkerd_proxy_requests_total{classification="error"}[5m]) / 
+        rate(linkerd_proxy_requests_total[5m]) > 0.05
+      for: 5m
+      labels:
+        severity: warning
+        service: linkerd
+        component: proxy
+        category: performance
+      annotations:
+        summary: "⚠️ High Linkerd proxy error rate"
+        description: |
+          Linkerd proxy is experiencing high error rates.
+          
+          **Metrics:**
+          - Error rate: {{ $value | humanizePercentage }}
+          - Service: {{ $labels.service | default "unknown" }}
+          - Namespace: {{ $labels.namespace | default "unknown" }}
+          
+          **Investigation:**
+          1. Check downstream service health
+          2. Review error patterns
+          3. Analyze request characteristics
+          4. Check resource constraints
+        runbook_url: "https://github.com/brunovlucena/homelab/blob/main/runbooks/linkerd/proxy-high-error-rate.md"
