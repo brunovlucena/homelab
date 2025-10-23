@@ -1,9 +1,9 @@
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 //
-//	🏭 STORAGE FACTORY TESTS - Test storage factory implementation
+//	🏭 STORAGE FACTORY TESTS - Test factory for creating storage clients
 //
-//	🎯 Purpose: Unit tests for StorageFactory
-//	💡 Features: Provider selection, client creation, validation
+//	🎯 Purpose: Unit tests for StorageFactoryImpl
+//	💡 Features: Test provider selection, validation, configuration
 //
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 package storage
@@ -17,16 +17,17 @@ import (
 
 	"knative-lambda-new/internal/config"
 	"knative-lambda-new/internal/observability"
+	testhelpers "knative-lambda-new/internal/testing"
 )
 
-// TestStorageFactory_NewStorageFactory tests factory creation
-func TestStorageFactory_NewStorageFactory(t *testing.T) {
+// TestNewStorageFactory tests factory creation
+func TestNewStorageFactory(t *testing.T) {
 	tests := []struct {
 		name          string
 		storageConfig *config.StorageConfig
 		obs           *observability.Observability
 		expectError   bool
-		errorMsg      string
+		errorContains string
 	}{
 		{
 			name: "valid configuration",
@@ -34,28 +35,29 @@ func TestStorageFactory_NewStorageFactory(t *testing.T) {
 				Provider: "aws-s3",
 				S3: config.S3Config{
 					Region:       "us-west-2",
+					Endpoint:     "",
 					SourceBucket: "test-source",
-					TempBucket:   "test-tmp",
+					TempBucket:   "test-temp",
 				},
 			},
-			obs:         createTestObservability(t),
+			obs:         testhelpers.CreateTestObservability(t),
 			expectError: false,
 		},
 		{
 			name:          "nil storage config",
 			storageConfig: nil,
-			obs:           createTestObservability(t),
+			obs:           testhelpers.CreateTestObservability(t),
 			expectError:   true,
-			errorMsg:      "storage config cannot be nil",
+			errorContains: "storage config cannot be nil",
 		},
 		{
 			name: "nil observability",
 			storageConfig: &config.StorageConfig{
 				Provider: "aws-s3",
 			},
-			obs:         nil,
-			expectError: true,
-			errorMsg:    "observability cannot be nil",
+			obs:           nil,
+			expectError:   true,
+			errorContains: "observability cannot be nil",
 		},
 	}
 
@@ -65,7 +67,7 @@ func TestStorageFactory_NewStorageFactory(t *testing.T) {
 
 			if tt.expectError {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorMsg)
+				assert.Contains(t, err.Error(), tt.errorContains)
 				assert.Nil(t, factory)
 			} else {
 				require.NoError(t, err)
@@ -78,12 +80,12 @@ func TestStorageFactory_NewStorageFactory(t *testing.T) {
 // TestStorageFactory_CreateStorage tests storage client creation
 func TestStorageFactory_CreateStorage(t *testing.T) {
 	tests := []struct {
-		name             string
-		provider         StorageProvider
-		storageConfig    *config.StorageConfig
-		expectError      bool
-		errorMsg         string
-		expectedProvider StorageProvider
+		name          string
+		provider      StorageProvider
+		storageConfig *config.StorageConfig
+		expectError   bool
+		expectType    string
+		errorContains string
 	}{
 		{
 			name:     "create S3 storage",
@@ -94,11 +96,11 @@ func TestStorageFactory_CreateStorage(t *testing.T) {
 					Region:       "us-west-2",
 					Endpoint:     "",
 					SourceBucket: "test-source",
-					TempBucket:   "test-tmp",
+					TempBucket:   "test-temp",
 				},
 			},
-			expectError:      false,
-			expectedProvider: ProviderS3,
+			expectError: false,
+			expectType:  "*storage.S3Storage",
 		},
 		{
 			name:     "create MinIO storage",
@@ -112,41 +114,51 @@ func TestStorageFactory_CreateStorage(t *testing.T) {
 					UseSSL:       false,
 					Region:       "us-east-1",
 					SourceBucket: "test-source",
-					TempBucket:   "test-tmp",
+					TempBucket:   "test-temp",
 				},
 			},
-			expectError:      false,
-			expectedProvider: ProviderMinIO,
+			expectError: false,
+			expectType:  "*storage.MinIOStorage",
 		},
 		{
-			name:     "unsupported provider",
-			provider: "invalid-provider",
+			name:     "invalid provider",
+			provider: StorageProvider("invalid"),
 			storageConfig: &config.StorageConfig{
 				Provider: "invalid",
 			},
-			expectError: true,
-			errorMsg:    "unsupported storage provider",
+			expectError:   true,
+			errorContains: "unsupported storage provider",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			obs := createTestObservability(t)
-
+			obs := testhelpers.CreateTestObservability(t)
 			factory, err := NewStorageFactory(tt.storageConfig, obs)
 			require.NoError(t, err)
 
-			client, err := factory.CreateStorage(ctx, tt.provider)
+			ctx := context.Background()
+			storage, err := factory.CreateStorage(ctx, tt.provider)
 
 			if tt.expectError {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errorMsg)
-				assert.Nil(t, client)
+				assert.Contains(t, err.Error(), tt.errorContains)
+				assert.Nil(t, storage)
 			} else {
 				require.NoError(t, err)
-				assert.NotNil(t, client)
-				assert.Equal(t, tt.expectedProvider, client.GetProvider())
+				assert.NotNil(t, storage)
+
+				// Verify provider type
+				switch tt.provider {
+				case ProviderS3:
+					_, ok := storage.(*S3Storage)
+					assert.True(t, ok, "Expected *S3Storage, got %T", storage)
+					assert.Equal(t, ProviderS3, storage.GetProvider())
+				case ProviderMinIO:
+					_, ok := storage.(*MinIOStorage)
+					assert.True(t, ok, "Expected *MinIOStorage, got %T", storage)
+					assert.Equal(t, ProviderMinIO, storage.GetProvider())
+				}
 			}
 		})
 	}
@@ -155,10 +167,10 @@ func TestStorageFactory_CreateStorage(t *testing.T) {
 // TestStorageFactory_GetDefaultStorage tests default storage retrieval
 func TestStorageFactory_GetDefaultStorage(t *testing.T) {
 	tests := []struct {
-		name             string
-		storageConfig    *config.StorageConfig
-		expectedProvider StorageProvider
-		expectError      bool
+		name          string
+		storageConfig *config.StorageConfig
+		expectError   bool
+		expectedType  StorageProvider
 	}{
 		{
 			name: "default S3 storage",
@@ -167,11 +179,11 @@ func TestStorageFactory_GetDefaultStorage(t *testing.T) {
 				S3: config.S3Config{
 					Region:       "us-west-2",
 					SourceBucket: "test-source",
-					TempBucket:   "test-tmp",
+					TempBucket:   "test-temp",
 				},
 			},
-			expectedProvider: ProviderS3,
-			expectError:      false,
+			expectError:  false,
+			expectedType: ProviderS3,
 		},
 		{
 			name: "default MinIO storage",
@@ -181,92 +193,131 @@ func TestStorageFactory_GetDefaultStorage(t *testing.T) {
 					Endpoint:     "minio.minio.svc.cluster.local:9000",
 					AccessKey:    "minioadmin",
 					SecretKey:    "minioadmin",
-					UseSSL:       false,
-					Region:       "us-east-1",
 					SourceBucket: "test-source",
-					TempBucket:   "test-tmp",
+					TempBucket:   "test-temp",
 				},
 			},
-			expectedProvider: ProviderMinIO,
-			expectError:      false,
+			expectError:  false,
+			expectedType: ProviderMinIO,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-
-			// Properly initialize observability
-			obs, err := observability.New(observability.Config{
-				ServiceName:    "test-service",
-				ServiceVersion: "1.0.0",
-			})
-			require.NoError(t, err)
-			defer obs.Shutdown(ctx)
-
+			obs := testhelpers.CreateTestObservability(t)
 			factory, err := NewStorageFactory(tt.storageConfig, obs)
 			require.NoError(t, err)
 
-			client, err := factory.GetDefaultStorage(ctx)
+			ctx := context.Background()
+			storage, err := factory.GetDefaultStorage(ctx)
 
 			if tt.expectError {
 				require.Error(t, err)
-				assert.Nil(t, client)
+				assert.Nil(t, storage)
 			} else {
 				require.NoError(t, err)
-				assert.NotNil(t, client)
-				assert.Equal(t, tt.expectedProvider, client.GetProvider())
+				assert.NotNil(t, storage)
+				assert.Equal(t, tt.expectedType, storage.GetProvider())
 			}
 		})
 	}
 }
 
-// TestStorageFactory_ProviderSwitching tests switching between providers
-func TestStorageFactory_ProviderSwitching(t *testing.T) {
-	ctx := context.Background()
-
-	// Properly initialize observability
-	obs, err := observability.New(observability.Config{
-		ServiceName:    "test-service",
-		ServiceVersion: "1.0.0",
-	})
-	require.NoError(t, err)
-	defer obs.Shutdown(ctx)
-
-	// Create config that supports both providers
+// TestStorageFactory_S3Configuration tests S3 client configuration
+func TestStorageFactory_S3Configuration(t *testing.T) {
 	storageConfig := &config.StorageConfig{
 		Provider: "aws-s3",
 		S3: config.S3Config{
 			Region:       "us-west-2",
-			SourceBucket: "s3-source",
-			TempBucket:   "s3-tmp",
-		},
-		MinIO: config.MinIOConfig{
-			Endpoint:     "minio.minio.svc.cluster.local:9000",
-			AccessKey:    "minioadmin",
-			SecretKey:    "minioadmin",
-			UseSSL:       false,
-			Region:       "us-east-1",
-			SourceBucket: "minio-source",
-			TempBucket:   "minio-tmp",
+			Endpoint:     "https://s3.custom.com",
+			SourceBucket: "test-source",
+			TempBucket:   "test-temp",
 		},
 	}
 
+	obs := testhelpers.CreateTestObservability(t)
 	factory, err := NewStorageFactory(storageConfig, obs)
 	require.NoError(t, err)
 
-	// Create S3 client
-	s3Client, err := factory.CreateStorage(ctx, ProviderS3)
+	ctx := context.Background()
+	storage, err := factory.CreateStorage(ctx, ProviderS3)
 	require.NoError(t, err)
-	assert.NotNil(t, s3Client)
-	assert.Equal(t, ProviderS3, s3Client.GetProvider())
 
-	// Create MinIO client
-	minioClient, err := factory.CreateStorage(ctx, ProviderMinIO)
+	s3Storage, ok := storage.(*S3Storage)
+	require.True(t, ok)
+
+	// Verify configuration
+	assert.Equal(t, ProviderS3, s3Storage.GetProvider())
+	endpoint := s3Storage.GetEndpoint()
+	assert.NotEmpty(t, endpoint)
+}
+
+// TestStorageFactory_MinIOConfiguration tests MinIO client configuration
+func TestStorageFactory_MinIOConfiguration(t *testing.T) {
+	storageConfig := &config.StorageConfig{
+		Provider: "minio",
+		MinIO: config.MinIOConfig{
+			Endpoint:     "minio.local:9000",
+			AccessKey:    "test-access",
+			SecretKey:    "test-secret",
+			UseSSL:       false,
+			Region:       "us-east-1",
+			SourceBucket: "test-source",
+			TempBucket:   "test-temp",
+		},
+	}
+
+	obs := testhelpers.CreateTestObservability(t)
+	factory, err := NewStorageFactory(storageConfig, obs)
 	require.NoError(t, err)
-	assert.NotNil(t, minioClient)
-	assert.Equal(t, ProviderMinIO, minioClient.GetProvider())
+
+	ctx := context.Background()
+	storage, err := factory.CreateStorage(ctx, ProviderMinIO)
+	require.NoError(t, err)
+
+	minioStorage, ok := storage.(*MinIOStorage)
+	require.True(t, ok)
+
+	// Verify configuration
+	assert.Equal(t, ProviderMinIO, minioStorage.GetProvider())
+	endpoint := minioStorage.GetEndpoint()
+	assert.Contains(t, endpoint, "minio.local:9000")
+}
+
+// TestStorageFactory_ProviderSwitching tests switching between providers
+func TestStorageFactory_ProviderSwitching(t *testing.T) {
+	storageConfig := &config.StorageConfig{
+		Provider: "aws-s3",
+		S3: config.S3Config{
+			Region:       "us-west-2",
+			SourceBucket: "test-source",
+			TempBucket:   "test-temp",
+		},
+		MinIO: config.MinIOConfig{
+			Endpoint:     "minio.local:9000",
+			AccessKey:    "minioadmin",
+			SecretKey:    "minioadmin",
+			SourceBucket: "test-source",
+			TempBucket:   "test-temp",
+		},
+	}
+
+	obs := testhelpers.CreateTestObservability(t)
+	factory, err := NewStorageFactory(storageConfig, obs)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Create S3 storage
+	s3Storage, err := factory.CreateStorage(ctx, ProviderS3)
+	require.NoError(t, err)
+	assert.Equal(t, ProviderS3, s3Storage.GetProvider())
+
+	// Create MinIO storage with same factory
+	minioStorage, err := factory.CreateStorage(ctx, ProviderMinIO)
+	require.NoError(t, err)
+	assert.Equal(t, ProviderMinIO, minioStorage.GetProvider())
 
 	// Verify they are different instances
-	assert.NotEqual(t, s3Client, minioClient)
+	assert.NotEqual(t, s3Storage, minioStorage)
 }

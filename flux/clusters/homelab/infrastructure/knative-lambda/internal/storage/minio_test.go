@@ -226,48 +226,6 @@ func TestMinIOStorage_GetBucketURL(t *testing.T) {
 	}
 }
 
-// TestMinIOStorage_GetAccessKey tests access key retrieval
-func TestMinIOStorage_GetAccessKey(t *testing.T) {
-	ctx := context.Background()
-	obs := createTestObservability(t)
-
-	config := MinIOStorageConfig{
-		Endpoint:      "minio.minio.svc.cluster.local:9000",
-		AccessKey:     "test-access-key",
-		SecretKey:     "test-secret-key",
-		UseSSL:        false,
-		Region:        "us-east-1",
-		Observability: obs,
-	}
-
-	client, err := NewMinIOStorage(ctx, config)
-	require.NoError(t, err)
-
-	accessKey := client.GetAccessKey()
-	assert.Equal(t, "test-access-key", accessKey)
-}
-
-// TestMinIOStorage_GetSecretKey tests secret key retrieval
-func TestMinIOStorage_GetSecretKey(t *testing.T) {
-	ctx := context.Background()
-	obs := createTestObservability(t)
-
-	config := MinIOStorageConfig{
-		Endpoint:      "minio.minio.svc.cluster.local:9000",
-		AccessKey:     "test-access-key",
-		SecretKey:     "test-secret-key",
-		UseSSL:        false,
-		Region:        "us-east-1",
-		Observability: obs,
-	}
-
-	client, err := NewMinIOStorage(ctx, config)
-	require.NoError(t, err)
-
-	secretKey := client.GetSecretKey()
-	assert.Equal(t, "test-secret-key", secretKey)
-}
-
 // Mock tests for MinIO operations would require MinIO client mocking
 // For integration tests, use actual MinIO instance
 

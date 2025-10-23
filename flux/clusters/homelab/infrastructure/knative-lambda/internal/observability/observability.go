@@ -199,9 +199,17 @@ func New(config Config) (*Observability, error) {
 
 // initializeTracer sets up OpenTelemetry tracing
 func initializeTracer(config Config) (trace.Tracer, error) {
-	// Create OTLP exporter
+	// If no OTLP endpoint is configured, use noop tracer
+	if config.OTLPEndpoint == "" {
+		return noop.NewTracerProvider().Tracer(config.ServiceName), nil
+	}
+
+	// Create OTLP exporter with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
 	exporter, err := otlptracegrpc.New(
-		context.Background(),
+		ctx,
 		otlptracegrpc.WithEndpoint(config.OTLPEndpoint),
 		otlptracegrpc.WithInsecure(), // For local development
 	)

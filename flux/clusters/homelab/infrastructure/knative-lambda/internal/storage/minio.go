@@ -10,16 +10,16 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"knative-lambda-new/internal/errors"
+	apperrors "knative-lambda-new/internal/errors"
 	"knative-lambda-new/internal/observability"
 )
 
@@ -46,7 +46,7 @@ type MinIOStorageConfig struct {
 // 🏗️ NewMinIOStorage - "Create new MinIO storage client"
 func NewMinIOStorage(ctx context.Context, cfg MinIOStorageConfig) (*MinIOStorage, error) {
 	if cfg.Observability == nil {
-		return nil, errors.NewConfigurationError("minio_storage", "observability", "observability cannot be nil")
+		return nil, apperrors.NewConfigurationError("minio_storage", "observability", "observability cannot be nil")
 	}
 
 	ctx, span := cfg.Observability.StartSpan(ctx, "create_minio_storage")
@@ -54,15 +54,15 @@ func NewMinIOStorage(ctx context.Context, cfg MinIOStorageConfig) (*MinIOStorage
 
 	// Validate configuration
 	if cfg.Endpoint == "" {
-		return nil, errors.NewConfigurationError("minio_storage", "endpoint", "MinIO endpoint is required")
+		return nil, apperrors.NewConfigurationError("minio_storage", "endpoint", "MinIO endpoint is required")
 	}
 
 	if cfg.AccessKey == "" {
-		return nil, errors.NewConfigurationError("minio_storage", "access_key", "MinIO access key is required")
+		return nil, apperrors.NewConfigurationError("minio_storage", "access_key", "MinIO access key is required")
 	}
 
 	if cfg.SecretKey == "" {
-		return nil, errors.NewConfigurationError("minio_storage", "secret_key", "MinIO secret key is required")
+		return nil, apperrors.NewConfigurationError("minio_storage", "secret_key", "MinIO secret key is required")
 	}
 
 	// Default region for MinIO
@@ -83,7 +83,7 @@ func NewMinIOStorage(ctx context.Context, cfg MinIOStorageConfig) (*MinIOStorage
 		config.WithRetryMaxAttempts(3),
 	)
 	if err != nil {
-		return nil, errors.NewConfigurationError("minio_storage", "aws_config", fmt.Sprintf("failed to load AWS config for MinIO: %v", err))
+		return nil, apperrors.NewConfigurationError("minio_storage", "aws_config", fmt.Sprintf("failed to load AWS config for MinIO: %v", err))
 	}
 
 	// Create endpoint URL with proper scheme
@@ -134,7 +134,7 @@ func (m *MinIOStorage) UploadObject(ctx context.Context, bucket, key string, rea
 	})
 
 	if err != nil {
-		return errors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s, size=%d", bucket, key, size))
+		return apperrors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s, size=%d", bucket, key, size))
 	}
 
 	m.obs.Info(ctx, "Successfully uploaded object to MinIO",
@@ -147,6 +147,14 @@ func (m *MinIOStorage) UploadObject(ctx context.Context, bucket, key string, rea
 }
 
 // 📥 GetObject - "Get object from MinIO"
+//
+// ⚠️ IMPORTANT: Caller MUST close the returned io.ReadCloser to avoid resource leaks
+// Example:
+//
+//	reader, meta, err := storage.GetObject(ctx, bucket, key)
+//	if err != nil { return err }
+//	defer reader.Close()
+//	// ... use reader
 func (m *MinIOStorage) GetObject(ctx context.Context, bucket, key string) (io.ReadCloser, ObjectMetadata, error) {
 	ctx, span := m.obs.StartSpanWithAttributes(ctx, "minio_get_object", map[string]string{
 		"storage.provider": string(ProviderMinIO),
@@ -161,7 +169,7 @@ func (m *MinIOStorage) GetObject(ctx context.Context, bucket, key string) (io.Re
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return nil, ObjectMetadata{}, errors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
+		return nil, ObjectMetadata{}, apperrors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
 	}
 
 	// Then get the object
@@ -170,7 +178,7 @@ func (m *MinIOStorage) GetObject(ctx context.Context, bucket, key string) (io.Re
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return nil, ObjectMetadata{}, errors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
+		return nil, ObjectMetadata{}, apperrors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
 	}
 
 	metadata := ObjectMetadata{
@@ -202,11 +210,15 @@ func (m *MinIOStorage) ObjectExists(ctx context.Context, bucket, key string) (bo
 	})
 
 	if err != nil {
-		// Check if it's a "not found" error
-		if strings.Contains(err.Error(), "NotFound") || strings.Contains(err.Error(), "NoSuchKey") {
-			return false, nil
+		// Use proper error type checking instead of string matching
+		var apiErr interface{ ErrorCode() string }
+		if errors.As(err, &apiErr) {
+			switch apiErr.ErrorCode() {
+			case "NotFound", "NoSuchKey", "NoSuchBucket":
+				return false, nil
+			}
 		}
-		return false, errors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
+		return false, apperrors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
 	}
 
 	return true, nil
@@ -226,7 +238,7 @@ func (m *MinIOStorage) DeleteObject(ctx context.Context, bucket, key string) err
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return errors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
+		return apperrors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
 	}
 
 	m.obs.Info(ctx, "Successfully deleted object from MinIO",
@@ -252,14 +264,4 @@ func (m *MinIOStorage) GetBucketURL(bucket, key string) string {
 	// For MinIO with Kaniko, we still use s3:// prefix
 	// but Kaniko needs to be configured with custom endpoint via environment variables
 	return fmt.Sprintf("s3://%s/%s", bucket, key)
-}
-
-// 🔧 GetAccessKey - "Get MinIO access key"
-func (m *MinIOStorage) GetAccessKey() string {
-	return m.accessKey
-}
-
-// 🔧 GetSecretKey - "Get MinIO secret key"
-func (m *MinIOStorage) GetSecretKey() string {
-	return m.secretKey
 }

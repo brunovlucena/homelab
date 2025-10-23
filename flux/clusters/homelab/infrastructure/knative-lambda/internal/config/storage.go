@@ -9,6 +9,9 @@
 package config
 
 import (
+	"fmt"
+	"regexp"
+
 	"knative-lambda-new/internal/constants"
 	"knative-lambda-new/internal/errors"
 )
@@ -116,8 +119,18 @@ func (c *StorageConfig) validateS3Config() error {
 		return errors.NewValidationError("s3_source_bucket", c.S3.SourceBucket, "S3 source bucket is required when using AWS S3")
 	}
 
+	// Validate source bucket name format
+	if err := validateBucketName(c.S3.SourceBucket); err != nil {
+		return errors.NewValidationError("s3_source_bucket", c.S3.SourceBucket, err.Error())
+	}
+
 	if c.S3.TempBucket == "" {
 		return errors.NewValidationError("s3_temp_bucket", c.S3.TempBucket, "S3 temp bucket is required when using AWS S3")
+	}
+
+	// Validate temp bucket name format
+	if err := validateBucketName(c.S3.TempBucket); err != nil {
+		return errors.NewValidationError("s3_temp_bucket", c.S3.TempBucket, err.Error())
 	}
 
 	return nil
@@ -127,6 +140,11 @@ func (c *StorageConfig) validateS3Config() error {
 func (c *StorageConfig) validateMinIOConfig() error {
 	if c.MinIO.Endpoint == "" {
 		return errors.NewValidationError("minio_endpoint", c.MinIO.Endpoint, "MinIO endpoint is required when using MinIO")
+	}
+
+	// Validate endpoint format includes port
+	if !regexp.MustCompile(`:\d+$`).MatchString(c.MinIO.Endpoint) {
+		return errors.NewValidationError("minio_endpoint", c.MinIO.Endpoint, "MinIO endpoint must include port (e.g., 'host:9000')")
 	}
 
 	if c.MinIO.AccessKey == "" {
@@ -141,8 +159,18 @@ func (c *StorageConfig) validateMinIOConfig() error {
 		return errors.NewValidationError("minio_source_bucket", c.MinIO.SourceBucket, "MinIO source bucket is required when using MinIO")
 	}
 
+	// Validate source bucket name format
+	if err := validateBucketName(c.MinIO.SourceBucket); err != nil {
+		return errors.NewValidationError("minio_source_bucket", c.MinIO.SourceBucket, err.Error())
+	}
+
 	if c.MinIO.TempBucket == "" {
 		return errors.NewValidationError("minio_temp_bucket", c.MinIO.TempBucket, "MinIO temp bucket is required when using MinIO")
+	}
+
+	// Validate temp bucket name format
+	if err := validateBucketName(c.MinIO.TempBucket); err != nil {
+		return errors.NewValidationError("minio_temp_bucket", c.MinIO.TempBucket, err.Error())
 	}
 
 	return nil
@@ -177,4 +205,47 @@ func (c *StorageConfig) IsMinIO() bool {
 // 🔧 IsS3 - "Check if S3 is configured as provider"
 func (c *StorageConfig) IsS3() bool {
 	return c.Provider == "aws-s3"
+}
+
+// 🔧 validateBucketName - "Validate S3/MinIO bucket name follows naming rules"
+//
+// S3 bucket naming rules:
+// - Must be between 3 and 63 characters long
+// - Can consist only of lowercase letters, numbers, dots (.), and hyphens (-)
+// - Must begin and end with a letter or number
+// - Must not be formatted as an IP address (e.g., 192.168.5.4)
+// - Must not start with 'xn--' (used for punycode)
+// - Must not end with '-s3alias' (reserved)
+func validateBucketName(name string) error {
+	if len(name) < 3 || len(name) > 63 {
+		return fmt.Errorf("bucket name must be between 3 and 63 characters, got %d", len(name))
+	}
+
+	// Check valid characters and start/end requirements
+	validBucketName := regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*[a-z0-9]$`)
+	if !validBucketName.MatchString(name) {
+		return fmt.Errorf("bucket name must start and end with lowercase letter or number, and contain only lowercase letters, numbers, dots, and hyphens")
+	}
+
+	// Check for consecutive dots
+	if regexp.MustCompile(`\.\.`).MatchString(name) {
+		return fmt.Errorf("bucket name must not contain consecutive dots")
+	}
+
+	// Check for IP address format
+	ipAddress := regexp.MustCompile(`^(\d{1,3}\.){3}\d{1,3}$`)
+	if ipAddress.MatchString(name) {
+		return fmt.Errorf("bucket name must not be formatted as an IP address")
+	}
+
+	// Check reserved prefixes/suffixes
+	if regexp.MustCompile(`^xn--`).MatchString(name) {
+		return fmt.Errorf("bucket name must not start with 'xn--' (reserved for punycode)")
+	}
+
+	if regexp.MustCompile(`-s3alias$`).MatchString(name) {
+		return fmt.Errorf("bucket name must not end with '-s3alias' (reserved)")
+	}
+
+	return nil
 }

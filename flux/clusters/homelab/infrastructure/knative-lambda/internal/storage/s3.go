@@ -10,15 +10,15 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"knative-lambda-new/internal/errors"
+	apperrors "knative-lambda-new/internal/errors"
 	"knative-lambda-new/internal/observability"
 )
 
@@ -40,7 +40,7 @@ type S3StorageConfig struct {
 // 🏗️ NewS3Storage - "Create new S3 storage client"
 func NewS3Storage(ctx context.Context, cfg S3StorageConfig) (*S3Storage, error) {
 	if cfg.Observability == nil {
-		return nil, errors.NewConfigurationError("s3_storage", "observability", "observability cannot be nil")
+		return nil, apperrors.NewConfigurationError("s3_storage", "observability", "observability cannot be nil")
 	}
 
 	ctx, span := cfg.Observability.StartSpan(ctx, "create_s3_storage")
@@ -53,7 +53,7 @@ func NewS3Storage(ctx context.Context, cfg S3StorageConfig) (*S3Storage, error) 
 		config.WithRetryMaxAttempts(3),
 	)
 	if err != nil {
-		return nil, errors.NewConfigurationError("s3_storage", "aws_config", fmt.Sprintf("failed to load AWS config: %v", err))
+		return nil, apperrors.NewConfigurationError("s3_storage", "aws_config", fmt.Sprintf("failed to load AWS config: %v", err))
 	}
 
 	// Create S3 client with optional custom endpoint
@@ -103,7 +103,7 @@ func (s *S3Storage) UploadObject(ctx context.Context, bucket, key string, reader
 	})
 
 	if err != nil {
-		return errors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s, size=%d", bucket, key, size))
+		return apperrors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s, size=%d", bucket, key, size))
 	}
 
 	s.obs.Info(ctx, "Successfully uploaded object to S3",
@@ -116,6 +116,14 @@ func (s *S3Storage) UploadObject(ctx context.Context, bucket, key string, reader
 }
 
 // 📥 GetObject - "Get object from S3"
+//
+// ⚠️ IMPORTANT: Caller MUST close the returned io.ReadCloser to avoid resource leaks
+// Example:
+//
+//	reader, meta, err := storage.GetObject(ctx, bucket, key)
+//	if err != nil { return err }
+//	defer reader.Close()
+//	// ... use reader
 func (s *S3Storage) GetObject(ctx context.Context, bucket, key string) (io.ReadCloser, ObjectMetadata, error) {
 	ctx, span := s.obs.StartSpanWithAttributes(ctx, "s3_get_object", map[string]string{
 		"storage.provider": string(ProviderS3),
@@ -130,7 +138,7 @@ func (s *S3Storage) GetObject(ctx context.Context, bucket, key string) (io.ReadC
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return nil, ObjectMetadata{}, errors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
+		return nil, ObjectMetadata{}, apperrors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
 	}
 
 	// Then get the object
@@ -139,7 +147,7 @@ func (s *S3Storage) GetObject(ctx context.Context, bucket, key string) (io.ReadC
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return nil, ObjectMetadata{}, errors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
+		return nil, ObjectMetadata{}, apperrors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
 	}
 
 	metadata := ObjectMetadata{
@@ -171,11 +179,15 @@ func (s *S3Storage) ObjectExists(ctx context.Context, bucket, key string) (bool,
 	})
 
 	if err != nil {
-		// Check if it's a "not found" error
-		if strings.Contains(err.Error(), "NotFound") || strings.Contains(err.Error(), "NoSuchKey") {
-			return false, nil
+		// Use proper error type checking instead of string matching
+		var apiErr interface{ ErrorCode() string }
+		if errors.As(err, &apiErr) {
+			switch apiErr.ErrorCode() {
+			case "NotFound", "NoSuchKey", "NoSuchBucket":
+				return false, nil
+			}
 		}
-		return false, errors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
+		return false, apperrors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
 	}
 
 	return true, nil
@@ -195,7 +207,7 @@ func (s *S3Storage) DeleteObject(ctx context.Context, bucket, key string) error 
 		Key:    aws.String(key),
 	})
 	if err != nil {
-		return errors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
+		return apperrors.WrapWithContext(err, fmt.Sprintf("bucket=%s, key=%s", bucket, key))
 	}
 
 	s.obs.Info(ctx, "Successfully deleted object from S3",

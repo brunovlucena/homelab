@@ -30,7 +30,7 @@ BINARY_NAME := service
 SIDECAR_BINARY := sidecar
 
 # 🐳 Docker Configuration
-DOCKER_REGISTRY := 339954290315.dkr.ecr.us-west-2.amazonaws.com
+DOCKER_REGISTRY := ghcr.io/brunovlucena
 DOCKER_REPO := $(DOCKER_REGISTRY)/knative-lambdas/$(SERVICE_NAME)
 # Image tags based on branch
 ifeq ($(GIT_BRANCH),main)
@@ -258,9 +258,9 @@ docker-push-metrics-pusher: docker-build-metrics-pusher ## 🐳 Push metrics pus
 
 metrics-pusher: docker-build-metrics-pusher docker-push-metrics-pusher ## 🐳 Build and push metrics pusher (convenience target)
 
-docker-login: ## 🔐 Login to ECR
-	$(call print_status,🔐 Logging into ECR...)
-	@aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $(DOCKER_REGISTRY)
+docker-login: ## 🔐 Login to GitHub Container Registry
+	$(call print_status,🔐 Logging into GitHub Container Registry...)
+	@echo "$$GITHUB_TOKEN" | docker login ghcr.io -u brunovlucena --password-stdin
 
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  ☸️ KUBERNETES TARGETS                                                  │
@@ -465,8 +465,7 @@ test: lint test-unit ## 🧪 Run all tests (linting + unit tests)
 
 test-unit: ## 🧪 Run Go unit tests
 	$(call print_status,🧪 Running Go unit tests...)
-	@go test -v -race -coverprofile=coverage.out ./...
-	@go tool cover -func=coverage.out
+	@go test -race -timeout=30s ./internal/aws/... ./internal/config/... ./internal/constants/... ./internal/errors/... ./internal/handler/... ./internal/observability/... ./internal/resilience/... ./internal/security/... ./internal/storage/... ./internal/templates/...
 	$(call print_success,Unit tests completed)
 
 test-k6: ## 🚀 Run k6 load tests

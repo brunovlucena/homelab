@@ -1059,6 +1059,19 @@ func (h *EventHandlerImpl) ParseBuildRequest(ctx context.Context, event *cloudev
 		"third_party_id", eventData.ThirdPartyID,
 		"parser_id", eventData.ParserID)
 
+	// Validate the parsed event data
+	if validationErrors := eventData.Validate(); len(validationErrors) > 0 {
+		errMsg := fmt.Sprintf("validation failed for field 'build_request_data': %s", validationErrors[0])
+		for i := 1; i < len(validationErrors); i++ {
+			errMsg += fmt.Sprintf("; %s", validationErrors[i])
+		}
+		h.obs.Error(ctx, nil, "BuildEventData validation failed",
+			"validation_errors", validationErrors,
+			"third_party_id", eventData.ThirdPartyID,
+			"parser_id", eventData.ParserID)
+		return nil, errors.NewValidationError("build_request_data", nil, errMsg)
+	}
+
 	// Log the parsed event data for debugging
 	h.obs.Info(ctx, "Successfully parsed BuildEventData",
 		"third_party_id", eventData.ThirdPartyID,
@@ -1105,6 +1118,10 @@ func (h *EventHandlerImpl) ParseBuildRequest(ctx context.Context, event *cloudev
 	if runtimeStr, ok := eventData.GetParameterAsString("runtime"); ok {
 		runtime = runtimeStr
 		h.obs.Info(ctx, "Using runtime from parameters", "runtime", runtime)
+	}
+	if blockIDStr, ok := eventData.GetParameterAsString("blockId"); ok {
+		blockID = blockIDStr
+		h.obs.Info(ctx, "Using block ID from parameters", "block_id", blockID)
 	}
 
 	// Create build request with all necessary information

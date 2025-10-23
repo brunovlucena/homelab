@@ -15,6 +15,12 @@ import (
 	"knative-lambda-new/internal/observability"
 )
 
+// TestingHelper is an interface that both testing.T and testing.B implement
+type TestingHelper interface {
+	Helper()
+	Fatalf(format string, args ...interface{})
+}
+
 // 🧪 CreateTestObservability - "Create a properly initialized observability instance for testing"
 //
 // This helper creates an observability instance with minimal but complete configuration
@@ -22,11 +28,11 @@ import (
 // properly initialized to avoid nil pointer dereferences.
 //
 // Parameters:
-//   - t: testing.T instance for error reporting
+//   - t: testing.T or testing.B instance for error reporting
 //
 // Returns:
 //   - *observability.Observability: fully initialized observability instance
-func CreateTestObservability(t *testing.T) *observability.Observability {
+func CreateTestObservability(t TestingHelper) *observability.Observability {
 	t.Helper()
 
 	obsConfig := observability.Config{
@@ -35,8 +41,8 @@ func CreateTestObservability(t *testing.T) *observability.Observability {
 		Environment:    "test",
 		LogLevel:       "error", // Minimal logging to reduce test noise
 		MetricsEnabled: true,    // Enable for proper initialization
-		TracingEnabled: true,    // Enable for proper initialization
-		OTLPEndpoint:   "",      // No actual endpoint needed for tests
+		TracingEnabled: true,    // Enable tracing with noop provider (no endpoint)
+		OTLPEndpoint:   "",      // Empty endpoint = noop tracer provider
 		SampleRate:     1.0,     // Sample all traces in tests
 	}
 
@@ -54,12 +60,12 @@ func CreateTestObservability(t *testing.T) *observability.Observability {
 // ensuring proper initialization.
 //
 // Parameters:
-//   - t: testing.T instance for error reporting
+//   - t: testing.T or testing.B instance for error reporting
 //   - customize: function to customize the default config
 //
 // Returns:
 //   - *observability.Observability: fully initialized observability instance
-func CreateTestObservabilityWithConfig(t *testing.T, customize func(*observability.Config)) *observability.Observability {
+func CreateTestObservabilityWithConfig(t TestingHelper, customize func(*observability.Config)) *observability.Observability {
 	t.Helper()
 
 	obsConfig := observability.Config{
@@ -68,8 +74,8 @@ func CreateTestObservabilityWithConfig(t *testing.T, customize func(*observabili
 		Environment:    "test",
 		LogLevel:       "error",
 		MetricsEnabled: true,
-		TracingEnabled: true,
-		OTLPEndpoint:   "",
+		TracingEnabled: true, // Enable tracing with noop provider (no endpoint)
+		OTLPEndpoint:   "",   // Empty endpoint = noop tracer provider
 		SampleRate:     1.0,
 	}
 
