@@ -20,7 +20,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: brunovlucena/kubectl
+  IMAGE_NAME: ${{ github.repository_owner }}/kubectl
 
 jobs:
   build-and-push:
@@ -52,6 +52,11 @@ jobs:
             type=raw,value=v1.34.0
             type=raw,value=latest
             type=sha,prefix={{branch}}-
+          flavor: |
+            latest=auto
+          labels: |
+            org.opencontainers.image.title=kubectl
+            org.opencontainers.image.description=kubectl with krew plugins
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
