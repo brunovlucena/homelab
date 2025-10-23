@@ -37,14 +37,10 @@ spec:
           Linkerd certificate has expired causing mTLS connection failures.
           
           **Error Details:**
-          - Certificate verification time: {{ $labels.verification_time | default "unknown" }}
-          - Certificate not valid after: {{ $labels.expiry_time | default "unknown" }}
-          - Time difference: {{ $labels.time_diff | default "unknown" }} seconds ago
-          
-          **Affected Components:**
-          - Service: {{ $labels.service | default "unknown" }}
-          - Namespace: {{ $labels.namespace | default "unknown" }}
-          - Pod: {{ $labels.pod | default "unknown" }}
+          - Error: {{ $labels.error }}
+          - Service: {{ $labels.service }}
+          - Namespace: {{ $labels.namespace }}
+          - Pod: {{ $labels.pod }}
           
           **Immediate Action Required:**
           1. Restart affected pods to get fresh certificates
@@ -69,9 +65,9 @@ spec:
           
           **Error Details:**
           - Error: {{ $labels.error }}
-          - Service: {{ $labels.service | default "unknown" }}
-          - Namespace: {{ $labels.namespace | default "unknown" }}
-          - Pod: {{ $labels.pod | default "unknown" }}
+          - Service: {{ $labels.service }}
+          - Namespace: {{ $labels.namespace }}
+          - Pod: {{ $labels.pod }}
           
           **Possible Causes:**
           1. Trust anchor rotation in progress
@@ -88,13 +84,9 @@ spec:
     # Critical: Linkerd Certificate Invalid
     - alert: LinkerdCertificateInvalid
       expr: |
-        (
-          increase(linkerd_proxy_connect_errors_total{error=~".*invalid peer certificate.*"}[5m]) > 0
-        ) and not (
-          increase(linkerd_proxy_connect_errors_total{error=~".*certificate expired.*"}[5m]) > 0
-        ) and not (
-          increase(linkerd_proxy_connect_errors_total{error=~".*BadSignature.*"}[5m]) > 0
-        )
+        increase(linkerd_proxy_connect_errors_total{error=~".*invalid peer certificate.*"}[5m]) > 0
+        unless
+        increase(linkerd_proxy_connect_errors_total{error=~".*certificate expired.*|.*BadSignature.*"}[5m]) > 0
       for: 0m
       labels:
         severity: critical
@@ -108,9 +100,9 @@ spec:
           
           **Error Details:**
           - Error: {{ $labels.error }}
-          - Service: {{ $labels.service | default "unknown" }}
-          - Namespace: {{ $labels.namespace | default "unknown" }}
-          - Pod: {{ $labels.pod | default "unknown" }}
+          - Service: {{ $labels.service }}
+          - Namespace: {{ $labels.namespace }}
+          - Pod: {{ $labels.pod }}
           
           **Possible Causes:**
           1. Certificate not signed by current trust anchor
@@ -142,9 +134,8 @@ spec:
           Linkerd certificate will expire soon and needs renewal.
           
           **Certificate Details:**
-          - Expiry: {{ $labels.expiry_time | default "unknown" }}
-          - Days remaining: {{ $labels.days_remaining | default "unknown" }}
-          - Service: {{ $labels.service | default "unknown" }}
+          - Service: {{ $labels.service }}
+          - Namespace: {{ $labels.namespace }}
           
           **Preventive Action:**
           1. Monitor certificate rotation
@@ -174,8 +165,8 @@ spec:
           
           **Metrics:**
           - Failure rate: {{ $value | humanizePercentage }} per second
-          - Service: {{ $labels.service | default "unknown" }}
-          - Namespace: {{ $labels.namespace | default "unknown" }}
+          - Service: {{ $labels.service }}
+          - Namespace: {{ $labels.namespace }}
           
           **Common Causes:**
           1. Certificate issues (expired/invalid)
@@ -241,8 +232,8 @@ spec:
           
           **Metrics:**
           - 95th percentile latency: {{ $value }}s
-          - Service: {{ $labels.service | default "unknown" }}
-          - Namespace: {{ $labels.namespace | default "unknown" }}
+          - Service: {{ $labels.service }}
+          - Namespace: {{ $labels.namespace }}
           
           **Investigation:**
           1. Check resource usage
@@ -269,8 +260,8 @@ spec:
           
           **Metrics:**
           - Error rate: {{ $value | humanizePercentage }}
-          - Service: {{ $labels.service | default "unknown" }}
-          - Namespace: {{ $labels.namespace | default "unknown" }}
+          - Service: {{ $labels.service }}
+          - Namespace: {{ $labels.namespace }}
           
           **Investigation:**
           1. Check downstream service health
