@@ -14,18 +14,12 @@ spec:
   chart:
     spec:
       chart: scylla-manager
-      version: ">=1.0.0"
+      version: "v1.18.1"
       sourceRef:
         kind: HelmRepository
         name: scylla-operator
         namespace: flux-system
   values:
-    # 🖼️ ScyllaDB Manager image
-    image:
-      repository: scylladb/scylla-manager
-      pullPolicy: IfNotPresent
-      tag: "3.3.2"
-    
     # 💾 Resource allocation
     resources:
       requests:
@@ -55,15 +49,6 @@ spec:
             limits:
               cpu: 1
               memory: 2Gi
-      
-      # Use same ScyllaDB version
-      scyllaImage:
-        repository: scylladb/scylla
-        tag: "6.2.3"
-      
-      agentImage:
-        repository: scylladb/scylla-manager-agent
-        tag: "3.3.2"
       
       developerMode: true
 

@@ -11,7 +11,7 @@ spec:
   chart:
     spec:
       chart: scylla-operator
-      version: ">=1.0.0"
+      version: "v1.18.1"
       sourceRef:
         kind: HelmRepository
         name: scylla-operator
@@ -21,11 +21,6 @@ spec:
   upgrade:
     crds: CreateReplace
   values:
-    # 🖼️ Image configuration
-    image:
-      repository: scylladb
-      pullPolicy: IfNotPresent
-    
     # 💾 Resource allocation for operator
     resources:
       requests:
