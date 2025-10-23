@@ -25,6 +25,24 @@ spec:
       interval: 5m
   values:
     # 🐰 RabbitMQ Cluster Operator - KISS Configuration
-    useCertManager: false
+    useCertManager: true
+
+    # Use official RabbitMQ operator images (Bitnami deprecated)
+    clusterOperator:
+      image:
+        registry: docker.io
+        repository: rabbitmqoperator/cluster-operator
+        tag: 2.16.1
+
+    msgTopologyOperator:
+      image:
+        registry: docker.io
+        repository: rabbitmqoperator/messaging-topology-operator
+        tag: 1.17.4
+
+    credentialUpdaterImage:
+      registry: docker.io
+      repository: rabbitmqoperator/default-user-credential-updater
+      tag: 1.0.8
 
 
