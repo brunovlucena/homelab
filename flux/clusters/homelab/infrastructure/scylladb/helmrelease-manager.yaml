@@ -1,0 +1,69 @@
+---
+# 📊 ScyllaDB Manager - automates database operations
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: scylla-manager
+  namespace: scylla-manager
+spec:
+  interval: 5m
+  timeout: 15m
+  dependsOn:
+    - name: scylla-operator
+      namespace: scylla-operator
+  chart:
+    spec:
+      chart: scylla-manager
+      version: ">=1.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: scylla-operator
+        namespace: flux-system
+  values:
+    # 🖼️ ScyllaDB Manager image
+    image:
+      repository: scylladb/scylla-manager
+      pullPolicy: IfNotPresent
+      tag: "3.3.2"
+    
+    # 💾 Resource allocation
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 500Mi
+    
+    # 📊 Enable ServiceMonitor for Prometheus
+    serviceMonitor:
+      create: true
+    
+    # 🗄️ Internal Scylla cluster for Manager's needs
+    scylla:
+      datacenter: manager-dc
+      racks:
+        - name: rack1
+          members: 1
+          storage:
+            capacity: 10Gi
+            storageClassName: standard
+          resources:
+            requests:
+              cpu: 200m
+              memory: 1Gi
+            limits:
+              cpu: 1
+              memory: 2Gi
+      
+      # Use same ScyllaDB version
+      scyllaImage:
+        repository: scylladb/scylla
+        tag: "6.2.3"
+      
+      agentImage:
+        repository: scylladb/scylla-manager-agent
+        tag: "3.3.2"
+      
+      developerMode: true
+

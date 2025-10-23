@@ -1,0 +1,28 @@
+---
+# 🔧 ScyllaDB Operator namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scylla-operator
+  labels:
+    name: scylla-operator
+    toolkit.fluxcd.io/tenant: sre-team
+---
+# 📊 ScyllaDB Manager namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scylla-manager
+  labels:
+    name: scylla-manager
+    toolkit.fluxcd.io/tenant: sre-team
+---
+# 🚀 ScyllaDB cluster namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scylla
+  labels:
+    name: scylla
+    toolkit.fluxcd.io/tenant: sre-team
+

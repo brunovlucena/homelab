@@ -1,0 +1,72 @@
+---
+# 🚀 ScyllaDB Cluster with Alternator (DynamoDB API) support
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: scylla
+  namespace: scylla
+spec:
+  interval: 5m
+  timeout: 15m
+  dependsOn:
+    - name: scylla-operator
+      namespace: scylla-operator
+  chart:
+    spec:
+      chart: scylla
+      version: ">=1.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: scylla-operator
+        namespace: flux-system
+  values:
+    # 🖼️ ScyllaDB image version
+    scyllaImage:
+      repository: scylladb/scylla
+      tag: "6.2.3"
+    
+    # 🤖 Scylla Manager Agent image
+    agentImage:
+      repository: scylladb/scylla-manager-agent
+      tag: "3.3.2"
+    
+    # 🌍 Datacenter configuration
+    datacenter: homelab-dc1
+    
+    # 🏗️ Rack configuration - single rack for homelab
+    racks:
+      - name: rack1
+        members: 1
+        
+        # 💾 Storage configuration
+        storage:
+          capacity: 20Gi
+          storageClassName: standard
+        
+        # 🎯 Resource allocation - optimized for homelab
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: "2"
+            memory: 4Gi
+        
+        # 🔌 Enable Alternator (DynamoDB API)
+        scyllaArgs: |
+          --alternator-port=8000
+          --alternator-write-isolation=only_rmw_uses_lwt
+          --smp=1
+          --memory=2G
+          --overprovisioned
+    
+    # 📊 Enable ServiceMonitor for Prometheus
+    serviceMonitor:
+      create: true
+    
+    # ⚡ Developer mode for reduced resource requirements
+    developerMode: true
+    
+    # 🔍 Sysctls - disable for compatibility
+    sysctls: []
+

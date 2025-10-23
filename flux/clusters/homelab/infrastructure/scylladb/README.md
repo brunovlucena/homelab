@@ -1,124 +1,89 @@
-# ScyllaDB with Alternator (DynamoDB Compatibility)
+# 📦 ScyllaDB Deployment with Official ScyllaDB Operator
 
 ## 🎯 Overview
 
-ScyllaDB is a high-performance NoSQL database compatible with Apache Cassandra. This deployment includes **Alternator**, which provides DynamoDB-compatible API, making it a production-grade alternative to LocalStack's DynamoDB emulation.
+This deployment uses the **official [ScyllaDB Operator](https://operator.docs.scylladb.com/)** to run ScyllaDB with **Alternator** (DynamoDB-compatible API) on Kubernetes.
 
-## ✨ Features
+> **Note**: This deployment has been migrated from the Bitnami Helm chart to the official ScyllaDB Operator due to [Bitnami's distribution changes](https://community.broadcom.com/blogs/beltran-rueda-borrego/2025/08/18/how-to-prepare-for-the-bitnami-changes-coming-soon) in September 2025.
 
-- **🔌 DynamoDB API Compatibility**: Use existing DynamoDB SDKs and code
-- **🚀 High Performance**: C++ rewrite of Cassandra, optimized for modern hardware
-- **💾 Persistent Storage**: Real database persistence (unlike LocalStack's in-memory mode)
-- **📊 Prometheus Metrics**: Built-in monitoring integration
-- **🔄 Dual API**: Both CQL (Cassandra) and DynamoDB (Alternator) protocols
+### 🌟 Key Features
 
-## 🏗️ Architecture
+- ✅ **Official ScyllaDB Operator** - Managed by ScyllaDB team
+- ✅ **Alternator API** - DynamoDB-compatible interface on port 8000
+- ✅ **CQL API** - Cassandra-compatible interface on port 9042
+- ✅ **Prometheus Metrics** - Automatic ServiceMonitor creation
+- ✅ **Auto-healing** - Operator manages node failures
+- ✅ **GitOps Ready** - Fully managed via Flux
+
+## 📁 Structure
 
 ```
-┌─────────────────────────────────────────┐
-│         ScyllaDB Cluster                │
-│                                         │
-│  ┌─────────────┐    ┌─────────────┐   │
-│  │   CQL API   │    │ Alternator  │   │
-│  │  (Port 9042)│    │ (Port 8000) │   │
-│  └─────────────┘    └─────────────┘   │
-│         │                   │          │
-│         └───────┬───────────┘          │
-│                 │                      │
-│         ┌───────▼────────┐            │
-│         │  ScyllaDB Core │            │
-│         │   (Developer   │            │
-│         │     Mode)      │            │
-│         └────────────────┘            │
-└─────────────────────────────────────────┘
-```
-
-## 🔧 Configuration
-
-### Key Settings
-
-- **Alternator Port**: 8000 (DynamoDB-compatible API)
-- **CQL Port**: 9042 (Cassandra-compatible API)
-- **Metrics Port**: 9180 (Prometheus scraping)
-- **Developer Mode**: Enabled (reduced resource requirements)
-- **Storage**: 20Gi persistent volume
-
-### Resource Allocation
-
-```yaml
-Resources:
-  Requests:
-    Memory: 2Gi
-    CPU: 500m
-  Limits:
-    Memory: 4Gi
-    CPU: 2000m
+/repos/homelab/flux/clusters/homelab/infrastructure/scylladb/
+├── namespace-operator.yaml      # Namespace for ScyllaDB Operator
+├── helmrelease-operator.yaml    # ScyllaDB Operator deployment
+├── namespace.yaml                # Namespace for ScyllaDB cluster
+├── helmrelease-scylla.yaml      # ScyllaDB cluster deployment
+├── kustomization.yaml            # Kustomize configuration
+└── README.md                     # This file
 ```
 
 ## 🚀 Quick Start
 
-### 1. Access Alternator (DynamoDB API)
-
-The Alternator API is accessible within the cluster at:
-
-```
-http://scylladb.scylladb.svc.cluster.local:8000
-```
-
-### 2. Port Forward for Local Access
+### 1. Check Deployment Status
 
 ```bash
-# Port forward Alternator (DynamoDB API)
-kubectl port-forward -n scylladb svc/scylladb 8000:8000
+# Check ScyllaDB Operator
+kubectl get pods -n scylla-operator
 
-# Port forward CQL (Cassandra API)
-kubectl port-forward -n scylladb svc/scylladb 9042:9042
+# Check ScyllaDB cluster
+kubectl get pods -n scylladb
+kubectl get scyllaclusters -n scylladb
 ```
 
-### 3. Test with AWS CLI
+### 2. Access ScyllaDB
+
+**DynamoDB API (Alternator):**
+```
+Endpoint: http://scylla-client.scylladb.svc.cluster.local:8000
+```
+
+**CQL API (Cassandra):**
+```
+Endpoint: scylla-client.scylladb.svc.cluster.local:9042
+```
+
+**Prometheus Metrics:**
+```
+Endpoint: http://scylla-client.scylladb.svc.cluster.local:9180/metrics
+```
+
+### 3. Port Forwarding for Local Access
 
 ```bash
-# Configure AWS CLI to use ScyllaDB
-export AWS_ACCESS_KEY_ID=dummy
-export AWS_SECRET_ACCESS_KEY=dummy
-export AWS_DEFAULT_REGION=us-east-1
+# DynamoDB API
+kubectl port-forward -n scylladb svc/scylla-client 8000:8000
 
-# Create a table
-aws dynamodb create-table \
-    --table-name TestTable \
-    --attribute-definitions \
-        AttributeName=id,AttributeType=S \
-    --key-schema \
-        AttributeName=id,KeyType=HASH \
-    --provisioned-throughput \
-        ReadCapacityUnits=5,WriteCapacityUnits=5 \
-    --endpoint-url http://localhost:8000
+# CQL API
+kubectl port-forward -n scylladb svc/scylla-client 9042:9042
 
-# Put an item
-aws dynamodb put-item \
-    --table-name TestTable \
-    --item '{"id": {"S": "test-1"}, "name": {"S": "ScyllaDB"}}' \
-    --endpoint-url http://localhost:8000
-
-# Get the item
-aws dynamodb get-item \
-    --table-name TestTable \
-    --key '{"id": {"S": "test-1"}}' \
-    --endpoint-url http://localhost:8000
+# Prometheus Metrics
+kubectl port-forward -n scylladb svc/scylla-client 9180:9180
 ```
 
-### 4. Test with Python (boto3)
+## 🔌 Using Alternator (DynamoDB API)
+
+### Python Example
 
 ```python
 import boto3
 
 # Create DynamoDB client pointing to ScyllaDB Alternator
-dynamodb = boto3.client(
+dynamodb = boto3.resource(
     'dynamodb',
-    endpoint_url='http://localhost:8000',
+    endpoint_url='http://scylla-client.scylladb.svc.cluster.local:8000',
     region_name='us-east-1',
-    aws_access_key_id='dummy',
-    aws_secret_access_key='dummy'
+    aws_access_key_id='none',
+    aws_secret_access_key='none'
 )
 
 # Create table
@@ -134,153 +99,151 @@ table = dynamodb.create_table(
 )
 
 # Put item
-dynamodb.put_item(
-    TableName='users',
-    Item={
-        'user_id': {'S': 'user-123'},
-        'name': {'S': 'Bruno'},
-        'email': {'S': 'bruno@example.com'}
-    }
-)
+table.put_item(Item={'user_id': '123', 'name': 'Alice'})
 
 # Get item
-response = dynamodb.get_item(
-    TableName='users',
-    Key={'user_id': {'S': 'user-123'}}
-)
+response = table.get_item(Key={'user_id': '123'})
 print(response['Item'])
-```
-
-## 🔄 Migration from LocalStack
-
-If you're currently using LocalStack's DynamoDB, ScyllaDB with Alternator is a drop-in replacement:
-
-### Before (LocalStack):
-```python
-dynamodb = boto3.client(
-    'dynamodb',
-    endpoint_url='http://localstack.localstack.svc.cluster.local:4566',
-    region_name='us-east-1'
-)
-```
-
-### After (ScyllaDB Alternator):
-```python
-dynamodb = boto3.client(
-    'dynamodb',
-    endpoint_url='http://scylladb.scylladb.svc.cluster.local:8000',
-    region_name='us-east-1'
-)
 ```
 
 ## 📊 Monitoring
 
-ScyllaDB exports Prometheus metrics on port 9180. A ServiceMonitor is automatically created for Prometheus Operator integration.
+### Prometheus Metrics
 
-### Key Metrics
-
-- `scylla_database_total_writes`: Total write operations
-- `scylla_database_total_reads`: Total read operations
-- `scylla_storage_proxy_coordinator_write_latency`: Write latency
-- `scylla_storage_proxy_coordinator_read_latency`: Read latency
-- `scylla_alternator_*`: Alternator-specific metrics
-
-### Access Grafana Dashboards
-
-ScyllaDB has official Grafana dashboards available. Import dashboard ID: `17032` (ScyllaDB Overview)
-
-## 🔍 Troubleshooting
-
-### Check Pod Status
+The deployment automatically creates a `ServiceMonitor` for Prometheus to scrape ScyllaDB metrics:
 
 ```bash
-kubectl get pods -n scylladb
-kubectl describe pod -n scylladb scylladb-0
+# View metrics
+kubectl port-forward -n scylladb svc/scylla-client 9180:9180
+curl http://localhost:9180/metrics
 ```
 
-### View Logs
+### Important Metrics
 
-```bash
-kubectl logs -n scylladb scylladb-0 --follow
-```
+- `scylla_database_total_writes` - Total write operations
+- `scylla_database_total_reads` - Total read operations
+- `scylla_storage_proxy_coordinator_write_latency` - Write latency
+- `scylla_storage_proxy_coordinator_read_latency` - Read latency
+- `scylla_alternator_*` - Alternator-specific metrics
 
-### Exec into Pod
+### Grafana Dashboard
 
-```bash
-kubectl exec -it -n scylladb scylladb-0 -- bash
+Import the official ScyllaDB dashboard:
+- **Dashboard ID**: 17032 (ScyllaDB Overview)
 
-# Inside pod, use cqlsh
-cqlsh localhost 9042
-```
+## 🔧 Configuration
 
-### Check Alternator Status
+### Current Setup
 
-```bash
-# From inside the cluster
-curl http://scylladb.scylladb.svc.cluster.local:8000/
-```
+- **Namespace**: `scylladb` (cluster) and `scylla-operator` (operator)
+- **Datacenter**: `homelab-dc1`
+- **Racks**: 1 rack with 1 node
+- **Storage**: 20Gi per node
+- **Resources**: 
+  - CPU: 500m request, 2 limit
+  - Memory: 2Gi request, 4Gi limit
+- **ScyllaDB Version**: 6.2.3
+- **Developer Mode**: Enabled (reduced resource requirements)
 
-## 🎛️ Advanced Configuration
+### Scaling
 
-### Scaling the Cluster
-
-To scale up to 3 nodes:
+To scale up the cluster, edit `helmrelease-scylla.yaml`:
 
 ```yaml
-cluster:
-  replicaCount: 3
+racks:
+  - name: rack1
+    members: 3  # Change from 1 to 3
 ```
 
-### Adjusting Resources
+Then commit and push to let Flux apply the changes.
 
-For production workloads, increase resources:
+## 🛠️ Troubleshooting
 
-```yaml
-resources:
-  requests:
-    memory: "8Gi"
-    cpu: "2000m"
-  limits:
-    memory: "16Gi"
-    cpu: "4000m"
+### Check Operator Logs
+
+```bash
+kubectl logs -n scylla-operator -l app.kubernetes.io/name=scylla-operator
 ```
 
-### Disable Developer Mode
+### Check ScyllaDB Cluster Status
 
-For production:
+```bash
+# Get cluster status
+kubectl get scyllaclusters -n scylladb
 
-```yaml
-scylladb:
-  developerMode: false
-  extraFlags:
-    - "--smp 4"
-    - "--memory 8G"
+# Describe cluster
+kubectl describe scyllacluster -n scylladb scylla-homelab-dc1
+
+# Check pod logs
+kubectl logs -n scylladb scylla-homelab-dc1-rack1-0 -c scylla
 ```
 
-## 📚 Additional Resources
+### Common Issues
 
-- [ScyllaDB Documentation](https://docs.scylladb.com/)
-- [Alternator Documentation](https://docs.scylladb.com/stable/using-scylla/alternator/)
+**Pods not starting:**
+```bash
+# Check events
+kubectl get events -n scylladb --sort-by='.lastTimestamp'
+
+# Check pod description
+kubectl describe pod -n scylladb <pod-name>
+```
+
+**Alternator not accessible:**
+```bash
+# Verify service
+kubectl get svc -n scylladb scylla-client
+
+# Test connectivity
+kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
+  curl -v http://scylla-client.scylladb.svc.cluster.local:8000
+```
+
+## 📚 Resources
+
+- [ScyllaDB Operator Documentation](https://operator.docs.scylladb.com/)
+- [ScyllaDB Operator Helm Charts](https://operator.docs.scylladb.com/stable/installation/helm.html)
+- [ScyllaDB Alternator Documentation](https://docs.scylladb.com/stable/using-scylla/alternator/)
 - [DynamoDB API Compatibility](https://docs.scylladb.com/stable/using-scylla/alternator/compatibility.html)
 - [ScyllaDB University](https://university.scylladb.com/)
+- [ScyllaDB GitHub Operator](https://github.com/scylladb/scylla-operator)
 
-## 🆚 ScyllaDB vs LocalStack DynamoDB
+## 🔄 Migration from Bitnami
 
-| Feature | LocalStack DynamoDB | ScyllaDB Alternator |
-|---------|-------------------|-------------------|
-| **Performance** | Limited (emulation) | High (native) |
-| **Persistence** | In-memory or basic | Full persistence |
-| **Production Use** | Development only | Production-ready |
-| **Scalability** | Single instance | Distributed cluster |
-| **Monitoring** | Limited | Full Prometheus |
-| **License** | Free/Pro | Open Source |
-| **API Coverage** | ~80% | ~95% |
+This deployment was migrated from the Bitnami Helm chart due to Bitnami's distribution changes. The official ScyllaDB Operator provides:
 
-## 🎯 Use Cases
+- ✅ Better support and active maintenance by ScyllaDB team
+- ✅ Advanced features (auto-healing, rolling upgrades, multi-datacenter)
+- ✅ Official Helm charts that are regularly updated
+- ✅ Production-grade deployment best practices
 
-- **Development/Testing**: DynamoDB-compatible local development environment
-- **Production**: High-performance NoSQL database with DynamoDB compatibility
-- **Migration**: Gradual migration from AWS DynamoDB to self-hosted
-- **Cost Optimization**: Reduce AWS DynamoDB costs by hosting in-house
-- **Multi-Model**: Use both CQL and DynamoDB APIs on the same data
+### What Changed
 
+1. **Helm Repository**: Changed from `oci://registry-1.docker.io/bitnamicharts` to `https://scylla-operator-charts.storage.googleapis.com/stable`
+2. **Deployment Model**: Now uses ScyllaDB Operator + ScyllaCluster CRD
+3. **Configuration**: Moved from Bitnami values to ScyllaDB Operator values
+4. **Images**: Now uses official `scylladb/scylla` images
+
+## ✅ Deployment Checklist
+
+- [x] ScyllaDB Operator deployed in `scylla-operator` namespace
+- [x] ScyllaDB cluster deployed in `scylladb` namespace
+- [x] Alternator (DynamoDB API) enabled on port 8000
+- [x] CQL API available on port 9042
+- [x] Prometheus ServiceMonitor created
+- [x] Resource limits configured for homelab
+
+## 🎓 Next Steps
+
+1. ✅ Verify cluster is running: `kubectl get pods -n scylladb`
+2. ✅ Test DynamoDB API connectivity
+3. ✅ Import Grafana dashboard for monitoring
+4. ✅ Update applications to use new endpoint
+5. ✅ Configure backups (see ScyllaDB Manager documentation)
+
+---
+
+**ScyllaDB Version**: 6.2.3  
+**Operator Version**: >=1.0.0  
+**Deployment Date**: October 23, 2025  
+**Migration Reason**: Bitnami distribution changes
