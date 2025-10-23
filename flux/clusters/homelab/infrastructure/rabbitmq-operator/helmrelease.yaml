@@ -17,37 +17,14 @@ spec:
   chart:
     spec:
       chart: rabbitmq-cluster-operator
-      version: "4.4.32"
+      version: "4.4.34"
       sourceRef:
         kind: HelmRepository
         name: rabbitmq
         namespace: flux-system
       interval: 5m
   values:
-    # 🐰 RabbitMQ Cluster Operator - KISS Configuration
+    # 🐰 RabbitMQ Cluster Operator - Bitnami Chart (using default images)
     useCertManager: true
-
-    # Allow non-Bitnami images (required for official RabbitMQ operator images)
-    global:
-      security:
-        allowInsecureImages: true
-
-    # Use official RabbitMQ operator images (Bitnami deprecated)
-    clusterOperator:
-      image:
-        registry: docker.io
-        repository: rabbitmqoperator/cluster-operator
-        tag: 2.16.1
-
-    msgTopologyOperator:
-      image:
-        registry: docker.io
-        repository: rabbitmqoperator/messaging-topology-operator
-        tag: 1.17.4
-
-    credentialUpdaterImage:
-      registry: docker.io
-      repository: rabbitmqoperator/default-user-credential-updater
-      tag: 1.0.8
 
 
