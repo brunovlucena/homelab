@@ -113,8 +113,9 @@ metadata:
   name: rabbitmq
   namespace: flux-system
 spec:
+  type: oci
   interval: 1h0m0s
-  url: https://charts.bitnami.com/bitnami
+  url: oci://registry-1.docker.io/bitnamicharts
 ---
 apiVersion: source.toolkit.fluxcd.io/v1beta2
 kind: HelmRepository
@@ -131,8 +132,9 @@ metadata:
   name: redis
   namespace: flux-system
 spec:
+  type: oci
   interval: 1h0m0s
-  url: https://charts.bitnami.com/bitnami
+  url: oci://registry-1.docker.io/bitnamicharts
 ---
 apiVersion: source.toolkit.fluxcd.io/v1beta2
 kind: HelmRepository
@@ -140,5 +142,6 @@ metadata:
   name: postgres
   namespace: flux-system
 spec:
+  type: oci
   interval: 1h0m0s
-  url: https://charts.bitnami.com/bitnami
+  url: oci://registry-1.docker.io/bitnamicharts

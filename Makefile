@@ -1,4 +1,4 @@
-.PHONY: help secret-argocd pf-argocd bootstrap-flux-dev bootstrap-flux-prd flux-status flux-logs init-studio init-homelab up-studio up-homelab destroy-studio destroy-homelab cancel clean logs-dev logs-prd status-dev status-prd setup-env flux-refresh flux-refresh-bruno reconcile rollout flagger-status flagger-logs promote-canary rollback-canary istio-status istio-logs istio-proxy-status linkerd-install linkerd-install-clean linkerd-uninstall linkerd-status linkerd-dashboard linkerd-check fix-loki-nosuchbucket
+.PHONY: help secret-argocd pf-argocd bootstrap-flux-dev bootstrap-flux-prd flux-status flux-logs init-studio init-homelab up-studio up-homelab destroy-studio destroy-homelab cancel clean logs-dev logs-prd status-dev status-prd setup-env flux-refresh force-reconcile flux-refresh-bruno reconcile rollout flagger-status flagger-logs promote-canary rollback-canary istio-status istio-logs istio-proxy-status linkerd-install linkerd-install-clean linkerd-uninstall linkerd-status linkerd-dashboard linkerd-check fix-loki-nosuchbucket
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -49,6 +49,36 @@ flux-refresh: ## Force refresh all Flux HelmRepositories, GitRepositories, and H
 	kubectl annotate helmrelease --all -n flux-system --overwrite reconcile.fluxcd.io/requestedAt="$$(date +%s)"
 	@echo "✅ Flux refresh triggered for all resources"
 
+force-reconcile: ## Force reconcile stuck HelmRelease by suspending and resuming (usage: make force-reconcile <helmrelease-name>)
+	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
+		echo "❌ Error: HelmRelease name is required"; \
+		echo "Usage: make force-reconcile <helmrelease-name>"; \
+		echo "Example: make force-reconcile rabbitmq-operator"; \
+		echo ""; \
+		echo "Available HelmReleases:"; \
+		kubectl get helmrelease -A | awk 'NR>1 {print "  - " $$2 " (namespace: " $$1 ")"}' | sort; \
+		exit 1; \
+	fi
+	@SERVICE="$(filter-out $@,$(MAKECMDGOALS))"; \
+	echo "🔄 Force reconciling HelmRelease: $$SERVICE..."; \
+	NAMESPACE=$$(kubectl get helmrelease -A | grep -w "$$SERVICE" | awk '{print $$1}' | head -n 1); \
+	if [ -z "$$NAMESPACE" ]; then \
+		echo "❌ Error: HelmRelease '$$SERVICE' not found in any namespace"; \
+		echo "Available HelmReleases:"; \
+		kubectl get helmrelease -A | awk 'NR>1 {print "  - " $$2 " (namespace: " $$1 ")"}' | sort; \
+		exit 1; \
+	fi; \
+	echo "📍 Found HelmRelease in namespace: $$NAMESPACE"; \
+	echo "⏸️  Suspending HelmRelease..."; \
+	flux suspend helmrelease $$SERVICE -n $$NAMESPACE; \
+	echo "⏳ Waiting 3 seconds..."; \
+	sleep 3; \
+	echo "▶️  Resuming HelmRelease..."; \
+	flux resume helmrelease $$SERVICE -n $$NAMESPACE; \
+	echo "🔄 Triggering reconciliation..."; \
+	flux reconcile helmrelease $$SERVICE -n $$NAMESPACE; \
+	echo "✅ HelmRelease $$SERVICE force reconciled successfully!"
+
 reconcile-gitrepo: ## Reconcile GitRepository (usage: make reconcile-gitrepo homelab)
 	@if [ -z "$(filter-out $@,$(MAKECMDGOALS))" ]; then \
 		echo "❌ Error: GitRepository name is required"; \
@@ -84,6 +114,8 @@ reconcile: ## Reconcile HelmRelease(s) managed by Flux (usage: make reconcile [s
 		flux reconcile helmrelease prometheus-operator -n prometheus; \
 		echo "📊 Reconciling prometheus-pushgateway..."; \
 		flux reconcile helmrelease prometheus-pushgateway -n prometheus; \
+		echo "🐰 Reconciling rabbitmq-operator..."; \
+		flux reconcile helmrelease rabbitmq-operator -n rabbitmq-operator; \
 		echo "⏱️  Reconciling tempo..."; \
 		flux reconcile helmrelease tempo -n tempo; \
 		echo "✅ All HelmReleases reconciled successfully!"; \
