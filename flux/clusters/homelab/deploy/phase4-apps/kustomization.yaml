@@ -11,6 +11,7 @@ resources:
   - ../../infrastructure/postgres
   - ../../infrastructure/redis
   - ../../infrastructure/homepage
+  - ../../infrastructure/agent-bruno-langchain
   - ../../infrastructure/agent-bruno
   # - ../../infrastructure/lancedb  # Commented out - no official Docker image exists
   # - ../../infrastructure/alerts/apps  # Commented out - only contains LanceDB alerts

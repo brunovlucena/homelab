@@ -23,7 +23,7 @@ app:
   name: knative-lambda
   component: service
   partOf: knative-lambda-platform
-  version: "1.0.0"
+  version: "1.0.0"  # Semantic version - updated via make version-bump
 
 # Namespace configuration
 namespace:
@@ -42,8 +42,8 @@ aws:
 
 # RabbitMQ Configuration
 rabbitmq:
-  clusterName: "rabbitmq-cluster-dev"  # Will be overridden by environment-specific values
-  namespace: "rabbitmq-dev"  # Will be overridden by environment-specific values
+  clusterName: "rabbitmq-cluster"  # Will be overridden by environment-specific values
+  namespace: "rabbitmq"  # Will be overridden by environment-specific values
   connectionSecretName: "rabbitmq-connection"
   # Eventing configuration
   eventing:
@@ -63,9 +63,9 @@ roleName: "knative-lambda-builder" # TODO: Verify if this is default when remove
 
 # Container image configuration
 image:
-  registry: 339954290315.dkr.ecr.us-west-2.amazonaws.com
+  registry: 339954290315.dkr.ecr.us-west-2.amazonaws.com # TODO: USE BRUNOVLUCENA gh
   repository: knative-lambdas/knative-lambda-builder
-  tag: latest
+  tag: "1.0.0"  # Semantic version - updated via make version-bump
   pullPolicy: Always
 
 # Builder service configuration
@@ -452,7 +452,7 @@ sidecar:
   image:
     registry: 339954290315.dkr.ecr.us-west-2.amazonaws.com
     repository: knative-lambdas/knative-lambda-sidecar
-    tag: latest
+    tag: "1.0.0"  # Semantic version - updated via make version-bump
     pullPolicy: Always
   
   # Monitoring configuration
@@ -493,7 +493,7 @@ metricsPusher:
   image:
     registry: 339954290315.dkr.ecr.us-west-2.amazonaws.com
     repository: knative-lambdas/knative-lambda-metrics-pusher
-    tag: latest
+    tag: "1.0.0"  # Semantic version - updated via make version-bump
     pullPolicy: Always
   
   # Resource configuration

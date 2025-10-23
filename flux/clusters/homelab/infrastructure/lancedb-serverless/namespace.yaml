@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lancedb-serverless
+  labels:
+    app: lancedb-serverless
+    app.kubernetes.io/name: lancedb-serverless
+    app.kubernetes.io/component: serverless
+

@@ -20,7 +20,10 @@
 # 🏷️ Project Configuration
 PROJECT_NAME := knative-lambda-new
 SERVICE_NAME := knative-lambda-builder
-VERSION ?= dev
+VERSION ?= $(shell grep '^version:' deploy/Chart.yaml 2>/dev/null | awk '{print $$2}' || echo "0.1.0")
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 BUILD_DIR := ./build
 BIN_DIR := ./bin
 BINARY_NAME := service
@@ -29,7 +32,14 @@ SIDECAR_BINARY := sidecar
 # 🐳 Docker Configuration
 DOCKER_REGISTRY := 339954290315.dkr.ecr.us-west-2.amazonaws.com
 DOCKER_REPO := $(DOCKER_REGISTRY)/knative-lambdas/$(SERVICE_NAME)
-DOCKER_TAG := $(if $(filter prd,$(ENV)),prd,$(if $(filter dev,$(ENV)),dev,$(VERSION)))
+# Image tags based on branch
+ifeq ($(GIT_BRANCH),main)
+	DOCKER_TAG := $(VERSION)
+else ifeq ($(GIT_BRANCH),develop)
+	DOCKER_TAG := $(VERSION)-beta.$(shell date +%s)
+else
+	DOCKER_TAG := $(VERSION)-dev.$(GIT_COMMIT)
+endif
 
 # 🏠 Local Registry Configuration
 LOCAL_REGISTRY := localhost:5001
@@ -39,12 +49,12 @@ LOCAL_TAG := local
 # 🐳 Sidecar Docker Configuration
 SIDECAR_SERVICE_NAME := knative-lambda-sidecar
 SIDECAR_DOCKER_REPO := $(DOCKER_REGISTRY)/knative-lambdas/$(SIDECAR_SERVICE_NAME)
-SIDECAR_DOCKER_TAG := $(if $(filter prd,$(ENV)),prd,$(if $(filter dev,$(ENV)),dev,$(VERSION)))
+SIDECAR_DOCKER_TAG := $(DOCKER_TAG)
 
 # 🐳 Metrics Pusher Docker Configuration
 METRICS_PUSHER_SERVICE_NAME := knative-lambda-metrics-pusher
 METRICS_PUSHER_DOCKER_REPO := $(DOCKER_REGISTRY)/knative-lambdas/$(METRICS_PUSHER_SERVICE_NAME)
-METRICS_PUSHER_DOCKER_TAG := $(if $(filter prd,$(ENV)),prd,$(if $(filter dev,$(ENV)),dev,$(VERSION)))
+METRICS_PUSHER_DOCKER_TAG := $(DOCKER_TAG)
 
 # ☸️ Kubernetes Configuration
 ENV ?= dev
@@ -477,4 +487,51 @@ info: ## ℹ️ Show build information
 	@echo "Service Repo:    $(DOCKER_REPO)"
 	@echo "Service Tag:     $(DOCKER_TAG)"
 	@echo "Sidecar Repo:    $(SIDECAR_DOCKER_REPO)"
-	@echo "Sidecar Tag:     $(SIDECAR_DOCKER_TAG)" 
+	@echo "Sidecar Tag:     $(SIDECAR_DOCKER_TAG)"
+	@echo "Metrics Pusher:  $(METRICS_PUSHER_DOCKER_REPO)"
+	@echo "Metrics Tag:     $(METRICS_PUSHER_DOCKER_TAG)"
+
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  🏷️ VERSIONING TARGETS                                                  │
+# └─────────────────────────────────────────────────────────────────────────┘
+
+.PHONY: version version-info version-bump version-bump-major version-bump-minor version-bump-patch release-notes
+
+version: version-info ## 🏷️ Show current version (alias for version-info)
+
+version-info: ## 🏷️ Show detailed version information
+	@chmod +x scripts/version-manager.sh 2>/dev/null || true
+	@./scripts/version-manager.sh info
+
+version-bump: ## 🏷️ Bump version (usage: make version-bump VERSION=1.0.0)
+	@if [ -z "$(VERSION_NEW)" ]; then \
+		echo "$(COLOR_RED)❌ ERROR: VERSION_NEW is required$(COLOR_RESET)"; \
+		echo "Usage: make version-bump VERSION_NEW=1.0.0"; \
+		exit 1; \
+	fi
+	@chmod +x scripts/version-manager.sh 2>/dev/null || true
+	@./scripts/version-manager.sh bump $(VERSION_NEW)
+	@echo ""
+	@echo "$(COLOR_BOLD)$(COLOR_GREEN)✅ Version bumped to $(VERSION_NEW) successfully!$(COLOR_RESET)"
+	@echo ""
+	@echo "Next steps:"
+	@echo "  1. Review changes: git diff"
+	@echo "  2. Commit changes: git add . && git commit -m 'chore: bump version to $(VERSION_NEW)'"
+	@echo "  3. Create tag: git tag -a knative-lambda-v$(VERSION_NEW) -m 'Release $(VERSION_NEW)'"
+	@echo "  4. Push: git push origin $$(git rev-parse --abbrev-ref HEAD) --tags"
+
+version-bump-major: ## 🏷️ Auto-bump major version (1.0.0 → 2.0.0)
+	@chmod +x scripts/version-manager.sh 2>/dev/null || true
+	@./scripts/version-manager.sh bump-major
+
+version-bump-minor: ## 🏷️ Auto-bump minor version (1.0.0 → 1.1.0)
+	@chmod +x scripts/version-manager.sh 2>/dev/null || true
+	@./scripts/version-manager.sh bump-minor
+
+version-bump-patch: ## 🏷️ Auto-bump patch version (1.0.0 → 1.0.1)
+	@chmod +x scripts/version-manager.sh 2>/dev/null || true
+	@./scripts/version-manager.sh bump-patch
+
+release-notes: ## 🏷️ Generate release notes from git commits
+	@chmod +x scripts/version-manager.sh 2>/dev/null || true
+	@./scripts/version-manager.sh release-notes 

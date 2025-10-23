@@ -1,0 +1,19 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: lancedb-serverless
+  namespace: lancedb-serverless
+  labels:
+    app: lancedb-serverless
+    app.kubernetes.io/name: lancedb-serverless
+spec:
+  selector:
+    matchLabels:
+      serving.knative.dev/service: lancedb-serverless
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
