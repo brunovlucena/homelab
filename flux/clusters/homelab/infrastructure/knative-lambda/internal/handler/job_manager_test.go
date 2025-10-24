@@ -174,7 +174,7 @@ func testCreateKanikoArgsEmptyValuesDetection(t *testing.T) {
 		AWSRegion:             "us-west-2",
 		AWSAccountID:          "339954290315",
 		ECRRegistry:           "339954290315.dkr.ecr.us-west-2.amazonaws.com",
-		ECRRepositoryName:     "knative-lambdas",
+		ECRRepositoryName:     "knative-lambda",
 		S3SourceBucket:        "test-source-bucket",
 		S3TempBucket:          "test-temp-bucket",
 		RegistryMirror:        "", // 🔥 EMPTY VALUE - This causes the REAL error!
@@ -244,7 +244,7 @@ func testCreateKanikoArgsEnvironmentVariableSimulation(t *testing.T) {
 		AWSRegion:             "us-west-2",
 		AWSAccountID:          "339954290315",
 		ECRRegistry:           "339954290315.dkr.ecr.us-west-2.amazonaws.com",
-		ECRRepositoryName:     "knative-lambdas",
+		ECRRepositoryName:     "knative-lambda",
 		S3SourceBucket:        "test-source-bucket",
 		S3TempBucket:          "test-temp-bucket",
 		RegistryMirror:        envVars["REGISTRY_MIRROR"],
@@ -386,7 +386,7 @@ func testCreateKanikoContainerEnvironmentVariablesMissing(t *testing.T) {
 		AWSRegion:             "us-west-2",
 		AWSAccountID:          "339954290315",
 		ECRRegistry:           "339954290315.dkr.ecr.us-west-2.amazonaws.com",
-		ECRRepositoryName:     "knative-lambdas",
+		ECRRepositoryName:     "knative-lambda",
 		S3SourceBucket:        "test-source-bucket",
 		S3TempBucket:          "test-temp-bucket",
 		RegistryMirror:        "", // 🔥 MISSING - This is the REAL problem!
@@ -900,7 +900,7 @@ func testGenerateImageURISuccess(t *testing.T) {
 		t.Fatal("❌ Generated image URI is empty")
 	}
 
-	expectedPrefix := "339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambdas:"
+	expectedPrefix := "339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambda:"
 	if len(imageURI) <= len(expectedPrefix) {
 		t.Fatalf("❌ Image URI too short: %s", imageURI)
 	}
@@ -988,7 +988,7 @@ func createTestAWSConfig() *config.AWSConfig {
 		AWSRegion:             "us-west-2",
 		AWSAccountID:          "339954290315",
 		ECRRegistry:           "339954290315.dkr.ecr.us-west-2.amazonaws.com",
-		ECRRepositoryName:     "knative-lambdas",
+		ECRRepositoryName:     "knative-lambda",
 		S3SourceBucket:        "test-source-bucket",
 		S3TempBucket:          "test-temp-bucket",
 		RegistryMirror:        "docker.io", // 🔧 Set to docker.io

@@ -265,3 +265,31 @@ func (m *MinIOStorage) GetBucketURL(bucket, key string) string {
 	// but Kaniko needs to be configured with custom endpoint via environment variables
 	return fmt.Sprintf("s3://%s/%s", bucket, key)
 }
+
+// 💚 HealthCheck - "Perform health check on MinIO backend"
+func (m *MinIOStorage) HealthCheck(ctx context.Context) error {
+	ctx, span := m.obs.StartSpanWithAttributes(ctx, "minio_health_check", map[string]string{
+		"storage.provider": string(ProviderMinIO),
+		"minio.endpoint":   m.endpoint,
+		"minio.use_ssl":    fmt.Sprintf("%t", m.useSSL),
+	})
+	defer span.End()
+
+	// Use ListBuckets as a health check - it's a lightweight operation
+	// that validates credentials and connectivity
+	_, err := m.client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		m.obs.Error(ctx, err, "MinIO health check failed",
+			"provider", ProviderMinIO,
+			"endpoint", m.endpoint,
+			"use_ssl", m.useSSL)
+		return apperrors.WrapWithContext(err, fmt.Sprintf("MinIO health check failed: endpoint=%s, use_ssl=%t", m.endpoint, m.useSSL))
+	}
+
+	m.obs.Info(ctx, "MinIO health check passed",
+		"provider", ProviderMinIO,
+		"endpoint", m.endpoint,
+		"use_ssl", m.useSSL)
+
+	return nil
+}

@@ -208,7 +208,7 @@ func (j *JobManagerImpl) CreateJob(ctx context.Context, jobName string, buildReq
 	// Ensure ECR repository exists before creating the job
 	if j.awsConfig != nil {
 		j.obs.Info(ctx, "ECR repository should be created manually or by another process",
-			"repository_name", "knative-lambdas",
+			"repository_name", "knative-lambda",
 			"job_name", jobName,
 			"third_party_id", buildRequest.ThirdPartyID,
 			"parser_id", buildRequest.ParserID,
@@ -719,5 +719,5 @@ func (j *JobManagerImpl) generateImageURI(thirdPartyID, parserID, contentHash st
 
 	// Always use content hash for unique tagging
 	imageTag := fmt.Sprintf("%s-%s-%s", thirdPartyID, parserID, contentHash[:8])
-	return fmt.Sprintf("%s/knative-lambdas:%s", j.awsConfig.ECRRegistry, imageTag)
+	return fmt.Sprintf("%s/knative-lambda:%s", j.awsConfig.ECRRegistry, imageTag)
 }

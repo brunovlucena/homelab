@@ -258,7 +258,7 @@ const (
 	MetricsPusherBuilderMetricsPortDefault = "9092"
 	MetricsPusherEnabledDefault            = true
 	MetricsPusherImageRegistryDefault      = "ghcr.io/brunovlucena"
-	MetricsPusherImageRepositoryDefault    = "knative-lambdas/knative-lambda-metrics-pusher"
+	MetricsPusherImageRepositoryDefault    = "knative-lambda-knative-lambda-metrics-pusher"
 	MetricsPusherImageTagDefault           = "latest"
 	MetricsPusherImagePullPolicyDefault    = "Always"
 	MetricsPusherRemoteWriteURLDefault     = "http://prometheus-kube-prometheus-prometheus.prometheus:9090/api/v1/write"
@@ -508,7 +508,7 @@ const (
 	MinIORegionDefault          = "us-east-1"                              // values.yaml minioRegion: "us-east-1" (MinIO default)
 	MinIOSourceBucketDefault    = "knative-lambda-source"                  // values.yaml minioSourceBucket
 	MinIOTempBucketDefault      = "knative-lambda-tmp"                     // values.yaml minioTempBucket
-	AWSECRRepositoryNameDefault = "knative-lambdas"                        // values.yaml ecrRepositoryName: "knative-lambdas"
+	AWSECRRepositoryNameDefault = "knative-lambda"                         // values.yaml ecrRepositoryName: "knative-lambda"
 	PodIdentityRoleDefault      = "knative-lambda-builder"                 // values.yaml podIdentityRole: "knative-lambda-builder"
 	KanikoImageDefault          = "gcr.io/kaniko-project/executor:v1.19.2" // values.yaml kanikoImage: "gcr.io/kaniko-project/executor:v1.19.2"
 )

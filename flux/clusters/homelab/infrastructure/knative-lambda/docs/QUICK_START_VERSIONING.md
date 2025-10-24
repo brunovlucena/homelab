@@ -481,7 +481,7 @@ aws ecr get-login-password --region us-west-2 | \
 
 # Verify image exists
 aws ecr describe-images \
-  --repository-name knative-lambdas/knative-lambda-builder \
+  --repository-name knative-lambda-knative-lambda-builder \
   --region us-west-2
 ```
 

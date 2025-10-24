@@ -231,3 +231,31 @@ func (s *S3Storage) GetEndpoint() string {
 func (s *S3Storage) GetBucketURL(bucket, key string) string {
 	return fmt.Sprintf("s3://%s/%s", bucket, key)
 }
+
+// 💚 HealthCheck - "Perform health check on S3 backend"
+func (s *S3Storage) HealthCheck(ctx context.Context) error {
+	ctx, span := s.obs.StartSpanWithAttributes(ctx, "s3_health_check", map[string]string{
+		"storage.provider": string(ProviderS3),
+		"s3.endpoint":      s.endpoint,
+		"s3.region":        s.region,
+	})
+	defer span.End()
+
+	// Use ListBuckets as a health check - it's a lightweight operation
+	// that validates credentials and connectivity
+	_, err := s.client.ListBuckets(ctx, &s3.ListBucketsInput{})
+	if err != nil {
+		s.obs.Error(ctx, err, "S3 health check failed",
+			"provider", ProviderS3,
+			"endpoint", s.endpoint,
+			"region", s.region)
+		return apperrors.WrapWithContext(err, fmt.Sprintf("endpoint=%s, region=%s", s.endpoint, s.region))
+	}
+
+	s.obs.Info(ctx, "S3 health check passed",
+		"provider", ProviderS3,
+		"endpoint", s.endpoint,
+		"region", s.region)
+
+	return nil
+}

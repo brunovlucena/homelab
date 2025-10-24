@@ -833,3 +833,8 @@ func (b *BuildContextManagerImpl) createEnvironmentFile(environment map[string]s
 
 	return envContent.String()
 }
+
+// 💾 GetStorage - "Get underlying storage client for health checks"
+func (b *BuildContextManagerImpl) GetStorage() storage.ObjectStorage {
+	return b.storage
+}

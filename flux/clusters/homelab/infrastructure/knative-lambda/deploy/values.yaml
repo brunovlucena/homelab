@@ -64,7 +64,7 @@ roleName: "knative-lambda-builder" # TODO: Verify if this is default when remove
 # Container image configuration
 image:
   registry: 339954290315.dkr.ecr.us-west-2.amazonaws.com # TODO: USE BRUNOVLUCENA gh
-  repository: knative-lambdas/knative-lambda-builder
+  repository: knative-lambda-builder
   tag: "1.0.0"  # Semantic version - updated via make version-bump
   pullPolicy: Always
 
@@ -251,7 +251,7 @@ env:
   awsRegion: "us-west-2"
   awsAccountId: "339954290315"
   ecrBaseRegistry: "339954290315.dkr.ecr.us-west-2.amazonaws.com"
-  ecrRepositoryName: "knative-lambdas"
+  ecrRepositoryName: "knative-lambda"
   s3SourceBucket: "notifi-uw2-dev-fusion-modules"
   s3TmpBucket: "knative-lambda-dev-context-tmp"
   
@@ -375,7 +375,7 @@ env:
   kanikoImagePullSecret: "ecr-secret"
   kanikoBuildContextSizeLimit: "2Gi"
   kanikoBuildContextTimeout: "10m"
-  kanikoDestination: "339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambdas"
+  kanikoDestination: "339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambda"
   kanikoRunAsUser: "1000"
   kanikoRunAsGroup: "1000"
   kanikoSecurityContextRunAsNonRoot: "true"
@@ -465,7 +465,7 @@ sidecar:
   # Container image configuration
   image:
     registry: 339954290315.dkr.ecr.us-west-2.amazonaws.com
-    repository: knative-lambdas/knative-lambda-sidecar
+    repository: knative-lambda-knative-lambda-sidecar
     tag: "1.0.0"  # Semantic version - updated via make version-bump
     pullPolicy: Always
   
@@ -506,7 +506,7 @@ metricsPusher:
   # Container image configuration
   image:
     registry: 339954290315.dkr.ecr.us-west-2.amazonaws.com
-    repository: knative-lambdas/knative-lambda-metrics-pusher
+    repository: knative-lambda-knative-lambda-metrics-pusher
     tag: "1.0.0"  # Semantic version - updated via make version-bump
     pullPolicy: Always
   

@@ -62,6 +62,19 @@ type ObjectStorage interface {
 
 	// 🪣 GetBucketURL returns the full bucket URL (for Kaniko context)
 	GetBucketURL(bucket, key string) string
+
+	// 💚 HealthCheck performs a health check on the storage backend
+	HealthCheck(ctx context.Context) error
+}
+
+// 🏥 HealthStatus - "Health check status response"
+type HealthStatus struct {
+	Healthy  bool              `json:"healthy"`
+	Provider StorageProvider   `json:"provider"`
+	Endpoint string            `json:"endpoint"`
+	Latency  int64             `json:"latency_ms"` // Health check latency in milliseconds
+	Error    string            `json:"error,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // 🏭 StorageFactory - "Factory for creating storage clients"

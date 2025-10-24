@@ -31,7 +31,7 @@ SIDECAR_BINARY := sidecar
 
 # 🐳 Docker Configuration
 DOCKER_REGISTRY := ghcr.io/brunovlucena
-DOCKER_REPO := $(DOCKER_REGISTRY)/knative-lambdas/$(SERVICE_NAME)
+DOCKER_REPO := $(DOCKER_REGISTRY)/knative-lambda-$(SERVICE_NAME)
 # Image tags based on branch
 ifeq ($(GIT_BRANCH),main)
 	DOCKER_TAG := $(VERSION)
@@ -42,18 +42,18 @@ else
 endif
 
 # 🏠 Local Registry Configuration
-LOCAL_REGISTRY := localhost:5001
-LOCAL_REPO := $(LOCAL_REGISTRY)/knative-lambda/builder
+LOCAL_REGISTRY := ghcr.io/brunovlucena
+LOCAL_REPO := $(LOCAL_REGISTRY)/knative-lambda-builder
 LOCAL_TAG := local
 
 # 🐳 Sidecar Docker Configuration
 SIDECAR_SERVICE_NAME := knative-lambda-sidecar
-SIDECAR_DOCKER_REPO := $(DOCKER_REGISTRY)/knative-lambdas/$(SIDECAR_SERVICE_NAME)
+SIDECAR_DOCKER_REPO := $(DOCKER_REGISTRY)/knative-lambda-$(SIDECAR_SERVICE_NAME)
 SIDECAR_DOCKER_TAG := $(DOCKER_TAG)
 
 # 🐳 Metrics Pusher Docker Configuration
 METRICS_PUSHER_SERVICE_NAME := knative-lambda-metrics-pusher
-METRICS_PUSHER_DOCKER_REPO := $(DOCKER_REGISTRY)/knative-lambdas/$(METRICS_PUSHER_SERVICE_NAME)
+METRICS_PUSHER_DOCKER_REPO := $(DOCKER_REGISTRY)/knative-lambda-$(METRICS_PUSHER_SERVICE_NAME)
 METRICS_PUSHER_DOCKER_TAG := $(DOCKER_TAG)
 
 # ☸️ Kubernetes Configuration
@@ -220,10 +220,6 @@ build-and-push-all-prd: ## 🚀 Build and push all images for prd environment
 	$(call print_status,🚀 Building and pushing all images for prd environment...)
 	@$(MAKE) ENV=prd build-and-push-all
 
-build-and-push-all-local: ## 🚀 Build and push all images for local environment
-	$(call print_status,🚀 Building and pushing all images for local environment...)
-	@$(MAKE) ENV=local build-and-push-all
-
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  🔍 VALIDATION FUNCTIONS                                                │
 # └─────────────────────────────────────────────────────────────────────────┘
@@ -258,9 +254,62 @@ docker-push-metrics-pusher: docker-build-metrics-pusher ## 🐳 Push metrics pus
 
 metrics-pusher: docker-build-metrics-pusher docker-push-metrics-pusher ## 🐳 Build and push metrics pusher (convenience target)
 
+test-github-token: ## 🔑 Test GitHub tokens from .zshrc
+	@echo "$(COLOR_BOLD)$(COLOR_BLUE)🔑 Testing GitHub Tokens$(COLOR_RESET)"
+	@echo ""
+	@echo "$(COLOR_BOLD)Testing GITHUB_TOKEN...$(COLOR_RESET)"
+	@if [ -n "$$GITHUB_TOKEN" ]; then \
+		echo "$$GITHUB_TOKEN" | docker login ghcr.io -u brunovlucena --password-stdin && \
+		echo "$(COLOR_GREEN)✅ GITHUB_TOKEN works!$(COLOR_RESET)" || \
+		echo "$(COLOR_RED)❌ GITHUB_TOKEN failed$(COLOR_RESET)"; \
+	else \
+		echo "$(COLOR_YELLOW)⚠️ GITHUB_TOKEN not set$(COLOR_RESET)"; \
+	fi
+	@echo ""
+	@echo "$(COLOR_BOLD)Testing GITHUB_TOKEN_BRUNO...$(COLOR_RESET)"
+	@if [ -n "$$GITHUB_TOKEN_BRUNO" ]; then \
+		echo "$$GITHUB_TOKEN_BRUNO" | docker login ghcr.io -u brunovlucena --password-stdin && \
+		echo "$(COLOR_GREEN)✅ GITHUB_TOKEN_BRUNO works!$(COLOR_RESET)" && \
+		echo "$(COLOR_YELLOW)💡 Consider: export GITHUB_TOKEN=\$$GITHUB_TOKEN_BRUNO$(COLOR_RESET)" || \
+		echo "$(COLOR_RED)❌ GITHUB_TOKEN_BRUNO failed$(COLOR_RESET)"; \
+	else \
+		echo "$(COLOR_YELLOW)⚠️ GITHUB_TOKEN_BRUNO not set$(COLOR_RESET)"; \
+	fi
+	@echo ""
+	@echo "$(COLOR_BOLD)Testing GITHUB_PERSONAL_ACCESS_TOKEN...$(COLOR_RESET)"
+	@if [ -n "$$GITHUB_PERSONAL_ACCESS_TOKEN" ]; then \
+		echo "$$GITHUB_PERSONAL_ACCESS_TOKEN" | docker login ghcr.io -u brunovlucena --password-stdin && \
+		echo "$(COLOR_GREEN)✅ GITHUB_PERSONAL_ACCESS_TOKEN works!$(COLOR_RESET)" && \
+		echo "$(COLOR_YELLOW)💡 Consider: export GITHUB_TOKEN=\$$GITHUB_PERSONAL_ACCESS_TOKEN$(COLOR_RESET)" || \
+		echo "$(COLOR_RED)❌ GITHUB_PERSONAL_ACCESS_TOKEN failed$(COLOR_RESET)"; \
+	else \
+		echo "$(COLOR_YELLOW)⚠️ GITHUB_PERSONAL_ACCESS_TOKEN not set$(COLOR_RESET)"; \
+	fi
+	@echo ""
+	@echo "$(COLOR_YELLOW)💡 To use a working token, run:$(COLOR_RESET)"
+	@echo "  export GITHUB_TOKEN=<working_token_value>"
+
 docker-login: ## 🔐 Login to GitHub Container Registry
 	$(call print_status,🔐 Logging into GitHub Container Registry...)
-	@echo "$$GITHUB_TOKEN" | docker login ghcr.io -u brunovlucena --password-stdin
+	@if [ -z "$$GITHUB_TOKEN" ]; then \
+		echo "$(COLOR_RED)❌ ERROR: GITHUB_TOKEN is not set$(COLOR_RESET)"; \
+		echo ""; \
+		echo "$(COLOR_YELLOW)Please run 'make test-github-token' to test your tokens$(COLOR_RESET)"; \
+		echo ""; \
+		echo "$(COLOR_YELLOW)Or set your GitHub token:$(COLOR_RESET)"; \
+		echo "  export GITHUB_TOKEN=ghp_your_token_here"; \
+		echo ""; \
+		echo "$(COLOR_YELLOW)Generate a new token at:$(COLOR_RESET)"; \
+		echo "  https://github.com/settings/tokens/new"; \
+		echo "  Required scopes: write:packages, read:packages"; \
+		exit 1; \
+	fi
+	@echo "$$GITHUB_TOKEN" | docker login ghcr.io -u brunovlucena --password-stdin || \
+		(echo "$(COLOR_RED)❌ Docker login failed. Token may be expired or lack permissions.$(COLOR_RESET)" && \
+		 echo "$(COLOR_YELLOW)Run 'make test-github-token' to test all available tokens$(COLOR_RESET)" && \
+		 echo "$(COLOR_YELLOW)Or generate a new token with write:packages scope at:$(COLOR_RESET)" && \
+		 echo "  https://github.com/settings/tokens/new" && \
+		 exit 1)
 
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  ☸️ KUBERNETES TARGETS                                                  │
@@ -465,7 +514,7 @@ test: lint test-unit ## 🧪 Run all tests (linting + unit tests)
 
 test-unit: ## 🧪 Run Go unit tests
 	$(call print_status,🧪 Running Go unit tests...)
-	@go test -race -timeout=30s ./internal/aws/... ./internal/config/... ./internal/constants/... ./internal/errors/... ./internal/handler/... ./internal/observability/... ./internal/resilience/... ./internal/security/... ./internal/storage/... ./internal/templates/...
+	@go test -race -timeout=30s ./internal/aws/... ./internal/config/... ./internal/constants/... ./internal/errors/... ./internal/handler/... ./internal/observability/... ./internal/resilience/... ./internal/security/... ./internal/storage/... ./internal/templates/... 2>&1 | grep -v "LC_DYSYMTAB" | grep -v "^ld: warning" | grep -v "^# knative-lambda-new.*\.test$$"
 	$(call print_success,Unit tests completed)
 
 test-k6: ## 🚀 Run k6 load tests

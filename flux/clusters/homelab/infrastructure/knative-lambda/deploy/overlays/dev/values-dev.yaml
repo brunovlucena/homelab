@@ -99,7 +99,7 @@ env:
   kanikoInsecureRegistry: "false"      # 🔒 Insecure registry
   kanikoBuildContextSizeLimit: "2Gi"   # 📦 Build context size limit
   kanikoBuildContextTimeout: "10m"     # ⏰ Build context timeout
-  kanikoDestination: "339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambdas"  # 🏗️  Build destination
+  kanikoDestination: "339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambda"  # 🏗️  Build destination
   kanikoRunAsUser: "1000"              # 👤 Kaniko run as user
   kanikoRunAsGroup: "1000"             # 👤 Kaniko run as group
   kanikoSecurityContextRunAsNonRoot: "true"  # 🔒 Run as non-root

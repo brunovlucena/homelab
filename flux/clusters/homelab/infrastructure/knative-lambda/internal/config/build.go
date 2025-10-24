@@ -18,7 +18,7 @@ import (
 // 🏗️ BuildConfig - "Build process configuration"
 type BuildConfig struct {
 	// Kaniko Configuration
-	KanikoImage  string `envconfig:"KANIKO_IMAGE" default:"339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambdas/kaniko-executor:v1.24.0" validate:"required"`
+	KanikoImage  string `envconfig:"KANIKO_IMAGE" default:"339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambda-kaniko-executor:v1.24.0" validate:"required"`
 	SidecarImage string `envconfig:"SIDECAR_IMAGE" validate:"required"`
 
 	// Timeout Configuration
