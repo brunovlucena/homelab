@@ -19,7 +19,7 @@ type MetricsPusherConfig struct {
 
 	// Image configuration
 	ImageRegistry   string `envconfig:"METRICS_PUSHER_IMAGE_REGISTRY" default:"339954290315.dkr.ecr.us-west-2.amazonaws.com"`
-	ImageRepository string `envconfig:"METRICS_PUSHER_IMAGE_REPOSITORY" default:"knative-lambdas/knative-lambda-metrics-pusher"`
+	ImageRepository string `envconfig:"METRICS_PUSHER_IMAGE_REPOSITORY" default:"knative-lambda-knative-lambda-metrics-pusher"`
 	ImageTag        string `envconfig:"METRICS_PUSHER_IMAGE_TAG" default:"latest"`
 	ImagePullPolicy string `envconfig:"METRICS_PUSHER_IMAGE_PULL_POLICY" default:"Always"`
 

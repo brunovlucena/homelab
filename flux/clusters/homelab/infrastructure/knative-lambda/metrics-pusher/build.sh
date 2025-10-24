@@ -6,7 +6,7 @@ set -e
 
 # Configuration
 REGISTRY="339954290315.dkr.ecr.us-west-2.amazonaws.com"
-REPOSITORY="knative-lambdas/knative-lambda-metrics-pusher"
+REPOSITORY="knative-lambda-metrics-pusher"
 TAG="${1:-latest}"
 IMAGE="${REGISTRY}/${REPOSITORY}:${TAG}"
 

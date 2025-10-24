@@ -35,6 +35,7 @@ import (
 
 	"knative-lambda-new/internal/config"
 	"knative-lambda-new/internal/observability"
+	"knative-lambda-new/internal/storage"
 	"knative-lambda-new/pkg/builds"
 )
 
@@ -246,6 +247,8 @@ type BuildContextValidator interface {
 type BuildContextManager interface {
 	BuildContextCreator
 	BuildContextValidator
+	// GetStorage returns the underlying storage client for health checks
+	GetStorage() storage.ObjectStorage
 }
 
 // EventHandler handles the main event processing logic

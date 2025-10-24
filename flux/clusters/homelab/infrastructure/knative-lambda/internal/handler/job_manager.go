@@ -43,6 +43,7 @@ type JobManagerImpl struct {
 	config          *config.KubernetesConfig
 	buildConfig     *config.BuildConfig
 	awsConfig       *config.AWSConfig
+	storageConfig   *config.StorageConfig
 	rateLimitConfig *config.RateLimitingConfig
 	obs             *observability.Observability
 	// 🛡️ Rate Limiting Protection
@@ -55,6 +56,7 @@ type JobManagerConfig struct {
 	K8sConfig       *config.KubernetesConfig
 	BuildConfig     *config.BuildConfig
 	AWSConfig       *config.AWSConfig
+	StorageConfig   *config.StorageConfig
 	RateLimitConfig *config.RateLimitingConfig
 	Observability   *observability.Observability
 	RateLimiter     *resilience.MultiLevelRateLimiter
@@ -83,6 +85,7 @@ func NewJobManager(config JobManagerConfig) (JobManager, error) {
 		config:          config.K8sConfig,
 		buildConfig:     config.BuildConfig,
 		awsConfig:       config.AWSConfig,
+		storageConfig:   config.StorageConfig,
 		rateLimitConfig: config.RateLimitConfig,
 		obs:             config.Observability,
 		rateLimiter:     config.RateLimiter,
@@ -205,7 +208,7 @@ func (j *JobManagerImpl) CreateJob(ctx context.Context, jobName string, buildReq
 	// Ensure ECR repository exists before creating the job
 	if j.awsConfig != nil {
 		j.obs.Info(ctx, "ECR repository should be created manually or by another process",
-			"repository_name", "knative-lambdas",
+			"repository_name", "knative-lambda",
 			"job_name", jobName,
 			"third_party_id", buildRequest.ThirdPartyID,
 			"parser_id", buildRequest.ParserID,
@@ -578,36 +581,53 @@ func (j *JobManagerImpl) createContainers(_ context.Context, jobName string, bui
 
 // createKanikoContainer creates the kaniko container specification
 func (j *JobManagerImpl) createKanikoContainer(buildRequest *builds.BuildRequest, destinationImageURI string, resourceRequirements corev1.ResourceRequirements) corev1.Container {
+	baseEnv := []corev1.EnvVar{
+		{Name: "AWS_REGION", Value: j.awsConfig.AWSRegion},
+		// Registry Configuration
+		{Name: "REGISTRY_MIRROR", Value: j.awsConfig.RegistryMirror},
+		{Name: "SKIP_TLS_VERIFY_REGISTRY", Value: j.awsConfig.SkipTLSVerifyRegistry},
+		// Enhanced network configuration for npm install reliability
+		{Name: "NODE_OPTIONS", Value: "--max-old-space-size=4096"},
+		{Name: "npm_config_registry", Value: "https://registry.npmjs.org/"},
+		{Name: "npm_config_timeout", Value: constants.NpmConfigTimeoutDefault},
+		{Name: "npm_config_fetch_retries", Value: constants.NpmConfigFetchRetriesDefault},
+		{Name: "npm_config_fetch_retry_mintimeout", Value: constants.NpmConfigFetchRetryMinTimeoutDefault},
+		{Name: "npm_config_fetch_retry_maxtimeout", Value: constants.NpmConfigFetchRetryMaxTimeoutDefault},
+		{Name: "npm_config_fetch_retry_factor", Value: constants.NpmConfigFetchRetryFactorDefault},
+		{Name: "npm_config_cache", Value: "/tmp/.npm"},
+		{Name: "npm_config_prefer_offline", Value: "false"},
+		{Name: "npm_config_audit", Value: "false"},
+		{Name: "npm_config_fund", Value: "false"},
+		{Name: "npm_config_update_notifier", Value: "false"},
+		{Name: "npm_config_loglevel", Value: "warn"},
+		{Name: "npm_config_maxsockets", Value: constants.NpmConfigMaxSocketsDefault},
+		{Name: "npm_config_strict_ssl", Value: "true"},
+		{Name: "npm_config_user_agent", Value: "npm/kaniko-builder"},
+		// Clear potentially problematic SSL settings
+		{Name: "npm_config_ca", Value: ""},
+		{Name: "npm_config_cafile", Value: ""},
+	}
+
+	// 🏠 Add MinIO-specific environment variables if MinIO is configured
+	if j.storageConfig.IsMinIO() {
+		minioScheme := "http"
+		if j.storageConfig.MinIO.UseSSL {
+			minioScheme = "https"
+		}
+		baseEnv = append(baseEnv, []corev1.EnvVar{
+			{Name: "AWS_ACCESS_KEY_ID", Value: j.storageConfig.MinIO.AccessKey},
+			{Name: "AWS_SECRET_ACCESS_KEY", Value: j.storageConfig.MinIO.SecretKey},
+			{Name: "S3_ENDPOINT", Value: fmt.Sprintf("%s://%s", minioScheme, j.storageConfig.MinIO.Endpoint)},
+			{Name: "S3_FORCE_PATH_STYLE", Value: "true"},  // MinIO requires path-style addressing
+			{Name: "AWS_SDK_LOAD_CONFIG", Value: "false"}, // Disable AWS config loading for MinIO
+		}...)
+	}
+
 	return corev1.Container{
-		Name:  "kaniko",
-		Image: j.buildConfig.KanikoImage,
-		Args:  j.createKanikoArgs(buildRequest, destinationImageURI),
-		Env: []corev1.EnvVar{
-			{Name: "AWS_REGION", Value: j.awsConfig.AWSRegion},
-			// Registry Configuration
-			{Name: "REGISTRY_MIRROR", Value: j.awsConfig.RegistryMirror},
-			{Name: "SKIP_TLS_VERIFY_REGISTRY", Value: j.awsConfig.SkipTLSVerifyRegistry},
-			// Enhanced network configuration for npm install reliability
-			{Name: "NODE_OPTIONS", Value: "--max-old-space-size=4096"},
-			{Name: "npm_config_registry", Value: "https://registry.npmjs.org/"},
-			{Name: "npm_config_timeout", Value: constants.NpmConfigTimeoutDefault},
-			{Name: "npm_config_fetch_retries", Value: constants.NpmConfigFetchRetriesDefault},
-			{Name: "npm_config_fetch_retry_mintimeout", Value: constants.NpmConfigFetchRetryMinTimeoutDefault},
-			{Name: "npm_config_fetch_retry_maxtimeout", Value: constants.NpmConfigFetchRetryMaxTimeoutDefault},
-			{Name: "npm_config_fetch_retry_factor", Value: constants.NpmConfigFetchRetryFactorDefault},
-			{Name: "npm_config_cache", Value: "/tmp/.npm"},
-			{Name: "npm_config_prefer_offline", Value: "false"},
-			{Name: "npm_config_audit", Value: "false"},
-			{Name: "npm_config_fund", Value: "false"},
-			{Name: "npm_config_update_notifier", Value: "false"},
-			{Name: "npm_config_loglevel", Value: "warn"},
-			{Name: "npm_config_maxsockets", Value: constants.NpmConfigMaxSocketsDefault},
-			{Name: "npm_config_strict_ssl", Value: "true"},
-			{Name: "npm_config_user_agent", Value: "npm/kaniko-builder"},
-			// Clear potentially problematic SSL settings
-			{Name: "npm_config_ca", Value: ""},
-			{Name: "npm_config_cafile", Value: ""},
-		},
+		Name:      "kaniko",
+		Image:     j.buildConfig.KanikoImage,
+		Args:      j.createKanikoArgs(buildRequest, destinationImageURI),
+		Env:       baseEnv,
 		Resources: resourceRequirements,
 	}
 }
@@ -617,8 +637,11 @@ func (j *JobManagerImpl) createKanikoArgs(buildRequest *builds.BuildRequest, des
 	// Generate build context key using the same pattern as BuildContextManager
 	buildContextKey := fmt.Sprintf("build-context/%s/context.tar.gz", buildRequest.ParserID)
 
+	// Get temp bucket from storage configuration (supports both S3 and MinIO)
+	tempBucket := j.storageConfig.GetTempBucket()
+
 	return []string{
-		fmt.Sprintf("--context=s3://%s/%s", j.awsConfig.S3TempBucket, buildContextKey),
+		fmt.Sprintf("--context=s3://%s/%s", tempBucket, buildContextKey),
 		fmt.Sprintf("--destination=%s", destinationImageURI),
 		fmt.Sprintf("--dockerfile=%s", constants.DefaultDockerfilePath),
 		fmt.Sprintf("--registry-mirror=%s", j.awsConfig.RegistryMirror),
@@ -696,5 +719,5 @@ func (j *JobManagerImpl) generateImageURI(thirdPartyID, parserID, contentHash st
 
 	// Always use content hash for unique tagging
 	imageTag := fmt.Sprintf("%s-%s-%s", thirdPartyID, parserID, contentHash[:8])
-	return fmt.Sprintf("%s/knative-lambdas:%s", j.awsConfig.ECRRegistry, imageTag)
+	return fmt.Sprintf("%s/knative-lambda:%s", j.awsConfig.ECRRegistry, imageTag)
 }

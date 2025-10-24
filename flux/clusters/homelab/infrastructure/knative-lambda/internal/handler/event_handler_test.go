@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"knative-lambda-new/internal/errors"
+	testhelpers "knative-lambda-new/internal/testing"
 	"knative-lambda-new/pkg/builds"
 )
 
@@ -34,8 +35,13 @@ func TestParseBuildRequest_ValidData(t *testing.T) {
 	event.SetTime(time.Now())
 	event.SetData(cloudevents.ApplicationJSON, eventData)
 
-	// Create a mock handler (you'll need to implement this based on your actual handler structure)
-	handler := &EventHandlerImpl{} // This would need proper initialization in a real test
+	// Create a properly initialized handler with observability and config
+	obs := testhelpers.CreateTestObservability(t)
+	cfg := testhelpers.CreateTestConfig(t)
+	handler := &EventHandlerImpl{
+		obs:    obs,
+		config: cfg,
+	}
 
 	// Test the parsing
 	buildRequest, err := handler.ParseBuildRequest(context.Background(), &event)
@@ -66,7 +72,13 @@ func TestParseBuildRequest_MissingRequiredFields(t *testing.T) {
 	event.SetTime(time.Now())
 	event.SetData(cloudevents.ApplicationJSON, eventData)
 
-	handler := &EventHandlerImpl{}
+	// Create a properly initialized handler with observability and config
+	obs := testhelpers.CreateTestObservability(t)
+	cfg := testhelpers.CreateTestConfig(t)
+	handler := &EventHandlerImpl{
+		obs:    obs,
+		config: cfg,
+	}
 
 	buildRequest, err := handler.ParseBuildRequest(context.Background(), &event)
 
@@ -77,7 +89,7 @@ func TestParseBuildRequest_MissingRequiredFields(t *testing.T) {
 	var validationErr *errors.ValidationError
 	assert.ErrorAs(t, err, &validationErr)
 	assert.Contains(t, validationErr.Error(), "validation failed for field 'build_request_data'")
-	assert.Contains(t, validationErr.Error(), "thirdPartyID is required")
+	assert.Contains(t, validationErr.Error(), "third_party_id is required")
 }
 
 func TestParseBuildRequest_InvalidJSON(t *testing.T) {
@@ -94,7 +106,13 @@ func TestParseBuildRequest_InvalidJSON(t *testing.T) {
 	event.SetTime(time.Now())
 	event.SetData(cloudevents.ApplicationJSON, invalidData)
 
-	handler := &EventHandlerImpl{}
+	// Create a properly initialized handler with observability and config
+	obs := testhelpers.CreateTestObservability(t)
+	cfg := testhelpers.CreateTestConfig(t)
+	handler := &EventHandlerImpl{
+		obs:    obs,
+		config: cfg,
+	}
 
 	buildRequest, err := handler.ParseBuildRequest(context.Background(), &event)
 
@@ -126,21 +144,21 @@ func TestBuildEventData_Validation(t *testing.T) {
 			eventData: builds.BuildEventData{
 				ParserID: "valid-parser",
 			},
-			expectedErrors: []string{"thirdPartyID is required"},
+			expectedErrors: []string{"third_party_id is required"},
 		},
 		{
 			name: "Missing ParserID",
 			eventData: builds.BuildEventData{
 				ThirdPartyID: "valid-third-party",
 			},
-			expectedErrors: []string{"parserID is required"},
+			expectedErrors: []string{"parser_id is required"},
 		},
 		{
 			name:      "Both fields missing",
 			eventData: builds.BuildEventData{},
 			expectedErrors: []string{
-				"thirdPartyID is required",
-				"parserID is required",
+				"third_party_id is required",
+				"parser_id is required",
 			},
 		},
 		{
@@ -149,7 +167,7 @@ func TestBuildEventData_Validation(t *testing.T) {
 				ThirdPartyID: string(make([]byte, 101)), // 101 characters
 				ParserID:     "valid-parser",
 			},
-			expectedErrors: []string{"thirdPartyID must be 100 characters or less"},
+			expectedErrors: []string{"third_party_id must be 100 characters or less"},
 		},
 		{
 			name: "ParserID too long",
@@ -157,7 +175,7 @@ func TestBuildEventData_Validation(t *testing.T) {
 				ThirdPartyID: "valid-third-party",
 				ParserID:     string(make([]byte, 101)), // 101 characters
 			},
-			expectedErrors: []string{"parserID must be 100 characters or less"},
+			expectedErrors: []string{"parser_id must be 100 characters or less"},
 		},
 	}
 

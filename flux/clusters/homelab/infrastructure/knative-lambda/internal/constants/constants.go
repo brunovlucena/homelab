@@ -257,8 +257,8 @@ const (
 	MetricsPusherFailureToleranceDefault   = 5
 	MetricsPusherBuilderMetricsPortDefault = "9092"
 	MetricsPusherEnabledDefault            = true
-	MetricsPusherImageRegistryDefault      = "339954290315.dkr.ecr.us-west-2.amazonaws.com"
-	MetricsPusherImageRepositoryDefault    = "knative-lambdas/knative-lambda-metrics-pusher"
+	MetricsPusherImageRegistryDefault      = "ghcr.io/brunovlucena"
+	MetricsPusherImageRepositoryDefault    = "knative-lambda-knative-lambda-metrics-pusher"
 	MetricsPusherImageTagDefault           = "latest"
 	MetricsPusherImagePullPolicyDefault    = "Always"
 	MetricsPusherRemoteWriteURLDefault     = "http://prometheus-kube-prometheus-prometheus.prometheus:9090/api/v1/write"
@@ -495,9 +495,22 @@ const (
 	NodeBaseImageDefault         = "docker.io/library/node:22-alpine"             // values.yaml nodeBaseImage: "docker.io/library/node:22-alpine"
 	PythonBaseImageDefault       = "docker.io/library/python:3.11-alpine"         // values.yaml pythonBaseImage: "docker.io/library/python:3.11-alpine"
 	GoBaseImageDefault           = "docker.io/library/golang:1.21-alpine"         // values.yaml goBaseImage: "docker.io/library/golang:1.21-alpine"
-	AWSECRRepositoryNameDefault  = "knative-lambdas"                              // values.yaml ecrRepositoryName: "knative-lambdas"
-	PodIdentityRoleDefault       = "knative-lambda-builder"                       // values.yaml podIdentityRole: "knative-lambda-builder"
-	KanikoImageDefault           = "gcr.io/kaniko-project/executor:v1.19.2"       // values.yaml kanikoImage: "gcr.io/kaniko-project/executor:v1.19.2"
+)
+
+// 💾 Storage configuration defaults - MATCHING values.yaml
+const (
+	StorageProviderDefault      = "aws-s3"                                 // values.yaml storageProvider: "aws-s3" (or "minio")
+	S3EndpointDefault           = "https://s3.us-west-2.amazonaws.com"     // values.yaml s3Endpoint (optional for AWS S3)
+	MinIOEndpointDefault        = "minio.minio.svc.cluster.local:9000"     // values.yaml minioEndpoint
+	MinIOAccessKeyDefault       = ""                                       // values.yaml minioAccessKey (from secret)
+	MinIOSecretKeyDefault       = ""                                       // values.yaml minioSecretKey (from secret)
+	MinIOUseSSLDefault          = false                                    // values.yaml minioUseSSL: false (HTTP for internal cluster)
+	MinIORegionDefault          = "us-east-1"                              // values.yaml minioRegion: "us-east-1" (MinIO default)
+	MinIOSourceBucketDefault    = "knative-lambda-source"                  // values.yaml minioSourceBucket
+	MinIOTempBucketDefault      = "knative-lambda-tmp"                     // values.yaml minioTempBucket
+	AWSECRRepositoryNameDefault = "knative-lambda"                         // values.yaml ecrRepositoryName: "knative-lambda"
+	PodIdentityRoleDefault      = "knative-lambda-builder"                 // values.yaml podIdentityRole: "knative-lambda-builder"
+	KanikoImageDefault          = "gcr.io/kaniko-project/executor:v1.19.2" // values.yaml kanikoImage: "gcr.io/kaniko-project/executor:v1.19.2"
 )
 
 // Container names

@@ -15,6 +15,7 @@
 package resilience
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -75,10 +76,17 @@ func NewMultiLevelRateLimiter(config MultiLevelRateLimiterConfig) (*MultiLevelRa
 
 // NewRateLimiter creates a new rate limiter
 func NewRateLimiter(requestsPerMin, burstSize int) *RateLimiter {
+	tokens := make(chan struct{}, burstSize)
+
+	// Pre-fill the token bucket with initial tokens
+	for i := 0; i < burstSize; i++ {
+		tokens <- struct{}{}
+	}
+
 	return &RateLimiter{
 		requestsPerMin: requestsPerMin,
 		burstSize:      burstSize,
-		tokens:         make(chan struct{}, burstSize),
+		tokens:         tokens,
 		lastRefill:     time.Now(),
 	}
 }
@@ -106,7 +114,7 @@ func (m *MultiLevelRateLimiter) Allow(operationType string) bool {
 	case "s3_upload":
 		return m.s3UploadLimiter.Allow()
 	default:
-		return true
+		return false
 	}
 }
 
@@ -172,4 +180,116 @@ func (m *MultiLevelRateLimiter) StopCleanup() {
 func (m *MultiLevelRateLimiter) Close() error {
 	// Cleanup resources
 	return nil
+}
+
+// =============================================================================
+// RETRY LOGIC
+// =============================================================================
+
+// RetryPolicy defines the configuration for retry logic
+type RetryPolicy struct {
+	MaxAttempts       int
+	InitialDelay      time.Duration
+	MaxDelay          time.Duration
+	BackoffMultiplier float64
+	ShouldRetry       func(error) bool
+}
+
+// ExecuteWithRetry executes an operation with retry logic
+func ExecuteWithRetry(ctx context.Context, policy RetryPolicy, operation func() error) error {
+	var lastErr error
+	delay := policy.InitialDelay
+
+	for attempt := 0; attempt < policy.MaxAttempts; attempt++ {
+		// Check if context is cancelled
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Execute the operation
+		err := operation()
+		if err == nil {
+			return nil
+		}
+
+		lastErr = err
+
+		// Check if we should retry
+		if policy.ShouldRetry != nil && !policy.ShouldRetry(err) {
+			return err
+		}
+
+		// Don't wait after the last attempt
+		if attempt < policy.MaxAttempts-1 {
+			// Calculate next delay with exponential backoff
+			time.Sleep(delay)
+			delay = time.Duration(float64(delay) * policy.BackoffMultiplier)
+			if delay > policy.MaxDelay {
+				delay = policy.MaxDelay
+			}
+		}
+	}
+
+	return lastErr
+}
+
+// IsTransientError checks if an error is transient and should be retried
+func IsTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+
+	// Check for common transient error patterns
+	transientPatterns := []string{
+		"timeout",
+		"deadline exceeded",
+		"connection refused",
+		"connection reset",
+		"broken pipe",
+		"no such host",
+		"temporary failure",
+		"service unavailable",
+		"too many requests",
+		"rate limit",
+		"throttle",
+	}
+
+	for _, pattern := range transientPatterns {
+		if contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// contains checks if a string contains a substring (case insensitive)
+func contains(s, substr string) bool {
+	// Simple case-insensitive check
+	sLower := toLower(s)
+	substrLower := toLower(substr)
+
+	for i := 0; i <= len(sLower)-len(substrLower); i++ {
+		if sLower[i:i+len(substrLower)] == substrLower {
+			return true
+		}
+	}
+	return false
+}
+
+// toLower converts a string to lowercase
+func toLower(s string) string {
+	result := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		result[i] = c
+	}
+	return string(result)
 }

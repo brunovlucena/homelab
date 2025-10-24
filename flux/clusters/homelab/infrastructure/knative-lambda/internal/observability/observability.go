@@ -199,9 +199,17 @@ func New(config Config) (*Observability, error) {
 
 // initializeTracer sets up OpenTelemetry tracing
 func initializeTracer(config Config) (trace.Tracer, error) {
-	// Create OTLP exporter
+	// If no OTLP endpoint is configured, use noop tracer
+	if config.OTLPEndpoint == "" {
+		return noop.NewTracerProvider().Tracer(config.ServiceName), nil
+	}
+
+	// Create OTLP exporter with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
 	exporter, err := otlptracegrpc.New(
-		context.Background(),
+		ctx,
 		otlptracegrpc.WithEndpoint(config.OTLPEndpoint),
 		otlptracegrpc.WithInsecure(), // For local development
 	)
@@ -537,6 +545,32 @@ func initializeMetrics(serviceName, serviceVersion, environment string) *Metrics
 	return metrics
 }
 
+// Debug logs a debug message with structured fields
+func (o *Observability) Debug(ctx context.Context, message string, fields ...interface{}) {
+	entry := o.logger.WithContext(ctx)
+	if correlationID := ctx.Value(CorrelationIDKey); correlationID != nil {
+		entry = entry.WithField("correlation_id", correlationID)
+	}
+
+	// Add trace context if available
+	if span := trace.SpanFromContext(ctx); span != nil {
+		entry = entry.WithFields(logrus.Fields{
+			"trace_id": span.SpanContext().TraceID().String(),
+			"span_id":  span.SpanContext().SpanID().String(),
+		})
+	}
+
+	// Convert fields to logrus fields
+	logFields := make(logrus.Fields)
+	for i := 0; i < len(fields); i += 2 {
+		if i+1 < len(fields) {
+			logFields[fmt.Sprintf("%v", fields[i])] = fields[i+1]
+		}
+	}
+
+	entry.WithFields(logFields).Debug(message)
+}
+
 // Info logs an info message with structured fields
 func (o *Observability) Info(ctx context.Context, message string, fields ...interface{}) {
 	entry := o.logger.WithContext(ctx)
@@ -561,6 +595,32 @@ func (o *Observability) Info(ctx context.Context, message string, fields ...inte
 	}
 
 	entry.WithFields(logFields).Info(message)
+}
+
+// Warn logs a warning message with structured fields
+func (o *Observability) Warn(ctx context.Context, message string, fields ...interface{}) {
+	entry := o.logger.WithContext(ctx)
+	if correlationID := ctx.Value(CorrelationIDKey); correlationID != nil {
+		entry = entry.WithField("correlation_id", correlationID)
+	}
+
+	// Add trace context if available
+	if span := trace.SpanFromContext(ctx); span != nil {
+		entry = entry.WithFields(logrus.Fields{
+			"trace_id": span.SpanContext().TraceID().String(),
+			"span_id":  span.SpanContext().SpanID().String(),
+		})
+	}
+
+	// Convert fields to logrus fields
+	logFields := make(logrus.Fields)
+	for i := 0; i < len(fields); i += 2 {
+		if i+1 < len(fields) {
+			logFields[fmt.Sprintf("%v", fields[i])] = fields[i+1]
+		}
+	}
+
+	entry.WithFields(logFields).Warn(message)
 }
 
 // Error logs an error message with structured fields

@@ -528,10 +528,39 @@ The Knative Lambda Builder supports multiple storage providers for build artifac
 
 ## Documentation
 
+### 📚 Core Documentation
 - **[Alerting](ALERTING.md)**: Comprehensive alerting setup guide
 - **[Runbook](RUNBOOK.md)**: Troubleshooting procedures for all alerts
 - **[Metrics](METRICS.md)**: Detailed metrics reference
 - **[Deployment](DEPLOYMENT.md)**: Step-by-step deployment instructions
+- **[Improvement Plan](IMPROVEMENT_PLAN.md)**: Strategic roadmap and priorities
+- **[Review Guide](REVIEW_GUIDE.md)**: Comprehensive file-by-file review guide
+
+### 🔍 Code Review Documents
+- **[AI SRE Engineer Review](AI_SRE_ENGINEER_REVIEW.md)**: Observability, reliability, and operational excellence
+- **[AI Cloud Architect Review](AI_CLOUD_ARCHITECT_REVIEW.md)**: Architecture, design patterns, and scalability
+- **[AI DevOps Engineer Review](AI_DEVOPS_ENGINEER_REVIEW.md)**: CI/CD, infrastructure as code, and deployment
+- **[AI Senior Golang Engineer Review](AI_SENIOR_GOLANG_ENGINEER_REVIEW.md)**: Code quality, Go best practices, and testing
+- **[Bruno's Review](BRUNO_REVIEW.md)**: Strategic direction and final approval
+
+### 🔐 Security Reviews
+- **[Senior Pentester Review](SENIOR_PENTESTER_REVIEW.md)**: Defensive security and vulnerability assessment
+- **[Blackhat Review](BLACKHAT_REVIEW.md)**: Offensive security and exploit development
+- **[Security Review Summary](SECURITY_REVIEW_SUMMARY.md)**: Consolidated security findings and remediation plan
+
+### 📖 Additional Documentation
+- **[Introduction](INTRO.md)**: Project introduction and getting started
+- **[Validation Guide](VALIDATION.md)**: Code quality and validation standards
+- **[Summary](SUMMARY.md)**: Project summary and status
+- **[TODO](TODO.md)**: Current tasks and future improvements
+- **[Changelog](CHANGELOG.md)**: Version history and changes
+
+### 📂 Documentation in `/docs`
+- **[Versioning Strategy](docs/VERSIONING_STRATEGY.md)**: Semantic versioning and release management
+- **[Branching Guide](docs/BRANCHING_GUIDE.md)**: Git workflow and branch strategy
+- **[Quick Start Versioning](docs/QUICK_START_VERSIONING.md)**: Quick reference for version management
+- **[MinIO Setup](docs/MINIO_SETUP.md)**: MinIO configuration guide
+- **[Job Start Events](docs/JOB_START_EVENTS.md)**: Build job event documentation
 
 ## Contributing
 

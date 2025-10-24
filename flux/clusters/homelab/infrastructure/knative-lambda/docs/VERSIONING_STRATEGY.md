@@ -40,15 +40,15 @@ MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]
 
 #### Service (Main Builder Service)
 - Location: `VERSION`
-- Container image: `339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambdas/knative-lambda-builder:1.0.0`
+- Container image: `339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambda-knative-lambda-builder:1.0.0`
 
 #### Sidecar (Build Monitor Sidecar)
 - Location: `sidecar/VERSION`
-- Container image: `339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambdas/knative-lambda-sidecar:1.0.0`
+- Container image: `339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambda-knative-lambda-sidecar:1.0.0`
 
 #### Metrics Pusher
 - Location: `metrics-pusher/VERSION`
-- Container image: `339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambdas/knative-lambda-metrics-pusher:1.0.0`
+- Container image: `339954290315.dkr.ecr.us-west-2.amazonaws.com/knative-lambda-knative-lambda-metrics-pusher:1.0.0`
 
 #### Helm Chart Version
 - Location: `deploy/Chart.yaml`
