@@ -4,7 +4,7 @@
 #
 #  Purpose: Local development with minimal resources
 #  Registry: Pro uses LOCAL REGISTRY (localhost:5001). Build and push with:
-#    make pro-build
+#    make pro-dev-build
 #  Features:
 #  - Single replica
 #  - Debug logging enabled
@@ -30,7 +30,7 @@ resources:
   - ../../tests
 
 # 🏷️ Pro uses local registry (localhost:5001). Tag MUST match OPERATOR_VERSION below.
-# Build/push: make pro-build. Use 'make version-bump' to update both.
+# Build/push: make pro-dev-build. Use 'make version-bump' to update both.
 images:
   - name: localhost:5001/knative-lambda-operator
     newTag: v1.13.16

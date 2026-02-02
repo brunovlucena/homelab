@@ -150,27 +150,13 @@ k8s/
 | k6 Load Tests | Available | On-demand |
 | Port Range | 31000-31999 | 32000-32999 |
 
-### Deployment Commands
-
-```bash
-# Deploy to development (pro cluster)
-make deploy-pro
-
-# Deploy to production (studio cluster - triggers canary)
-make deploy-studio
-
-# Show diff before deploying
-make deploy-diff ENV=pro
-make deploy-diff ENV=studio
-```
-
 ### Pro local build (pro uses local registry)
 
 Pro pulls the operator from **localhost:5001**. Build and push locally:
 
 ```bash
-make pro-build          # Build and push operator to local registry
-make pro-dev            # pro-build + reconcile pro (one-shot iterate)
+make pro-dev-build          # Build and push operator to local registry
+make pro-dev-build-push     # pro-dev-build + reconcile pro (one-shot iterate)
 ```
 
 ---
@@ -183,13 +169,13 @@ Validate changes on **pro** (from your branch) before merging to **main**; **stu
 
    ```bash
    kubectl config use-context pro
-   make flux-test-branch
+   make pro-dev-branch-flux
    ```
 
 2. **Build and push the operator** to the local registry (pro uses localhost:5001):
 
    ```bash
-   make pro-build
+   make pro-dev-build
    ```
    Or use [CI](.github/workflows/operator-knative-lambda.yml) to build/push for that branch.
 
@@ -204,52 +190,6 @@ Validate changes on **pro** (from your branch) before merging to **main**; **stu
    ```
 
 5. **Merge** to main so studio gets the operator from main.
-
----
-
-## 🐦 Canary Deployments
-
-### Studio (Production) Strategy (Conservative)
-
-- **Step weight:** 5% increments
-- **Max weight:** 30%
-- **Interval:** 2 minutes between steps
-- **Success threshold:** 99.5% success rate
-- **Iterations:** 6 (full promotion)
-- **Auto-rollback:** On failure
-
-### Canary Commands
-
-```bash
-# Check canary status
-make canary-status
-
-# Manually promote canary (skip analysis)
-make canary-promote
-
-# Rollback canary
-make canary-rollback
-
-# Describe canary details
-make canary-describe
-```
-
----
-
-## 🔀 A/B Testing (Production Only)
-
-A/B testing is enabled via HTTP headers in production:
-
-```bash
-# Route to canary version
-curl -H "x-ab-test: canary" http://knative-lambda-operator.knative-lambda/healthz
-
-# Route to primary version
-curl -H "x-ab-test: primary" http://knative-lambda-operator.knative-lambda/healthz
-
-# Check traffic split
-make ab-split-status
-```
 
 ---
 
@@ -307,7 +247,7 @@ Production environment includes PrometheusRules for:
 ### View Alerts
 
 ```bash
-make alerts
+kubectl get prometheusrule -n knative-lambda -o wide
 ```
 
 ---
@@ -328,7 +268,7 @@ make alerts
 
 ```bash
 # Build and push operator image
-make build-images-local
+make operator-build-image-local
 
 # Deploy to dev
 make deploy-dev
@@ -457,7 +397,7 @@ knative-lambda-operator/
 
 1. Make changes to operator code in `src/operator/`
 2. Update version in `VERSION`
-3. Build and push operator image: `make build-images-local`
+3. Build and push operator image: `make operator-build-image-local`
 4. Deploy operator to dev: `make deploy-dev`
 5. Run tests: `make test && make k6-smoke`
 6. Commit and push - Flux will reconcile the operator
