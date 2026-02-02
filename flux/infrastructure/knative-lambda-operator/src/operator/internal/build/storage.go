@@ -21,6 +21,8 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/minio/minio-go/v7"
+	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
@@ -28,7 +30,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	lambdav1alpha1 "github.com/brunovlucena/knative-lambda-operator/api/v1alpha1"
@@ -411,25 +412,28 @@ func (s *ConfigMapStore) SetOwnerReference(ctx context.Context, lambda *lambdav1
 		return fmt.Errorf("failed to get ConfigMap for owner reference: %w", err)
 	}
 
-	// Use the scheme to set owner reference
-	if rtScheme, ok := scheme.(interface {
-		New(interface{}) (interface{}, error)
-	}); ok {
-		_ = rtScheme // Type assertion succeeded
+	// Set owner reference manually - scheme parameter kept for backwards compatibility
+	// but we don't rely on it since it may be nil or wrong type
+	ownerRef := metav1.OwnerReference{
+		APIVersion:         lambda.APIVersion,
+		Kind:               lambda.Kind,
+		Name:               lambda.Name,
+		UID:                lambda.UID,
+		Controller:         boolPtr(true),
+		BlockOwnerDeletion: boolPtr(true),
 	}
 
-	// Set owner reference using controller-runtime helper
-	if err := controllerutil.SetControllerReference(lambda, configMap, nil); err != nil {
-		// Fallback: set manually if scheme is nil
-		ownerRef := metav1.OwnerReference{
-			APIVersion:         lambda.APIVersion,
-			Kind:               lambda.Kind,
-			Name:               lambda.Name,
-			UID:                lambda.UID,
-			Controller:         boolPtr(true),
-			BlockOwnerDeletion: boolPtr(true),
+	// Check if owner reference already exists
+	found := false
+	for i, ref := range configMap.OwnerReferences {
+		if ref.UID == lambda.UID {
+			configMap.OwnerReferences[i] = ownerRef
+			found = true
+			break
 		}
-		configMap.OwnerReferences = []metav1.OwnerReference{ownerRef}
+	}
+	if !found {
+		configMap.OwnerReferences = append(configMap.OwnerReferences, ownerRef)
 	}
 
 	if err := s.client.Update(ctx, configMap); err != nil {
@@ -607,9 +611,8 @@ func NewGCSStore(ctx context.Context, config *GCSConfig) (*GCSStore, error) {
 	var err error
 
 	if len(config.CredentialsJSON) > 0 {
-		// Use provided credentials
-		client, err = storage.NewClient(ctx,
-			storage.WithJSONReads())
+		// Use provided credentials directly (thread-safe, no temp files)
+		client, err = storage.NewClient(ctx, option.WithCredentialsJSON(config.CredentialsJSON))
 	} else {
 		// Use default credentials (workload identity, etc.)
 		client, err = storage.NewClient(ctx)
@@ -625,6 +628,14 @@ func NewGCSStore(ctx context.Context, config *GCSConfig) (*GCSStore, error) {
 		pathPrefix: config.PathPrefix,
 		project:    config.Project,
 	}, nil
+}
+
+// Close closes the GCS client and releases resources
+func (s *GCSStore) Close() error {
+	if s.client != nil {
+		return s.client.Close()
+	}
+	return nil
 }
 
 // Name returns the backend name
@@ -702,10 +713,10 @@ func (s *GCSStore) Cleanup(ctx context.Context, olderThan time.Duration) (int, e
 
 	for {
 		attrs, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
 		if err != nil {
-			if err.Error() == "no more items in iterator" {
-				break
-			}
 			buildContextCleanupTotal.WithLabelValues(s.Name(), "list_error").Inc()
 			return cleaned, fmt.Errorf("error listing GCS objects: %w", err)
 		}

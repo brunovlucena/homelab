@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -182,6 +184,17 @@ func (f *GitHubFetcher) buildArchiveURL(spec *GitHubSource) string {
 	return fmt.Sprintf("https://api.github.com/repos/%s/%s/zipball/%s", spec.Owner, spec.Repo, ref)
 }
 
+// httpClient is a shared HTTP client with proper timeouts
+var httpClient = &http.Client{
+	Timeout: GitHubArchiveTimeout,
+	Transport: &http.Transport{
+		MaxIdleConns:        10,
+		IdleConnTimeout:     30 * time.Second,
+		DisableCompression:  false,
+		TLSHandshakeTimeout: 10 * time.Second,
+	},
+}
+
 // downloadArchive downloads the archive from the given URL
 func (f *GitHubFetcher) downloadArchive(ctx context.Context, url, token string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, GitHubArchiveTimeout)
@@ -199,8 +212,8 @@ func (f *GitHubFetcher) downloadArchive(ctx context.Context, url, token string) 
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	// Execute request
-	resp, err := http.DefaultClient.Do(req)
+	// Execute request with configured client (has timeouts)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download archive: %w", err)
 	}
@@ -385,26 +398,16 @@ func (f *GCSFetcher) createClient(ctx context.Context, spec *lambdav1alpha1.GCSS
 		}
 
 		if credJSON != nil {
-			// Write credentials to temp file for the GCS client
-			tmpFile, err := os.CreateTemp("", "gcs-credentials-*.json")
+			// Use credentials directly via option - no temp files or env vars (thread-safe)
+			client, err := storage.NewClient(ctx, option.WithCredentialsJSON(credJSON))
 			if err != nil {
-				return nil, fmt.Errorf("failed to create temp credentials file: %w", err)
+				return nil, fmt.Errorf("failed to create GCS client with credentials: %w", err)
 			}
-			defer os.Remove(tmpFile.Name())
-
-			if _, err := tmpFile.Write(credJSON); err != nil {
-				tmpFile.Close()
-				return nil, fmt.Errorf("failed to write credentials: %w", err)
-			}
-			tmpFile.Close()
-
-			// Set env var for the GCS client
-			os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", tmpFile.Name())
-			defer os.Unsetenv("GOOGLE_APPLICATION_CREDENTIALS")
+			return client, nil
 		}
 	}
 
-	// Create client (uses default credentials or GOOGLE_APPLICATION_CREDENTIALS)
+	// Create client with default credentials (workload identity, etc.)
 	client, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
@@ -448,10 +451,10 @@ func (f *GCSFetcher) downloadDirectory(ctx context.Context, client *storage.Clie
 
 	for {
 		attrs, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
 		if err != nil {
-			if err.Error() == "no more items in iterator" {
-				break
-			}
 			return nil, "", fmt.Errorf("error listing GCS objects: %w", err)
 		}
 
