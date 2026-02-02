@@ -7,5 +7,5 @@ kind: Kustomization
 
 resources:
   # Operator (CRD, RBAC, Deployment)
-  # - ../../../../infrastructure/knative-lambda-operator/k8s/overlays/pro  # Disabled
+  - ../../../../infrastructure/knative-lambda-operator/k8s/overlays/pro
 
