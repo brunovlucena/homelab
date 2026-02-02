@@ -466,3 +466,149 @@ func ValidateS3Source(bucket, key, region string) error {
 	}
 	return nil
 }
+
+// ValidateGCSBucket validates a GCS bucket name
+// GCS bucket naming rules are similar to S3 but with some differences
+func ValidateGCSBucket(bucket string) error {
+	if bucket == "" {
+		return NewValidationError("gcs.bucket", "GCS bucket name is required", "GCS_BUCKET_REQUIRED")
+	}
+
+	// Check for shell metacharacters
+	if shellMetacharacters.MatchString(bucket) {
+		return NewValidationError("gcs.bucket", "GCS bucket name contains invalid characters (potential injection)", "GCS_BUCKET_INJECTION")
+	}
+
+	// GCS bucket naming rules:
+	// - 3-63 characters
+	// - Start and end with alphanumeric
+	// - Only lowercase letters, numbers, dashes, underscores, and dots
+	// - Cannot start with "goog" prefix
+	// - Cannot contain "google" or close misspellings
+	gcsBucketPattern := regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]$`)
+	if !gcsBucketPattern.MatchString(bucket) {
+		return NewValidationError("gcs.bucket",
+			"GCS bucket name must be 3-63 characters, lowercase alphanumeric with dots, dashes, and underscores",
+			"GCS_BUCKET_INVALID_FORMAT")
+	}
+
+	// Check for reserved prefixes
+	if strings.HasPrefix(bucket, "goog") {
+		return NewValidationError("gcs.bucket", "GCS bucket name cannot start with 'goog'", "GCS_BUCKET_RESERVED_PREFIX")
+	}
+
+	// Check for "google" in the name
+	if strings.Contains(bucket, "google") {
+		return NewValidationError("gcs.bucket", "GCS bucket name cannot contain 'google'", "GCS_BUCKET_RESERVED_NAME")
+	}
+
+	return nil
+}
+
+// ValidateGCSKey validates a GCS object key/path
+func ValidateGCSKey(key string) error {
+	if key == "" {
+		return NewValidationError("gcs.key", "GCS object key is required", "GCS_KEY_REQUIRED")
+	}
+
+	// Check for maximum length (GCS limit is 1024 bytes)
+	if len(key) > 1024 {
+		return NewValidationError("gcs.key", "GCS object key exceeds maximum length of 1024 characters", "GCS_KEY_TOO_LONG")
+	}
+
+	// Check for shell metacharacters
+	if shellMetacharacters.MatchString(key) {
+		return NewValidationError("gcs.key", "GCS object key contains invalid characters (potential injection)", "GCS_KEY_INJECTION")
+	}
+
+	// Check for path traversal
+	if strings.Contains(key, "..") {
+		return NewValidationError("gcs.key", "GCS object key contains path traversal sequence", "GCS_KEY_PATH_TRAVERSAL")
+	}
+
+	// GCS allows more characters than S3, but we restrict for security
+	gcsKeyPattern := regexp.MustCompile(`^[a-zA-Z0-9!_.*'()/-]+$`)
+	if !gcsKeyPattern.MatchString(key) {
+		return NewValidationError("gcs.key",
+			"GCS object key contains invalid characters",
+			"GCS_KEY_INVALID_FORMAT")
+	}
+
+	return nil
+}
+
+// ValidateGCSSource performs comprehensive validation of a GCS source configuration
+func ValidateGCSSource(bucket, key, project string) error {
+	if err := ValidateGCSBucket(bucket); err != nil {
+		return err
+	}
+	if err := ValidateGCSKey(key); err != nil {
+		return err
+	}
+	// Project ID validation - alphanumeric and hyphens, 6-30 chars
+	if project != "" {
+		projectPattern := regexp.MustCompile(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`)
+		if !projectPattern.MatchString(project) {
+			return NewValidationError("gcs.project", "invalid GCP project ID format", "GCS_PROJECT_INVALID_FORMAT")
+		}
+	}
+	return nil
+}
+
+// ValidateGitHubOwner validates a GitHub repository owner
+func ValidateGitHubOwner(owner string) error {
+	if owner == "" {
+		return NewValidationError("github.owner", "GitHub owner is required", "GITHUB_OWNER_REQUIRED")
+	}
+
+	// GitHub username/org rules: alphanumeric and hyphens, 1-39 chars, cannot start/end with hyphen
+	ownerPattern := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$`)
+	if !ownerPattern.MatchString(owner) {
+		return NewValidationError("github.owner",
+			"GitHub owner must be 1-39 characters, alphanumeric with hyphens (not at start/end)",
+			"GITHUB_OWNER_INVALID_FORMAT")
+	}
+
+	return nil
+}
+
+// ValidateGitHubRepo validates a GitHub repository name
+func ValidateGitHubRepo(repo string) error {
+	if repo == "" {
+		return NewValidationError("github.repo", "GitHub repository name is required", "GITHUB_REPO_REQUIRED")
+	}
+
+	// GitHub repo names: alphanumeric, hyphens, underscores, dots, 1-100 chars
+	repoPattern := regexp.MustCompile(`^[a-zA-Z0-9._-]{1,100}$`)
+	if !repoPattern.MatchString(repo) {
+		return NewValidationError("github.repo",
+			"GitHub repository name must be 1-100 characters, alphanumeric with dots, hyphens, and underscores",
+			"GITHUB_REPO_INVALID_FORMAT")
+	}
+
+	// Cannot be just dots
+	if repo == "." || repo == ".." {
+		return NewValidationError("github.repo", "GitHub repository name cannot be '.' or '..'", "GITHUB_REPO_INVALID_NAME")
+	}
+
+	return nil
+}
+
+// ValidateGitHubSource performs comprehensive validation of a GitHub source configuration
+func ValidateGitHubSource(owner, repo, ref, path string) error {
+	if err := ValidateGitHubOwner(owner); err != nil {
+		return err
+	}
+	if err := ValidateGitHubRepo(repo); err != nil {
+		return err
+	}
+	// Reuse git ref validation
+	if err := ValidateGitRef(ref); err != nil {
+		return err
+	}
+	// Reuse git path validation
+	if err := ValidateGitPath(path); err != nil {
+		return err
+	}
+	return nil
+}
