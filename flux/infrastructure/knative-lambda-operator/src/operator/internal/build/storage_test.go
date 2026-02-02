@@ -5,6 +5,7 @@ package build
 import (
 	"bytes"
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	lambdav1alpha1 "github.com/brunovlucena/knative-lambda-operator/api/v1alpha1"
@@ -51,27 +53,19 @@ func TestBackend002_StorageSelector_SelectStore(t *testing.T) {
 			s3Configured:  true,
 			expectedStore: StorageBackendS3,
 		},
-		// GCS tests skipped because GCS client requires real credentials
-		// {
-		// 	name:          "Select GCS via annotation",
-		// 	annotation:    StorageBackendGCS,
-		// 	contextSize:   100 * 1024,
-		// 	gcsConfigured: true,
-		// 	expectedStore: StorageBackendGCS,
-		// },
+		{
+			name:          "Select S3 via annotation (uppercase)",
+			annotation:    "S3",
+			contextSize:   100 * 1024,
+			s3Configured:  true,
+			expectedStore: StorageBackendS3,
+		},
 		{
 			name:          "Auto-select S3 for large context",
 			contextSize:   1024 * 1024, // 1MB > 768KB limit
 			s3Configured:  true,
 			expectedStore: StorageBackendS3,
 		},
-		// GCS tests skipped because GCS client requires real credentials
-		// {
-		// 	name:          "Auto-select GCS when S3 not configured and context is large",
-		// 	contextSize:   1024 * 1024,
-		// 	gcsConfigured: true,
-		// 	expectedStore: StorageBackendGCS,
-		// },
 		{
 			name:          "Error when ConfigMap requested but context too large",
 			annotation:    StorageBackendConfigMap,
@@ -106,6 +100,22 @@ func TestBackend002_StorageSelector_SelectStore(t *testing.T) {
 			expectError:   true,
 			errorContains: "unsupported storage backend",
 		},
+		{
+			name:          "Exact ConfigMap size limit boundary - under",
+			contextSize:   ConfigMapSizeLimit - 1,
+			expectedStore: StorageBackendConfigMap,
+		},
+		{
+			name:          "Exact ConfigMap size limit boundary - at limit with annotation",
+			annotation:    StorageBackendConfigMap,
+			contextSize:   ConfigMapSizeLimit,
+			expectedStore: StorageBackendConfigMap, // At limit is allowed (>= not used)
+		},
+		{
+			name:          "Zero size context",
+			contextSize:   0,
+			expectedStore: StorageBackendConfigMap,
+		},
 	}
 
 	for _, tt := range tests {
@@ -132,12 +142,12 @@ func TestBackend002_StorageSelector_SelectStore(t *testing.T) {
 			}
 
 			if tt.gcsConfigured {
-				// GCS requires real credentials, so we'll skip creating the store in tests
-				// In real scenarios, this would work with workload identity
+				// GCS requires real credentials, so we'll skip in tests
 			}
 
 			// Create selector
 			selector := NewStorageSelector(fakeClient, scheme, s3Config, gcsConfig)
+			defer selector.Close() // Test Close() doesn't panic
 
 			// Create test lambda
 			lambda := &lambdav1alpha1.LambdaFunction{
@@ -169,6 +179,78 @@ func TestBackend002_StorageSelector_SelectStore(t *testing.T) {
 	}
 }
 
+func TestBackend002_StorageSelector_Concurrent(t *testing.T) {
+	// Test concurrent access to SelectStore
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = lambdav1alpha1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	s3Config := &S3Config{
+		Bucket:          "test-bucket",
+		Endpoint:        "minio.test.svc:9000",
+		Region:          "us-east-1",
+		AccessKeyID:     "test-access-key",
+		SecretAccessKey: "test-secret-key",
+		UseSSL:          false,
+	}
+
+	selector := NewStorageSelector(fakeClient, scheme, s3Config, nil)
+	defer selector.Close()
+
+	lambda := &lambdav1alpha1.LambdaFunction{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-lambda",
+			Namespace: "default",
+		},
+	}
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, 100)
+
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(size int) {
+			defer wg.Done()
+			_, err := selector.SelectStore(lambda, size)
+			if err != nil {
+				errCh <- err
+			}
+		}(i * 10000) // Varying sizes
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	// Collect errors (some should fail for sizes > ConfigMapSizeLimit without S3)
+	// This test mainly ensures no race conditions
+	for range errCh {
+		// Expected errors for large contexts
+	}
+}
+
+func TestBackend002_StorageSelector_Getters(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	s3Config := &S3Config{
+		Bucket:          "test-bucket",
+		Endpoint:        "minio.test.svc:9000",
+		Region:          "us-east-1",
+		AccessKeyID:     "test-access-key",
+		SecretAccessKey: "test-secret-key",
+	}
+
+	selector := NewStorageSelector(fakeClient, scheme, s3Config, nil)
+	defer selector.Close()
+
+	// Test getters
+	assert.NotNil(t, selector.GetConfigMapStore())
+	assert.NotNil(t, selector.GetS3Store())
+	assert.Nil(t, selector.GetGCSStore()) // GCS not configured
+}
+
 // =============================================================================
 // ConfigMapStore Tests
 // =============================================================================
@@ -177,22 +259,61 @@ func TestBackend002_ConfigMapStore_Save(t *testing.T) {
 	tests := []struct {
 		name          string
 		contextData   []byte
+		meta          BuildContextMeta
 		expectError   bool
 		errorContains string
 	}{
 		{
 			name:        "Save small context",
 			contextData: bytes.Repeat([]byte("x"), 100*1024), // 100KB
+			meta: BuildContextMeta{
+				LambdaName:      "test-lambda",
+				LambdaNamespace: "default",
+				ContentHash:     "abc123def456789012345678901234567890",
+				CreatedAt:       time.Now(),
+			},
 		},
 		{
-			name:        "Save context at limit",
-			contextData: bytes.Repeat([]byte("x"), ConfigMapSizeLimit-1), // Just under limit
+			name:        "Save context at limit minus one",
+			contextData: bytes.Repeat([]byte("x"), ConfigMapSizeLimit-1),
+			meta: BuildContextMeta{
+				LambdaName:      "test-lambda",
+				LambdaNamespace: "default",
+				ContentHash:     "hash123456789012",
+				CreatedAt:       time.Now(),
+			},
 		},
 		{
-			name:          "Reject context over limit",
-			contextData:   bytes.Repeat([]byte("x"), ConfigMapSizeLimit+1), // Over limit
+			name:        "Reject context over limit",
+			contextData: bytes.Repeat([]byte("x"), ConfigMapSizeLimit+1),
+			meta: BuildContextMeta{
+				LambdaName:      "test-lambda",
+				LambdaNamespace: "default",
+				ContentHash:     "hash123456789012",
+				CreatedAt:       time.Now(),
+			},
 			expectError:   true,
 			errorContains: "exceeds ConfigMap limit",
+		},
+		{
+			name:        "Save empty context",
+			contextData: []byte{},
+			meta: BuildContextMeta{
+				LambdaName:      "empty-lambda",
+				LambdaNamespace: "default",
+				ContentHash:     "emptyhash1234567",
+				CreatedAt:       time.Now(),
+			},
+		},
+		{
+			name:        "Save with short hash (less than 12 chars)",
+			contextData: []byte("test"),
+			meta: BuildContextMeta{
+				LambdaName:      "short-hash",
+				LambdaNamespace: "default",
+				ContentHash:     "abc", // Less than 12 chars
+				CreatedAt:       time.Now(),
+			},
 		},
 	}
 
@@ -205,14 +326,7 @@ func TestBackend002_ConfigMapStore_Save(t *testing.T) {
 
 			store := NewConfigMapStore(fakeClient, scheme)
 
-			meta := BuildContextMeta{
-				LambdaName:      "test-lambda",
-				LambdaNamespace: "default",
-				ContentHash:     "abc123def456",
-				CreatedAt:       time.Now(),
-			}
-
-			location, err := store.Save(context.Background(), "test-key", tt.contextData, meta)
+			location, err := store.Save(context.Background(), "test-key", tt.contextData, tt.meta)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -223,15 +337,75 @@ func TestBackend002_ConfigMapStore_Save(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, location)
 			assert.Equal(t, StorageBackendConfigMap, location.Backend)
-			assert.Equal(t, "test-lambda-build-context", location.ConfigMapName)
-			assert.Equal(t, "abc123def456", location.ContentHash)
-			assert.Equal(t, "abc123def456"[:12], location.ImageTag)
+			assert.Equal(t, tt.meta.LambdaName+BuildContextConfigMapSuffix, location.ConfigMapName)
+			assert.Equal(t, tt.meta.ContentHash, location.ContentHash)
+
+			// Verify image tag is computed correctly
+			if len(tt.meta.ContentHash) > 12 {
+				assert.Equal(t, tt.meta.ContentHash[:12], location.ImageTag)
+			} else {
+				assert.Equal(t, tt.meta.ContentHash, location.ImageTag)
+			}
 		})
 	}
 }
 
+func TestBackend002_ConfigMapStore_SaveAndUpdate(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(ns).
+		Build()
+
+	store := NewConfigMapStore(fakeClient, scheme)
+
+	meta := BuildContextMeta{
+		LambdaName:      "update-test-lambda",
+		LambdaNamespace: "default",
+		ContentHash:     "firsthash123456789012345678901234",
+		CreatedAt:       time.Now(),
+	}
+
+	// First save - creates ConfigMap
+	location1, err := store.Save(context.Background(), "key1", []byte("data1"), meta)
+	require.NoError(t, err)
+	assert.Equal(t, "update-test-lambda-build-context", location1.ConfigMapName)
+	assert.Equal(t, "firsthash123", location1.ImageTag)
+
+	// Verify ConfigMap exists
+	cm := &corev1.ConfigMap{}
+	err = fakeClient.Get(context.Background(), types.NamespacedName{
+		Name:      location1.ConfigMapName,
+		Namespace: "default",
+	}, cm)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("data1"), cm.BinaryData["context.tar.gz"])
+
+	// Update metadata
+	meta.ContentHash = "secondhash12345678901234567890123"
+
+	// Second save - updates ConfigMap
+	location2, err := store.Save(context.Background(), "key2", []byte("data2-updated"), meta)
+	require.NoError(t, err)
+	assert.Equal(t, location1.ConfigMapName, location2.ConfigMapName)
+	assert.Equal(t, "secondhash12", location2.ImageTag)
+
+	// Verify ConfigMap was updated
+	err = fakeClient.Get(context.Background(), types.NamespacedName{
+		Name:      location2.ConfigMapName,
+		Namespace: "default",
+	}, cm)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("data2-updated"), cm.BinaryData["context.tar.gz"])
+}
+
 func TestBackend002_ConfigMapStore_Cleanup(t *testing.T) {
-	// Create fake client
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
@@ -242,6 +416,15 @@ func TestBackend002_ConfigMapStore_Cleanup(t *testing.T) {
 	cleaned, err := store.Cleanup(context.Background(), 24*time.Hour)
 	require.NoError(t, err)
 	assert.Equal(t, 0, cleaned)
+
+	// Test with different durations
+	cleaned, err = store.Cleanup(context.Background(), time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, 0, cleaned)
+
+	cleaned, err = store.Cleanup(context.Background(), 0)
+	require.NoError(t, err)
+	assert.Equal(t, 0, cleaned)
 }
 
 func TestBackend002_ConfigMapStore_Name(t *testing.T) {
@@ -250,6 +433,128 @@ func TestBackend002_ConfigMapStore_Name(t *testing.T) {
 
 	store := NewConfigMapStore(fakeClient, scheme)
 	assert.Equal(t, StorageBackendConfigMap, store.Name())
+}
+
+func TestBackend002_ConfigMapStore_SetOwnerReference(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = lambdav1alpha1.AddToScheme(scheme)
+
+	// Create a ConfigMap that exists
+	existingCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-lambda-build-context",
+			Namespace: "default",
+		},
+		BinaryData: map[string][]byte{
+			"context.tar.gz": []byte("test"),
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existingCM).
+		Build()
+
+	store := NewConfigMapStore(fakeClient, scheme)
+
+	lambda := &lambdav1alpha1.LambdaFunction{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "lambda.knative.io/v1alpha1",
+			Kind:       "LambdaFunction",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-lambda",
+			Namespace: "default",
+			UID:       "test-uid-12345",
+		},
+	}
+
+	// Set owner reference
+	err := store.SetOwnerReference(context.Background(), lambda, "test-lambda-build-context", scheme)
+	require.NoError(t, err)
+
+	// Verify owner reference was set
+	cm := &corev1.ConfigMap{}
+	err = fakeClient.Get(context.Background(), types.NamespacedName{
+		Name:      "test-lambda-build-context",
+		Namespace: "default",
+	}, cm)
+	require.NoError(t, err)
+	require.Len(t, cm.OwnerReferences, 1)
+	assert.Equal(t, lambda.Name, cm.OwnerReferences[0].Name)
+	assert.Equal(t, lambda.UID, cm.OwnerReferences[0].UID)
+	assert.True(t, *cm.OwnerReferences[0].Controller)
+	assert.True(t, *cm.OwnerReferences[0].BlockOwnerDeletion)
+}
+
+func TestBackend002_ConfigMapStore_SetOwnerReference_NotFound(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = lambdav1alpha1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	store := NewConfigMapStore(fakeClient, scheme)
+
+	lambda := &lambdav1alpha1.LambdaFunction{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-lambda",
+			Namespace: "default",
+		},
+	}
+
+	// ConfigMap doesn't exist - should error
+	err := store.SetOwnerReference(context.Background(), lambda, "non-existent-cm", scheme)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get ConfigMap")
+}
+
+func TestBackend002_ConfigMapStore_SetOwnerReference_Idempotent(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = lambdav1alpha1.AddToScheme(scheme)
+
+	existingCM := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-lambda-build-context",
+			Namespace: "default",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(existingCM).
+		Build()
+
+	store := NewConfigMapStore(fakeClient, scheme)
+
+	lambda := &lambdav1alpha1.LambdaFunction{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "lambda.knative.io/v1alpha1",
+			Kind:       "LambdaFunction",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-lambda",
+			Namespace: "default",
+			UID:       "test-uid-12345",
+		},
+	}
+
+	// Set owner reference twice
+	err := store.SetOwnerReference(context.Background(), lambda, "test-lambda-build-context", scheme)
+	require.NoError(t, err)
+
+	err = store.SetOwnerReference(context.Background(), lambda, "test-lambda-build-context", scheme)
+	require.NoError(t, err)
+
+	// Should still have only one owner reference
+	cm := &corev1.ConfigMap{}
+	err = fakeClient.Get(context.Background(), types.NamespacedName{
+		Name:      "test-lambda-build-context",
+		Namespace: "default",
+	}, cm)
+	require.NoError(t, err)
+	assert.Len(t, cm.OwnerReferences, 1)
 }
 
 // =============================================================================
@@ -264,7 +569,7 @@ func TestBackend002_S3Store_NewS3Store(t *testing.T) {
 		errorContains string
 	}{
 		{
-			name: "Create with valid config",
+			name: "Create with valid config - MinIO endpoint",
 			config: &S3Config{
 				Bucket:          "test-bucket",
 				Endpoint:        "minio.test.svc:9000",
@@ -282,6 +587,28 @@ func TestBackend002_S3Store_NewS3Store(t *testing.T) {
 				AccessKeyID:     "access-key",
 				SecretAccessKey: "secret-key",
 				UseSSL:          true,
+			},
+		},
+		{
+			name: "Create with endpoint having https prefix",
+			config: &S3Config{
+				Bucket:          "test-bucket",
+				Endpoint:        "https://s3.example.com",
+				Region:          "us-east-1",
+				AccessKeyID:     "access-key",
+				SecretAccessKey: "secret-key",
+				UseSSL:          true,
+			},
+		},
+		{
+			name: "Create with path prefix",
+			config: &S3Config{
+				Bucket:          "test-bucket",
+				Endpoint:        "minio.test.svc:9000",
+				Region:          "us-east-1",
+				AccessKeyID:     "access-key",
+				SecretAccessKey: "secret-key",
+				PathPrefix:      "build-context/prod",
 			},
 		},
 		{
@@ -308,6 +635,7 @@ func TestBackend002_S3Store_NewS3Store(t *testing.T) {
 			require.NotNil(t, store)
 			assert.Equal(t, StorageBackendS3, store.Name())
 			assert.Equal(t, tt.config.Bucket, store.GetBucket())
+			assert.NotNil(t, store.GetClient())
 		})
 	}
 }
@@ -322,7 +650,6 @@ func TestBackend002_S3Store_Name(t *testing.T) {
 // =============================================================================
 
 func TestBackend002_GCSStore_Validation(t *testing.T) {
-	// Test GCS config validation
 	tests := []struct {
 		name          string
 		config        *GCSConfig
@@ -356,6 +683,13 @@ func TestBackend002_GCSStore_Name(t *testing.T) {
 	assert.Equal(t, StorageBackendGCS, store.Name())
 }
 
+func TestBackend002_GCSStore_Close(t *testing.T) {
+	// Test that Close on nil client doesn't panic
+	store := &GCSStore{client: nil, bucket: "test"}
+	err := store.Close()
+	assert.NoError(t, err)
+}
+
 // =============================================================================
 // BuildContextLocation Tests
 // =============================================================================
@@ -372,6 +706,8 @@ func TestBackend002_BuildContextLocation_ConfigMap(t *testing.T) {
 	assert.Equal(t, "my-lambda-build-context", location.ConfigMapName)
 	assert.Empty(t, location.Bucket)
 	assert.Empty(t, location.Key)
+	assert.Empty(t, location.Endpoint)
+	assert.Empty(t, location.Region)
 }
 
 func TestBackend002_BuildContextLocation_S3(t *testing.T) {
@@ -389,6 +725,7 @@ func TestBackend002_BuildContextLocation_S3(t *testing.T) {
 	assert.Equal(t, "my-bucket", location.Bucket)
 	assert.Equal(t, "build-context/my-lambda/context.tar.gz", location.Key)
 	assert.Equal(t, "us-east-1", location.Region)
+	assert.Equal(t, "s3.us-east-1.amazonaws.com", location.Endpoint)
 	assert.Empty(t, location.ConfigMapName)
 }
 
@@ -406,6 +743,7 @@ func TestBackend002_BuildContextLocation_GCS(t *testing.T) {
 	assert.Equal(t, "build-context/my-lambda/context.tar.gz", location.Key)
 	assert.Empty(t, location.ConfigMapName)
 	assert.Empty(t, location.Endpoint)
+	assert.Empty(t, location.Region)
 }
 
 // =============================================================================
@@ -427,6 +765,15 @@ func TestBackend002_BuildContextMeta(t *testing.T) {
 	assert.Equal(t, now, meta.CreatedAt)
 }
 
+func TestBackend002_BuildContextMeta_EmptyValues(t *testing.T) {
+	meta := BuildContextMeta{}
+
+	assert.Empty(t, meta.LambdaName)
+	assert.Empty(t, meta.LambdaNamespace)
+	assert.Empty(t, meta.ContentHash)
+	assert.True(t, meta.CreatedAt.IsZero())
+}
+
 // =============================================================================
 // Constants Tests
 // =============================================================================
@@ -440,45 +787,89 @@ func TestBackend002_Constants(t *testing.T) {
 }
 
 // =============================================================================
-// Integration-style Tests (using fake clients)
+// Helper Function Tests
 // =============================================================================
 
-func TestBackend002_ConfigMapStore_CreateAndUpdate(t *testing.T) {
-	// Create fake client with initial namespace
+func TestBackend002_BoolPtr(t *testing.T) {
+	truePtr := boolPtr(true)
+	falsePtr := boolPtr(false)
+
+	require.NotNil(t, truePtr)
+	require.NotNil(t, falsePtr)
+	assert.True(t, *truePtr)
+	assert.False(t, *falsePtr)
+}
+
+// =============================================================================
+// Benchmark Tests
+// =============================================================================
+
+func BenchmarkBackend002_ConfigMapStore_Save_Small(b *testing.B) {
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
-
-	ns := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{Name: "default"},
-	}
-
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithObjects(ns).
-		Build()
-
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 	store := NewConfigMapStore(fakeClient, scheme)
 
+	data := bytes.Repeat([]byte("x"), 10*1024) // 10KB
 	meta := BuildContextMeta{
-		LambdaName:      "test-lambda",
+		LambdaName:      "bench-lambda",
 		LambdaNamespace: "default",
-		ContentHash:     "abc123def456789012345678901234567890", // Full SHA-256 style hash
+		ContentHash:     "benchhash123456",
 		CreatedAt:       time.Now(),
 	}
 
-	// First save - creates ConfigMap
-	location1, err := store.Save(context.Background(), "key1", []byte("data1"), meta)
-	require.NoError(t, err)
-	assert.Equal(t, "test-lambda-build-context", location1.ConfigMapName)
-	assert.Equal(t, "abc123def456", location1.ImageTag) // First 12 chars
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = store.Save(context.Background(), "key", data, meta)
+	}
+}
 
-	// Update metadata
-	meta.ContentHash = "xyz789abc123456789012345678901234567890"
+func BenchmarkBackend002_ConfigMapStore_Save_Large(b *testing.B) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	store := NewConfigMapStore(fakeClient, scheme)
 
-	// Second save - updates ConfigMap
-	location2, err := store.Save(context.Background(), "key2", []byte("data2"), meta)
-	require.NoError(t, err)
-	assert.Equal(t, location1.ConfigMapName, location2.ConfigMapName)
-	assert.Equal(t, "xyz789abc123456789012345678901234567890", location2.ContentHash)
-	assert.Equal(t, "xyz789abc123", location2.ImageTag) // First 12 chars
+	data := bytes.Repeat([]byte("x"), 500*1024) // 500KB
+	meta := BuildContextMeta{
+		LambdaName:      "bench-lambda",
+		LambdaNamespace: "default",
+		ContentHash:     "benchhash123456",
+		CreatedAt:       time.Now(),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = store.Save(context.Background(), "key", data, meta)
+	}
+}
+
+func BenchmarkBackend002_StorageSelector_SelectStore(b *testing.B) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = lambdav1alpha1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	s3Config := &S3Config{
+		Bucket:          "test-bucket",
+		Endpoint:        "minio.test.svc:9000",
+		Region:          "us-east-1",
+		AccessKeyID:     "test-access-key",
+		SecretAccessKey: "test-secret-key",
+	}
+
+	selector := NewStorageSelector(fakeClient, scheme, s3Config, nil)
+	defer selector.Close()
+
+	lambda := &lambdav1alpha1.LambdaFunction{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "bench-lambda",
+			Namespace: "default",
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = selector.SelectStore(lambda, 100*1024)
+	}
 }

@@ -278,6 +278,15 @@ func (s *StorageSelector) GetGCSStore() *GCSStore {
 	return s.gcsStore
 }
 
+// Close releases resources held by the storage selector
+// Should be called when the selector is no longer needed
+func (s *StorageSelector) Close() error {
+	if s.gcsStore != nil {
+		return s.gcsStore.Close()
+	}
+	return nil
+}
+
 // S3Config holds S3/MinIO configuration
 type S3Config struct {
 	Endpoint        string

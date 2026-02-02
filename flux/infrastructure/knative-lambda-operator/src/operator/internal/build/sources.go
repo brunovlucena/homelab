@@ -84,8 +84,9 @@ func NewGitHubFetcher(k8sClient client.Client, namespace string) *GitHubFetcher 
 func (f *GitHubFetcher) Fetch(ctx context.Context, spec *GitHubSource, language string) ([]byte, string, error) {
 	startTime := time.Now()
 	defer func() {
-		RecordSourceFetch(SourceTypeGitHub, "attempt")
-		_ = time.Since(startTime)
+		// Record fetch attempt with duration for observability
+		duration := time.Since(startTime).Seconds()
+		buildContextCreationDuration.WithLabelValues(SourceTypeGitHub).Observe(duration)
 	}()
 
 	// Validate GitHub source
@@ -312,8 +313,9 @@ func NewGCSFetcher(k8sClient client.Client, namespace string) *GCSFetcher {
 func (f *GCSFetcher) Fetch(ctx context.Context, spec *lambdav1alpha1.GCSSource, language string) ([]byte, string, error) {
 	startTime := time.Now()
 	defer func() {
-		RecordSourceFetch(SourceTypeGCS, "attempt")
-		_ = time.Since(startTime)
+		// Record fetch attempt with duration for observability
+		duration := time.Since(startTime).Seconds()
+		buildContextCreationDuration.WithLabelValues(SourceTypeGCS).Observe(duration)
 	}()
 
 	// Validate GCS source
@@ -530,13 +532,9 @@ func CreateTarGzFromDirectory(dir string) ([]byte, error) {
 		}
 
 		if !info.IsDir() {
-			file, err := os.Open(path)
-			if err != nil {
-				return err
-			}
-			defer file.Close()
-
-			if _, err := io.Copy(tarWriter, file); err != nil {
+			// CRITICAL FIX: Use closure to ensure file is closed immediately,
+			// not deferred until function returns (which would leak handles in loop)
+			if err := addFileToArchive(tarWriter, path); err != nil {
 				return err
 			}
 		}
@@ -556,6 +554,22 @@ func CreateTarGzFromDirectory(dir string) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+// addFileToArchive adds a single file to the tar writer
+// Extracted to fix file handle leak (defer in loop antipattern)
+func addFileToArchive(tarWriter *tar.Writer, path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", path, err)
+	}
+	defer file.Close()
+
+	if _, err := io.Copy(tarWriter, file); err != nil {
+		return fmt.Errorf("failed to copy file %s to archive: %w", path, err)
+	}
+
+	return nil
 }
 
 // =============================================================================

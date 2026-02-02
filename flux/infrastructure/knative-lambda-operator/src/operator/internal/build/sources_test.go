@@ -3,13 +3,18 @@
 package build
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,6 +66,13 @@ func TestBackend002_GitHubFetcher_ValidateSource(t *testing.T) {
 			},
 		},
 		{
+			name: "Valid with special characters in repo name",
+			spec: &GitHubSource{
+				Owner: "owner",
+				Repo:  "my-repo.test",
+			},
+		},
+		{
 			name: "Error when owner missing",
 			spec: &GitHubSource{
 				Repo: "homelab",
@@ -85,6 +97,12 @@ func TestBackend002_GitHubFetcher_ValidateSource(t *testing.T) {
 			},
 			expectError:   true,
 			errorContains: "path traversal",
+		},
+		{
+			name:          "Empty spec",
+			spec:          &GitHubSource{},
+			expectError:   true,
+			errorContains: "owner is required",
 		},
 	}
 
@@ -148,6 +166,15 @@ func TestBackend002_GitHubFetcher_BuildArchiveURL(t *testing.T) {
 			},
 			expectedURL: "https://api.github.com/repos/brunovlucena/homelab/zipball/abc123def456",
 		},
+		{
+			name: "With feature branch",
+			spec: &GitHubSource{
+				Owner: "brunovlucena",
+				Repo:  "homelab",
+				Ref:   "feature/new-feature",
+			},
+			expectedURL: "https://api.github.com/repos/brunovlucena/homelab/zipball/feature/new-feature",
+		},
 	}
 
 	for _, tt := range tests {
@@ -198,8 +225,22 @@ func TestBackend002_GitHubFetcher_GetToken(t *testing.T) {
 			expectedToken: "ghp_password",
 		},
 		{
+			name: "Priority: 'token' key takes precedence",
+			secretData: map[string][]byte{
+				"token":    []byte("first"),
+				"password": []byte("second"),
+			},
+			expectedToken: "first",
+		},
+		{
 			name:          "Error when secret has no token",
 			secretData:    map[string][]byte{"other": []byte("value")},
+			expectError:   true,
+			errorContains: "does not contain a GitHub token",
+		},
+		{
+			name:          "Error when secret has empty token",
+			secretData:    map[string][]byte{"token": []byte("")},
 			expectError:   true,
 			errorContains: "does not contain a GitHub token",
 		},
@@ -234,6 +275,18 @@ func TestBackend002_GitHubFetcher_GetToken(t *testing.T) {
 			assert.Equal(t, tt.expectedToken, token)
 		})
 	}
+}
+
+func TestBackend002_GitHubFetcher_GetToken_SecretNotFound(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	fetcher := NewGitHubFetcher(fakeClient, "default")
+
+	_, err := fetcher.getToken(context.Background(), "non-existent-secret")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to get secret")
 }
 
 func TestBackend002_GitHubFetcher_ExtractFromArchive(t *testing.T) {
@@ -299,6 +352,22 @@ func TestBackend002_GitHubFetcher_ExtractFromArchive(t *testing.T) {
 			expectedCode: "def handler(): pass",
 		},
 		{
+			name: "Extract with alternative language alias",
+			archiveFiles: map[string]string{
+				"owner-repo-abc123/main.py": "code",
+			},
+			language:     "python3",
+			expectedCode: "code",
+		},
+		{
+			name: "Extract with JavaScript alias",
+			archiveFiles: map[string]string{
+				"owner-repo-abc123/index.js": "code",
+			},
+			language:     "javascript",
+			expectedCode: "code",
+		},
+		{
 			name: "Error when file not found",
 			archiveFiles: map[string]string{
 				"owner-repo-abc123/other.txt": "content",
@@ -306,6 +375,14 @@ func TestBackend002_GitHubFetcher_ExtractFromArchive(t *testing.T) {
 			language:      "python",
 			expectError:   true,
 			errorContains: "not found",
+		},
+		{
+			name: "File found in nested directory via suffix match",
+			archiveFiles: map[string]string{
+				"owner-repo-abc123/deep/nested/main.py": "nested code",
+			},
+			language:     "python",
+			expectedCode: "nested code",
 		},
 	}
 
@@ -339,13 +416,17 @@ func TestBackend002_GitHubFetcher_DownloadArchive(t *testing.T) {
 		token          string
 		expectError    bool
 		errorContains  string
+		expectedLen    int
 	}{
 		{
 			name: "Successful download",
 			serverResponse: func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "application/vnd.github+json", r.Header.Get("Accept"))
+				assert.Equal(t, "knative-lambda-operator", r.Header.Get("User-Agent"))
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("archive-data"))
 			},
+			expectedLen: 12,
 		},
 		{
 			name: "Download with auth token",
@@ -358,7 +439,8 @@ func TestBackend002_GitHubFetcher_DownloadArchive(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("archive-data"))
 			},
-			token: "test-token",
+			token:       "test-token",
+			expectedLen: 12,
 		},
 		{
 			name: "Handle 404 error",
@@ -378,6 +460,24 @@ func TestBackend002_GitHubFetcher_DownloadArchive(t *testing.T) {
 			expectError:   true,
 			errorContains: "401",
 		},
+		{
+			name: "Handle 403 rate limit",
+			serverResponse: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"message": "API rate limit exceeded"}`))
+			},
+			expectError:   true,
+			errorContains: "403",
+		},
+		{
+			name: "Handle 500 server error",
+			serverResponse: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(`{"message": "Internal error"}`))
+			},
+			expectError:   true,
+			errorContains: "500",
+		},
 	}
 
 	for _, tt := range tests {
@@ -394,9 +494,27 @@ func TestBackend002_GitHubFetcher_DownloadArchive(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.NotEmpty(t, data)
+			assert.Len(t, data, tt.expectedLen)
 		})
 	}
+}
+
+func TestBackend002_GitHubFetcher_DownloadArchive_ContextCanceled(t *testing.T) {
+	scheme := runtime.NewScheme()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fetcher := NewGitHubFetcher(fakeClient, "default")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	_, err := fetcher.downloadArchive(ctx, server.URL, "")
+	require.Error(t, err)
 }
 
 // =============================================================================
@@ -429,6 +547,13 @@ func TestBackend002_GCSFetcher_ValidateSource(t *testing.T) {
 				Bucket:  "my-bucket",
 				Key:     "path/to/source.py",
 				Project: "my-project",
+			},
+		},
+		{
+			name: "Valid directory key",
+			spec: &lambdav1alpha1.GCSSource{
+				Bucket: "my-bucket",
+				Key:    "path/to/sources/",
 			},
 		},
 		{
@@ -473,6 +598,156 @@ func TestBackend002_GCSFetcher_ValidateSource(t *testing.T) {
 	}
 }
 
+func TestBackend002_GCSFetcher_NewGCSFetcher(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	fetcher := NewGCSFetcher(fakeClient, "test-namespace")
+	require.NotNil(t, fetcher)
+	assert.Equal(t, "test-namespace", fetcher.namespace)
+}
+
+// =============================================================================
+// CreateTarGzFromDirectory Tests
+// =============================================================================
+
+func TestBackend002_CreateTarGzFromDirectory(t *testing.T) {
+	tests := []struct {
+		name          string
+		setupDir      func(dir string) error
+		expectedFiles []string
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name: "Create archive from directory with files",
+			setupDir: func(dir string) error {
+				if err := os.WriteFile(filepath.Join(dir, "main.py"), []byte("print('hello')"), 0644); err != nil {
+					return err
+				}
+				if err := os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("flask"), 0644); err != nil {
+					return err
+				}
+				return nil
+			},
+			expectedFiles: []string{"main.py", "requirements.txt"},
+		},
+		{
+			name: "Create archive from directory with subdirectories",
+			setupDir: func(dir string) error {
+				subDir := filepath.Join(dir, "lib")
+				if err := os.MkdirAll(subDir, 0755); err != nil {
+					return err
+				}
+				if err := os.WriteFile(filepath.Join(dir, "main.py"), []byte("import lib"), 0644); err != nil {
+					return err
+				}
+				if err := os.WriteFile(filepath.Join(subDir, "helper.py"), []byte("def help(): pass"), 0644); err != nil {
+					return err
+				}
+				return nil
+			},
+			expectedFiles: []string{"main.py", "lib", "lib/helper.py"},
+		},
+		{
+			name: "Create archive from empty directory",
+			setupDir: func(dir string) error {
+				return nil // Empty directory
+			},
+			expectedFiles: []string{},
+		},
+		{
+			name: "Create archive with nested directories",
+			setupDir: func(dir string) error {
+				deep := filepath.Join(dir, "a", "b", "c")
+				if err := os.MkdirAll(deep, 0755); err != nil {
+					return err
+				}
+				return os.WriteFile(filepath.Join(deep, "file.txt"), []byte("content"), 0644)
+			},
+			expectedFiles: []string{"a", "a/b", "a/b/c", "a/b/c/file.txt"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temp directory
+			tmpDir, err := os.MkdirTemp("", "tar-test-*")
+			require.NoError(t, err)
+			defer os.RemoveAll(tmpDir)
+
+			// Setup files
+			err = tt.setupDir(tmpDir)
+			require.NoError(t, err)
+
+			// Create archive
+			archive, err := CreateTarGzFromDirectory(tmpDir)
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, archive)
+
+			// Verify archive can be extracted
+			files := extractTarGzFileNames(t, archive)
+			for _, expected := range tt.expectedFiles {
+				assert.Contains(t, files, expected)
+			}
+		})
+	}
+}
+
+func TestBackend002_CreateTarGzFromDirectory_NonExistent(t *testing.T) {
+	_, err := CreateTarGzFromDirectory("/non/existent/path")
+	require.Error(t, err)
+}
+
+func TestBackend002_CreateTarGzFromDirectory_LargeFiles(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tar-large-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create a larger file
+	largeData := bytes.Repeat([]byte("x"), 1024*100) // 100KB
+	err = os.WriteFile(filepath.Join(tmpDir, "large.bin"), largeData, 0644)
+	require.NoError(t, err)
+
+	archive, err := CreateTarGzFromDirectory(tmpDir)
+	require.NoError(t, err)
+	require.NotNil(t, archive)
+
+	// Verify compression worked
+	assert.Less(t, len(archive), len(largeData)) // Repeated bytes compress well
+}
+
+// Helper function to extract file names from tar.gz
+func extractTarGzFileNames(t *testing.T, data []byte) []string {
+	t.Helper()
+
+	gzReader, err := gzip.NewReader(bytes.NewReader(data))
+	require.NoError(t, err)
+	defer gzReader.Close()
+
+	tarReader := tar.NewReader(gzReader)
+	var files []string
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		files = append(files, header.Name)
+	}
+
+	return files
+}
+
 // =============================================================================
 // Helper Function Tests
 // =============================================================================
@@ -484,12 +759,18 @@ func TestBackend002_GetSourceFilename(t *testing.T) {
 	}{
 		{"python", "main.py"},
 		{"python3", "main.py"},
+		{"Python", "main.py"},
+		{"PYTHON", "main.py"},
 		{"nodejs", "index.js"},
 		{"node", "index.js"},
 		{"javascript", "index.js"},
+		{"JavaScript", "index.js"},
 		{"go", "main.go"},
 		{"golang", "main.go"},
+		{"Go", "main.go"},
 		{"unknown", "main.py"}, // Default to Python
+		{"", "main.py"},        // Empty defaults to Python
+		{"rust", "main.py"},    // Unsupported defaults to Python
 	}
 
 	for _, tt := range tests {
@@ -525,6 +806,24 @@ func TestBackend002_TruncateList(t *testing.T) {
 			max:      3,
 			expected: []string{"a", "b", "c", "... and 2 more"},
 		},
+		{
+			name:     "Empty list",
+			list:     []string{},
+			max:      5,
+			expected: []string{},
+		},
+		{
+			name:     "Max of zero",
+			list:     []string{"a", "b"},
+			max:      0,
+			expected: []string{"... and 2 more"},
+		},
+		{
+			name:     "Max of one with multiple items",
+			list:     []string{"a", "b", "c"},
+			max:      1,
+			expected: []string{"a", "... and 2 more"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -536,7 +835,7 @@ func TestBackend002_TruncateList(t *testing.T) {
 }
 
 // =============================================================================
-// parseGitHubURL Tests
+// parseGitHubURL Tests (function is in manager.go but tested here)
 // =============================================================================
 
 func TestBackend002_ParseGitHubURL(t *testing.T) {
@@ -571,14 +870,38 @@ func TestBackend002_ParseGitHubURL(t *testing.T) {
 			expectedRepo:  "homelab",
 		},
 		{
-			name:          "Invalid URL",
-			url:           "not-a-github-url",
+			name:          "HTTP URL (insecure)",
+			url:           "http://github.com/brunovlucena/homelab",
+			expectedOwner: "brunovlucena",
+			expectedRepo:  "homelab",
+		},
+		{
+			name:          "URL with extra path",
+			url:           "https://github.com/brunovlucena/homelab/tree/main",
+			expectedOwner: "brunovlucena",
+			expectedRepo:  "homelab",
+		},
+		{
+			name:          "Invalid URL - not GitHub",
+			url:           "https://gitlab.com/user/repo",
 			expectedOwner: "",
 			expectedRepo:  "",
 		},
 		{
-			name:          "Incomplete URL",
+			name:          "Invalid URL - no path",
+			url:           "https://github.com",
+			expectedOwner: "",
+			expectedRepo:  "",
+		},
+		{
+			name:          "Incomplete URL - only owner",
 			url:           "https://github.com/brunovlucena",
+			expectedOwner: "",
+			expectedRepo:  "",
+		},
+		{
+			name:          "Empty URL",
+			url:           "",
 			expectedOwner: "",
 			expectedRepo:  "",
 		},
@@ -594,7 +917,7 @@ func TestBackend002_ParseGitHubURL(t *testing.T) {
 }
 
 // =============================================================================
-// GitHubSource Tests
+// GitHubSource Struct Tests
 // =============================================================================
 
 func TestBackend002_GitHubSource_Struct(t *testing.T) {
@@ -615,6 +938,17 @@ func TestBackend002_GitHubSource_Struct(t *testing.T) {
 	assert.Equal(t, "github-secret", source.SecretRef.Name)
 }
 
+func TestBackend002_GitHubSource_Empty(t *testing.T) {
+	source := &GitHubSource{}
+
+	assert.Empty(t, source.Owner)
+	assert.Empty(t, source.Repo)
+	assert.Empty(t, source.Ref)
+	assert.Empty(t, source.Path)
+	assert.Empty(t, source.ArchiveURL)
+	assert.Nil(t, source.SecretRef)
+}
+
 // =============================================================================
 // Source Type Constants Tests
 // =============================================================================
@@ -622,4 +956,71 @@ func TestBackend002_GitHubSource_Struct(t *testing.T) {
 func TestBackend002_SourceTypeConstants(t *testing.T) {
 	assert.Equal(t, "github", SourceTypeGitHub)
 	assert.Equal(t, "gcs", SourceTypeGCS)
+}
+
+func TestBackend002_TimeoutConstants(t *testing.T) {
+	assert.Equal(t, 60*time.Second, GitHubArchiveTimeout)
+	assert.Equal(t, 60*time.Second, GCSDownloadTimeout)
+	assert.Equal(t, 50*1024*1024, MaxArchiveSize) // 50MB
+}
+
+// =============================================================================
+// Benchmark Tests
+// =============================================================================
+
+func BenchmarkBackend002_GetSourceFilename(b *testing.B) {
+	languages := []string{"python", "nodejs", "go", "unknown"}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		lang := languages[i%len(languages)]
+		_ = getSourceFilename(lang)
+	}
+}
+
+func BenchmarkBackend002_TruncateList(b *testing.B) {
+	list := make([]string, 100)
+	for i := range list {
+		list[i] = "item"
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = truncateList(list, 10)
+	}
+}
+
+func BenchmarkBackend002_CreateTarGzFromDirectory(b *testing.B) {
+	// Create temp directory with some files
+	tmpDir, _ := os.MkdirTemp("", "bench-tar-*")
+	defer os.RemoveAll(tmpDir)
+
+	// Create some files
+	for i := 0; i < 10; i++ {
+		os.WriteFile(filepath.Join(tmpDir, "file"+string(rune('0'+i))+".txt"), bytes.Repeat([]byte("x"), 1024), 0644)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = CreateTarGzFromDirectory(tmpDir)
+	}
+}
+
+func BenchmarkBackend002_ExtractFromArchive(b *testing.B) {
+	// Create a test archive
+	buf := new(bytes.Buffer)
+	w := zip.NewWriter(buf)
+	f, _ := w.Create("owner-repo-abc123/main.py")
+	io.WriteString(f, "def handler(): pass")
+	w.Close()
+	archive := buf.Bytes()
+
+	scheme := runtime.NewScheme()
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+	fetcher := NewGitHubFetcher(fakeClient, "default")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, _ = fetcher.extractFromArchive(archive, "", "python")
+	}
 }
