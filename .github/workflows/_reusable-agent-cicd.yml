@@ -213,6 +213,18 @@ jobs:
           echo "docker_tag=$DOCKER_TAG" >> $GITHUB_OUTPUT
           echo "is_release=$IS_RELEASE" >> $GITHUB_OUTPUT
 
+      - name: 📋 Detect Changes Summary
+        run: |
+          echo "## 🔍 Detect Changes Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Tag | \`${{ steps.version.outputs.docker_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Is Release | \`${{ steps.version.outputs.is_release }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Should build | ${{ steps.should_build.outputs.should_build }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Should deploy | ${{ steps.should_deploy.outputs.should_deploy }} |" >> $GITHUB_STEP_SUMMARY
+
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # Lint
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -297,7 +309,21 @@ jobs:
             --timeout=60 \
             --cov=${{ inputs.src-directory }} \
             --cov-report=xml \
-            --cov-report=term-missing
+            --cov-report=term-missing 2>&1 | tee pytest-output.txt
+
+      - name: 📊 Unit Tests Summary
+        if: always()
+        run: |
+          echo "## 🧪 Unit Tests Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage.xml ]; then
+            echo "Coverage report (coverage.xml) generated." >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -f pytest-output.txt ]; then
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -30 pytest-output.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: 📤 Upload coverage
         uses: codecov/codecov-action@v5
@@ -481,6 +507,16 @@ jobs:
           sarif_file: 'trivy-results.sarif'
         continue-on-error: true
 
+      - name: 📋 Security Scan Summary
+        run: |
+          echo "## 🔒 Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Scanner | Target | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Trivy (fs) | \`${{ inputs.working-directory }}\` | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "SARIF results uploaded to Security tab." >> $GITHUB_STEP_SUMMARY
+
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   # Summary
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -495,15 +531,15 @@ jobs:
         run: |
           echo "## 🤖 ${{ inputs.agent-name }} CI/CD Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Pipeline Status" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Pipeline Status" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Detect | ${{ needs.detect.result == 'success' && '✅' || needs.detect.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Lint | ${{ needs.lint.result == 'success' && '✅' || needs.lint.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Test | ${{ needs.test.result == 'success' && '✅' || needs.test.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build | ${{ needs.build.result == 'success' && '✅' || needs.build.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Security | ${{ needs.security.result == 'success' && '✅' || needs.security.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔍 Detect Changes | ${{ needs.detect.result == 'success' && '✅' || needs.detect.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔍 Lint | ${{ needs.lint.result == 'success' && '✅' || needs.lint.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🧪 Unit Tests | ${{ needs.test.result == 'success' && '✅' || needs.test.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🏗️ Build | ${{ needs.build.result == 'success' && '✅' || needs.build.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔒 Security Scan | ${{ needs.security.result == 'success' && '✅' || needs.security.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Build Info" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

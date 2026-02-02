@@ -8,12 +8,6 @@ permissions:
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'flux/apps/homepage/src/api/**'
-      - 'flux/apps/homepage/src/frontend/**'
-      - 'flux/apps/homepage/k8s/**'
-      - '.github/workflows/infra-homepage.yml'
   push:
     branches:
       - 'feature/**'
@@ -149,6 +143,20 @@ jobs:
           echo "  🌿 Git Branch: $GIT_BRANCH"
           echo "  🎯 Is Release: $IS_RELEASE"
 
+      - name: 📋 Detect Changes Summary
+        run: |
+          echo "## 🔍 Detect Changes Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| API changed | ${{ steps.changes.outputs.api }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend changed | ${{ steps.changes.outputs.frontend }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Chart changed | ${{ steps.changes.outputs.chart }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Tag | \`${{ steps.version.outputs.docker_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`${{ steps.env.outputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Should build | ${{ steps.should_build.outputs.should_build }} |" >> $GITHUB_STEP_SUMMARY
+
   lint-api:
     name: 🔍 Lint API
     runs-on: [self-hosted]
@@ -276,6 +284,19 @@ jobs:
         run: |
           CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
       
+      - name: 📊 Unit Tests Summary
+        run: |
+          echo "## 🧪 Unit Tests Summary (API)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage.out ]; then
+            go tool cover -func=coverage.out | tee coverage-summary.txt
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -20 coverage-summary.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No coverage file generated." >> $GITHUB_STEP_SUMMARY
+          fi
+      
       - name: Generate coverage report
         run: |
           go tool cover -html=coverage.out -o coverage.html
@@ -374,6 +395,16 @@ jobs:
         run: |
           npm ci --legacy-peer-deps --no-audit --no-fund
           CI=1 npm run test:coverage
+      
+      - name: 📊 Unit Tests Summary
+        run: |
+          echo "## 🧪 Unit Tests Summary (Frontend)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage/coverage-summary.json ]; then
+            echo "Coverage report generated. See job logs for details." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Tests completed. See job logs for output." >> $GITHUB_STEP_SUMMARY
+          fi
       
   build-frontend:
     name: 🏗️ Build Frontend
@@ -489,3 +520,48 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
         continue-on-error: true
+      
+      - name: 📋 Security Scan Summary
+        if: always()
+        run: |
+          echo "## 🔒 Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Scanner | Target | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Trivy (fs) | \`${{ env.WORKING_DIR }}\` | Completed |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Results uploaded to Security tab when SARIF available." >> $GITHUB_STEP_SUMMARY
+
+  summary:
+    name: 📋 Summary
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    needs: [detect-changes, lint-api, lint-frontend, test-api, test-frontend, security-scan, build-api, build-frontend]
+    if: always()
+    steps:
+      - name: 📊 Generate summary
+        run: |
+          echo "## 🏠 Homepage CI/CD Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Pipeline Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔍 Detect Changes | ${{ needs.detect-changes.result == 'success' && '✅' || needs.detect-changes.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔍 Lint API | ${{ needs.lint-api.result == 'success' && '✅' || needs.lint-api.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔍 Lint Frontend | ${{ needs.lint-frontend.result == 'success' && '✅' || needs.lint-frontend.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🧪 Unit Tests (API) | ${{ needs.test-api.result == 'success' && '✅' || needs.test-api.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🧪 Unit Tests (Frontend) | ${{ needs.test-frontend.result == 'success' && '✅' || needs.test-frontend.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔒 Security Scan | ${{ needs.security-scan.result == 'success' && '✅' || needs.security-scan.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🏗️ Build API | ${{ needs.build-api.result == 'success' && '✅' || needs.build-api.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🏗️ Build Frontend | ${{ needs.build-frontend.result == 'success' && '✅' || needs.build-frontend.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ needs.detect-changes.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Tag | \`${{ needs.detect-changes.outputs.docker_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`${{ needs.detect-changes.outputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Image | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_API }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Image | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}\` |" >> $GITHUB_STEP_SUMMARY

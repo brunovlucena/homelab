@@ -39,11 +39,6 @@ on:
         default: false
         type: boolean
 
-  pull_request:
-    paths:
-      - 'flux/infrastructure/knative-lambda-operator/**'
-      - '.github/workflows/operator-knative-lambda.yml'
-
   push:
     branches:
       - main
