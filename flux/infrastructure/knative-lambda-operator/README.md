@@ -140,6 +140,7 @@ k8s/
 
 | Feature | Pro / Pro-1-Node | Studio / Studio-1-Node |
 |---------|------------------|------------------------|
+| **Registry** | **localhost:5001 (local)** | ghcr.io |
 | Replicas | 1 | 2+ (HA) |
 | Canary Deployment | ❌ | ✅ (conservative) |
 | A/B Testing | ❌ | ✅ |
@@ -163,6 +164,15 @@ make deploy-diff ENV=pro
 make deploy-diff ENV=studio
 ```
 
+### Pro local build (pro uses local registry)
+
+Pro pulls the operator from **localhost:5001**. Build and push locally:
+
+```bash
+make pro-build          # Build and push operator to local registry
+make pro-dev            # pro-build + reconcile pro (one-shot iterate)
+```
+
 ---
 
 ## 🧪 Testing in pro before merging to main
@@ -176,7 +186,12 @@ Validate changes on **pro** (from your branch) before merging to **main**; **stu
    make flux-test-branch
    ```
 
-2. **Ensure the operator image exists** for that branch (push so [CI](.github/workflows/operator-knative-lambda.yml) builds/pushes, or run the workflow manually).
+2. **Build and push the operator** to the local registry (pro uses localhost:5001):
+
+   ```bash
+   make pro-build
+   ```
+   Or use [CI](.github/workflows/operator-knative-lambda.yml) to build/push for that branch.
 
 3. **Test** on pro.
 

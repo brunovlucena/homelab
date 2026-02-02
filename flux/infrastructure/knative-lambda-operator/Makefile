@@ -524,6 +524,17 @@ flux-test-branch: ## 🔀 Point Flux at current branch and reconcile (use from p
 	flux reconcile source git $(FLUX_REPO) --with-source && flux reconcile kustomization pro-04-knative-instances --with-source; \
 	$(call print_success,Flux now tracking branch $$BRANCH)
 
+# Pro cluster uses local registry (localhost:5001). Build and push for pro:
+.PHONY: pro-build pro-dev
+pro-build: operator-build-image-local ## 🐳 Build and push operator to local registry (pro uses this)
+	@echo ""; \
+	$(call print_success,Pro cluster pulls from $(REGISTRY). Run 'make flux-test-branch' or reconcile pro-04-knative-instances to roll out.)
+
+pro-dev: pro-build ## 🐳 Build, push, then reconcile pro (kubectl context = pro)
+	$(call print_status,🔄 Reconciling pro-04-knative-instances...); \
+	flux reconcile source git $(FLUX_REPO) --with-source && flux reconcile kustomization pro-04-knative-instances --with-source; \
+	$(call print_success,Pro updated with new image)
+
 .PHONY: kustomize-build-pro kustomize-build-studio
 kustomize-build-pro: ## 🔨 Build kustomize for pro (development)
 	@kubectl kustomize $(K8S_DIR)/overlays/pro
