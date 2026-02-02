@@ -13,6 +13,7 @@ import (
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	cehttp "github.com/cloudevents/sdk-go/v2/protocol/http"
 	"github.com/go-logr/logr"
+	"github.com/google/uuid"
 	"golang.org/x/time/rate"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -140,6 +141,12 @@ func (r *Receiver) Start(ctx context.Context) error {
 	// Main CloudEvents endpoint (Knative sends to root path)
 	mux.HandleFunc(r.config.Path, r.handleCloudEvent)
 
+	// Alternative CloudEvents endpoint (optional, for direct HTTP access)
+	// POST /events also accepts CloudEvents for compatibility
+	if r.config.Path != "/events" {
+		mux.HandleFunc("/events", r.handleCloudEvent)
+	}
+
 	// Health endpoints for Knative probes
 	mux.HandleFunc("/health", r.healthHandler)
 	mux.HandleFunc("/ready", r.readyHandler)
@@ -191,6 +198,15 @@ func (r *Receiver) handleCloudEvent(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Get or generate correlation ID for distributed tracing
+	correlationID := req.Header.Get("X-Correlation-ID")
+	if correlationID == "" {
+		correlationID = uuid.New().String()
+	}
+
+	// Always set correlation ID in response headers
+	w.Header().Set("X-Correlation-ID", correlationID)
+
 	// Debug: Log request details before parsing
 	if r.config.Debug {
 		contentType := req.Header.Get("Content-Type")
@@ -207,14 +223,22 @@ func (r *Receiver) handleCloudEvent(w http.ResponseWriter, req *http.Request) {
 			"contentType", contentType,
 			"bodyLength", len(bodyBytes),
 			"bodyPreview", bodyPreview,
-			"headers", fmt.Sprintf("%v", req.Header))
+			"headers", fmt.Sprintf("%v", req.Header),
+			"correlationId", correlationID)
 	}
 
 	// Parse CloudEvent
 	event, err := cehttp.NewEventFromHTTPRequest(req)
 	if err != nil {
-		r.log.Error(err, "Failed to parse CloudEvent")
-		http.Error(w, fmt.Sprintf("Invalid CloudEvent: %v", err), http.StatusBadRequest)
+		r.log.Error(err, "Failed to parse CloudEvent", "correlationId", correlationID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":        "error",
+			"error":         "invalid_cloudevent",
+			"message":       fmt.Sprintf("Invalid CloudEvent: %v", err),
+			"correlationId": correlationID,
+		})
 		r.incrementFailed()
 		return
 	}
@@ -225,7 +249,7 @@ func (r *Receiver) handleCloudEvent(w http.ResponseWriter, req *http.Request) {
 		"eventType", event.Type(),
 		"eventSource", event.Source(),
 		"eventSubject", event.Subject(),
-		"correlationId", req.Header.Get("X-Correlation-ID"),
+		"correlationId", correlationID,
 		"dataContentType", event.DataContentType(),
 		"hasData", event.Data() != nil,
 	)
@@ -235,10 +259,18 @@ func (r *Receiver) handleCloudEvent(w http.ResponseWriter, req *http.Request) {
 	defer cancel()
 
 	if err := r.rateLimiter.Wait(ctx); err != nil {
-		r.log.Error(err, "Rate limit exceeded", "eventId", event.ID())
+		r.log.Error(err, "Rate limit exceeded", "eventId", event.ID(), "correlationId", correlationID)
 		// Return 429 so Knative/RabbitMQ will retry later
 		w.Header().Set("Retry-After", "5")
-		http.Error(w, "Rate limit exceeded, retry later", http.StatusTooManyRequests)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":        "error",
+			"error":         "rate_limit_exceeded",
+			"message":       "Rate limit exceeded, retry later",
+			"eventId":       event.ID(),
+			"correlationId": correlationID,
+		})
 		return
 	}
 
@@ -247,6 +279,7 @@ func (r *Receiver) handleCloudEvent(w http.ResponseWriter, req *http.Request) {
 		r.log.Error(err, "Failed to process CloudEvent",
 			"id", event.ID(),
 			"type", event.Type(),
+			"correlationId", correlationID,
 		)
 		r.incrementFailed()
 
@@ -258,11 +291,12 @@ func (r *Receiver) handleCloudEvent(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(status)
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"status":    "error",
-				"eventId":   event.ID(),
-				"eventType": event.Type(),
-				"error":     "schema_validation_failed",
-				"message":   err.Error(),
+				"status":        "error",
+				"eventId":       event.ID(),
+				"eventType":     event.Type(),
+				"error":         "schema_validation_failed",
+				"message":       err.Error(),
+				"correlationId": correlationID,
 			})
 			return
 		} else if apierrors.IsConflict(err) || apierrors.IsAlreadyExists(err) {
@@ -275,7 +309,16 @@ func (r *Receiver) handleCloudEvent(w http.ResponseWriter, req *http.Request) {
 		// 5xx will trigger retry by Knative/RabbitMQ
 
 		if status >= 500 {
-			http.Error(w, err.Error(), status)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(status)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":        "error",
+				"eventId":       event.ID(),
+				"eventType":     event.Type(),
+				"error":         "processing_failed",
+				"message":       err.Error(),
+				"correlationId": correlationID,
+			})
 			return
 		}
 	}
@@ -285,13 +328,16 @@ func (r *Receiver) handleCloudEvent(w http.ResponseWriter, req *http.Request) {
 	r.log.Info("CloudEvent processed successfully",
 		"eventId", event.ID(),
 		"eventType", event.Type(),
+		"correlationId", correlationID,
 	)
 
 	// Return 202 Accepted - event processed successfully
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "accepted",
-		"eventId": event.ID(),
+		"status":        "accepted",
+		"eventId":       event.ID(),
+		"correlationId": correlationID,
 	})
 }
 
