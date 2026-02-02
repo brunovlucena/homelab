@@ -13,7 +13,7 @@ resources:
   - ../../../../infrastructure/sealed-secrets
   # - ../../../../infrastructure/external-secrets  # Disabled
   # - ../../../../infrastructure/cloudflare-tunnel  # Disabled
-  # - ../../../../infrastructure/knative-operator  # Disabled
+  - ../../../../infrastructure/knative-operator
   - ../../../../infrastructure/rabbitmq-operator
   - ../../../../infrastructure/k6-operator
   - ../../../../infrastructure/minio

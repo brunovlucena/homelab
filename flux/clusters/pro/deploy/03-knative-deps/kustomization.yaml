@@ -11,5 +11,5 @@ resources:
   - ../../../../infrastructure/rabbitmq-source
   - ../../../../infrastructure/rabbitmq-broker
   - ../../../../infrastructure/rabbitmq-clusters
-  # - ../../../../infrastructure/knative-instances  # Disabled
+  - ../../../../infrastructure/knative-instances
 
