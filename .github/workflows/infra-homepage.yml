@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - 'cursor/**'
       - 'feature/**'
       - 'bugfix/**'
       - main

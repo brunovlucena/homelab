@@ -17,7 +17,7 @@ permissions:
 on:
   workflow_dispatch:
   push:
-    branches: [main, develop, 'feature/**', 'bugfix/**']
+    branches: [main, develop, 'cursor/**', 'feature/**', 'bugfix/**']
     paths:
       - 'flux/ai/agent-bruno/**'
       - '.github/workflows/agent-bruno-ci-cd.yml'
