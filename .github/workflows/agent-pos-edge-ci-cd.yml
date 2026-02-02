@@ -1,0 +1,41 @@
+# ============================================================================
+# ⛽ Agent-POS-Edge - CI/CD
+# ============================================================================
+# Point of Sale edge computing agent.
+# Uses reusable workflow for standardized CI/CD.
+# ============================================================================
+
+name: ⛽ Agent-POS-Edge - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-pos-edge/**'
+      - '.github/workflows/agent-pos-edge-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agent-pos-edge/**'
+      - '.github/workflows/agent-pos-edge-ci-cd.yml'
+    tags:
+      - 'agent-pos-edge-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-cd:
+    name: ⛽ Agent-POS-Edge
+    uses: ./.github/workflows/_reusable-agent-cicd.yml
+    with:
+      agent-name: agent-pos-edge
+      working-directory: flux/ai/agent-pos-edge
+      image-name: agent-pos-edge/pos-edge
+      dockerfile: src/pos_edge/Dockerfile
+      python-version: '3.12'
+      run-tests: true
+      run-lint: true
+      copy-shared-lib: true
+    secrets: inherit

@@ -1,0 +1,30 @@
+FROM {{ .BaseImage }}:{{ .Version }}-alpine
+
+WORKDIR /app
+
+# Install runtime wrapper dependencies (cloudevents + flask)
+RUN pip install --no-cache-dir cloudevents>=1.10.0 flask>=2.3.0
+
+# Copy and install user dependencies (handle both flat and nested structures)
+COPY requirements.txt* ./
+RUN if [ -f requirements.txt ]; then pip install --no-cache-dir -r requirements.txt; fi
+
+# Copy Lambda runtime wrapper
+COPY runtime.py ./
+
+# Copy application code (*.py files from workspace root)
+COPY *.py ./
+
+# Set runtime environment
+# Note: PORT is set by Knative at runtime, don't hardcode it
+ENV HANDLER={{ .Handler }}
+ENV FUNCTION_NAME={{ .FunctionName }}
+ENV FUNCTION_NAMESPACE={{ .FunctionNamespace }}
+ENV TIMEOUT_SECONDS={{ .TimeoutSeconds }}
+ENV PYTHONPATH=/app
+
+EXPOSE 8080
+
+# Run the Lambda runtime wrapper (not the user's main.py directly)
+CMD ["python", "runtime.py"]
+

@@ -1,0 +1,226 @@
+name: 🛡️ Garak - CI/CD
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+  id-token: write
+  attestations: write
+
+on:
+  push:
+    branches: [main, dev, feature/*, bugfix/*, hotfix/*]
+    paths:
+      - 'flux/infrastructure/garak/**'
+      - '.github/workflows/infra-garak.yml'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'flux/infrastructure/garak/**'
+      - '.github/workflows/infra-garak.yml'
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild image'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: brunovlucena/garak
+  WORKING_DIR: flux/infrastructure/garak
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # =============================================================================
+  # 🔍 Code Quality Checks
+  # =============================================================================
+  quality:
+    name: 🔍 Code Quality
+    runs-on: [self-hosted]
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 📦 Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install ruff black mypy fastapi uvicorn pydantic
+
+      - name: ✨ Check code formatting (black)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          black --check src/ || echo "⚠️ Formatting issues found"
+        continue-on-error: true
+
+      - name: 🔍 Lint code (ruff)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          ruff check src/ || echo "⚠️ Linting issues found"
+        continue-on-error: true
+
+      - name: 🔎 Type checking (mypy)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          mypy src/ --ignore-missing-imports || echo "⚠️ Type checking issues found"
+        continue-on-error: true
+
+  # =============================================================================
+  # 🔐 Security Scanning
+  # =============================================================================
+  security-scan:
+    name: 🔐 Security Scan
+    runs-on: [self-hosted]
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔐 Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '${{ env.WORKING_DIR }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: 📤 Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        continue-on-error: true
+
+  # =============================================================================
+  # 🐳 Docker Build & Push
+  # =============================================================================
+  docker-build:
+    name: 🐳 Build & Push Docker Image
+    runs-on: [self-hosted]
+    needs: [quality, security-scan]
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+      actions: read
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📋 Determine version tag
+        id: version
+        run: |
+          GIT_SHA=$(git rev-parse --short HEAD)
+          
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            TAG="latest"
+          elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            TAG="dev"
+          elif [[ "${{ github.ref }}" == refs/heads/feature/* ]] || [[ "${{ github.ref }}" == refs/heads/bugfix/* ]]; then
+            TAG="dev-${GIT_SHA}"
+          else
+            TAG="dev-${GIT_SHA}"
+          fi
+          
+          FULL="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}"
+          
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "full=${FULL}" >> $GITHUB_OUTPUT
+          
+          echo "📦 Image will be tagged as: ${TAG}"
+          echo "📦 Full image name: ${FULL}"
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.tag }}
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=ref,event=pr
+
+      - name: 🐳 Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ env.WORKING_DIR }}
+          file: ${{ env.WORKING_DIR }}/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+
+      - name: 🔐 Run Trivy vulnerability scan on image
+        if: github.event_name != 'pull_request' && steps.push.outputs.digest
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.version.outputs.full }}
+          format: 'sarif'
+          output: 'trivy-image-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'  # Don't fail build on vulnerabilities, just report
+
+      - name: 📤 Upload Trivy image scan results
+        if: github.event_name != 'pull_request' && steps.push.outputs.digest
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-image-results.sarif'
+        continue-on-error: true
+
+      - name: 📊 Generate artifact attestation
+        if: github.event_name != 'pull_request' && steps.push.outputs.digest
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: ✅ Build summary
+        if: always()
+        run: |
+          echo "## 🛡️ Garak CI/CD Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Information:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Trigger: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Image Tag: ${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Full Image: ${{ steps.version.outputs.full }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ needs.quality.result == 'success' && '✅ Success' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "**Docker Image:**" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "${{ steps.version.outputs.full }}" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+

@@ -1,0 +1,81 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: notifi-adapter
+  namespace: agent-contracts
+  labels:
+    app.kubernetes.io/name: notifi-adapter
+    app.kubernetes.io/component: alerting
+    app.kubernetes.io/part-of: agent-contracts
+spec:
+  template:
+    metadata:
+      annotations:
+        # Keep at least 1 replica to receive Alertmanager webhooks
+        autoscaling.knative.dev/min-scale: "1"
+        autoscaling.knative.dev/max-scale: "3"
+        autoscaling.knative.dev/target: "50"
+    spec:
+      containerConcurrency: 50
+      timeoutSeconds: 30
+      containers:
+        - image: agent-contracts/notifi-adapter:v1.0.0
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              memory: "64Mi"
+              # cpu: "50m"
+            limits:
+              memory: "128Mi"
+              # cpu: "200m"
+          env:
+            - name: NOTIFI_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: agent-contracts-secrets
+                  key: notifi-webhook-url
+                  optional: true
+            - name: NOTIFI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agent-contracts-secrets
+                  key: notifi-api-key
+                  optional: true
+            - name: NOTIFI_TENANT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: agent-contracts-config
+                  key: notifi-tenant-id
+                  optional: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+# Kubernetes Service for internal routing (non-Knative)
+# This is needed because Alertmanager needs a stable endpoint
+apiVersion: v1
+kind: Service
+metadata:
+  name: notifi-adapter-internal
+  namespace: agent-contracts
+  labels:
+    app.kubernetes.io/name: notifi-adapter
+spec:
+  type: ClusterIP
+  selector:
+    serving.knative.dev/service: notifi-adapter
+  ports:
+    - port: 80
+      targetPort: 8080
+      name: http
+

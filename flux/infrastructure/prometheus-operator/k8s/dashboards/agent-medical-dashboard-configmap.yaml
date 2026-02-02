@@ -1,0 +1,587 @@
+---
+# Grafana Dashboard ConfigMap for Agent Medical
+# This dashboard is automatically discovered by Grafana via the sidecar
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-agent-medical
+  namespace: prometheus
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/name: agent-medical
+    app.kubernetes.io/component: dashboard
+  annotations:
+    k8s-sidecar-target-directory: "Agents"
+data:
+  agent-medical-dashboard.json: |
+    {
+      "title": "🏥 Agent Medical - Medical Records Dashboard (v1) [s39]",
+      "tags": ["agent-medical", "medical", "hipaa", "healthcare", "knative", "lambda"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "uid": "agent-medical",
+      "editable": true,
+      "graphTooltip": 1,
+      "links": [
+        {
+          "asDropdown": true,
+          "icon": "external link",
+          "includeVars": true,
+          "keepTime": true,
+          "tags": ["knative", "lambda", "medical"],
+          "targetBlank": true,
+          "title": "Related Dashboards",
+          "type": "dashboards"
+        }
+      ],
+      "liveNow": false,
+      "templating": {
+        "list": [
+          {
+            "name": "role",
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "query": { "query": "label_values(agent_medical_requests_total, role)", "refId": "StandardVariableQuery" },
+            "current": { "selected": true, "text": "All", "value": "$__all" },
+            "includeAll": true,
+            "multi": true,
+            "allValue": ".*",
+            "label": "User Role"
+          },
+          {
+            "name": "model",
+            "type": "query",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "query": { "query": "label_values(agent_medical_response_duration_seconds_bucket, model)", "refId": "StandardVariableQuery" },
+            "current": { "selected": true, "text": "All", "value": "$__all" },
+            "includeAll": true,
+            "multi": false,
+            "allValue": ".*",
+            "label": "Model"
+          }
+        ]
+      },
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          },
+          {
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "enable": true,
+            "expr": "ALERTS{alertname=~\"AgentMedical.*\", alertstate=\"firing\"}",
+            "iconColor": "red",
+            "name": "Agent Medical Alerts",
+            "titleFormat": "{{alertname}}",
+            "textFormat": "{{ $labels.alertname }}: {{ $labels.severity }}"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "🏥 Agent Medical Overview",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "collapsed": false
+        },
+        {
+          "type": "stat",
+          "title": "Requests (24h)",
+          "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+          "id": 2,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(increase(agent_medical_requests_total[24h])) or vector(0)",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Success Rate",
+          "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+          "id": 3,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "yellow", "value": 0.95 },
+                  { "color": "green", "value": 0.99 }
+                ]
+              },
+              "unit": "percentunit",
+              "decimals": 2
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(rate(agent_medical_requests_total{status=\"success\"}[5m])) / sum(rate(agent_medical_requests_total[5m])) or vector(1)",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Access Denied (24h)",
+          "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+          "id": 4,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 10 },
+                  { "color": "red", "value": 50 }
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(increase(agent_medical_access_denied_total[24h])) or vector(0)",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "P95 Response Time",
+          "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+          "id": 5,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 5 },
+                  { "color": "red", "value": 10 }
+                ]
+              },
+              "unit": "s",
+              "decimals": 2
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(agent_medical_response_duration_seconds_bucket{model=~\"$model\"}[5m]))) or vector(0)",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Audit Logs (24h)",
+          "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+          "id": 6,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(increase(agent_medical_audit_logs_total[24h])) or vector(0)",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Tokens Used (24h)",
+          "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+          "id": 7,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "reduceOptions": { "calcs": ["lastNotNull"] }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(increase(agent_medical_tokens_used_total[24h])) or vector(0)",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "📊 Request Metrics",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+          "id": 10,
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "Request Rate by Role & Status",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "id": 11,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (role, status) (rate(agent_medical_requests_total{role=~\"$role\"}[5m]))",
+              "legendFormat": "{{role}} - {{status}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Access Denied by Reason",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "id": 12,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 20
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (reason) (rate(agent_medical_access_denied_total[5m]))",
+              "legendFormat": "{{reason}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "🔒 HIPAA Compliance & Security",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+          "id": 20,
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "Audit Logs by Action",
+          "description": "Audit log entries by action type (HIPAA requirement)",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+          "id": 21,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "unit": "ops"
+            }
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (action) (rate(agent_medical_audit_logs_total[5m]))",
+              "legendFormat": "{{action}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Patient Queries Rate",
+          "description": "Patient record queries per second (hashed patient IDs)",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+          "id": 22,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "unit": "reqps"
+            }
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(rate(agent_medical_patient_queries_total[5m]))",
+              "legendFormat": "Patient Queries",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "⚡ LLM Performance",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+          "id": 30,
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "Response Duration Distribution",
+          "description": "Response time percentiles (P50, P95, P99)",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+          "id": 31,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 10 }
+                ]
+              }
+            }
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.50, sum by (le) (rate(agent_medical_response_duration_seconds_bucket{model=~\"$model\"}[5m])))",
+              "legendFormat": "P50",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(agent_medical_response_duration_seconds_bucket{model=~\"$model\"}[5m])))",
+              "legendFormat": "P95",
+              "refId": "B"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(agent_medical_response_duration_seconds_bucket{model=~\"$model\"}[5m])))",
+              "legendFormat": "P99",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "LLM Inference Duration",
+          "description": "LLM inference time by model",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+          "id": 32,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "unit": "s"
+            }
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.95, sum by (le, model) (rate(agent_medical_llm_inference_duration_seconds_bucket[5m])))",
+              "legendFormat": "{{model}} P95",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "🪙 Token Usage",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+          "id": 40,
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "Token Usage by Model & Type",
+          "description": "Input vs Output tokens over time",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 33 },
+          "id": 41,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "stacking": { "group": "A", "mode": "normal" }
+              },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (model, type) (increase(agent_medical_tokens_used_total[5m]))",
+              "legendFormat": "{{model}} - {{type}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "🔧 Build Info",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+          "id": 50,
+          "collapsed": true,
+          "panels": [
+            {
+              "type": "table",
+              "title": "Build Information",
+              "gridPos": { "h": 4, "w": 24, "x": 0, "y": 42 },
+              "id": 51,
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "thresholds" },
+                  "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+                }
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm"
+              },
+              "targets": [
+                {
+                  "datasource": { "type": "prometheus", "uid": "prometheus" },
+                  "expr": "agent_medical_build_info",
+                  "format": "table",
+                  "refId": "A"
+                }
+              ],
+              "transformations": [
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": { "Time": true, "Value": true, "__name__": true },
+                    "renameByName": { "version": "Version", "commit": "Commit" }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {}
+    }

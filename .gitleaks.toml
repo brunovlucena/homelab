@@ -1,0 +1,74 @@
+# Gitleaks configuration
+# https://github.com/gitleaks/gitleaks
+
+title = "Homelab Gitleaks Config"
+
+[extend]
+# Extend the default gitleaks config
+useDefault = true
+
+# Allow certain patterns that are not secrets
+[allowlist]
+description = "Allowlisted patterns"
+paths = [
+    # Test files often contain example secrets
+    '''.*_test\.go$''',
+    '''.*test.*\.py$''',
+    '''.*\.snap$''',
+    # Documentation with example values
+    '''docs/.*\.md$''',
+    '''README\.md$''',
+    # Sealed secrets (encrypted)
+    '''.*sealedsecret.*\.yaml$''',
+    # Lock files
+    '''package-lock\.json$''',
+    '''go\.sum$''',
+    # Generated files
+    '''.*zz_generated.*''',
+]
+
+regexes = [
+    # Allow placeholder/example values
+    '''example\.com''',
+    '''localhost''',
+    '''127\.0\.0\.1''',
+    '''<your-.*>''',
+    '''YOUR_.*_HERE''',
+    '''xxx+''',
+    '''placeholder''',
+    '''changeme''',
+    # Allow test fixtures
+    '''test[-_]?secret''',
+    '''dummy[-_]?key''',
+    '''fake[-_]?token''',
+    # Allow Kubernetes internal references
+    '''\.svc\.cluster\.local''',
+    # Allow local registry
+    '''localhost:5001''',
+]
+
+# Custom rules
+[[rules]]
+id = "pulumi-passphrase-placeholder"
+description = "Pulumi passphrase placeholder"
+regex = '''PULUMI_CONFIG_PASSPHRASE=""'''
+allowlist = { regexes = ['''.*'''] }
+
+[[rules]]
+id = "base64-encoded-empty"
+description = "Base64 encoded empty string"
+regex = '''base64:[\s]*$'''
+allowlist = { regexes = ['''.*'''] }
+
+[[rules]]
+id = "helm-values-placeholder"
+description = "Helm values placeholders"
+regex = '''password:\s*["']?\$\{.*\}["']?'''
+allowlist = { regexes = ['''.*'''] }
+
+# Severity thresholds
+[rules.generic-api-key]
+entropy = 4.5
+
+[rules.aws-access-token]
+entropy = 4.5

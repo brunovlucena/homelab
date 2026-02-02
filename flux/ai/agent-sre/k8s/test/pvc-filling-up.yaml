@@ -1,0 +1,41 @@
+---
+# Test PVC: Filling Up
+# Purpose: Test check-pvc-status LambdaFunction
+# Expected: LambdaFunction should check PVC status and usage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc-filling-up
+  namespace: ai
+  labels:
+    app: test-pvc
+    test.agent-sre.io/scenario: pvc-filling-up
+    test.agent-sre.io/lambda-function: check-pvc-status
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pvc-pod
+  namespace: ai
+  labels:
+    app: test-pvc-pod
+    test.agent-sre.io/scenario: pvc-filling-up
+spec:
+  containers:
+  - name: test-container
+    image: busybox:latest
+    command: ["/bin/sh", "-c", "dd if=/dev/zero of=/data/testfile bs=1M count=500 && sleep infinity"]
+    volumeMounts:
+    - name: test-volume
+      mountPath: /data
+  volumes:
+  - name: test-volume
+    persistentVolumeClaim:
+      claimName: test-pvc-filling-up
+

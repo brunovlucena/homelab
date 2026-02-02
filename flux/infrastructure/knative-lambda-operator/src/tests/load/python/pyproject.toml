@@ -1,0 +1,11 @@
+[project]
+name = "knative-lambda-load-tests"
+version = "0.1.0"
+description = "Load and performance tests for Knative Lambda service"
+requires-python = ">=3.9"
+dependencies = [
+    "aiohttp>=3.9.0",
+    "requests>=2.31.0",
+    "kubernetes>=27.2.0",
+]
+

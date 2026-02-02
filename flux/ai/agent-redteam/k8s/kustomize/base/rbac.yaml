@@ -1,0 +1,114 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 RBAC - Agent Redteam
+#
+#  Role: lambda-agent-security-tester
+#  Capabilities:
+#    - Full CRUD on LambdaFunctions (in test namespaces)
+#    - Full CRUD on Brokers (in test namespaces)
+#    - Full CRUD on Triggers (in test namespaces)
+#    - K6 TestRuns management
+#    - Jobs for test execution
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-redteam-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: security-testing
+    rbac.lambda.knative.io/tier: security-tester
+imagePullSecrets:
+  - name: ghcr-secret
+
+---
+# Create the test namespace for running exploits
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: redteam-test
+  labels:
+    app.kubernetes.io/name: redteam-test
+    app.kubernetes.io/part-of: homelab-ai
+    security.homelab.io/test-environment: "true"
+  annotations:
+    description: "Isolated namespace for running security exploits - TEST ONLY"
+
+---
+# Bind to lambda-agent-security-tester ClusterRole in agent-redteam namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-redteam-security-tester
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-security-tester
+subjects:
+  - kind: ServiceAccount
+    name: agent-redteam-sa
+    namespace: ai
+
+---
+# Bind to lambda-agent-security-tester ClusterRole in redteam-test namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-redteam-security-tester-test
+  namespace: redteam-test
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-security-tester
+subjects:
+  - kind: ServiceAccount
+    name: agent-redteam-sa
+    namespace: ai
+
+---
+# Allow redteam to view agent-bruno (for cross-agent testing)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-redteam-viewer-bruno
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-viewer
+subjects:
+  - kind: ServiceAccount
+    name: agent-redteam-sa
+    namespace: ai
+
+---
+# Allow redteam to view agent-contracts (for cross-agent testing)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-redteam-viewer-contracts
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-viewer
+subjects:
+  - kind: ServiceAccount
+    name: agent-redteam-sa
+    namespace: ai

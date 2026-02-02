@@ -1,0 +1,69 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+namespace: ai
+
+kind: Kustomization
+
+resources:
+  - ../base
+
+labels:
+  - pairs:
+      environment: studio
+
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+patches:
+  # Update image repository to use local registry for studio
+  - target:
+      kind: LambdaAgent
+      name: waiter-pierre
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-restaurant/waiter-agent
+      - op: replace
+        path: /spec/image/tag
+        value: "0.3.0"
+  - target:
+      kind: LambdaAgent
+      name: chef-marco
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-restaurant/chef-agent
+      - op: replace
+        path: /spec/image/tag
+        value: "0.3.0"
+  - target:
+      kind: LambdaAgent
+      name: sommelier-isabella
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-restaurant/sommelier-agent
+      - op: replace
+        path: /spec/image/tag
+        value: "0.3.0"
+  - target:
+      kind: LambdaAgent
+      name: host-maximilian
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-restaurant/host-agent
+      - op: replace
+        path: /spec/image/tag
+        value: "0.3.0"
+  # Resource and scaling patches for all LambdaAgents
+  - target:
+      kind: LambdaAgent
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/cpu
+        value: "50m"
+      - op: replace
+        path: /spec/resources/requests/memory
+        value: "128Mi"
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 2

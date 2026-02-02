@@ -1,0 +1,27 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📊 K6 PodMonitor - Scrape k6 metrics for Prometheus
+#
+#  This PodMonitor scrapes metrics from k6 test runner pods
+#  as a backup to remote write (in case remote write is not available)
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: k6-notifi-tests
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: k6-notifi-tests
+    app.kubernetes.io/component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: k6
+  namespaceSelector:
+    matchNames:
+      - knative-lambda
+  podMetricsEndpoints:
+    - port: "6565"
+      path: /metrics
+      interval: 10s

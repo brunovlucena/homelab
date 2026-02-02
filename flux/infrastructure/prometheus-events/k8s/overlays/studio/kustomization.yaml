@@ -1,0 +1,21 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 STUDIO OVERLAY - Production Environment
+#
+#  Purpose: Production deployment with versioned images
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: prometheus
+
+resources:
+  - ../../base
+
+# 🏷️ Image override for studio - localhost:5001 (for local registry)
+# NOTE: MUST match VERSION file - use 'make version-bump' to update
+images:
+  - name: localhost:5001/prometheus-events
+    newTag: v0.1.0

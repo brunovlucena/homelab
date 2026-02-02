@@ -1,0 +1,147 @@
+# Homelab Project Rules - AI Engineer Guidelines for 2025
+
+## 🏠 Project Overview
+This is a GitOps-managed homelab with multiple Kubernetes clusters (pro, studio, air, forge, pi).
+Core technologies: Flux, Pulumi, Knative, Go, TypeScript, Python.
+
+## 🎯 Quick Commands
+
+### Deployment Shortcuts
+When user says:
+- "deploy homepage" → Execute full homepage deployment pipeline
+- "deploy lambda operator" → Build and deploy knative-lambda-operator
+- "deploy all" → Reconcile all Flux resources
+- "ship it" / "push to prod" → Commit, push, build, rollout current project
+
+### Infrastructure Commands
+- "up" / "start cluster" → `make up ENV=<detected-cluster>`
+- "destroy" → `make destroy ENV=<cluster>` (requires confirmation)
+- "observe" / "status" → `make observe` or `flux get all -A`
+- "reconcile" → `make reconcile-all`
+- "logs <service>" → `kubectl logs -f deployment/<service> -n <namespace>`
+
+## 📁 Project Structure
+
+```
+homelab/
+├── flux/                    # GitOps manifests
+│   ├── clusters/           # Cluster-specific configs (pro, studio, air, forge, pi)
+│   ├── infrastructure/     # Core infrastructure components
+│   │   ├── homepage/       # Portfolio website (Go API + React frontend)
+│   │   ├── knative-lambda-operator/  # Serverless functions operator
+│   │   ├── prometheus/     # Monitoring stack
+│   │   └── ...
+│   └── apps/               # Application deployments
+├── pulumi/                 # Infrastructure as Code
+├── scripts/                # Automation scripts
+└── docs/                   # Architecture documentation
+```
+
+## 🔧 Component-Specific Rules
+
+### Homepage (flux/infrastructure/homepage/)
+- **API**: Go with Gin framework, PostgreSQL, Redis
+- **Frontend**: React + TypeScript + Vite + TailwindCSS
+- **Deploy**: `cd flux/infrastructure/homepage && make deploy`
+- **Namespace**: `homepage`
+
+### Knative Lambda Operator (flux/infrastructure/knative-lambda-operator/)
+- **Language**: Go (Kubernetes operator)
+- **CRD**: LambdaFunction
+- **Deploy**: `cd flux/infrastructure/knative-lambda-operator/src/operator && make deploy`
+- **Namespace**: `knative-lambda`
+- **Tests**: Unit, Integration, E2E, Load tests available
+
+## 🚫 Safety Rules (ALWAYS FOLLOW)
+
+1. **Never execute without confirmation:**
+   - `kubectl delete` (any resource)
+   - `kubectl patch` (any resource)
+   - `make destroy`
+   - Any command with `--force`
+
+2. **Always verify context before cluster operations:**
+   - Check `kubectl config current-context`
+   - Confirm target cluster matches intent
+
+3. **Database operations require explicit confirmation:**
+   - Migrations, schema changes
+   - Data deletion or modification
+
+## 🧪 Testing Workflows
+
+### Run Tests
+- Homepage API: `cd flux/infrastructure/homepage/src/api && go test ./...`
+- Homepage Frontend: `cd flux/infrastructure/homepage/src/frontend && npm test`
+- Lambda Operator: `cd flux/infrastructure/knative-lambda-operator/src && go test ./...`
+- E2E Tests: `cd flux/infrastructure/knative-lambda-operator/src/tests/e2e && pytest`
+
+### Code Quality
+- Go: `golangci-lint run`
+- TypeScript: `npm run lint && npm run typecheck`
+
+## 📊 Observability
+
+### Access Dashboards
+- Grafana: `make pf-grafana` (http://localhost:3000)
+- Prometheus: `make pf-prometheus` (http://localhost:9090)
+- Alertmanager: `make pf-alertmanager` (http://localhost:9093)
+
+### Check Health
+- Homepage: `kubectl exec -n homepage deploy/homepage-api -- curl -s localhost:8080/health`
+- Lambda Operator: `kubectl logs -n knative-lambda deploy/knative-lambda-operator`
+
+## 🔄 GitOps Workflow
+
+1. Make changes to manifests in `flux/`
+2. Commit and push to main branch
+3. Flux automatically reconciles (or run `make reconcile-all`)
+4. For local development: use `make build-images-local` + `make rollout`
+
+## 💡 AI Assistant Tips
+
+### When analyzing code:
+- Check existing patterns in similar components
+- Review test files for expected behavior
+- Look at docs/ for architecture decisions
+
+### When implementing features:
+- Follow existing code style and conventions
+- Add tests for new functionality
+- Update relevant documentation
+
+### When debugging:
+- Check pod logs first: `kubectl logs -n <ns> deploy/<name>`
+- Verify pod status: `kubectl get pods -n <ns>`
+- Check events: `kubectl get events -n <ns> --sort-by='.lastTimestamp'`
+
+## 🤖 Flux MCP Server (AI-Assisted GitOps)
+
+This project integrates the **Flux Operator MCP Server** for AI-assisted GitOps operations.
+Reference: https://fluxcd.io/blog/2025/05/ai-assisted-gitops/
+
+### Available Flux MCP Tools
+When the MCP server is running, use these capabilities:
+
+1. **Health Assessment**: Analyze Flux installation and component status
+2. **Pipeline Visualization**: Generate Mermaid diagrams of Flux dependencies
+3. **Cross-Cluster Comparison**: Compare HelmReleases/Kustomizations between clusters
+4. **Root Cause Analysis**: Debug failed deployments end-to-end
+5. **GitOps Operations**: Resume suspended resources, trigger reconciliation
+6. **Documentation Search**: Get up-to-date Flux guidance
+
+### Example Prompts
+- "Analyze the Flux installation in my current cluster"
+- "List the Flux Kustomizations and draw a dependency diagram"
+- "Perform root cause analysis of the last failed HelmRelease"
+- "Compare the homepage HelmRelease between pro and studio clusters"
+- "Resume all suspended Flux resources"
+
+### Cluster Context
+Before Flux operations, verify your kubectl context:
+- **pro**: Production-like environment (kind cluster)
+- **studio**: Development environment (kind cluster)
+- Run `kubectl config current-context` to confirm
+
+### Installation
+Install the MCP server: `brew install controlplaneio-fluxcd/tap/flux-operator-mcp`

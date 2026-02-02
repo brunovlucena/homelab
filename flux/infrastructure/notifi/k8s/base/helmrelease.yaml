@@ -1,0 +1,30 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: notifi
+  namespace: notifi
+spec:
+  interval: 15m
+  timeout: 15m
+  releaseName: notifi
+  chart:
+    spec:
+      chart: envs/notifi-prd
+      sourceRef:
+        kind: GitRepository
+        name: notifi-k8s
+        namespace: flux-system
+      interval: 5m
+  install:
+    remediation:
+      retries: -1
+    crds: CreateReplace
+  upgrade:
+    remediation:
+      retries: -1
+    crds: CreateReplace
+  values:
+    global:
+      config:
+        LOG_LEVEL: info

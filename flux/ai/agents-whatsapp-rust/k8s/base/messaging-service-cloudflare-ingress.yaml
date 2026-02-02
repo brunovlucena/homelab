@@ -1,0 +1,42 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Messaging Service - Cloudflare Tunnel Ingress (STRRL Controller)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Exposes the messaging-service WebSocket endpoint via Cloudflare Tunnel
+# Uses standard Kubernetes Ingress with cloudflare-tunnel ingress class
+# 
+# ⚠️ IMPORTANT: WebSocket Limitations with Cloudflare Tunnel
+# - Free tier: 100 second connection duration limit
+# - Connections may drop during tunnel reconnections
+# - For production, consider Layer 4 load balancer (MetalLB or cloud LB)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: messaging-service-ws
+  namespace: agents-whatsapp-rust
+  labels:
+    app.kubernetes.io/name: messaging-service
+    app.kubernetes.io/part-of: agents-whatsapp-rust
+    app.kubernetes.io/component: ingress
+spec:
+  ingressClassName: cloudflare-tunnel
+  rules:
+    - host: messaging.lucena.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: messaging-service
+                port:
+                  number: 8080
+
+
+
+
+
+
+
+

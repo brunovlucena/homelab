@@ -1,0 +1,22 @@
+---
+# Test Pod: ImagePullBackOff
+# Purpose: Test pod-check-status LambdaFunction
+# Expected: LambdaFunction should identify ImagePullBackOff status
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-imagepullbackoff
+  namespace: ai
+  labels:
+    app: test-imagepullbackoff
+    test.agent-sre.io/scenario: imagepullbackoff
+    test.agent-sre.io/lambda-function: pod-check-status
+spec:
+  containers:
+  - name: test-container
+    image: nonexistent-image:latest  # Will fail to pull
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+

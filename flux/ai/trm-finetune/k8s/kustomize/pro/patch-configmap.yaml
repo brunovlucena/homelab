@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trm-finetune-config
+  namespace: ml-platform
+data:
+  # Production-specific overrides
+  EPOCHS: "100000"  # More epochs for production
+  EVAL_INTERVAL: "10000"
+  GLOBAL_BATCH_SIZE: "256"  # Larger batch size
+
+

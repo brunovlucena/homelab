@@ -1,0 +1,41 @@
+# ============================================================================
+# 🔧 Agent-Tools - CI/CD
+# ============================================================================
+# Kubernetes tools and utilities agent.
+# Uses reusable workflow for standardized CI/CD.
+# ============================================================================
+
+name: 🔧 Agent-Tools - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-tools/**'
+      - '.github/workflows/agent-tools-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agent-tools/**'
+      - '.github/workflows/agent-tools-ci-cd.yml'
+    tags:
+      - 'agent-tools-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-cd:
+    name: 🔧 Agent-Tools
+    uses: ./.github/workflows/_reusable-agent-cicd.yml
+    with:
+      agent-name: agent-tools
+      working-directory: flux/ai/agent-tools
+      image-name: agent-tools/k8s-tools
+      dockerfile: src/k8s_tools/Dockerfile
+      python-version: '3.12'
+      run-tests: true
+      run-lint: true
+      copy-shared-lib: false
+    secrets: inherit

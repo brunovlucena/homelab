@@ -1,0 +1,27 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🎮 PROMETHEUS EVENTS - BASE KUSTOMIZATION
+#
+#  Purpose: Base resources for prometheus-events service
+#  Version is managed via overlays using kustomize images: section
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: prometheus
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+commonLabels:
+  app: prometheus-events
+  component: cloudevents-converter
+
+# Default image version (override in overlays)
+# NOTE: This MUST match VERSION file - use 'make version-bump' to update all versions
+images:
+  - name: localhost:5001/prometheus-events
+    newTag: v0.1.0

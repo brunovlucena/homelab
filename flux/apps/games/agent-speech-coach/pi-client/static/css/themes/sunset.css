@@ -1,0 +1,13 @@
+/* Sunset Theme - Orange/Pink */
+:root {
+    --primary-color: #FF6F00;
+    --header-bg: linear-gradient(135deg, #FF6F00 0%, #E91E63 100%);
+    --chat-bg: #fff3e0;
+    --user-message-bg: #FF9800;
+    --agent-message-bg: white;
+    --agent-message-text: #E65100;
+}
+
+.app-header {
+    background: linear-gradient(135deg, #FF6F00 0%, #E91E63 100%);
+}

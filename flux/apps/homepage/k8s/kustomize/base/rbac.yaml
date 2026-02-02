@@ -1,0 +1,41 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homepage-secret-sync
+  namespace: homepage
+  labels:
+    app: homepage
+    component: secret-sync
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homepage-secret-sync
+  labels:
+    app: homepage
+    component: secret-sync
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homepage-secret-sync
+  labels:
+    app: homepage
+    component: secret-sync
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homepage-secret-sync
+subjects:
+  - kind: ServiceAccount
+    name: homepage-secret-sync
+    namespace: homepage
+

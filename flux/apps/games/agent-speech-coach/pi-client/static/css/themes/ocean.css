@@ -1,0 +1,9 @@
+/* Ocean Theme - Blue */
+:root {
+    --primary-color: #2196F3;
+    --header-bg: #2196F3;
+    --chat-bg: #e3f2fd;
+    --user-message-bg: #03A9F4;
+    --agent-message-bg: white;
+    --agent-message-text: #1565C0;
+}

@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cyber-dark: #0a0a0f;
+  --cyber-gray: #1a1a2e;
+  --cyber-purple: #8b5cf6;
+  --cyber-pink: #ec4899;
+  --cyber-blue: #3b82f6;
+  --cyber-cyan: #06b6d4;
+  --cyber-green: #10b981;
+  --cyber-yellow: #f59e0b;
+  --cyber-red: #ef4444;
+}
+
+@layer base {
+  body {
+    @apply bg-cyber-dark text-white;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-cyber-gray/50 backdrop-blur-sm border border-cyber-purple/20 rounded-xl;
+  }
+  
+  .card-hover {
+    @apply hover:border-cyber-purple/50 hover:shadow-cyber transition-all duration-300;
+  }
+  
+  .btn-primary {
+    @apply bg-gradient-to-r from-cyber-purple to-cyber-pink text-white px-4 py-2 rounded-lg
+           hover:shadow-cyber transition-all duration-300 font-medium;
+  }
+  
+  .btn-secondary {
+    @apply bg-cyber-gray/50 border border-cyber-purple/30 text-white px-4 py-2 rounded-lg
+           hover:border-cyber-purple hover:bg-cyber-purple/10 transition-all duration-300;
+  }
+  
+  .input-field {
+    @apply bg-cyber-dark border border-cyber-purple/30 rounded-lg px-4 py-2 text-white
+           placeholder:text-gray-500 focus:outline-none focus:border-cyber-purple
+           focus:ring-1 focus:ring-cyber-purple/50;
+  }
+  
+  .badge {
+    @apply px-2 py-0.5 text-xs font-medium rounded-full uppercase tracking-wide;
+  }
+  
+  .badge-success {
+    @apply bg-cyber-green/20 text-cyber-green;
+  }
+  
+  .badge-warning {
+    @apply bg-cyber-yellow/20 text-cyber-yellow;
+  }
+  
+  .badge-error {
+    @apply bg-cyber-red/20 text-cyber-red;
+  }
+  
+  .badge-info {
+    @apply bg-cyber-blue/20 text-cyber-blue;
+  }
+  
+  .stat-card {
+    @apply card p-4 flex flex-col gap-2;
+  }
+  
+  .stat-value {
+    @apply text-3xl font-bold bg-gradient-to-r from-cyber-purple to-cyber-pink bg-clip-text text-transparent;
+  }
+  
+  .stat-label {
+    @apply text-sm text-gray-400 uppercase tracking-wide;
+  }
+  
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400
+           hover:text-white hover:bg-cyber-purple/10 transition-all duration-200;
+  }
+  
+  .nav-item-active {
+    @apply text-white bg-cyber-purple/20 border-l-2 border-cyber-purple;
+  }
+}
+
+@layer utilities {
+  .shadow-cyber {
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+  }
+  
+  .shadow-cyber-lg {
+    box-shadow: 0 0 40px rgba(139, 92, 246, 0.4);
+  }
+  
+  .glow-text {
+    text-shadow: 0 0 10px currentColor;
+  }
+  
+  .gradient-text {
+    @apply bg-gradient-to-r from-cyber-purple to-cyber-pink bg-clip-text text-transparent;
+  }
+  
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--cyber-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--cyber-purple);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cyber-pink);
+}

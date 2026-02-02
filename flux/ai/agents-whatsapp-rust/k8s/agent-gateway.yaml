@@ -1,0 +1,40 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: agent-gateway
+  namespace: agents-whatsapp-rust
+spec:
+  template:
+    spec:
+      containers:
+      - image: localhost:5001/agents-whatsapp-rust-agent-gateway:v1.0.3
+        env:
+        - name: MONGODB_URI
+          value: "mongodb://mongodb.homelab-services.svc.cluster.local:27017"
+        - name: MONGODB_DATABASE
+          value: "messaging_app"
+        - name: REDIS_URI
+          value: "redis://redis.homelab-services.svc.cluster.local:6379"
+        - name: BROKER_URL
+          value: "http://default-broker.homelab-services.svc.cluster.local"
+        - name: RUST_LOG
+          value: "info"
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5

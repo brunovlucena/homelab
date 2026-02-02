@@ -1,0 +1,118 @@
+# ============================================================================
+# 🤖 Agent-SRE - Model Training Pipeline
+# ============================================================================
+# Triggers Flyte workflow on Forge cluster for automated model training
+# ============================================================================
+
+name: 🤖 Agent-SRE - Model Training
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  schedule:
+    # Weekly retraining: Every Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      agent_name:
+        description: 'Agent name to train'
+        required: true
+        default: 'agent-sre'
+        type: choice
+        options:
+          - agent-sre
+          - agent-bruno
+          - agent-auditor
+      force_retrain:
+        description: 'Force retraining even if no changes'
+        required: false
+        default: false
+        type: boolean
+      training_iters:
+        description: 'Number of training iterations'
+        required: false
+        default: '1000'
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - 'flux/ai/agent-sre/docs/RUNBOOK.md'
+      - 'flux/ai/agent-sre/training/**'
+      - '.github/workflows/agent-sre-train-model.yml'
+
+env:
+  FLYTE_PROJECT: homelab
+  FLYTE_DOMAIN: production
+  FLYTE_ENDPOINT: flyte.ml-platform.svc.forge.remote:81
+
+jobs:
+  trigger-training:
+    name: 🚀 Trigger Flyte Training Pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Install Flyte CLI
+        run: |
+          # Install flytectl
+          curl -sL https://ctl.flyte.org/install | bash
+          export PATH="$HOME/.flyte/bin:$PATH"
+          flytectl version
+      
+      - name: 🔐 Configure Flyte
+        run: |
+          mkdir -p ~/.flyte
+          cat > ~/.flyte/config.yaml <<EOF
+          admin:
+            endpoint: ${{ env.FLYTE_ENDPOINT }}
+            insecure: true
+            project: ${{ env.FLYTE_PROJECT }}
+            domain: ${{ env.FLYTE_DOMAIN }}
+          EOF
+          export PATH="$HOME/.flyte/bin:$PATH"
+          flytectl config validate
+      
+      - name: 🚀 Trigger Training Workflow
+        id: trigger
+        run: |
+          export PATH="$HOME/.flyte/bin:$PATH"
+          
+          AGENT_NAME="${{ github.event.inputs.agent_name || 'agent-sre' }}"
+          ITERS="${{ github.event.inputs.training_iters || '1000' }}"
+          
+          # Create execution
+          EXEC_ID=$(flytectl create execution \
+            --project ${{ env.FLYTE_PROJECT }} \
+            --domain ${{ env.FLYTE_DOMAIN }} \
+            --workflow agent_training_pipeline \
+            --inputs "{\"agent_name\": \"$AGENT_NAME\", \"iters\": $ITERS}" \
+            --dry-run=false \
+            -o json | jq -r '.id.name')
+          
+          echo "execution_id=$EXEC_ID" >> $GITHUB_OUTPUT
+          echo "✅ Triggered training workflow: $EXEC_ID"
+      
+      - name: 📊 Training Summary
+        run: |
+          echo "## 🤖 Model Training Pipeline" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Agent | \`${{ github.event.inputs.agent_name || 'agent-sre' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Execution ID | \`${{ steps.trigger.outputs.execution_id }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Flyte Project | \`${{ env.FLYTE_PROJECT }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Flyte Domain | \`${{ env.FLYTE_DOMAIN }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Monitor Training" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View execution in Flyte UI:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "flytectl get execution ${{ steps.trigger.outputs.execution_id }} \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --project ${{ env.FLYTE_PROJECT }} \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --domain ${{ env.FLYTE_DOMAIN }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

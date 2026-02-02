@@ -1,0 +1,19 @@
+# Agent-POS-Edge Dependencies
+fastapi>=0.115.6  # Fixed CVE-2024-24762
+uvicorn>=0.32.1
+cloudevents>=1.12.0  # Latest secure version
+pydantic>=2.12.5  # Latest stable
+httpx>=0.28.1
+prometheus-client>=0.21.0
+opentelemetry-api>=1.30.0
+opentelemetry-sdk>=1.30.0
+opentelemetry-instrumentation-fastapi>=0.47b0
+opentelemetry-exporter-otlp>=1.30.0
+structlog>=24.4.0
+python-json-logger>=2.0.7
+pyyaml>=6.0.1
+redis>=5.0.0
+
+# === Agent Optimization (Queueing, Game, Control Theory) ===
+# Installed from local shared-lib during Docker build
+# -e /app/shared-lib

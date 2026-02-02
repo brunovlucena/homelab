@@ -1,0 +1,38 @@
+{{- /* ApiServerSource Template */ -}}
+{{- /* NOTE: ApiServerSource is optional and may cause issues with event type filtering */ -}}
+{{- /* Only enable if you need to watch Kubernetes API resources */ -}}
+{{- if .ApiSource.Enabled }}
+---
+apiVersion: sources.knative.dev/v1
+kind: ApiServerSource
+metadata:
+  name: {{ .Name }}-job-watcher
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: apisource
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+spec:
+  resources:
+  {{- range .ApiSource.Resources }}
+  - apiVersion: {{ .APIVersion }}
+    kind: {{ .Kind }}
+    {{- if .LabelSelector }}
+    labelSelector:
+      matchLabels:
+        {{- range $key, $value := .LabelSelector }}
+        {{ $key }}: {{ $value }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+  serviceAccountName: {{ .Name }}-job-watcher-sa
+  mode: {{ .ApiSource.Mode | default "Resource" }}
+  sink:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}
+{{- end }}
+

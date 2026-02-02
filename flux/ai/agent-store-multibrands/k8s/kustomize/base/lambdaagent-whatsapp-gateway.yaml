@@ -1,0 +1,114 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📱 WhatsApp Gateway Agent
+#
+#  Handles WhatsApp Business API integration for customer messaging
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: whatsapp-gateway
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: whatsapp-gateway
+    app.kubernetes.io/component: gateway
+    app.kubernetes.io/part-of: agent-store-multibrands
+    store.agent.role: gateway
+  annotations:
+    description: "WhatsApp Business API Gateway for customer messaging"
+spec:
+  serviceAccountName: store-agent-sa
+
+  image:
+    repository: localhost:5001/whatsapp_gateway
+    tag: "0.3.0"
+    port: 8080
+
+  ai:
+    provider: none  # Gateway doesn't need AI directly
+
+  behavior:
+    maxContextMessages: 5
+    emitEvents: true
+    systemPrompt: ""
+
+  scaling:
+    minReplicas: 1  # Always running for webhook
+    maxReplicas: 5
+    targetConcurrency: 50
+    scaleToZeroGracePeriod: 0s  # Never scale to zero
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+
+  env:
+    - name: AGENT_NAME
+      value: "whatsapp-gateway"
+    - name: WHATSAPP_PHONE_NUMBER_ID
+      valueFrom:
+        secretKeyRef:
+          name: whatsapp-credentials
+          key: WHATSAPP_PHONE_NUMBER_ID
+    - name: WHATSAPP_ACCESS_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: whatsapp-credentials
+          key: WHATSAPP_ACCESS_TOKEN
+    - name: WHATSAPP_VERIFY_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: whatsapp-credentials
+          key: WHATSAPP_VERIFY_TOKEN
+    - name: WHATSAPP_APP_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: whatsapp-credentials
+          key: WHATSAPP_APP_SECRET
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-store-multibrands/whatsapp-gateway"
+    
+    intents:
+      - store.whatsapp.message.received
+      - store.whatsapp.message.status
+      - store.whatsapp.media.received
+      - store.chat.message.new
+    
+    subscriptions:
+      - eventType: store.chat.response
+        description: "AI seller response to send to customer"
+      - eventType: store.order.status.update
+        description: "Order status updates to notify customer"
+      - eventType: store.whatsapp.message.send
+        description: "Direct message send requests"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

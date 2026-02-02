@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --wine-primary: #722038;
+  --gold-primary: #d4a012;
+  --cream-primary: #fdf8f3;
+}
+
+body {
+  @apply bg-cream-100 text-wood-900 font-sans;
+}
+
+/* Elegant card style */
+.elegant-card {
+  @apply bg-white rounded-xl shadow-lg border border-cream-200;
+  @apply transition-all duration-300 hover:shadow-xl;
+}
+
+/* Wine accent border */
+.wine-accent {
+  @apply border-l-4 border-wine-900;
+}
+
+/* Gold highlight */
+.gold-highlight {
+  @apply text-gold-600;
+}
+
+/* Status indicators */
+.status-available {
+  @apply bg-emerald-100 text-emerald-800 border-emerald-200;
+}
+
+.status-occupied {
+  @apply bg-wine-100 text-wine-800 border-wine-200;
+}
+
+.status-reserved {
+  @apply bg-gold-100 text-gold-800 border-gold-200;
+}
+
+/* Table visualization */
+.table-visual {
+  @apply rounded-lg transition-all duration-300;
+}
+
+.table-visual:hover {
+  @apply transform scale-105;
+}
+
+/* Agent avatar */
+.agent-avatar {
+  @apply w-12 h-12 rounded-full flex items-center justify-center text-xl;
+  @apply shadow-md border-2 border-white;
+}
+
+/* Elegant button */
+.btn-elegant {
+  @apply px-6 py-3 rounded-lg font-medium transition-all duration-300;
+  @apply bg-wine-900 text-white hover:bg-wine-800;
+  @apply shadow-md hover:shadow-lg;
+}
+
+.btn-elegant-outline {
+  @apply px-6 py-3 rounded-lg font-medium transition-all duration-300;
+  @apply border-2 border-wine-900 text-wine-900 hover:bg-wine-900 hover:text-white;
+}
+
+/* Kitchen ticket */
+.kitchen-ticket {
+  @apply bg-white border-2 border-dashed border-wood-300 rounded-lg p-4;
+  @apply font-mono text-sm;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-cream-200 rounded;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-wood-400 rounded hover:bg-wood-500;
+}
+
+/* Animations */
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 160, 18, 0.4); }
+  50% { box-shadow: 0 0 0 10px rgba(212, 160, 18, 0); }
+}
+
+.pulse-gold {
+  animation: pulse-gold 2s infinite;
+}
+
+@keyframes slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.slide-in {
+  animation: slide-in 0.3s ease-out;
+}

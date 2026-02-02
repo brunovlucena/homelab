@@ -1,0 +1,167 @@
+---
+# MAG7 Battle - Game Server
+# Serves the web game and handles game state
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: mag7-game-server
+  namespace: demo-mag7-battle
+  labels:
+    app.kubernetes.io/name: mag7-game-server
+    app.kubernetes.io/component: game-server
+    app.kubernetes.io/part-of: demo-mag7-battle
+  annotations:
+    description: "Game server for MAG7 Battle demo"
+spec:
+  build:
+    registry: localhost:5001
+    registryType: local
+    insecure: true
+  source:
+    type: inline
+    inline:
+      code: |
+        """
+        MAG7 Battle Game Server
+        
+        Serves the game UI and handles WebSocket connections for real-time gameplay.
+        """
+        import os
+        import json
+        import asyncio
+        from datetime import datetime
+        from uuid import uuid4
+        
+        from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+        from fastapi.responses import HTMLResponse, JSONResponse
+        from fastapi.staticfiles import StaticFiles
+        
+        app = FastAPI(title="MAG7 Battle", version="1.0.0")
+        
+        # Game state
+        games = {}
+        connections = {}
+        
+        class GameState:
+            def __init__(self, game_id: str):
+                self.game_id = game_id
+                self.wave = 1
+                self.score = 0
+                self.player_health = 100
+                self.mag7_health = 1000
+                self.exploits_blocked = 0
+                self.exploits_missed = 0
+                self.active_exploits = []
+                self.active_defenses = []
+                self.started_at = datetime.utcnow().isoformat()
+                self.game_over = False
+                self.victory = False
+            
+            def to_dict(self):
+                return {
+                    "game_id": self.game_id,
+                    "wave": self.wave,
+                    "score": self.score,
+                    "player_health": self.player_health,
+                    "mag7_health": self.mag7_health,
+                    "exploits_blocked": self.exploits_blocked,
+                    "exploits_missed": self.exploits_missed,
+                    "game_over": self.game_over,
+                    "victory": self.victory,
+                }
+        
+        @app.get("/")
+        async def root():
+            """Serve main game page."""
+            # Return HTML from ConfigMap
+            html_path = os.getenv("GAME_UI_PATH", "/app/static/index.html")
+            if os.path.exists(html_path):
+                with open(html_path) as f:
+                    return HTMLResponse(content=f.read())
+            return HTMLResponse(content="<h1>MAG7 Battle - Game Loading...</h1>")
+        
+        @app.get("/health")
+        async def health():
+            return {"status": "healthy"}
+        
+        @app.post("/game/start")
+        async def start_game():
+            """Start a new game."""
+            game_id = str(uuid4())[:8]
+            games[game_id] = GameState(game_id)
+            return games[game_id].to_dict()
+        
+        @app.get("/game/{game_id}")
+        async def get_game(game_id: str):
+            """Get game state."""
+            if game_id not in games:
+                return JSONResponse(status_code=404, content={"error": "Game not found"})
+            return games[game_id].to_dict()
+        
+        @app.post("/game/{game_id}/block")
+        async def block_exploit(game_id: str, request: Request):
+            """Block an exploit and deal damage to MAG7."""
+            if game_id not in games:
+                return JSONResponse(status_code=404, content={"error": "Game not found"})
+            
+            data = await request.json()
+            exploit_type = data.get("exploit_type", "unknown")
+            damage = data.get("damage", 50)
+            
+            game = games[game_id]
+            game.exploits_blocked += 1
+            game.score += damage * 10
+            game.mag7_health -= damage
+            
+            if game.mag7_health <= 0:
+                game.mag7_health = 0
+                game.game_over = True
+                game.victory = True
+            
+            return game.to_dict()
+        
+        @app.post("/game/{game_id}/miss")
+        async def miss_exploit(game_id: str, request: Request):
+            """Exploit was missed - player takes damage."""
+            if game_id not in games:
+                return JSONResponse(status_code=404, content={"error": "Game not found"})
+            
+            data = await request.json()
+            damage = data.get("damage", 10)
+            
+            game = games[game_id]
+            game.exploits_missed += 1
+            game.player_health -= damage
+            
+            if game.player_health <= 0:
+                game.player_health = 0
+                game.game_over = True
+                game.victory = False
+            
+            return game.to_dict()
+        
+        def handler(event):
+            """Lambda handler for CloudEvents."""
+            return {"statusCode": 200, "body": "OK"}
+  runtime:
+    language: python
+    version: "3.11"
+    handler: "main.handler"
+  
+  scaling:
+    minReplicas: 0
+    maxReplicas: 2
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: 300s
+  
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  
+  env:
+    - name: GAME_UI_PATH
+      value: "/app/static/index.html"

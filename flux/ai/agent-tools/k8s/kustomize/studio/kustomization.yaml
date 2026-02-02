@@ -1,0 +1,27 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+namespace: ai
+
+kind: Kustomization
+
+resources:
+  - ../base
+
+# 📝 Studio environment - using localhost:5001 for local development
+# NOTE: GHCR images don't exist yet - use local registry for studio
+# For production, update to use ghcr.io images after they're built/pushed
+patches:
+  - target:
+      kind: LambdaAgent
+      name: agent-tools
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/k8s-tools
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.0.0"  # Use version that exists locally
+
+# 📝 Studio-specific labels
+commonLabels:
+  environment: studio

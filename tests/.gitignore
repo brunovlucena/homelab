@@ -1,0 +1,29 @@
+# Test outputs
+*.out
+*.log
+*.html
+coverage.out
+coverage.html
+test-report-*.txt
+
+# Test artifacts
+*.tmp
+*.test
+
+# Temporary test files
+/tmp/
+*.swp
+*.swo
+*~
+
+# BATS cache
+.bats/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+

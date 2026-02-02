@@ -1,0 +1,169 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🎛️ Command Center - Central Monitoring Hub
+#
+#  Aggregates data from all edge locations, provides dashboard & alerting
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: pos-edge-command-center
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: pos-edge-command-center
+    app.kubernetes.io/component: orchestrator
+    app.kubernetes.io/part-of: agent-pos-edge
+    pos.agent.role: command-center
+  annotations:
+    description: "Central monitoring and control for all edge locations"
+spec:
+  serviceAccountName: pos-edge-command-center-sa
+
+  image:
+    repository: localhost:5001/command-center
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 2048
+    temperature: "0.3"
+
+  behavior:
+    maxContextMessages: 20
+    emitEvents: true
+    systemPrompt: |
+      You are the COMMAND CENTER for a fleet of POS (Point of Sale) edge agents.
+      
+      YOUR ROLE:
+      - Monitor all edge locations (gas stations, fast-food restaurants, retail)
+      - Aggregate health metrics and transaction data
+      - Detect anomalies and raise alerts
+      - Coordinate configuration pushes to edge agents
+      
+      CAPABILITIES:
+      - Fleet-wide visibility across all locations
+      - Real-time alerting on critical issues
+      - Predictive maintenance recommendations
+      - Performance analytics and reporting
+      
+      ALERT PRIORITIES:
+      - CRITICAL: POS offline, payment failures, security issues
+      - HIGH: Equipment malfunction, low inventory, long queues
+      - MEDIUM: Performance degradation, minor issues
+      - LOW: Informational, maintenance reminders
+      
+      When receiving events from edge agents, analyze patterns and:
+      1. Acknowledge heartbeats to track location health
+      2. Aggregate transaction metrics for reporting
+      3. Detect anomalies (sudden drops, unusual patterns)
+      4. Trigger alerts when thresholds are exceeded
+      
+      Respond with structured decisions:
+      {
+        "action": "acknowledge|alert|configure|investigate",
+        "target": "location_id or 'all'",
+        "priority": "critical|high|medium|low",
+        "message": "Human-readable description",
+        "data": {}
+      }
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 3
+    targetConcurrency: 50
+    scaleToZeroGracePeriod: 300s
+
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+
+  env:
+    - name: AGENT_ROLE
+      value: "command-center"
+    - name: ALERT_WEBHOOK_URL
+      valueFrom:
+        secretKeyRef:
+          name: pos-secrets
+          key: alert-webhook-url
+    - name: DASHBOARD_ENABLED
+      value: "true"
+    - name: METRICS_RETENTION_HOURS
+      value: "24"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-pos-edge/command-center"
+    
+    intents:
+      - pos.command.alert.dispatch
+      - pos.command.config.push
+      - pos.command.maintenance.schedule
+      - pos.fleet.status.report
+      - pos.analytics.report.generate
+    
+    subscriptions:
+      # Location heartbeats
+      - eventType: pos.location.heartbeat
+        description: "Heartbeat from edge locations"
+      - eventType: pos.location.offline
+        description: "Location went offline"
+      
+      # Transaction events
+      - eventType: pos.transaction.completed
+        description: "Completed transactions"
+      - eventType: pos.transaction.failed
+        description: "Failed transactions"
+      
+      # Health events
+      - eventType: pos.health.report
+        description: "Health metrics from edge"
+      - eventType: pos.alert.raised
+        description: "Alerts from edge agents"
+      
+      # Kitchen events (fast-food)
+      - eventType: pos.kitchen.queue.status
+        description: "Kitchen queue status"
+      - eventType: pos.kitchen.equipment.alert
+        description: "Kitchen equipment alerts"
+      
+      # Pump events (gas station)
+      - eventType: pos.pump.status
+        description: "Pump status updates"
+      - eventType: pos.tank.alert.low
+        description: "Low fuel tank alerts"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 5
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  permissions:
+    disableBrokerCreation: false
+    disableTriggerCreation: false
+    disableFunctionCreation: true
+    allowedTargetNamespaces:
+      - agent-pos-edge

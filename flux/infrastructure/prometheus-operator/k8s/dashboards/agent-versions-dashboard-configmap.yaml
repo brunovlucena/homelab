@@ -1,0 +1,751 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-versions-dashboard
+  namespace: prometheus
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    k8s-sidecar-target-directory: "Agents"
+data:
+  agent-versions-dashboard.json: |
+    {
+      "title": "\ud83e\udd16 Agent Versions - QA Dashboard (v1) [s39]",
+      "tags": [
+        "agents",
+        "versions",
+        "qa",
+        "monitoring",
+        "knative",
+        "lambda"
+      ],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "uid": "agent-versions",
+      "editable": true,
+      "graphTooltip": 1,
+      "links": [
+        {
+          "asDropdown": true,
+          "icon": "external link",
+          "includeVars": true,
+          "keepTime": true,
+          "tags": [
+            "agent",
+            "knative",
+            "lambda"
+          ],
+          "targetBlank": true,
+          "title": "Related Dashboards",
+          "type": "dashboards"
+        }
+      ],
+      "liveNow": false,
+      "templating": {
+        "list": [
+          {
+            "name": "namespace",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "query": {
+              "query": "label_values({__name__=~\"agent_.*_build_info\"}, namespace)",
+              "refId": "StandardVariableQuery"
+            },
+            "current": {
+              "selected": true,
+              "text": "All",
+              "value": "$__all"
+            },
+            "includeAll": true,
+            "multi": true,
+            "allValue": ".*",
+            "label": "Namespace"
+          }
+        ]
+      },
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "\ud83d\udcca Agent Versions Overview",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "collapsed": false
+        },
+        {
+          "type": "stat",
+          "title": "Total Agents",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 0,
+            "y": 1
+          },
+          "id": 2,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "count({__name__=~\"agent_.*_build_info\", namespace=~\"$namespace\"})",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Outdated Agents",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 6,
+            "y": 1
+          },
+          "id": 3,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "count({__name__=~\"agent_.*_build_info\", namespace=~\"$namespace\", version!~\"1\\\\.(2|1)\\\\.(1|0)\"})",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 2
+                  }
+                ]
+              },
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Up-to-date Agents",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 12,
+            "y": 1
+          },
+          "id": 4,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "count({__name__=~\"agent_.*_build_info\", namespace=~\"$namespace\", version=~\"1\\\\.(2|1)\\\\.(1|0)\"})",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "type": "stat",
+          "title": "Agents Missing Version",
+          "gridPos": {
+            "h": 4,
+            "w": 6,
+            "x": 18,
+            "y": 1
+          },
+          "id": 5,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "values": false,
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": ""
+            },
+            "textMode": "auto"
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "count({__name__=~\"agent_.*_build_info\", namespace=~\"$namespace\"}) - count({__name__=~\"agent_.*_build_info\", namespace=~\"$namespace\", version!=\"\"})",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "short"
+            }
+          }
+        },
+        {
+          "type": "row",
+          "title": "\ud83d\udccb Agent Version Details",
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 5
+          },
+          "id": 6,
+          "collapsed": false
+        },
+        {
+          "type": "table",
+          "title": "Agent Versions & Status",
+          "description": "Shows all agent versions. Outdated versions (older than 1.1.1) are highlighted in RED. Expected minimum version after refactoring (Dec 10, 2025): 1.1.1",
+          "gridPos": {
+            "h": 15,
+            "w": 24,
+            "x": 0,
+            "y": 6
+          },
+          "id": 7,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "displayMode": "auto",
+                "inspect": false
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Agent"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 200
+                  },
+                  {
+                    "id": "custom.displayMode",
+                    "value": "color-background"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Version"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  },
+                  {
+                    "id": "custom.displayMode",
+                    "value": "color-background"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "options": {
+                          "match": "null",
+                          "result": {
+                            "text": "N/A",
+                            "color": "red"
+                          }
+                        },
+                        "type": "special"
+                      },
+                      {
+                        "options": {
+                          "1.2.1": {
+                            "text": "1.2.1",
+                            "color": "green"
+                          },
+                          "1.2.0": {
+                            "text": "1.2.0",
+                            "color": "green"
+                          },
+                          "1.1.1": {
+                            "text": "1.1.1",
+                            "color": "green"
+                          },
+                          "1.1.0": {
+                            "text": "1.1.0 \u26a0\ufe0f",
+                            "color": "red"
+                          },
+                          "0.2.1": {
+                            "text": "0.2.1",
+                            "color": "green"
+                          },
+                          "0.2.0": {
+                            "text": "0.2.0 \u26a0\ufe0f",
+                            "color": "red"
+                          }
+                        },
+                        "type": "value"
+                      },
+                      {
+                        "options": {
+                          "from": "",
+                          "to": "",
+                          "regex": "^(1\\.(2|1)\\.(1|0)|0\\.2\\.1)$",
+                          "result": {
+                            "text": "",
+                            "color": "green"
+                          }
+                        },
+                        "type": "regex"
+                      },
+                      {
+                        "options": {
+                          "from": "",
+                          "to": "",
+                          "regex": ".*",
+                          "result": {
+                            "text": "",
+                            "color": "red"
+                          }
+                        },
+                        "type": "regex"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Status"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 150
+                  },
+                  {
+                    "id": "custom.displayMode",
+                    "value": "color-background"
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "options": {
+                          "\u2705 Up-to-date": {
+                            "text": "\u2705 Up-to-date",
+                            "color": "green"
+                          },
+                          "\u26a0\ufe0f Outdated": {
+                            "text": "\u26a0\ufe0f Outdated",
+                            "color": "red"
+                          },
+                          "\u274c Unknown": {
+                            "text": "\u274c Unknown",
+                            "color": "red"
+                          },
+                          "\u23f3 Pending": {
+                            "text": "\u23f3 Pending",
+                            "color": "yellow"
+                          }
+                        },
+                        "type": "value"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "md",
+            "footer": {
+              "show": false,
+              "reducer": [
+                "sum"
+              ],
+              "countRows": false
+            }
+          },
+          "pluginVersion": "10.0.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_bruno_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-bruno\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_redteam_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-redteam\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "B"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_blueteam_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-blueteam\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "C"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_contracts_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-contracts\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "D"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_tools_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-tools\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "E"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_restaurant_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-restaurant\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "F"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_pos_edge_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-pos-edge\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "G"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_chat_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-chat\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "H"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_store_multibrands_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-store-multibrands\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "I"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_rpg_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-rpg\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "J"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_medical_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-medical\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "K"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "label_replace(agent_devsecops_build_info{namespace=~\"$namespace\"}, \"agent\", \"agent-devsecops\", \"\", \"\")",
+              "format": "table",
+              "instant": true,
+              "refId": "L"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true,
+                  "__name__": true,
+                  "instance": true,
+                  "job": true,
+                  "pod": true
+                },
+                "indexByName": {
+                  "agent": 0,
+                  "version": 1,
+                  "commit": 2,
+                  "namespace": 3
+                },
+                "renameByName": {
+                  "agent": "Agent",
+                  "version": "Version",
+                  "commit": "Commit",
+                  "namespace": "Namespace"
+                }
+              }
+            },
+            {
+              "id": "calculateField",
+              "options": {
+                "alias": "Status",
+                "binary": {
+                  "left": "Version",
+                  "reducer": "sum",
+                  "operator": "*"
+                },
+                "mode": "binary",
+                "reduce": {
+                  "include": [
+                    "Version"
+                  ],
+                  "reducer": "sum"
+                },
+                "replaceFields": false,
+                "resultName": "Status"
+              }
+            }
+          ]
+        }
+      ],
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": [
+          "10s",
+          "30s",
+          "1m",
+          "5m",
+          "15m",
+          "30m",
+          "1h"
+        ]
+      }
+    }

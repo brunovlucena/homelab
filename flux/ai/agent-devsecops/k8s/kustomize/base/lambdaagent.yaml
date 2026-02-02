@@ -1,0 +1,158 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 Agent DevSecOps - LambdaAgent Definition
+#
+#  Purpose: Security-focused agent for:
+#    - CVE scanning and vulnerability management
+#    - Policy enforcement and compliance checks
+#    - Secret rotation coordination
+#    - Secure rollout approvals
+#    - Security incident response
+#
+#  RBAC Levels:
+#    - readonly: Default scanning/auditing (devsecops-readonly-sa)
+#    - operator: Automated security ops (devsecops-operator-sa)
+#    - admin: Emergency response (devsecops-admin-sa) - requires approval
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: agent-devsecops
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: homelab-ai
+    security.homelab.io/classification: internal
+spec:
+  # Use readonly SA by default (safest)
+  serviceAccountName: devsecops-readonly-sa
+  
+  # Container image
+  image:
+    repository: ghcr.io/brunovlucena/scanner
+    tag: "v0.2.0"
+    port: 8080
+  
+  # AI/LLM for security analysis
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 4096
+    temperature: "0.3"  # Lower temperature for more deterministic security decisions
+  
+  # Operation mode: agentic (autonomous) or supervised (requires approval)
+  operationMode: agentic  # Default: autonomous execution
+
+  # Agent behavior
+  behavior:
+    maxContextMessages: 20
+    emitEvents: true
+  
+  # Scaling - always keep at least 1 replica for security monitoring
+  scaling:
+    minReplicas: 1
+    maxReplicas: 3
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 0s  # Never scale to zero - security monitoring
+  
+  # Resources
+  resources:
+    requests:
+      memory: "256Mi"
+    limits:
+      memory: "512Mi"
+  
+  # Eventing
+  eventing:
+    enabled: true
+    eventSource: "/agent-devsecops/scanner"
+    
+    # Events this agent EMITS
+    intents:
+      - security.scan.started
+      - security.scan.completed
+      - security.vuln.found
+      - security.proposal.created
+      - security.alert.raised
+      - security.compliance.checked
+      - security.secret.rotated
+    
+    # Events this agent RECEIVES
+    subscriptions:
+      # From CI/CD pipelines
+      - eventType: io.homelab.build.completed
+        description: "Trigger vulnerability scan on new builds"
+      - eventType: io.homelab.deploy.requested
+        description: "Security gate for deployments"
+      
+      # From other agents
+      - eventType: io.homelab.agent.security.query
+        description: "Security queries from other agents"
+      
+      # From monitoring
+      - eventType: io.homelab.alert.security
+        description: "Security alerts from Alertmanager"
+      - eventType: io.homelab.anomaly.detected
+        description: "Anomaly detection events"
+      
+      # Scheduled events
+      - eventType: io.homelab.schedule.daily
+        description: "Daily compliance checks"
+      - eventType: io.homelab.schedule.weekly
+        description: "Weekly vulnerability scans"
+    
+    # Forward security findings to relevant agents
+    forwards:
+      - eventTypes:
+          - io.homelab.security.vuln.critical
+          - io.homelab.security.incident
+        targetAgent: agent-sre
+        targetNamespace: agent-sre
+        description: "Escalate critical issues to SRE"
+    
+    dlq:
+      enabled: true
+      retryMaxAttempts: 5
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+  
+  # Observability
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+  
+  # RBAC Permissions
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: false
+    disableFunctionCreation: true  # Cannot create functions
+    allowedTargetNamespaces:
+      - agent-devsecops
+      - "*"  # Can read from all namespaces (readonly)
+    eventControls:
+      allowEventDisable: false  # Cannot disable security events
+      controlEventTypes: []
+  
+  # Environment variables
+  env:
+    - name: SCANNER_MODE
+      value: "continuous"
+    - name: APPROVAL_REQUIRED
+      value: "true"
+    - name: AUDIT_LOG_LEVEL
+      value: "verbose"
+    - name: CVE_DATABASE_URL
+      value: "https://nvd.nist.gov/feeds/json/cve/1.1"

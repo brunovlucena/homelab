@@ -1,0 +1,63 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+namespace: ai
+
+kind: Kustomization
+
+resources:
+  - ../base
+
+# Studio environment - using localhost:5001 for local development
+# NOTE: GHCR images don't exist yet - use local registry for studio
+# For production, update to use ghcr.io images after they're built/pushed
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+patches:
+  # Contract Fetcher - use local image
+  - target:
+      kind: LambdaAgent
+      name: contract-fetcher
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-contracts/contract-fetcher
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.1.0"  # Use version that exists locally
+  # Vulnerability Scanner - use local image
+  - target:
+      kind: LambdaAgent
+      name: vuln-scanner
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-contracts/vuln-scanner
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.1.0"
+  # Exploit Generator - use local image
+  - target:
+      kind: LambdaAgent
+      name: exploit-generator
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-contracts/exploit-generator
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.1.0"
+  # Notifi Adapter - use local image
+  - target:
+      kind: LambdaAgent
+      name: notifi-adapter
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-contracts/notifi-adapter
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.1.0"
+
+# 📝 Studio-specific labels
+commonLabels:
+  environment: studio

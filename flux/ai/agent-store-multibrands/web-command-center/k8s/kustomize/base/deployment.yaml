@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: store-command-center
+  namespace: agent-store-multibrands
+  labels:
+    app.kubernetes.io/name: store-command-center
+    app.kubernetes.io/part-of: agent-store-multibrands
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: store-command-center
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: store-command-center
+        app.kubernetes.io/part-of: agent-store-multibrands
+    spec:
+      containers:
+        - name: command-center
+          image: localhost:5001/agent-store-multibrands/command-center:v1.0.0
+          ports:
+            - containerPort: 3001
+              name: http
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: NEXT_PUBLIC_API_URL
+              value: "http://product-catalog.agent-store-multibrands.svc.cluster.local"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: store-command-center
+  namespace: agent-store-multibrands
+  labels:
+    app.kubernetes.io/name: store-command-center
+    app.kubernetes.io/part-of: agent-store-multibrands
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3001
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: store-command-center
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: store-command-center
+  namespace: agent-store-multibrands
+  labels:
+    app.kubernetes.io/name: store-command-center
+    app.kubernetes.io/part-of: agent-store-multibrands
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+    - host: store.homelab.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: store-command-center
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - store.homelab.local
+      secretName: store-command-center-tls

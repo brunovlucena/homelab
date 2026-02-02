@@ -1,0 +1,409 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 K6 AGENT-SRE CLOUDEVENTS TEST - Test agent-sre CloudEvent handling
+#
+#  Purpose: Test agent-sre's ability to process Prometheus alert CloudEvents
+#  Event Type: io.homelab.prometheus.alert.fired
+#  Endpoint: http://agent-sre.ai.svc.cluster.local/
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-sre-cloudevents
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-sre
+    app.kubernetes.io/component: testing
+    test-type: cloudevents
+    test-variant: prometheus-alerts
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw --tag test_type=cloudevents_prometheus_alerts
+  script:
+    configMap:
+      name: agent-sre-k6-tests
+      file: cloudevents.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: AGENT_SRE_URL
+        value: "http://agent-sre.ai.svc.cluster.local"
+      - name: NAMESPACE
+        value: "ai"
+      - name: TARGET_EVENTS
+        value: "100"
+      # Prometheus Remote Write Configuration
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+      - name: K6_PROMETHEUS_RW_STALE_MARKERS
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+      requests:
+        memory: 256Mi
+        cpu: 100m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-sre-k6-tests
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-sre
+    app.kubernetes.io/component: testing
+data:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 🚀 CLOUDEVENTS TEST - Test agent-sre CloudEvent processing
+  # ────────────────────────────────────────────────────────────────────────────
+  cloudevents.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+    import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 📊 CUSTOM METRICS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const cloudeventsPublished = new Counter('agent_sre_cloudevents_published_total');
+    const cloudeventsSuccess = new Rate('agent_sre_cloudevents_success');
+    const cloudeventsDuration = new Trend('agent_sre_cloudevents_duration_ms');
+    const cloudeventsByAlert = new Counter('agent_sre_cloudevents_by_alert_total');
+    const cloudeventsByFunction = new Counter('agent_sre_cloudevents_by_function_total');
+    const cloudeventsCurrentVUs = new Gauge('agent_sre_cloudevents_current_vus');
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ⚙️ CONFIGURATION
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const AGENT_SRE_URL = __ENV.AGENT_SRE_URL || 'http://agent-sre.ai.svc.cluster.local';
+    const NAMESPACE = __ENV.NAMESPACE || 'ai';
+    const TARGET_EVENTS = parseInt(__ENV.TARGET_EVENTS || '100');
+    
+    // Test alert scenarios matching PrometheusRule test-alerts.yaml
+    const TEST_ALERTS = [
+      {
+        alertname: 'TestPodCrashLoopBackOff',
+        labels: {
+          alertname: 'TestPodCrashLoopBackOff',
+          pod: 'test-crashloopbackoff',
+          namespace: NAMESPACE,
+          severity: 'warning',
+          test_scenario: 'crashloopbackoff'
+        },
+        annotations: {
+          summary: 'Test pod test-crashloopbackoff is in CrashLoopBackOff',
+          description: 'Pod test-crashloopbackoff in namespace ' + NAMESPACE + ' has crashed multiple times',
+          lambda_function: 'pod-restart',
+          lambda_parameters: JSON.stringify({
+            name: 'test-crashloopbackoff',
+            namespace: NAMESPACE,
+            type: 'pod'
+          })
+        }
+      },
+      {
+        alertname: 'TestDeploymentUnhealthy',
+        labels: {
+          alertname: 'TestDeploymentUnhealthy',
+          deployment: 'test-unhealthy-deployment',
+          namespace: NAMESPACE,
+          severity: 'warning',
+          test_scenario: 'unhealthy-deployment'
+        },
+        annotations: {
+          summary: 'Test deployment test-unhealthy-deployment has unhealthy replicas',
+          description: 'Deployment test-unhealthy-deployment in namespace ' + NAMESPACE + ' has 2 unavailable replicas',
+          lambda_function: 'pod-restart',
+          lambda_parameters: JSON.stringify({
+            name: 'test-unhealthy-deployment',
+            namespace: NAMESPACE,
+            type: 'deployment'
+          })
+        }
+      },
+      {
+        alertname: 'TestPodPending',
+        labels: {
+          alertname: 'TestPodPending',
+          pod: 'test-pending',
+          namespace: NAMESPACE,
+          severity: 'warning',
+          test_scenario: 'pending'
+        },
+        annotations: {
+          summary: 'Test pod test-pending is Pending',
+          description: 'Pod test-pending in namespace ' + NAMESPACE + ' has been Pending for more than 2 minutes',
+          lambda_function: 'pod-check-status',
+          lambda_parameters: JSON.stringify({
+            name: 'test-pending',
+            namespace: NAMESPACE
+          })
+        }
+      },
+      {
+        alertname: 'TestImagePullBackOff',
+        labels: {
+          alertname: 'TestImagePullBackOff',
+          pod: 'test-imagepullbackoff',
+          namespace: NAMESPACE,
+          severity: 'warning',
+          test_scenario: 'imagepullbackoff'
+        },
+        annotations: {
+          summary: 'Test pod test-imagepullbackoff has ImagePullBackOff',
+          description: 'Pod test-imagepullbackoff in namespace ' + NAMESPACE + ' cannot pull image',
+          lambda_function: 'pod-check-status',
+          lambda_parameters: JSON.stringify({
+            name: 'test-imagepullbackoff',
+            namespace: NAMESPACE
+          })
+        }
+      },
+      {
+        alertname: 'TestDeploymentNeedsScaling',
+        labels: {
+          alertname: 'TestDeploymentNeedsScaling',
+          deployment: 'test-needs-scaling',
+          namespace: NAMESPACE,
+          severity: 'info',
+          test_scenario: 'needs-scaling'
+        },
+        annotations: {
+          summary: 'Test deployment test-needs-scaling needs scaling',
+          description: 'Deployment test-needs-scaling has only 1 replica, should scale to 3',
+          lambda_function: 'scale-deployment',
+          lambda_parameters: JSON.stringify({
+            name: 'test-needs-scaling',
+            namespace: NAMESPACE,
+            replicas: 3
+          })
+        }
+      }
+    ];
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ⚙️ TEST OPTIONS - Moderate load test
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export const options = {
+      scenarios: {
+        cloudevents_test: {
+          executor: 'ramping-arrival-rate',
+          startRate: 2,  // Start with 2 events per second
+          timeUnit: '1s',
+          stages: [
+            { duration: '10s', target: 5 },   // Ramp up to 5 events/sec
+            { duration: '30s', target: 10 },   // Ramp up to 10 events/sec
+            { duration: '20s', target: 5 },    // Scale down to 5 events/sec
+            { duration: '10s', target: 2 },    // Scale down to 2 events/sec
+          ],
+          preAllocatedVUs: 5,
+          maxVUs: 20,
+        },
+      },
+      thresholds: {
+        // Duration thresholds - agent-sre should respond quickly
+        'http_req_duration': ['p(95)<5000', 'p(99)<10000'],
+        // Overall failure rate - should be very low after bug fixes
+        'http_req_failed': ['rate<0.05'],  // Less than 5% failure rate
+        // Event processing success rate
+        'agent_sre_cloudevents_success': ['rate>0.95'],  // At least 95% success
+      },
+      tags: {
+        test_type: 'cloudevents_prometheus_alerts',
+      },
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔧 SETUP
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export function setup() {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🔧 CLOUDEVENTS TEST SETUP');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      // Health check agent-sre
+      const healthCheck = http.get(`${AGENT_SRE_URL}/health`, { timeout: '10s' });
+      const agentAlive = healthCheck.status === 200;
+      
+      if (!agentAlive) {
+        console.error(`❌ Agent-SRE health check failed: ${healthCheck.status}`);
+        console.error(`   URL: ${AGENT_SRE_URL}/health`);
+        console.error(`   Response: ${healthCheck.body}`);
+      } else {
+        console.log(`✅ Agent-SRE accessible: ${AGENT_SRE_URL}`);
+      }
+      
+      console.log(`📋 Testing ${TEST_ALERTS.length} alert types: ${TEST_ALERTS.map(a => a.alertname).join(', ')}`);
+      console.log(`🎯 Target: ${TARGET_EVENTS} total events`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      
+      return { 
+        startTime: new Date().toISOString(),
+        readinessResult: { success: agentAlive }
+      };
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🏭 CLOUDEVENT FACTORY - Prometheus Alert Events
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    function createPrometheusAlertEvent(alert) {
+      const correlationId = `k6-cloudevent-${alert.alertname}-${__VU}-${__ITER}-${randomString(8)}`;
+      const eventId = correlationId;
+      
+      // CloudEvent format matching prometheus-events output
+      return {
+        specversion: '1.0',
+        type: 'io.homelab.prometheus.alert.fired',
+        source: 'prometheus-events',
+        id: eventId,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: {
+          status: 'firing',
+          labels: alert.labels,
+          annotations: alert.annotations,
+          startsAt: new Date().toISOString(),
+          endsAt: null,
+          generatorURL: `http://prometheus.prometheus.svc.cluster.local:9090/graph?g0.expr=${encodeURIComponent('ALERTS{alertname="' + alert.alertname + '"}')}`,
+          fingerprint: `k6-test-${randomString(16)}`
+        }
+      };
+    }
+    
+    function publishCloudEvent(alert) {
+      const event = createPrometheusAlertEvent(alert);
+      
+      // CloudEvents HTTP binary format
+      const params_http = {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Specversion': event.specversion,
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+          'Ce-Time': event.time,
+          'X-Correlation-ID': event.id,
+        },
+        timeout: '30s',
+        tags: { 
+          alertname: alert.alertname,
+          lambda_function: alert.annotations.lambda_function || 'none',
+          event_type: 'prometheus.alert.fired',
+          request_type: 'cloudevent_publish'
+        }
+      };
+      
+      const startTime = Date.now();
+      // Send CloudEvent as JSON in body
+      const response = http.post(AGENT_SRE_URL, JSON.stringify(event), params_http);
+      const duration = Date.now() - startTime;
+      
+      const success = response.status === 200;
+      const checkResult = check(response, {
+        'status is 200': (r) => r.status === 200,
+        'response has status field': (r) => {
+          try {
+            const body = JSON.parse(r.body);
+            return body.status === 'processed' || body.status === 'ok';
+          } catch (e) {
+            return false;
+          }
+        },
+      });
+      
+      cloudeventsPublished.add(1, { alertname: alert.alertname });
+      cloudeventsSuccess.add(success ? 1 : 0, { alertname: alert.alertname });
+      cloudeventsDuration.add(duration, { alertname: alert.alertname });
+      cloudeventsByAlert.add(1, { alertname: alert.alertname });
+      cloudeventsCurrentVUs.add(__VU);
+      
+      if (alert.annotations.lambda_function) {
+        cloudeventsByFunction.add(1, { function: alert.annotations.lambda_function });
+      }
+      
+      if (!success) {
+        console.error(`❌ Failed: ${alert.alertname} - Status: ${response.status}, Body: ${response.body.substring(0, 200)}`);
+      }
+      
+      return { response, duration, success, checkResult };
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🚀 MAIN TEST
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    let iterationCounter = 0;
+    
+    export default function () {
+      iterationCounter++;
+      
+      // Round-robin through all alert types
+      const alert = TEST_ALERTS[iterationCounter % TEST_ALERTS.length];
+      
+      const { success, checkResult } = publishCloudEvent(alert);
+      
+      if (!success && iterationCounter % 10 === 0) {
+        console.log(`❌ Failed: ${alert.alertname} - Iteration ${iterationCounter}`);
+      }
+      
+      if (iterationCounter % 50 === 0) {
+        console.log(`📤 Progress: ${iterationCounter} events sent`);
+      }
+      
+      // Small sleep to avoid overwhelming the system
+      sleep(0.1);
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🧹 TEARDOWN
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export function teardown(data) {
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🧹 CLOUDEVENTS TEST TEARDOWN');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`   Started: ${data.startTime}`);
+      console.log(`   Ended:   ${new Date().toISOString()}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 📊 SUMMARY
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export function handleSummary(data) {
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🚀 AGENT-SRE CLOUDEVENTS TEST SUMMARY');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`📋 Alert Types Tested: ${TEST_ALERTS.map(a => a.alertname).join(', ')}`);
+      console.log(`🎯 Target Events: ${TARGET_EVENTS}`);
+      console.log('');
+      if (data.metrics.agent_sre_cloudevents_published_total) {
+        console.log(`✅ Total Events Published: ${data.metrics.agent_sre_cloudevents_published_total.values.count}`);
+      }
+      if (data.metrics.agent_sre_cloudevents_success) {
+        const successRate = data.metrics.agent_sre_cloudevents_success.values.rate * 100;
+        console.log(`✅ Success Rate: ${successRate.toFixed(2)}%`);
+        if (successRate < 95) {
+          console.log(`⚠️  WARNING: Success rate below 95% threshold!`);
+        }
+      }
+      if (data.metrics.agent_sre_cloudevents_duration_ms) {
+        console.log(`⏱️  Avg Duration: ${data.metrics.agent_sre_cloudevents_duration_ms.values.avg.toFixed(2)}ms`);
+        console.log(`⏱️  P95 Duration: ${data.metrics.agent_sre_cloudevents_duration_ms.values['p(95)'].toFixed(2)}ms`);
+        console.log(`⏱️  P99 Duration: ${data.metrics.agent_sre_cloudevents_duration_ms.values['p(99)'].toFixed(2)}ms`);
+      }
+      if (data.metrics.http_req_failed) {
+        const failureRate = data.metrics.http_req_failed.values.rate * 100;
+        console.log(`❌ Failure Rate: ${failureRate.toFixed(2)}%`);
+        if (failureRate > 5) {
+          console.log(`⚠️  WARNING: Failure rate above 5% threshold!`);
+        }
+      }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      return {
+        'stdout': textSummary(data, { indent: ' ', enableColors: true }),
+      };
+    }

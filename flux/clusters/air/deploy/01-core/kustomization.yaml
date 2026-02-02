@@ -1,0 +1,15 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 🏗️ Air Cluster - Core Infrastructure (Minimal)
+# Essential components only:
+# - cert-manager: For TLS certificates
+# - knative-operator: For Knative Serving (Agent-Reasoning will be a Knative service)
+# - sealed-secrets: For secret management
+
+resources:
+  - ../../../../infrastructure/linkerd
+  # - ../../../../infrastructure/cert-manager
+  # - ../../../../infrastructure/sealed-secrets
+  # - ../../../../infrastructure/knative-operator

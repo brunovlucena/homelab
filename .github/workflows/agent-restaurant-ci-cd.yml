@@ -1,0 +1,42 @@
+# ============================================================================
+# 🍽️ Agent-Restaurant - CI/CD
+# ============================================================================
+# Restaurant operations AI agent.
+# Uses reusable workflow for standardized CI/CD.
+# ============================================================================
+
+name: 🍽️ Agent-Restaurant - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-restaurant/**'
+      - '.github/workflows/agent-restaurant-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agent-restaurant/**'
+      - '.github/workflows/agent-restaurant-ci-cd.yml'
+    tags:
+      - 'agent-restaurant-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-cd:
+    name: 🍽️ Agent-Restaurant
+    uses: ./.github/workflows/_reusable-agent-cicd.yml
+    with:
+      agent-name: agent-restaurant
+      working-directory: flux/ai/agent-restaurant
+      image-name: agent-restaurant
+      dockerfile: src/Dockerfile
+      python-version: '3.12'
+      src-directory: src
+      run-tests: true
+      run-lint: true
+      copy-shared-lib: true
+    secrets: inherit

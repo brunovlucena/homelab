@@ -1,0 +1,187 @@
+# ============================================================================
+# 🔒 Reusable Workflow: Security Scanning
+# ============================================================================
+# Provides comprehensive security scanning for all homelab components.
+#
+# Usage:
+#   jobs:
+#     security:
+#       uses: ./.github/workflows/_reusable-security-scan.yml
+#       with:
+#         scan-path: flux/ai/agent-bruno
+#         scan-type: fs
+# ============================================================================
+
+name: 🔒 Reusable Security Scan
+
+on:
+  workflow_call:
+    inputs:
+      scan-path:
+        description: 'Path to scan'
+        required: true
+        type: string
+      scan-type:
+        description: 'Type of scan (fs, image, repo)'
+        required: false
+        type: string
+        default: 'fs'
+      image-ref:
+        description: 'Image reference (required if scan-type is image)'
+        required: false
+        type: string
+        default: ''
+      severity:
+        description: 'Severity levels to report'
+        required: false
+        type: string
+        default: 'CRITICAL,HIGH'
+      fail-on-vuln:
+        description: 'Fail workflow on vulnerabilities'
+        required: false
+        type: boolean
+        default: false
+      upload-sarif:
+        description: 'Upload SARIF results to GitHub'
+        required: false
+        type: boolean
+        default: true
+      run-gitleaks:
+        description: 'Run gitleaks secrets scanning'
+        required: false
+        type: boolean
+        default: true
+      run-trivy:
+        description: 'Run Trivy vulnerability scanning'
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      trivy-passed:
+        description: 'Whether Trivy scan passed'
+        value: ${{ jobs.trivy.outputs.passed }}
+      gitleaks-passed:
+        description: 'Whether gitleaks scan passed'
+        value: ${{ jobs.gitleaks.outputs.passed }}
+
+jobs:
+  trivy:
+    name: 🛡️ Trivy Scan
+    runs-on: [self-hosted]
+    timeout-minutes: 15
+    if: inputs.run-trivy
+    outputs:
+      passed: ${{ steps.result.outputs.passed }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🛡️ Run Trivy vulnerability scanner (Filesystem)
+        if: inputs.scan-type == 'fs'
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: ${{ inputs.scan-path }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: ${{ inputs.severity }}
+          exit-code: ${{ inputs.fail-on-vuln && '1' || '0' }}
+
+      - name: 🛡️ Run Trivy vulnerability scanner (Image)
+        if: inputs.scan-type == 'image' && inputs.image-ref != ''
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'image'
+          image-ref: ${{ inputs.image-ref }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: ${{ inputs.severity }}
+          exit-code: ${{ inputs.fail-on-vuln && '1' || '0' }}
+
+      - name: 📤 Upload Trivy SARIF results
+        if: inputs.upload-sarif && always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+      - name: 📋 Scan Result
+        id: result
+        run: |
+          if [ -f trivy-results.sarif ]; then
+            # Check if any results were found
+            RESULTS=$(jq '.runs[0].results | length' trivy-results.sarif 2>/dev/null || echo "0")
+            if [ "$RESULTS" = "0" ] || [ "$RESULTS" = "null" ]; then
+              echo "passed=true" >> $GITHUB_OUTPUT
+              echo "✅ No vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "passed=false" >> $GITHUB_OUTPUT
+              echo "⚠️ Found $RESULTS potential issues" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "passed=true" >> $GITHUB_OUTPUT
+          fi
+
+  gitleaks:
+    name: 🔐 Secrets Scan
+    runs-on: [self-hosted]
+    timeout-minutes: 10
+    if: inputs.run-gitleaks
+    outputs:
+      passed: ${{ steps.result.outputs.passed }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔐 Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        id: gitleaks
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📋 Scan Result
+        id: result
+        run: |
+          if [ "${{ steps.gitleaks.outcome }}" = "success" ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ No secrets detected" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Potential secrets detected - review logs" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  summary:
+    name: 📋 Security Summary
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    needs: [trivy, gitleaks]
+    if: always()
+    steps:
+      - name: 📊 Generate Summary
+        run: |
+          echo "## 🔒 Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Scanner | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          TRIVY="${{ needs.trivy.outputs.passed }}"
+          GITLEAKS="${{ needs.gitleaks.outputs.passed }}"
+
+          if [ "$TRIVY" = "true" ]; then
+            echo "| Trivy | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.trivy.result }}" = "skipped" ]; then
+            echo "| Trivy | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Trivy | ⚠️ Issues Found |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "$GITLEAKS" = "true" ]; then
+            echo "| Gitleaks | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.gitleaks.result }}" = "skipped" ]; then
+            echo "| Gitleaks | ⏭️ Skipped |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Gitleaks | ⚠️ Issues Found |" >> $GITHUB_STEP_SUMMARY
+          fi

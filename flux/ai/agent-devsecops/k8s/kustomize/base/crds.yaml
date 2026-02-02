@@ -1,0 +1,378 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 CRDs - Agent DevSecOps
+#
+#  Custom Resource Definitions for security operations:
+#
+#  1. SecurityProposal - Suggested changes requiring human approval
+#  2. VulnerabilityReport - CVE scan results
+#  3. ComplianceCheck - Policy compliance status
+#  4. SecretRotation - Automated secret rotation tracking
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: securityproposals.devsecops.homelab.io
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: crd
+spec:
+  group: devsecops.homelab.io
+  names:
+    kind: SecurityProposal
+    listKind: SecurityProposalList
+    plural: securityproposals
+    singular: securityproposal
+    shortNames:
+      - sp
+      - secprop
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - action
+                - targetResource
+                - severity
+              properties:
+                action:
+                  type: string
+                  description: "Type of action proposed"
+                  enum:
+                    - patch
+                    - create
+                    - delete
+                    - scale
+                    - suspend
+                    - rotate-secret
+                    - update-policy
+                targetResource:
+                  type: object
+                  description: "The resource to modify"
+                  properties:
+                    apiVersion:
+                      type: string
+                    kind:
+                      type: string
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                severity:
+                  type: string
+                  description: "Urgency level"
+                  enum:
+                    - critical
+                    - high
+                    - medium
+                    - low
+                    - info
+                reason:
+                  type: string
+                  description: "Why this change is needed"
+                proposedPatch:
+                  type: string
+                  description: "JSON patch to apply (for patch actions)"
+                proposedManifest:
+                  type: string
+                  description: "Full manifest (for create actions)"
+                cveIds:
+                  type: array
+                  items:
+                    type: string
+                  description: "Related CVE IDs if applicable"
+                autoApprove:
+                  type: boolean
+                  default: false
+                  description: "Whether to auto-approve (only for low severity)"
+                expiresAt:
+                  type: string
+                  format: date-time
+                  description: "When this proposal expires"
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum:
+                    - Pending
+                    - Approved
+                    - Rejected
+                    - Applied
+                    - Failed
+                    - Expired
+                approvedBy:
+                  type: string
+                  description: "Who approved this proposal"
+                approvedAt:
+                  type: string
+                  format: date-time
+                appliedAt:
+                  type: string
+                  format: date-time
+                message:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Action
+          type: string
+          jsonPath: .spec.action
+        - name: Target
+          type: string
+          jsonPath: .spec.targetResource.name
+        - name: Severity
+          type: string
+          jsonPath: .spec.severity
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: vulnerabilityreports.devsecops.homelab.io
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: crd
+spec:
+  group: devsecops.homelab.io
+  names:
+    kind: VulnerabilityReport
+    listKind: VulnerabilityReportList
+    plural: vulnerabilityreports
+    singular: vulnerabilityreport
+    shortNames:
+      - vulnrep
+      - vr
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                targetImage:
+                  type: string
+                  description: "Container image scanned"
+                scanner:
+                  type: string
+                  description: "Scanner used (trivy, grype, etc)"
+                scanDate:
+                  type: string
+                  format: date-time
+            status:
+              type: object
+              properties:
+                critical:
+                  type: integer
+                high:
+                  type: integer
+                medium:
+                  type: integer
+                low:
+                  type: integer
+                vulnerabilities:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      cveId:
+                        type: string
+                      severity:
+                        type: string
+                      package:
+                        type: string
+                      installedVersion:
+                        type: string
+                      fixedVersion:
+                        type: string
+                      description:
+                        type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Image
+          type: string
+          jsonPath: .spec.targetImage
+        - name: Critical
+          type: integer
+          jsonPath: .status.critical
+        - name: High
+          type: integer
+          jsonPath: .status.high
+        - name: Scanner
+          type: string
+          jsonPath: .spec.scanner
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: compliancechecks.devsecops.homelab.io
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: crd
+spec:
+  group: devsecops.homelab.io
+  names:
+    kind: ComplianceCheck
+    listKind: ComplianceCheckList
+    plural: compliancechecks
+    singular: compliancecheck
+    shortNames:
+      - cc
+      - compliance
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                framework:
+                  type: string
+                  description: "Compliance framework (CIS, SOC2, PCI-DSS, etc)"
+                schedule:
+                  type: string
+                  description: "Cron schedule for checks"
+            status:
+              type: object
+              properties:
+                lastCheckTime:
+                  type: string
+                  format: date-time
+                passed:
+                  type: integer
+                failed:
+                  type: integer
+                warnings:
+                  type: integer
+                overallStatus:
+                  type: string
+                  enum:
+                    - Compliant
+                    - NonCompliant
+                    - PartiallyCompliant
+      subresources:
+        status: {}
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: secretrotations.devsecops.homelab.io
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: crd
+spec:
+  group: devsecops.homelab.io
+  names:
+    kind: SecretRotation
+    listKind: SecretRotationList
+    plural: secretrotations
+    singular: secretrotation
+    shortNames:
+      - secrot
+      - sr
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - secretRef
+                - rotationPolicy
+              properties:
+                secretRef:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                rotationPolicy:
+                  type: string
+                  enum:
+                    - scheduled
+                    - on-compromise
+                    - manual
+                scheduleInterval:
+                  type: string
+                  description: "Duration between rotations (e.g., 30d, 90d)"
+                lastRotation:
+                  type: string
+                  format: date-time
+                nextRotation:
+                  type: string
+                  format: date-time
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum:
+                    - Active
+                    - PendingRotation
+                    - Rotating
+                    - Failed
+                lastRotationTime:
+                  type: string
+                  format: date-time
+                rotationCount:
+                  type: integer
+                message:
+                  type: string
+      subresources:
+        status: {}

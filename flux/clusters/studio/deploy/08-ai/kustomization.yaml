@@ -1,0 +1,41 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 🤖 AI/ML Infrastructure
+# Machine learning workflows and AI infrastructure components
+
+resources:
+  # AI Inference
+  - ../../../../infrastructure/ollama
+  # ML Workflows
+  # - ../../../../infrastructure/flyte
+  # AI Agents (operator handles broker/triggers automatically)
+  # - ../../../../ai/agent-bruno/k8s/kustomize/studio
+  # - ../../../../ai/agent-contracts/k8s/kustomize/studio
+  # 🏥 Agent Medical - HIPAA-compliant medical records assistant
+  # - ../../../../ai/agent-medical/k8s/kustomize/studio
+  # 🏥 Medical Service Platform - Unified medical service platform
+  # - ../../../../ai/medical-service-platform/k8s/kustomize/studio
+  # - ../../../../infrastructure/agent-auditor/k8s/kustomize
+  # Agent Tools - K8s API operations via CloudEvents
+  # - ../../../../ai/agent-tools/k8s/kustomize/studio
+  # 🍽️ Agent Restaurant - Fine dining AI staff
+  # - ../../../../ai/agent-restaurant/k8s/kustomize/studio
+  # 💬 Agent Chat - Messaging platform
+  # - ../../../../ai/agent-chat/k8s/kustomize/studio
+  # ⛽ Agent POS Edge - Gas station & McDonald's
+  # - ../../../../ai/agent-pos-edge/k8s/kustomize/studio
+  # 🛒 Agent Store MultiBrands - Multi-brand e-commerce store
+  # - ../../../../ai/agent-store-multibrands/k8s/kustomize/studio
+  # 💬 Agents WhatsApp Rust - High-performance messaging platform (depends on homelab-services namespace)
+  # - ../../../../ai/agents-whatsapp-rust/k8s/overlays/studio  # Commented out - requires homelab-services namespace
+  # 🎵 Homelab Services - Music/streaming platform
+  # - ../../../../services/homelab-services
+  # 🤖 Agent-SRE - AI-Powered SRE Health Report Generator and Flux Reconciliation Agent
+  # - ../../../../ai/agent-sre/k8s/kustomize/studio
+  # 🔧 Agent-SRE LambdaFunctions - Remediation functions for runbook alerts
+  # - ../../../../ai/agent-sre/k8s/lambdafunctions/inline
+  # ⚽ FutBoss AI - Multiplayer football management game
+  # - ../../../../ai/futboss-ai/k8s/kustomize/studio  # Temporarily deactivated
+

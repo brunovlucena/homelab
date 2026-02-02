@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rekordbox-cloud-server
+  namespace: rekordbox-cloud
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rekordbox-cloud-server
+  template:
+    metadata:
+      labels:
+        app: rekordbox-cloud-server
+    spec:
+      containers:
+      - name: server
+        image: localhost:5001/rekordbox-cloud-server:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: rekordbox-cloud-secrets
+              key: mongodb-uri
+        - name: REDIS_URI
+          valueFrom:
+            secretKeyRef:
+              name: rekordbox-cloud-secrets
+              key: redis-uri
+        - name: MINIO_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: rekordbox-cloud-config
+              key: minio.endpoint
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rekordbox-cloud-secrets
+              key: minio-access-key
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rekordbox-cloud-secrets
+              key: minio-secret-key
+        - name: PORT
+          value: "8080"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rekordbox-cloud-server
+  namespace: rekordbox-cloud
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: rekordbox-cloud-server

@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: cloudflare-tunnel
+  namespace: flux-system
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  # ServiceMonitor moved to prometheus-operator/k8s/servicemonitors/
+  # (requires ServiceMonitor CRD from kube-prometheus-stack)
+  - secrets-job.yaml
+  # Cloudflare Tunnel Operator DEPRECATED - replaced by STRRL controller
+  # - ../cloudflare-tunnel-operator/k8s/base

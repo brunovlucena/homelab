@@ -1,0 +1,20 @@
+---
+# 📊 Phase 2b: Observability Extras (ServiceMonitors)
+# Observability dependency removed - observability shall not block deployments
+# ServiceMonitors will be created when Prometheus CRDs are available (best effort)
+# Estimated time: ~30s
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: studio-02b-observability-extras
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 30s
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./flux/clusters/studio/deploy/02b-observability-extras
+  prune: true
+  wait: true
+  timeout: 5m

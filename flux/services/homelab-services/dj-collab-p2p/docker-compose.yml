@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: dj-collab-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - dj-collab-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: dj-collab-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - dj-collab-network
+
+  ipfs:
+    image: ipfs/kubo:latest
+    container_name: dj-collab-ipfs
+    ports:
+      - "4001:4001"   # Swarm
+      - "5001:5001"   # API
+      - "8080:8080"   # Gateway
+    volumes:
+      - ipfs_data:/data/ipfs
+      - ipfs_staging:/data/ipfs/staging
+    networks:
+      - dj-collab-network
+    environment:
+      - IPFS_PROFILE=server
+
+  coturn:
+    image: coturn/coturn:latest
+    container_name: dj-collab-coturn
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49152-65535:49152-65535/udp"
+    environment:
+      - TURN_USERNAME=admin
+      - TURN_PASSWORD=password
+    volumes:
+      - ./coturn.conf:/etc/coturn/turnserver.conf
+    networks:
+      - dj-collab-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+  ipfs_data:
+  ipfs_staging:
+
+networks:
+  dj-collab-network:
+    driver: bridge

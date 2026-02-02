@@ -1,0 +1,19 @@
+---
+# Service to proxy minio.flyte.svc.cluster.local to the actual MinIO service
+# This is a workaround for Flyte generating signed URLs with the wrong endpoint
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: flyte
+  labels:
+    app: minio
+    app.kubernetes.io/part-of: flyte
+spec:
+  type: ExternalName
+  externalName: minio.minio.svc.cluster.local
+  ports:
+    - port: 9000
+      targetPort: 9000
+      protocol: TCP
+

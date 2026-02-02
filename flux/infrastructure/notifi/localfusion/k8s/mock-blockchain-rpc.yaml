@@ -1,0 +1,195 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔗 MOCK BLOCKCHAIN RPC - gRPC mock server for testing
+#
+#  Purpose: Provides a mock gRPC endpoint for FusionEvmRpc testing
+#           Used by LambdaFunction/LambdaAgent parsers for local development
+#
+#  Note: This is deployed to knative-lambda namespace for direct access
+#        by lambda functions without cross-namespace networking
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mock-blockchain-rpc-config
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: mock-blockchain-rpc
+    app.kubernetes.io/component: mock-services
+data:
+  server.js: |
+    const grpc = require('@grpc/grpc-js');
+    const protoLoader = require('@grpc/proto-loader');
+    const http = require('http');
+
+    // Simple mock gRPC server that responds to any unary call
+    const server = new grpc.Server();
+
+    // Create a generic handler that responds to any method
+    const genericHandler = (call, callback) => {
+      console.log(`[MOCK] Received gRPC call: ${JSON.stringify(call.request)}`);
+      // Return a mock balance response
+      callback(null, {
+        balance: '1000000000000000000',
+        nonce: '0',
+        code: '0x',
+        codeHash: '0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470'
+      });
+    };
+
+    // Add a generic service handler
+    server.addService({
+      getAccountBalance: {
+        path: '/fusion.FusionEvmRpc/GetAccountBalance',
+        requestStream: false,
+        responseStream: false,
+        requestSerialize: (arg) => Buffer.from(JSON.stringify(arg)),
+        requestDeserialize: (buffer) => JSON.parse(buffer.toString()),
+        responseSerialize: (arg) => Buffer.from(JSON.stringify(arg)),
+        responseDeserialize: (buffer) => JSON.parse(buffer.toString()),
+      }
+    }, {
+      getAccountBalance: genericHandler
+    });
+
+    // Also handle reflection for service discovery
+    server.addService({
+      ServerReflectionInfo: {
+        path: '/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo',
+        requestStream: true,
+        responseStream: true,
+        requestSerialize: (arg) => Buffer.from(JSON.stringify(arg)),
+        requestDeserialize: (buffer) => JSON.parse(buffer.toString()),
+        responseSerialize: (arg) => Buffer.from(JSON.stringify(arg)),
+        responseDeserialize: (buffer) => JSON.parse(buffer.toString()),
+      }
+    }, {
+      ServerReflectionInfo: (call) => {
+        call.on('data', (request) => {
+          console.log('[MOCK] Reflection request:', request);
+          call.write({ listServicesResponse: { service: [{ name: 'fusion.FusionEvmRpc' }] } });
+        });
+        call.on('end', () => call.end());
+      }
+    });
+
+    // Start gRPC server
+    const GRPC_PORT = process.env.GRPC_PORT || 50051;
+    server.bindAsync(`0.0.0.0:${GRPC_PORT}`, grpc.ServerCredentials.createInsecure(), (err, port) => {
+      if (err) {
+        console.error('Failed to start gRPC server:', err);
+        process.exit(1);
+      }
+      console.log(`[MOCK] gRPC server listening on port ${port}`);
+    });
+
+    // Health check HTTP server
+    const HTTP_PORT = process.env.HTTP_PORT || 8080;
+    http.createServer((req, res) => {
+      if (req.url === '/health' || req.url === '/healthz') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'healthy', service: 'mock-blockchain-rpc' }));
+      } else {
+        res.writeHead(404);
+        res.end('Not found');
+      }
+    }).listen(HTTP_PORT, () => {
+      console.log(`[MOCK] HTTP health server listening on port ${HTTP_PORT}`);
+    });
+
+    console.log('[MOCK] Blockchain RPC mock server started');
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-blockchain-rpc
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: mock-blockchain-rpc
+    app.kubernetes.io/component: mock-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-blockchain-rpc
+  template:
+    metadata:
+      labels:
+        app: mock-blockchain-rpc
+        app.kubernetes.io/name: mock-blockchain-rpc
+        app.kubernetes.io/component: mock-services
+    spec:
+      containers:
+        - name: mock-rpc
+          image: node:20-alpine
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              cd /tmp
+              npm cache clean --force 2>/dev/null || true
+              npm init -y
+              npm install @grpc/grpc-js @grpc/proto-loader
+              cp /config/server.js /tmp/server.js
+              node /tmp/server.js
+          env:
+            - name: GRPC_PORT
+              value: "50051"
+            - name: HTTP_PORT
+              value: "8080"
+          ports:
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: mock-blockchain-rpc-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-blockchain-rpc
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: mock-blockchain-rpc
+    app.kubernetes.io/component: mock-services
+spec:
+  selector:
+    app: mock-blockchain-rpc
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+      protocol: TCP
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP

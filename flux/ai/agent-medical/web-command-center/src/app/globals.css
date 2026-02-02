@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-inter: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-gradient-to-br from-gray-900/50 to-gray-800/30 backdrop-blur-sm border border-gray-700/50 rounded-xl;
+  }
+  
+  .card-hover {
+    @apply transition-all hover:border-cyber-purple/50 hover:shadow-lg hover:shadow-cyber-purple/20;
+  }
+  
+  .btn-primary {
+    @apply px-4 py-2 bg-gradient-to-r from-cyber-purple to-cyber-pink rounded-lg font-semibold 
+           hover:from-cyber-purple/80 hover:to-cyber-pink/80 transition-all;
+  }
+  
+  .btn-secondary {
+    @apply px-4 py-2 bg-gray-700/50 rounded-lg font-semibold hover:bg-gray-600/50 transition-all;
+  }
+  
+  .input {
+    @apply w-full px-4 py-2 bg-gray-900/50 border border-gray-700 rounded-lg 
+           focus:outline-none focus:border-cyber-purple transition-colors;
+  }
+  
+  .badge {
+    @apply px-2 py-0.5 text-xs font-semibold rounded-full;
+  }
+  
+  .badge-success {
+    @apply badge bg-medical-green/20 text-medical-green;
+  }
+  
+  .badge-warning {
+    @apply badge bg-cyber-yellow/20 text-cyber-yellow;
+  }
+  
+  .badge-danger {
+    @apply badge bg-medical-red/20 text-medical-red;
+  }
+  
+  .badge-hipaa {
+    @apply badge bg-medical-blue/20 text-medical-blue border border-medical-blue/50;
+  }
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0e1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}

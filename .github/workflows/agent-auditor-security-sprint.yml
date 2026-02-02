@@ -1,0 +1,377 @@
+name: 🔒 Agent Auditor - Security Sprint Tracker (Week 1-2)
+
+on:
+  issues:
+    types: [opened, labeled, closed, reopened]
+  pull_request:
+    types: [opened, labeled, review_requested, closed]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-auditor/**'
+      - '.github/workflows/agent-auditor-security-sprint.yml'
+    # Only run for PRs with security-related labels
+  issue_comment:
+    types: [created]
+
+env:
+  PROJECT_NUMBER: 1  # Update with your actual project number
+  ORG: brunovlucena
+
+jobs:
+  track-p0-security:
+    name: 🚨 Track P0 Security Issues
+    runs-on: [self-hosted]
+    if: |
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'security-p0')) ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'security-p0') ||
+        contains(github.event.pull_request.labels.*.name, 'security-sprint') ||
+        contains(github.event.pull_request.labels.*.name, 'week-1-2')
+      ))
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    steps:
+      - name: 📊 Add to Security Sprint Project
+        uses: actions/add-to-project@v0.5.0
+        with:
+          project-url: https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 🏷️ Set Status and Priority
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue || context.payload.pull_request;
+            
+            // Add labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: ['week-1-2', 'blocker', 'security-sprint']
+            });
+            
+            // Add comment with checkpoint info
+            const comment = `🚨 **P0 Security Issue Detected**
+            
+            This issue is now tracked in the **Week 1-2 Security Sprint**.
+            
+            **📋 Checkpoint Criteria (Due: Nov 14, 2025)**:
+            - [ ] CVSS score reduced to < 4.5 (if prompt injection) or < 5.5 (if file upload)
+            - [ ] Automated security tests added (contribute to 20+ goal)
+            - [ ] External pentest validation scheduled
+            - [ ] Code review by security team
+            
+            **⚠️ Impact**: This is a BLOCKING issue for all downstream work.
+            
+            **👥 Team**: @security-team
+            **📅 Timeline**: Week 1-2 (Nov 1-14, 2025)
+            
+            ---
+            🔗 [Security Sprint Tracker](https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }})
+            📖 [Production Readiness Assessment](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/08-assessments/PRODUCTION_READINESS_ASSESSMENT.md)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: comment
+            });
+      
+      - name: 🔔 Notify Security Team
+        if: github.event.action == 'opened'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue || context.payload.pull_request;
+            console.log(`🚨 New P0 Security Issue: #${issue.number} - ${issue.title}`);
+            console.log(`📢 Notification: Post to #agent-auditor-security-sprint Slack channel`);
+            // TODO: Add Slack webhook integration
+            // See: https://github.com/slackapi/slack-github-action
+
+  track-security-tests:
+    name: 🧪 Track Security Test Coverage
+    runs-on: [self-hosted]
+    if: |
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'security-test')) ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'security-test') ||
+        contains(github.event.pull_request.labels.*.name, 'security-sprint') ||
+        contains(github.event.pull_request.labels.*.name, 'week-1-2')
+      ))
+    permissions:
+      issues: write
+    steps:
+      - name: 📊 Count Security Tests
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Query all security-test issues
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'security-test',
+              state: 'all'
+            });
+            
+            const totalTests = issues.length;
+            const completedTests = issues.filter(i => i.state === 'closed').length;
+            const progress = Math.round((completedTests / 20) * 100);
+            
+            const statusComment = `📊 **Security Test Progress**
+            
+            - **Completed**: ${completedTests} / 20 tests
+            - **Progress**: ${progress}%
+            - **Goal**: Week 2 (Nov 14, 2025)
+            
+            ${progress >= 100 ? '✅ **CHECKPOINT PASSED!**' : `⚠️ **${20 - completedTests} tests remaining**`}
+            
+            ---
+            📋 Track all tests: [\`label:security-test\`](https://github.com/${{ github.repository }}/issues?q=label%3Asecurity-test)`;
+            
+            // Update the checkpoint issue (assuming issue #1 is the checkpoint tracker)
+            try {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: 1, // Update with actual checkpoint issue number
+                body: statusComment
+              });
+            } catch (error) {
+              console.log('Note: Update issue #1 with your Security Sprint Checkpoint tracker');
+            }
+
+  pentest-findings:
+    name: 🔍 Triage Penetration Test Findings
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      contains(github.event.issue.labels.*.name, 'pentest-finding')
+    permissions:
+      issues: write
+    steps:
+      - name: 🎯 Auto-triage by CVSS Score
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            
+            // Extract CVSS score from issue body
+            const cvssMatch = body.match(/CVSS[:\s]+(\d+\.\d+)/i);
+            const cvssScore = cvssMatch ? parseFloat(cvssMatch[1]) : 0;
+            
+            let severity = 'info';
+            let labels = ['pentest-finding'];
+            let status = '⚠️ Needs Review';
+            
+            if (cvssScore >= 9.0) {
+              severity = 'critical';
+              labels.push('security-p0', 'blocker');
+              status = '🚨 CRITICAL - BLOCKING';
+            } else if (cvssScore >= 7.0) {
+              severity = 'high';
+              labels.push('security-p1', 'high-priority');
+              status = '🔴 HIGH - Must Fix';
+            } else if (cvssScore >= 4.0) {
+              severity = 'medium';
+              labels.push('security-p2');
+              status = '🟡 MEDIUM - Should Fix';
+            } else {
+              severity = 'low';
+              labels.push('security-p3');
+              status = '🟢 LOW - Nice to Fix';
+            }
+            
+            // Add severity labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: labels
+            });
+            
+            // Add triage comment
+            const comment = `🔍 **Automated Triage**
+            
+            - **CVSS Score**: ${cvssScore}
+            - **Severity**: ${severity.toUpperCase()}
+            - **Status**: ${status}
+            - **Week 2 Checkpoint Impact**: ${cvssScore >= 7.0 ? '❌ BLOCKS checkpoint' : '✅ Does not block'}
+            
+            **Required Actions**:
+            ${cvssScore >= 7.0 ? '- 🚨 Must be resolved by Nov 14, 2025' : '- 📋 Track for post-MVP remediation'}
+            ${cvssScore >= 7.0 ? '- 👥 Assign to security team immediately' : ''}
+            ${cvssScore >= 7.0 ? '- 🧪 Add automated test to prevent regression' : ''}
+            
+            ---
+            📊 [View all pentest findings](https://github.com/${{ github.repository }}/issues?q=label%3Apentest-finding)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: comment
+            });
+
+  checkpoint-validator:
+    name: ✅ Week 2 Go/No-Go Checkpoint Validator
+    runs-on: [self-hosted]
+    if: |
+      (github.event_name == 'issues' &&
+       github.event.action == 'closed' &&
+       (contains(github.event.issue.labels.*.name, 'security-p0') || 
+        contains(github.event.issue.labels.*.name, 'checkpoint-criterion'))) ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'security-sprint') ||
+        contains(github.event.pull_request.labels.*.name, 'week-1-2')
+      ))
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: 📋 Validate Checkpoint Criteria
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Query all checkpoint criteria
+            const { data: criteria } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'checkpoint-criterion',
+              milestone: 1, // Week 2 milestone
+              state: 'all'
+            });
+            
+            const totalCriteria = criteria.length;
+            const completedCriteria = criteria.filter(i => i.state === 'closed').length;
+            
+            // Check P0 security issues
+            const { data: p0Issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'security-p0',
+              state: 'open'
+            });
+            
+            // Check security test count
+            const { data: securityTests } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'security-test',
+              state: 'closed'
+            });
+            
+            // Check pentest findings
+            const { data: pentestFindings } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'pentest-finding',
+              state: 'open'
+            });
+            
+            const criticalFindings = pentestFindings.filter(f => 
+              f.labels.some(l => l.name === 'security-p0' || l.name === 'security-p1')
+            );
+            
+            // Calculate checkpoint status
+            const checkpointPassed = 
+              p0Issues.length === 0 &&
+              securityTests.length >= 20 &&
+              criticalFindings.length === 0 &&
+              completedCriteria === totalCriteria;
+            
+            const statusEmoji = checkpointPassed ? '✅' : '❌';
+            const statusText = checkpointPassed ? 'PASSED' : 'NOT PASSED';
+            
+            const checkpointReport = `## ${statusEmoji} Week 2 Go/No-Go Checkpoint Status: ${statusText}
+            
+            **Date**: ${new Date().toISOString().split('T')[0]}
+            **Deadline**: November 14, 2025 (Friday, 2:00 PM)
+            
+            ### 📊 Checkpoint Criteria
+            
+            | Criterion | Status | Count |
+            |-----------|--------|-------|
+            | LLM Prompt Injection | ${p0Issues.filter(i => i.title.includes('prompt')).length === 0 ? '✅' : '❌'} | ${p0Issues.filter(i => i.title.includes('prompt')).length} open |
+            | File Upload Security | ${p0Issues.filter(i => i.title.includes('upload')).length === 0 ? '✅' : '❌'} | ${p0Issues.filter(i => i.title.includes('upload')).length} open |
+            | Security Tests | ${securityTests.length >= 20 ? '✅' : '⚠️'} | ${securityTests.length} / 20 |
+            | Pentest Findings | ${criticalFindings.length === 0 ? '✅' : '❌'} | ${criticalFindings.length} CRITICAL/HIGH |
+            | All Criteria Complete | ${completedCriteria === totalCriteria ? '✅' : '⚠️'} | ${completedCriteria} / ${totalCriteria} |
+            
+            ### 🎯 Overall Status
+            
+            ${checkpointPassed ? `
+            ✅ **CHECKPOINT PASSED!**
+            
+            **Next Steps**:
+            1. Document security improvements in production readiness assessment
+            2. Schedule Week 3 ML Infrastructure kickoff (Nov 15)
+            3. Brief ML team on handoff
+            4. Close out security sprint retrospective
+            5. Move to Phase 2: ML Infrastructure (Week 3-5)
+            
+            🎉 **Congratulations to the security team!**
+            ` : `
+            ❌ **CHECKPOINT NOT PASSED**
+            
+            **Blocking Issues**:
+            ${p0Issues.length > 0 ? `- 🚨 ${p0Issues.length} P0 security issues still open` : ''}
+            ${securityTests.length < 20 ? `- 🧪 Only ${securityTests.length}/20 security tests implemented` : ''}
+            ${criticalFindings.length > 0 ? `- 🔍 ${criticalFindings.length} CRITICAL/HIGH pentest findings` : ''}
+            
+            **⚠️ Timeline Impact**: 
+            - Extends iOS launch by 2+ weeks (Jan 17 → ~Jan 31, 2026)
+            - Delays Android launch accordingly
+            - Requires executive approval to proceed
+            
+            **Required Actions**:
+            1. Daily standup at 9:00 AM until resolved
+            2. Escalate to engineering leadership
+            3. Consider bringing in additional security resources
+            4. Schedule follow-up checkpoint in 3 business days
+            `}
+            
+            ---
+            
+            ### 📋 Detailed Status
+            
+            **Open P0 Issues**:
+            ${p0Issues.map(i => `- #${i.number}: ${i.title}`).join('\n') || '✅ None'}
+            
+            **CRITICAL/HIGH Pentest Findings**:
+            ${criticalFindings.map(f => `- #${f.number}: ${f.title}`).join('\n') || '✅ None'}
+            
+            ---
+            
+            📊 [View Security Sprint Board](https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }})
+            📖 [Production Readiness Assessment](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/08-assessments/PRODUCTION_READINESS_ASSESSMENT.md)`;
+            
+            // Create or update checkpoint issue
+            const { data: existingIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'week-2-checkpoint',
+              state: 'open'
+            });
+            
+            if (existingIssues.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssues[0].number,
+                body: checkpointReport
+              });
+              
+              if (checkpointPassed) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existingIssues[0].number,
+                  state: 'closed',
+                  labels: ['week-2-checkpoint', 'checkpoint-passed']
+                });
+              }
+            }
+

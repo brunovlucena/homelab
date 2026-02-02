@@ -1,0 +1,47 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  - ../base
+
+# Production environment patches
+patches:
+  # Scale up for production
+  - patch: |-
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 20
+      - op: replace
+        path: /spec/scaling/targetConcurrency
+        value: 10
+    target:
+      kind: LambdaAgent
+      labelSelector: store.agent.role=seller
+
+  # More resources for production
+  - patch: |-
+      - op: replace
+        path: /spec/resources/requests/cpu
+        value: "200m"
+      - op: replace
+        path: /spec/resources/requests/memory
+        value: "512Mi"
+      - op: replace
+        path: /spec/resources/limits/cpu
+        value: "1000m"
+      - op: replace
+        path: /spec/resources/limits/memory
+        value: "1Gi"
+    target:
+      kind: LambdaAgent
+      labelSelector: store.agent.role=seller
+
+  # Production logging level
+  - patch: |-
+      - op: replace
+        path: /spec/observability/logging/level
+        value: info
+    target:
+      kind: LambdaAgent

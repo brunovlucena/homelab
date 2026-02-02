@@ -1,0 +1,98 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🤝 Sales Assistant Agent
+#
+#  AI-powered assistant for human sales representatives
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: sales-assistant
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: sales-assistant
+    app.kubernetes.io/component: assistant
+    app.kubernetes.io/part-of: agent-store-multibrands
+    store.agent.role: assistant
+  annotations:
+    description: "AI-powered assistant for human sales representatives"
+spec:
+  serviceAccountName: store-agent-sa
+
+  image:
+    repository: localhost:5001/sales_assistant
+    tag: "0.3.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 512
+    temperature: "0.6"
+
+  behavior:
+    maxContextMessages: 20
+    emitEvents: true
+    systemPrompt: |
+      Você é um assistente de vendas experiente que ajuda vendedores humanos.
+      Forneça insights, sugestões de resposta e análises de objeções.
+
+  scaling:
+    minReplicas: 1  # Always available for human sellers
+    maxReplicas: 5
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: 0s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: AGENT_NAME
+      value: "sales-assistant"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-store-multibrands/sales-assistant"
+    
+    intents:
+      - store.sales.insight
+      - store.sales.escalation.accepted
+      - store.sales.escalation.resolved
+      - store.sales.recommendation
+    
+    subscriptions:
+      - eventType: store.sales.escalate
+        description: "Escalations from AI sellers"
+      - eventType: store.chat.message.new
+        description: "Messages in escalated conversations"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

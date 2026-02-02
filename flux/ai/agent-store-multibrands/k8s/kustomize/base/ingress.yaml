@@ -1,0 +1,79 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🌐 WhatsApp Webhook Ingress
+#
+#  Exposes the WhatsApp gateway for Meta webhook callbacks
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: store-whatsapp-webhook
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: store-whatsapp-webhook
+    app.kubernetes.io/part-of: agent-store-multibrands
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    # Meta webhook verification requires exact responses
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    # SSL termination
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Rate limiting for webhook protection
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
+spec:
+  rules:
+    - host: store-whatsapp.homelab.local
+      http:
+        paths:
+          # WhatsApp webhook endpoint
+          - path: /webhook
+            pathType: Prefix
+            backend:
+              service:
+                name: whatsapp-gateway
+                port:
+                  number: 80
+          # Health check for monitoring
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: whatsapp-gateway
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - store-whatsapp.homelab.local
+      secretName: store-whatsapp-tls
+---
+# Internal service for direct API access
+apiVersion: v1
+kind: Service
+metadata:
+  name: store-api
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: store-api
+    app.kubernetes.io/part-of: agent-store-multibrands
+spec:
+  type: ClusterIP
+  ports:
+    - name: whatsapp
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: products
+      port: 8081
+      targetPort: 8080
+      protocol: TCP
+    - name: orders
+      port: 8082
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app.kubernetes.io/part-of: agent-store-multibrands

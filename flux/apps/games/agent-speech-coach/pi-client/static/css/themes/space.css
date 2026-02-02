@@ -1,0 +1,33 @@
+/* Space Theme - Purple/Dark */
+:root {
+    --primary-color: #7B1FA2;
+    --header-bg: linear-gradient(135deg, #1a1a2e 0%, #7B1FA2 100%);
+    --chat-bg: #1a1a2e;
+    --user-message-bg: #9C27B0;
+    --agent-message-bg: #2d2d44;
+    --agent-message-text: #e0e0e0;
+}
+
+body {
+    background: #1a1a2e;
+    color: #e0e0e0;
+}
+
+.app-header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #7B1FA2 100%);
+}
+
+.progress-section {
+    background: #2d2d44;
+    color: #e0e0e0;
+}
+
+.input-section {
+    background: #2d2d44;
+}
+
+#messageInput {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    border-color: #7B1FA2;
+}

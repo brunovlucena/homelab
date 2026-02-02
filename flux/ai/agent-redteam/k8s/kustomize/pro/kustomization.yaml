@@ -1,0 +1,35 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+namespace: ai
+
+kind: Kustomization
+
+resources:
+  - ../base
+
+# Pro environment - can run live exploits (use with caution!)
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+patches:
+  - target:
+      kind: LambdaAgent
+      name: agent-redteam
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: ghcr.io/brunovlucena/exploit-runner
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.2.0"
+      # ⚠️ Disable dry-run in pro - EXPLOITS WILL ACTUALLY RUN
+      - op: replace
+        path: /spec/env/1/value
+        value: "false"
+      # Increase replicas for faster test runs
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 3
+
+# 📝 Pro-specific labels
+commonLabels:
+  environment: pro

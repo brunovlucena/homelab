@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: homelab-services
+
+resources:
+  - ../../base
+
+images:
+  - name: localhost:5001/agents-whatsapp-rust-messaging
+    newTag: v1.0.4
+  - name: localhost:5001/agents-whatsapp-rust-user
+    newTag: v1.0.4
+  - name: localhost:5001/agents-whatsapp-rust-agent-gateway
+    newTag: v1.0.4
+  - name: localhost:5001/agents-whatsapp-rust-message-storage
+    newTag: v1.0.4
+
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+patches:
+  - target:
+      kind: LambdaAgent
+      name: message-processor
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.0.4"

@@ -1,0 +1,108 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📱 POS Edge Agent - Runs on Each POS Terminal
+#
+#  Lightweight agent for transaction monitoring and health reporting
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: pos-edge
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: pos-edge
+    app.kubernetes.io/component: edge-monitor
+    app.kubernetes.io/part-of: agent-pos-edge
+    pos.agent.role: edge
+  annotations:
+    description: "Edge agent deployed on POS terminals"
+spec:
+  serviceAccountName: pos-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/pos-edge
+    tag: "v0.3.0"
+    port: 8080
+
+  ai:
+    provider: none  # Lightweight edge agent - no AI needed
+    
+  behavior:
+    maxContextMessages: 5
+    emitEvents: true
+    systemPrompt: ""  # No AI, pure event processing
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 100  # Scale for many locations
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: 60s
+
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"
+
+  env:
+    - name: AGENT_ROLE
+      value: "pos-edge"
+    - name: HEARTBEAT_INTERVAL_SECONDS
+      value: "30"
+    - name: HEALTH_CHECK_INTERVAL_SECONDS
+      value: "60"
+    - name: OFFLINE_BUFFER_MAX_EVENTS
+      value: "1000"
+    - name: OFFLINE_BUFFER_MAX_AGE_HOURS
+      value: "24"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-pos-edge/pos-edge"
+    
+    intents:
+      - pos.location.heartbeat
+      - pos.location.offline
+      - pos.transaction.started
+      - pos.transaction.completed
+      - pos.transaction.failed
+      - pos.health.report
+      - pos.alert.raised
+    
+    subscriptions:
+      # Configuration from command center
+      - eventType: pos.command.config.push
+        description: "Configuration updates from command center"
+      
+      # Maintenance schedules
+      - eventType: pos.command.maintenance.schedule
+        description: "Scheduled maintenance notifications"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true
+    allowedTargetNamespaces:
+      - agent-pos-edge

@@ -1,0 +1,324 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📝 K6 LOKI LOAD TEST
+#
+#  Purpose: Load test Loki log ingestion and query endpoints
+#  Coverage:
+#    - Log push endpoint (loki/api/v1/push)
+#    - LogQL instant queries (loki/api/v1/query)
+#    - LogQL range queries (loki/api/v1/query_range)
+#    - Label queries (loki/api/v1/labels)
+#    - Series queries (loki/api/v1/series)
+#    - Health check endpoint
+#    - Metrics endpoint
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: loki-load-test
+  namespace: loki
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: testing
+    test-type: load
+spec:
+  parallelism: 2
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: loki-load-test
+      file: loki-load-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: LOKI_URL
+        value: "http://loki-gateway.loki.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-load-test
+  namespace: loki
+  labels:
+    app.kubernetes.io/name: loki
+    app.kubernetes.io/component: testing
+    test-type: load
+data:
+  loki-load-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+
+    // Custom metrics
+    const pushSuccessRate = new Rate('loki_push_success');
+    const querySuccessRate = new Rate('loki_query_success');
+    const pushCounter = new Counter('loki_pushes_total');
+    const queryCounter = new Counter('loki_queries_total');
+    const pushDuration = new Trend('loki_push_duration_ms');
+    const queryDuration = new Trend('loki_query_duration_ms');
+
+    // Test configuration
+    const LOKI_URL = __ENV.LOKI_URL || 'http://loki-gateway.loki.svc.cluster.local';
+
+    // Test LogQL queries
+    const testQueries = [
+      '{job="k6-load-test"}',
+      '{job="k6-load-test"} |= "error"',
+      '{job="k6-load-test"} | json | level="info"',
+      'rate({job="k6-load-test"}[1m])',
+      'sum(count_over_time({job="k6-load-test"}[1m]))',
+      '{job="k6-load-test"} | json | method="GET"',
+      '{job="k6-load-test"} | regexp "(?P<ip>\\d+\\.\\d+\\.\\d+\\.\\d+)"',
+    ];
+
+    // Generate a log entry in Loki push format
+    function generateLogEntry() {
+      const now = Date.now() * 1000000; // nanoseconds
+      const logLevels = ['info', 'debug', 'warn', 'error'];
+      const methods = ['GET', 'POST', 'PUT', 'DELETE'];
+      const statusCodes = [200, 201, 400, 404, 500];
+      
+      const level = logLevels[Math.floor(Math.random() * logLevels.length)];
+      const method = methods[Math.floor(Math.random() * methods.length)];
+      const status = statusCodes[Math.floor(Math.random() * statusCodes.length)];
+      const path = `/api/v1/test/${Math.floor(Math.random() * 1000)}`;
+      
+      const logLine = JSON.stringify({
+        level: level,
+        method: method,
+        path: path,
+        status_code: status,
+        message: `k6 load test log entry - ${method} ${path} returned ${status}`,
+        timestamp: new Date().toISOString(),
+        test_id: `test-${Math.floor(Math.random() * 10000)}`,
+      });
+
+      return {
+        streams: [{
+          stream: {
+            job: 'k6-load-test',
+            level: level,
+            service: 'load-test-service',
+            instance: `k6-${__VU}-${__ITER}`,
+          },
+          values: [
+            [now.toString(), logLine],
+          ],
+        }],
+      };
+    }
+
+    export const options = {
+      scenarios: {
+        loki_load: {
+          executor: 'ramping-vus',
+          startVUs: 1,
+          stages: [
+            { duration: '30s', target: 5 },   // Ramp up to 5 VUs
+            { duration: '1m', target: 10 },   // Increase to 10 VUs
+            { duration: '1m', target: 10 },   // Stay at 10 VUs
+            { duration: '30s', target: 0 },    // Ramp down
+          ],
+        },
+      },
+      thresholds: {
+        http_req_duration: ['p(95)<3000'],    // 95% of requests should be below 3s
+        http_req_failed: ['rate<0.05'],       // Error rate should be below 5%
+        loki_push_success: ['rate>0.95'],     // Push success rate > 95%
+        loki_query_success: ['rate>0.95'],    // Query success rate > 95%
+      },
+    };
+
+    function pushLogs(logEntry) {
+      const startTime = Date.now();
+      const payload = JSON.stringify(logEntry);
+      
+      const res = http.post(
+        `${LOKI_URL}/loki/api/v1/push`,
+        payload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: '10s',
+          tags: { operation: 'push' },
+        }
+      );
+
+      const duration = Date.now() - startTime;
+      pushDuration.add(duration);
+      pushCounter.add(1);
+
+      const success = res.status === 204 || res.status === 200;
+      pushSuccessRate.add(success ? 1 : 0);
+
+      return { res, duration, success };
+    }
+
+    function queryLoki(query, isRange = false) {
+      const startTime = Date.now();
+      let url;
+      
+      if (isRange) {
+        const end = Math.floor(Date.now() / 1000);
+        const start = end - 3600; // Last hour
+        url = `${LOKI_URL}/loki/api/v1/query_range?query=${encodeURIComponent(query)}&start=${start}&end=${end}&limit=100&step=60`;
+      } else {
+        url = `${LOKI_URL}/loki/api/v1/query?query=${encodeURIComponent(query)}&limit=100`;
+      }
+
+      const res = http.get(url, {
+        timeout: '30s',
+        tags: { query_type: isRange ? 'range' : 'instant' },
+      });
+
+      const duration = Date.now() - startTime;
+      queryDuration.add(duration);
+      queryCounter.add(1);
+
+      const success = res.status === 200;
+      querySuccessRate.add(success ? 1 : 0);
+
+      return { res, duration, success };
+    }
+
+    export default function () {
+      // Test 1: Health check
+      group('Loki Health Check', () => {
+        const healthRes = http.get(`${LOKI_URL}/ready`, { timeout: '5s' });
+        check(healthRes, {
+          'health check status is 200': (r) => r.status === 200,
+          'health check response time < 500ms': (r) => r.timings.duration < 500,
+        });
+      });
+
+      // Test 2: Log push
+      group('Loki Log Push', () => {
+        const logEntry = generateLogEntry();
+        const { res, success } = pushLogs(logEntry);
+
+        check(res, {
+          'push status is 204 or 200': (r) => r.status === 204 || r.status === 200,
+          'push response time < 2s': (r) => r.timings.duration < 2000,
+        });
+
+        // Small delay to allow indexing
+        sleep(0.5);
+      });
+
+      // Test 3: Instant queries
+      group('Loki Instant Queries', () => {
+        const randomQuery = testQueries[Math.floor(Math.random() * testQueries.length)];
+        const { res, success } = queryLoki(randomQuery, false);
+
+        check(res, {
+          'instant query status is 200': (r) => r.status === 200,
+          'instant query returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && data.status === 'success';
+            } catch (e) {
+              return false;
+            }
+          },
+          'instant query has data': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data.data && (data.data.result || data.data.resultType);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 4: Range queries
+      group('Loki Range Queries', () => {
+        const randomQuery = testQueries[Math.floor(Math.random() * testQueries.length)];
+        const { res, success } = queryLoki(randomQuery, true);
+
+        check(res, {
+          'range query status is 200': (r) => r.status === 200,
+          'range query returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && data.status === 'success';
+            } catch (e) {
+              return false;
+            }
+          },
+          'range query has stream data': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data.data && data.data.resultType === 'streams';
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 5: Labels query
+      group('Loki Labels Query', () => {
+        const labelsRes = http.get(`${LOKI_URL}/loki/api/v1/labels`, { timeout: '10s' });
+        check(labelsRes, {
+          'labels query status is 200': (r) => r.status === 200,
+          'labels query returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && data.status === 'success' && Array.isArray(data.data);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 6: Series query
+      group('Loki Series Query', () => {
+        const seriesRes = http.get(
+          `${LOKI_URL}/loki/api/v1/series?match[]=${encodeURIComponent('{job="k6-load-test"}')}`,
+          { timeout: '10s' }
+        );
+        check(seriesRes, {
+          'series query status is 200': (r) => r.status === 200,
+          'series query returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && data.status === 'success' && Array.isArray(data.data);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 7: Metrics endpoint
+      group('Loki Metrics Endpoint', () => {
+        const metricsRes = http.get(`${LOKI_URL}/metrics`, { timeout: '10s' });
+        check(metricsRes, {
+          'metrics endpoint status is 200': (r) => r.status === 200,
+          'metrics endpoint returns prometheus format': (r) => 
+            r.body.includes('# HELP') || r.body.includes('# TYPE'),
+        });
+      });
+
+      // Random sleep between iterations
+      sleep(Math.random() * 2 + 1);
+    }
+
+    export function handleSummary(data) {
+      return {
+        'stdout': JSON.stringify(data, null, 2),
+      };
+    }

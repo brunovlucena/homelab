@@ -1,0 +1,491 @@
+name: 🏠 Homepage - CI/CD
+
+permissions:
+  contents: write
+  packages: write
+  attestations: write
+  id-token: write
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/apps/homepage/src/api/**'
+      - 'flux/apps/homepage/src/frontend/**'
+      - 'flux/apps/homepage/k8s/**'
+      - '.github/workflows/infra-homepage.yml'
+  push:
+    branches:
+      - 'feature/**'
+      - 'bugfix/**'
+      - main
+    paths:
+      - 'flux/apps/homepage/src/api/**'
+      - 'flux/apps/homepage/src/frontend/**'
+      - 'flux/apps/homepage/k8s/**'
+      - '.github/workflows/infra-homepage.yml'
+    tags:
+      - 'homepage-v*.*.*'
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+  IMAGE_NAME_API: ${{ github.repository_owner }}/homepage-api
+  IMAGE_NAME_FRONTEND: ${{ github.repository_owner }}/homepage-frontend
+  WORKING_DIR: flux/apps/homepage
+  ENVIRONMENT: studio
+
+jobs:
+  detect-changes:
+    name: 🔍 Detect Changes & Version
+    runs-on: [self-hosted]
+    permissions:
+      contents: write
+      pull-requests: read
+    outputs:
+      should_build: ${{ steps.should_build.outputs.should_build }}
+      api: ${{ steps.changes.outputs.api }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+      chart: ${{ steps.changes.outputs.chart }}
+      environment: ${{ steps.env.outputs.environment }}
+      version: ${{ steps.version.outputs.version }}
+      docker_tag: ${{ steps.version.outputs.docker_tag }}
+      is_release: ${{ steps.version.outputs.is_release }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🔍 Detect Changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            api:
+              - 'flux/apps/homepage/src/api/**'
+            frontend:
+              - 'flux/apps/homepage/src/frontend/**'
+            chart:
+              - 'flux/apps/homepage/k8s/**'
+      
+      - name: Set outputs (filter or workflow_dispatch)
+        id: changes
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "api=true" >> $GITHUB_OUTPUT
+            echo "frontend=true" >> $GITHUB_OUTPUT
+            echo "chart=true" >> $GITHUB_OUTPUT
+          else
+            echo "api=${{ steps.filter.outputs.api }}" >> $GITHUB_OUTPUT
+            echo "frontend=${{ steps.filter.outputs.frontend }}" >> $GITHUB_OUTPUT
+            echo "chart=${{ steps.filter.outputs.chart }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Set should_build output
+        id: should_build
+        run: |
+          API_CHANGED="${{ steps.changes.outputs.api }}"
+          FRONTEND_CHANGED="${{ steps.changes.outputs.frontend }}"
+          CHART_CHANGED="${{ steps.changes.outputs.chart }}"
+          if [[ "$API_CHANGED" == "true" ]] || [[ "$FRONTEND_CHANGED" == "true" ]] || [[ "$CHART_CHANGED" == "true" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🏷️ Set Environment
+        id: env
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "environment=prd" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🏷️ Extract Version and Generate Tags
+        id: version
+        run: |
+          # VERSION file is the ONLY source of truth
+          VERSION_FILE="${{ env.WORKING_DIR }}/VERSION"
+          if [ ! -f "$VERSION_FILE" ]; then
+            echo "❌ ERROR: VERSION file not found at $VERSION_FILE"
+            exit 1
+          fi
+          
+          VERSION=$(cat "$VERSION_FILE" | tr -d '[:space:]')
+          
+          if [ -z "$VERSION" ]; then
+            echo "❌ ERROR: VERSION file is empty"
+            exit 1
+          fi
+          
+          GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+          
+          # Generate Docker tag based on branch with v prefix for releases
+          if [ "$GIT_BRANCH" = "main" ]; then
+            DOCKER_TAG="v$VERSION"
+            IS_RELEASE="true"
+          elif [ "$GIT_BRANCH" = "dev" ]; then
+            DOCKER_TAG="v$VERSION-beta.$(date +%s)"
+            IS_RELEASE="false"
+          else
+            DOCKER_TAG="v$VERSION-dev.$GIT_COMMIT"
+            IS_RELEASE="false"
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "docker_tag=$DOCKER_TAG" >> $GITHUB_OUTPUT
+          echo "git_commit=$GIT_COMMIT" >> $GITHUB_OUTPUT
+          echo "git_branch=$GIT_BRANCH" >> $GITHUB_OUTPUT
+          echo "is_release=$IS_RELEASE" >> $GITHUB_OUTPUT
+          
+          echo "📋 Version Information:"
+          echo "  ✅ VERSION file: $VERSION_FILE"
+          echo "  ✅ Version: $VERSION"
+          echo "  🐳 Docker Tag: $DOCKER_TAG"
+          echo "  📝 Git Commit: $GIT_COMMIT"
+          echo "  🌿 Git Branch: $GIT_BRANCH"
+          echo "  🎯 Is Release: $IS_RELEASE"
+
+  lint-api:
+    name: 🔍 Lint API
+    runs-on: [self-hosted]
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/src/api
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.WORKING_DIR }}/src/api/go.mod
+          cache: true
+      
+      - name: Prepare Go modules
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+          GOSUMDB: sum.golang.org
+        run: |
+          set -e
+          
+          # Retry function for go mod download
+          retry_download() {
+            local max_attempts=5
+            local attempt=1
+            local delay=5
+            
+            while [ $attempt -le $max_attempts ]; do
+              echo "Attempt $attempt/$max_attempts: Downloading Go modules..."
+              if go mod download; then
+                echo "✅ Go modules downloaded successfully"
+                return 0
+              else
+                if [ $attempt -lt $max_attempts ]; then
+                  echo "⚠️ Download failed, retrying in ${delay}s..."
+                  sleep $delay
+                  delay=$((delay * 2))  # Exponential backoff
+                  attempt=$((attempt + 1))
+                else
+                  echo "❌ Download failed after $max_attempts attempts"
+                  return 1
+                fi
+              fi
+            done
+          }
+          
+          # Download modules with retry
+          retry_download
+          
+          # Verify modules
+          echo "🔍 Verifying Go modules..."
+          go mod verify
+          
+          # Run go vet
+          echo "🔍 Running go vet..."
+          go vet ./...
+      
+      - name: Run Go linters
+        uses: golangci/golangci-lint-action@v9
+        with:
+          working-directory: ${{ env.WORKING_DIR }}/src/api
+          version: latest
+          args: --timeout=5m
+
+  test-api:
+    name: 🧪 Test API
+    runs-on: [self-hosted]
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/src/api
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.WORKING_DIR }}/src/api/go.mod
+          cache: true
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc
+
+      - name: Download Go modules with retry
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+          GOSUMDB: sum.golang.org
+        run: |
+          set -e
+          
+          # Retry function for go mod download
+          retry_download() {
+            local max_attempts=5
+            local attempt=1
+            local delay=5
+            
+            while [ $attempt -le $max_attempts ]; do
+              echo "Attempt $attempt/$max_attempts: Downloading Go modules..."
+              if go mod download; then
+                echo "✅ Go modules downloaded successfully"
+                return 0
+              else
+                if [ $attempt -lt $max_attempts ]; then
+                  echo "⚠️ Download failed, retrying in ${delay}s..."
+                  sleep $delay
+                  delay=$((delay * 2))  # Exponential backoff
+                  attempt=$((attempt + 1))
+                else
+                  echo "❌ Download failed after $max_attempts attempts"
+                  return 1
+                fi
+              fi
+            done
+          }
+          
+          # Download modules with retry
+          retry_download
+
+      - name: Run tests
+        env:
+          GOPROXY: https://proxy.golang.org,direct
+          GOSUMDB: sum.golang.org
+        run: |
+          CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+      
+      - name: Generate coverage report
+        run: |
+          go tool cover -html=coverage.out -o coverage.html
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        continue-on-error: true
+        with:
+          files: ${{ env.WORKING_DIR }}/src/api/coverage.out
+          flags: api
+          name: homepage-api
+          fail_ci_if_error: false
+
+  build-api:
+    name: 🏗️ Build API
+    runs-on: [self-hosted]
+    needs: [lint-api, test-api]
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/src/api
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make
+      
+      - name: 📝 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+      
+      - name: 🔐 Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: 🔐 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and Push API image
+        working-directory: ${{ env.WORKING_DIR }}
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          PUSH_PLATFORM: linux/amd64,linux/arm64
+        run: make api-build-image
+
+  lint-frontend:
+    name: 🔍 Lint Frontend
+    runs-on: [self-hosted]
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/src/frontend
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/src/frontend/package-lock.json
+      
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      
+      - name: Run ESLint
+        run: npm run lint
+      
+      - name: Check TypeScript
+        run: npx tsc --noEmit
+
+  test-frontend:
+    name: 🧪 Test Frontend
+    runs-on: [self-hosted]
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/src/frontend
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/src/frontend/package-lock.json
+      
+      - name: Run tests
+        run: |
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          CI=1 npm run test:coverage
+      
+  build-frontend:
+    name: 🏗️ Build Frontend
+    runs-on: [self-hosted]
+    needs: [lint-frontend, test-frontend]
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/src/frontend
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make
+      
+      - name: 📝 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+      
+      - name: 🔐 Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: 🔐 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and Push Frontend image
+        working-directory: ${{ env.WORKING_DIR }}
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          PUSH_PLATFORM: linux/amd64,linux/arm64
+        run: make frontend-build-image
+
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: [self-hosted]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Trivy manually (fallback)
+        id: install-trivy
+        run: |
+          TRIVY_VERSION="v0.68.1"
+          ARCH=$(uname -m)
+          case $ARCH in
+            x86_64) ARCH="64bit" ;;
+            aarch64|arm64) ARCH="ARM64" ;;
+            *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+          esac
+          
+          echo "📦 Attempting to install Trivy $TRIVY_VERSION for Linux/$ARCH..."
+          
+          INSTALL_DIR="$HOME/.local/bin"
+          mkdir -p "$INSTALL_DIR"
+          
+          # Check if trivy is already available
+          if command -v trivy &> /dev/null; then
+            echo "✅ Trivy already installed: $(trivy --version)"
+            echo "trivy_installed=true" >> $GITHUB_OUTPUT
+          else
+            # Try direct download from GitHub releases
+            DOWNLOAD_URL="https://github.com/aquasecurity/trivy/releases/download/${TRIVY_VERSION}/trivy_${TRIVY_VERSION#v}_Linux-${ARCH}.tar.gz"
+            
+            echo "Downloading from: $DOWNLOAD_URL"
+            if curl -fsSL --max-time 60 "$DOWNLOAD_URL" -o /tmp/trivy.tar.gz; then
+              tar -xzf /tmp/trivy.tar.gz -C /tmp trivy
+              chmod +x /tmp/trivy
+              mv /tmp/trivy "$INSTALL_DIR/trivy"
+              rm -f /tmp/trivy.tar.gz
+              
+              # Verify installation
+              if "$INSTALL_DIR/trivy" --version; then
+                echo "✅ Trivy installed successfully"
+                echo "trivy_installed=true" >> $GITHUB_OUTPUT
+              else
+                echo "⚠️ Trivy installation verification failed"
+                echo "trivy_installed=false" >> $GITHUB_OUTPUT
+              fi
+            else
+              echo "⚠️ Direct download failed, will rely on trivy-action setup"
+              echo "trivy_installed=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+          
+          # Add to PATH
+          echo "$INSTALL_DIR" >> $GITHUB_PATH
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: 'fs'
+          scan-ref: '${{ env.WORKING_DIR }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          trivy-version: 'v0.68.1'
+          skip-setup-trivy: ${{ steps.install-trivy.outputs.trivy_installed == 'true' }}
+        continue-on-error: true
+      
+      - name: 📤 Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true

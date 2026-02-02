@@ -1,0 +1,98 @@
+---
+# 🚀 Job to install Linkerd Control Plane using the linkerd CLI
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: linkerd-control-plane-install
+  namespace: linkerd
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  template:
+    metadata:
+      labels:
+        app: linkerd-control-plane-install
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: linkerd-installer
+      containers:
+      - name: install-control-plane
+        image: localhost:5001/kubectl:v1.34.0
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "📦 Using pre-installed Linkerd CLI..."
+          linkerd version --client
+          echo "🎯 Installing Linkerd control plane with Tempo tracing and shared trust anchor..."
+          
+          # Read trust anchor certificate
+          TRUST_ANCHOR_PEM=$(cat /etc/linkerd-trust/ca.crt)
+          
+          # Check if ConfigMap exists to determine install vs upgrade
+          if kubectl get configmap -n linkerd linkerd-config >/dev/null 2>&1; then
+            echo "🔄 Upgrading existing Linkerd control plane..."
+            COMMAND="upgrade"
+          else
+            echo "🚀 Installing new Linkerd control plane..."
+            COMMAND="install"
+          fi
+          
+          linkerd $COMMAND \
+            --identity-external-issuer \
+            --identity-issuance-lifetime=24h \
+            --identity-clock-skew-allowance=20s \
+            --set identityTrustAnchorsPEM="$TRUST_ANCHOR_PEM" \
+            --set proxyInit.image.name=localhost:5001/linkerd-proxy-init \
+            --set proxyInit.image.version=v2.4.3 \
+            --set proxy.image.name=localhost:5001/linkerd-proxy \
+            --set proxy.image.version=edge-25.11.1 \
+            --set policyController.image.name=localhost:5001/linkerd-controller \
+            --set policyController.image.version=edge-25.11.1 \
+            --set destinationController.image.name=localhost:5001/linkerd-controller \
+            --set destinationController.image.version=edge-25.11.1 \
+            --set proxyInjector.image.name=localhost:5001/linkerd-controller \
+            --set proxyInjector.image.version=edge-25.11.1 \
+            --set identityController.image.name=localhost:5001/linkerd-controller \
+            --set identityController.image.version=edge-25.11.1 | kubectl apply -f -
+          
+          echo "✅ Linkerd control plane ready"
+        volumeMounts:
+        - name: trust-anchor
+          mountPath: /etc/linkerd-trust
+          readOnly: true
+      volumes:
+      - name: trust-anchor
+        secret:
+          secretName: linkerd-trust-anchor
+          optional: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: linkerd-installer
+  namespace: linkerd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: linkerd-installer
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: linkerd-installer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: linkerd-installer
+subjects:
+- kind: ServiceAccount
+  name: linkerd-installer
+  namespace: linkerd
+

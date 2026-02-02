@@ -1,0 +1,176 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔥 K6 SMOKE TEST - AGENT-REDTEAM
+#
+#  Purpose: Quick validation of redteam exploit runner functionality
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-redteam-smoke
+  namespace: agent-redteam
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: testing
+    test-type: smoke
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-redteam-smoke-script
+      file: script.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: TARGET_URL
+        value: "http://agent-redteam.agent-redteam.svc.cluster.local"
+      - name: NAMESPACE
+        value: "agent-redteam"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-redteam-smoke-script
+  namespace: agent-redteam
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: testing
+    test-type: smoke
+data:
+  script.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // Custom Metrics
+    const healthCheckSuccess = new Rate('smoke_health_check_success');
+    const catalogSuccess = new Rate('smoke_catalog_success');
+    const responseTime = new Trend('smoke_response_time_ms');
+    const serviceErrors = new Counter('smoke_service_errors');
+    
+    // Configuration
+    const BASE_URL = __ENV.TARGET_URL || 'http://agent-redteam.agent-redteam.svc.cluster.local';
+    
+    export const options = {
+      scenarios: {
+        smoke: {
+          executor: 'constant-vus',
+          vus: 1,
+          duration: '30s',
+        },
+      },
+      thresholds: {
+        'smoke_health_check_success': ['rate>0.95'],
+        'smoke_catalog_success': ['rate>0.80'],
+        'smoke_response_time_ms': ['p(95)<5000'],
+        'http_req_failed': ['rate<0.2'],
+      },
+    };
+    
+    export default function() {
+      // Health Check
+      group('Health Check', () => {
+        const healthRes = http.get(`${BASE_URL}/health`, { timeout: '10s' });
+        
+        responseTime.add(healthRes.timings.duration, { endpoint: 'health' });
+        
+        const healthy = check(healthRes, {
+          'health check passes': (r) => r.status === 200,
+          'health returns healthy': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.status === 'healthy';
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+        });
+        
+        healthCheckSuccess.add(healthy);
+        if (!healthy) serviceErrors.add(1);
+      });
+      
+      sleep(1);
+      
+      // Readiness Check
+      group('Readiness Check', () => {
+        const readyRes = http.get(`${BASE_URL}/ready`, { timeout: '10s' });
+        
+        check(readyRes, {
+          'readiness check passes': (r) => r.status === 200,
+        });
+      });
+      
+      sleep(1);
+      
+      // Catalog Endpoints
+      group('Catalog API', () => {
+        // List exploits
+        const catalogRes = http.get(`${BASE_URL}/catalog`, { timeout: '10s' });
+        
+        responseTime.add(catalogRes.timings.duration, { endpoint: 'catalog' });
+        
+        const catalogOk = check(catalogRes, {
+          'catalog returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'catalog has exploits': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.total > 0 || (Array.isArray(body) && body.length > 0);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+        
+        catalogSuccess.add(catalogOk);
+        
+        // Categories
+        const categoriesRes = http.get(`${BASE_URL}/categories`, { timeout: '10s' });
+        check(categoriesRes, {
+          'categories returns 2xx': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        // Severities
+        const severitiesRes = http.get(`${BASE_URL}/severities`, { timeout: '10s' });
+        check(severitiesRes, {
+          'severities returns 2xx': (r) => r.status >= 200 && r.status < 300,
+        });
+      });
+      
+      sleep(2);
+    }
+    
+    export function handleSummary(data) {
+      const healthMetric = data.metrics['smoke_health_check_success'];
+      const catalogMetric = data.metrics['smoke_catalog_success'];
+      const responseMetric = data.metrics['smoke_response_time_ms'];
+      
+      const healthRate = healthMetric && healthMetric.values ? healthMetric.values.rate : 0;
+      const catalogRate = catalogMetric && catalogMetric.values ? catalogMetric.values.rate : 0;
+      const p95Response = responseMetric && responseMetric.values ? responseMetric.values['p(95)'] : 0;
+      
+      const passed = healthRate >= 0.95;
+      
+      console.log('\n' + '═'.repeat(60));
+      console.log('🔴 AGENT-REDTEAM SMOKE TEST RESULTS');
+      console.log('═'.repeat(60));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('Health Check Rate: ' + (healthRate * 100).toFixed(1) + '%');
+      console.log('Catalog Success Rate: ' + (catalogRate * 100).toFixed(1) + '%');
+      console.log('P95 Response Time: ' + (p95Response || 0).toFixed(0) + 'ms');
+      console.log('═'.repeat(60) + '\n');
+      
+      return {};
+    }

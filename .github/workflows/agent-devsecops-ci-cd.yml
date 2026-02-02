@@ -1,0 +1,41 @@
+# ============================================================================
+# 🔐 Agent-DevSecOps - CI/CD
+# ============================================================================
+# Security scanner for container images and LambdaFunctions.
+# Uses reusable workflow for standardized CI/CD.
+# ============================================================================
+
+name: 🔐 Agent-DevSecOps - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-devsecops/**'
+      - '.github/workflows/agent-devsecops-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agent-devsecops/**'
+      - '.github/workflows/agent-devsecops-ci-cd.yml'
+    tags:
+      - 'agent-devsecops-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-cd:
+    name: 🔐 Agent-DevSecOps
+    uses: ./.github/workflows/_reusable-agent-cicd.yml
+    with:
+      agent-name: agent-devsecops
+      working-directory: flux/ai/agent-devsecops
+      image-name: agent-devsecops/scanner
+      dockerfile: src/scanner/Dockerfile
+      python-version: '3.12'
+      run-tests: true
+      run-lint: true
+      copy-shared-lib: false
+    secrets: inherit

@@ -1,0 +1,69 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: node-disk-alerts
+  namespace: prometheus
+  labels:
+    app: kubernetes-nodes
+    prometheus: kube-prometheus-stack
+spec:
+  groups:
+    - name: node.disk
+      interval: 30s
+      rules:
+        - alert: NodeDiskSpaceCritical
+          annotations:
+            description: "Node {{ $labels.instance }} has only {{ printf \"%.1f\" $value }}% disk space remaining. This can cause pod failures and scheduling issues."
+            summary: "Node disk space critically low"
+            runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/node-disk-full.md"
+          expr: |
+            (
+              node_filesystem_avail_bytes{mountpoint="/", fstype!="tmpfs"} 
+              / 
+              node_filesystem_size_bytes{mountpoint="/", fstype!="tmpfs"}
+            ) * 100 < 5
+          for: 5m
+          labels:
+            severity: critical
+            component: node
+
+        - alert: NodeDiskSpaceWarning
+          annotations:
+            description: "Node {{ $labels.instance }} has {{ printf \"%.1f\" $value }}% disk space remaining. Consider cleaning up unused images, pods, or volumes."
+            summary: "Node disk space running low"
+            runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/node-disk-full.md"
+          expr: |
+            (
+              node_filesystem_avail_bytes{mountpoint="/", fstype!="tmpfs"} 
+              / 
+              node_filesystem_size_bytes{mountpoint="/", fstype!="tmpfs"}
+            ) * 100 < 10
+          for: 10m
+          labels:
+            severity: warning
+            component: node
+
+        - alert: NodeDiskWillFillIn4Hours
+          annotations:
+            description: "Based on current growth rate, disk on node {{ $labels.instance }} will be full in approximately 4 hours."
+            summary: "Node disk will fill soon"
+            runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/node-disk-full.md"
+          expr: |
+            predict_linear(node_filesystem_avail_bytes{mountpoint="/", fstype!="tmpfs"}[1h], 4*3600) < 0
+          for: 10m
+          labels:
+            severity: warning
+            component: node
+
+        - alert: NodeDiskPressure
+          annotations:
+            description: "Node {{ $labels.node }} is reporting disk pressure. Kubernetes may start evicting pods."
+            summary: "Node experiencing disk pressure"
+            runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/node-disk-full.md"
+          expr: |
+            kube_node_status_condition{condition="DiskPressure", status="true"} == 1
+          for: 5m
+          labels:
+            severity: critical
+            component: node

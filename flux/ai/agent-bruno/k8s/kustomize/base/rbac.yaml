@@ -1,0 +1,62 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 RBAC - Agent Bruno
+#
+#  Role: lambda-agent-developer
+#  Capabilities:
+#    - CRUD LambdaFunctions
+#    - Read Brokers (no create)
+#    - CRUD Triggers
+#    - Invoke tools via CloudEvents
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-bruno-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-bruno
+    app.kubernetes.io/component: chatbot
+    rbac.lambda.knative.io/tier: developer
+imagePullSecrets:
+  - name: ghcr-secret
+
+---
+# Bind to lambda-agent-developer ClusterRole (namespace-scoped)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-bruno-developer
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-bruno
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-developer
+subjects:
+  - kind: ServiceAccount
+    name: agent-bruno-sa
+    namespace: ai
+
+---
+# Allow agent-bruno to read from agent-contracts namespace (cross-agent communication)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-bruno-viewer-contracts
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-bruno
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-viewer
+subjects:
+  - kind: ServiceAccount
+    name: agent-bruno-sa
+    namespace: ai

@@ -1,0 +1,18 @@
+---
+# PersistentVolumeClaim for TRM Model
+# This PVC should contain the TRM model checkpoints
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: trm-model-pvc
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: trm-model
+    app.kubernetes.io/component: model-storage
+spec:
+  accessModes:
+    - ReadOnlyMany  # Multiple pods can read simultaneously
+  resources:
+    requests:
+      storage: 1Gi  # Adjust based on model size (~26MB checkpoint + repo)
+  # storageClassName: your-storage-class  # Uncomment and set if needed

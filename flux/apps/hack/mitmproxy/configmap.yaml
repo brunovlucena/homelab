@@ -1,0 +1,644 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mitmproxy-config
+  namespace: mitmproxy
+data:
+  TZ: "America/Sao_Paulo"
+  # SponsorBlock API endpoint
+  SPONSORBLOCK_API: "https://sponsor.ajay.app"
+  # Redis for caching (optional, set to redis service if deployed)
+  REDIS_URL: "redis://redis.mitmproxy.svc.cluster.local:6379"
+  # Audio analyzer service (optional)
+  AUDIO_ANALYZER_URL: "http://audio-analyzer.mitmproxy.svc.cluster.local:8000"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mitmproxy-addons
+  namespace: mitmproxy
+data:
+  # Main orchestrator addon
+  youtube_ssai_bypass.py: |
+    """
+    YouTube SSAI Bypass - Main Orchestrator
+    
+    Multi-layered approach to bypass Server-Side Ad Insertion:
+    - Layer 1: URL Pattern Blocking
+    - Layer 2: Manifest Filtering (DASH/HLS)
+    - Layer 3: SponsorBlock Integration
+    - Layer 4: Audio Fingerprinting (external service)
+    """
+    import re
+    import os
+    import json
+    import hashlib
+    import xml.etree.ElementTree as ET
+    from urllib.parse import urlparse, parse_qs
+    from mitmproxy import http, ctx
+    from typing import Optional, List, Dict, Tuple
+    import threading
+    import time
+
+    # Try to import optional dependencies
+    try:
+        import redis
+        REDIS_AVAILABLE = True
+    except ImportError:
+        REDIS_AVAILABLE = False
+        ctx.log.warn("[SSAI] Redis not available, caching disabled")
+
+    try:
+        import requests
+        REQUESTS_AVAILABLE = True
+    except ImportError:
+        REQUESTS_AVAILABLE = False
+        ctx.log.warn("[SSAI] Requests not available, SponsorBlock disabled")
+
+
+    class MetricsCollector:
+        """Collect and expose metrics for monitoring."""
+        
+        def __init__(self):
+            self.counters = {
+                'ads_blocked_url': 0,
+                'ads_blocked_manifest': 0,
+                'sponsorblock_hits': 0,
+                'sponsorblock_misses': 0,
+                'requests_processed': 0,
+                'manifests_modified': 0,
+            }
+            self._lock = threading.Lock()
+        
+        def increment(self, metric: str, value: int = 1):
+            with self._lock:
+                self.counters[metric] = self.counters.get(metric, 0) + value
+        
+        def get_stats(self) -> Dict:
+            with self._lock:
+                return self.counters.copy()
+
+
+    class CacheManager:
+        """Manage caching for SponsorBlock data and video metadata."""
+        
+        def __init__(self):
+            self.redis_client = None
+            self.local_cache = {}  # Fallback in-memory cache
+            self.cache_ttl = 3600  # 1 hour
+            
+            if REDIS_AVAILABLE:
+                redis_url = os.environ.get('REDIS_URL', '')
+                if redis_url:
+                    try:
+                        self.redis_client = redis.from_url(redis_url)
+                        self.redis_client.ping()
+                        ctx.log.info("[SSAI] Redis connected successfully")
+                    except Exception as e:
+                        ctx.log.warn(f"[SSAI] Redis connection failed: {e}")
+                        self.redis_client = None
+        
+        def get(self, key: str) -> Optional[str]:
+            if self.redis_client:
+                try:
+                    return self.redis_client.get(key)
+                except:
+                    pass
+            return self.local_cache.get(key)
+        
+        def set(self, key: str, value: str, ttl: int = None):
+            ttl = ttl or self.cache_ttl
+            if self.redis_client:
+                try:
+                    self.redis_client.setex(key, ttl, value)
+                    return
+                except:
+                    pass
+            self.local_cache[key] = value
+
+
+    class SponsorBlockClient:
+        """Client for SponsorBlock API."""
+        
+        def __init__(self, cache: CacheManager):
+            self.api_base = os.environ.get('SPONSORBLOCK_API', 'https://sponsor.ajay.app')
+            self.cache = cache
+            self.categories = ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro', 'preview', 'music_offtopic']
+        
+        def get_segments(self, video_id: str) -> List[Dict]:
+            """Get skip segments for a video from SponsorBlock."""
+            if not REQUESTS_AVAILABLE:
+                return []
+            
+            cache_key = f"sb:{video_id}"
+            cached = self.cache.get(cache_key)
+            if cached:
+                try:
+                    return json.loads(cached)
+                except:
+                    pass
+            
+            try:
+                # Use SHA256 prefix for privacy
+                hash_prefix = hashlib.sha256(video_id.encode()).hexdigest()[:4]
+                url = f"{self.api_base}/api/skipSegments/{hash_prefix}"
+                params = {'categories': json.dumps(self.categories)}
+                
+                response = requests.get(url, params=params, timeout=5)
+                
+                if response.status_code == 200:
+                    all_segments = response.json()
+                    # Filter for our specific video
+                    segments = [s for s in all_segments if s.get('videoID') == video_id]
+                    self.cache.set(cache_key, json.dumps(segments))
+                    return segments
+                elif response.status_code == 404:
+                    # No segments found, cache empty result
+                    self.cache.set(cache_key, '[]', ttl=1800)  # 30 min for misses
+                    return []
+            except Exception as e:
+                ctx.log.warn(f"[SSAI] SponsorBlock API error: {e}")
+            
+            return []
+
+
+    class ManifestFilter:
+        """Filter ad segments from DASH and HLS manifests."""
+        
+        # Namespaces used in DASH manifests
+        DASH_NS = {
+            'mpd': 'urn:mpeg:dash:schema:mpd:2011',
+            'scte35': 'urn:scte:scte35:2013:xml',
+            'cenc': 'urn:mpeg:cenc:2013',
+        }
+        
+        # Patterns indicating ad content
+        AD_INDICATORS = [
+            r'ad[-_]?break',
+            r'ad[-_]?pod',
+            r'midroll',
+            r'preroll',
+            r'postroll',
+            r'sponsor',
+            r'commercial',
+            r'promo',
+            r'^ad\d*$',
+            r'_ad_',
+        ]
+        
+        def __init__(self):
+            self.ad_patterns = [re.compile(p, re.IGNORECASE) for p in self.AD_INDICATORS]
+        
+        def is_ad_period(self, period_id: str, period_elem: ET.Element = None) -> bool:
+            """Check if a DASH Period is an advertisement."""
+            if not period_id:
+                return False
+            
+            # Check period ID against patterns
+            for pattern in self.ad_patterns:
+                if pattern.search(period_id):
+                    return True
+            
+            # Check for SCTE-35 markers (ad insertion standard)
+            if period_elem is not None:
+                # Look for EventStream with SCTE-35 events
+                for event_stream in period_elem.findall('.//{urn:mpeg:dash:schema:mpd:2011}EventStream'):
+                    scheme = event_stream.get('schemeIdUri', '')
+                    if 'scte35' in scheme.lower() or 'ad' in scheme.lower():
+                        return True
+            
+            return False
+        
+        def filter_dash_manifest(self, content: str) -> Tuple[str, int]:
+            """
+            Filter ad periods from a DASH MPD manifest.
+            Returns (modified_content, num_ads_removed)
+            """
+            try:
+                # Register namespaces to preserve them in output
+                for prefix, uri in self.DASH_NS.items():
+                    ET.register_namespace(prefix if prefix != 'mpd' else '', uri)
+                
+                root = ET.fromstring(content)
+                ads_removed = 0
+                
+                # Find all Period elements
+                periods = root.findall('.//{urn:mpeg:dash:schema:mpd:2011}Period')
+                if not periods:
+                    # Try without namespace
+                    periods = root.findall('.//Period')
+                
+                for period in periods:
+                    period_id = period.get('id', '')
+                    
+                    if self.is_ad_period(period_id, period):
+                        # Remove the ad period
+                        parent = root.find('.//{urn:mpeg:dash:schema:mpd:2011}Period/..') or root
+                        try:
+                            parent.remove(period)
+                            ads_removed += 1
+                            ctx.log.info(f"[SSAI] Removed ad period: {period_id}")
+                        except ValueError:
+                            # Period might be direct child of root
+                            try:
+                                root.remove(period)
+                                ads_removed += 1
+                            except:
+                                pass
+                
+                if ads_removed > 0:
+                    return ET.tostring(root, encoding='unicode'), ads_removed
+                
+            except ET.ParseError as e:
+                ctx.log.warn(f"[SSAI] Failed to parse DASH manifest: {e}")
+            except Exception as e:
+                ctx.log.warn(f"[SSAI] Error filtering DASH manifest: {e}")
+            
+            return content, 0
+        
+        def filter_hls_manifest(self, content: str) -> Tuple[str, int]:
+            """
+            Filter ad segments from an HLS M3U8 manifest.
+            Returns (modified_content, num_ads_removed)
+            """
+            lines = content.split('\n')
+            filtered_lines = []
+            ads_removed = 0
+            skip_next_segment = False
+            in_ad_break = False
+            
+            i = 0
+            while i < len(lines):
+                line = lines[i].strip()
+                
+                # Check for ad break markers
+                if '#EXT-X-CUE-OUT' in line or '#EXT-X-PLACEMENT-OPPORTUNITY' in line:
+                    in_ad_break = True
+                    ads_removed += 1
+                    ctx.log.info(f"[SSAI] Found HLS ad break marker: {line[:50]}")
+                    i += 1
+                    continue
+                
+                if '#EXT-X-CUE-IN' in line:
+                    in_ad_break = False
+                    i += 1
+                    continue
+                
+                # Check for SCTE-35 markers
+                if 'SCTE35' in line.upper() or 'scte35' in line.lower():
+                    # This line and possibly next segment is an ad
+                    skip_next_segment = True
+                    i += 1
+                    continue
+                
+                # Check for discontinuity (often marks ad boundaries)
+                if line == '#EXT-X-DISCONTINUITY':
+                    # Keep discontinuity but check if next segment is ad
+                    pass
+                
+                # Skip segments during ad breaks
+                if in_ad_break:
+                    if line.startswith('#EXTINF'):
+                        # Skip this info line and the following segment URL
+                        i += 2 if i + 1 < len(lines) else 1
+                        continue
+                    elif not line.startswith('#') and line:
+                        # This is a segment URL in ad break, skip it
+                        i += 1
+                        continue
+                
+                # Skip segment if marked
+                if skip_next_segment:
+                    if not line.startswith('#') and line:
+                        skip_next_segment = False
+                        ads_removed += 1
+                        i += 1
+                        continue
+                
+                filtered_lines.append(lines[i])
+                i += 1
+            
+            return '\n'.join(filtered_lines), ads_removed
+
+
+    class URLPatternBlocker:
+        """Block requests based on URL patterns."""
+        
+        def __init__(self):
+            self.blocked_domains = [
+                r'googlesyndication\.com',
+                r'googleadservices\.com',
+                r'doubleclick\.net',
+                r'googleads\.g\.doubleclick\.net',
+                r'pagead2\.googlesyndication\.com',
+                r'google-analytics\.com',
+                r'analytics\.youtube\.com',
+                r'adservice\.google\.com',
+                r'adsrvr\.org',
+                r'adform\.net',
+                r'serving-sys\.com',
+                r'moatads\.com',
+                r'scorecardresearch\.com',
+            ]
+            
+            self.blocked_paths = [
+                '/pagead/',
+                '/ptracking',
+                '/api/stats/ads',
+                '/api/stats/atr',
+                '/pcs/activeview',
+                '/get_midroll_info',
+                '/ad_break',
+                '/log_interaction',
+                '/youtubei/v1/log_event',
+            ]
+            
+            self.blocked_query_params = [
+                'adformat=',
+                'ad_type=',
+                'ctier=L',  # Ad tier marker
+                '&ad=1',
+                'adsid=',
+                'adurl=',
+            ]
+            
+            # Compile domain patterns
+            self.domain_patterns = [
+                re.compile(p, re.IGNORECASE) for p in self.blocked_domains
+            ]
+        
+        def should_block(self, flow: http.HTTPFlow) -> Tuple[bool, str]:
+            """Check if request should be blocked. Returns (should_block, reason)."""
+            url = flow.request.pretty_url
+            host = flow.request.host
+            path = flow.request.path
+            
+            # Check domain patterns
+            for pattern in self.domain_patterns:
+                if pattern.search(host):
+                    return True, f"blocked domain: {host}"
+            
+            # Check path patterns
+            for blocked_path in self.blocked_paths:
+                if blocked_path in path:
+                    return True, f"blocked path: {blocked_path}"
+            
+            # Check query parameters
+            for param in self.blocked_query_params:
+                if param in url:
+                    return True, f"blocked param: {param}"
+            
+            # Check for googlevideo ad markers
+            if 'googlevideo.com' in host:
+                # ctier=L indicates ad content
+                if 'ctier=L' in url:
+                    return True, "googlevideo ad tier (ctier=L)"
+                
+                # oad parameter indicates ad
+                parsed = urlparse(url)
+                query = parse_qs(parsed.query)
+                if query.get('oad'):
+                    return True, "googlevideo oad parameter"
+            
+            return False, ""
+
+
+    class YouTubeSSAIBypass:
+        """Main orchestrator for SSAI bypass."""
+        
+        def __init__(self):
+            self.metrics = MetricsCollector()
+            self.cache = CacheManager()
+            self.sponsorblock = SponsorBlockClient(self.cache)
+            self.manifest_filter = ManifestFilter()
+            self.url_blocker = URLPatternBlocker()
+            
+            # Track current video for segment injection
+            self.current_video_id = None
+            self.current_segments = []
+            
+            ctx.log.info("[SSAI] YouTube SSAI Bypass initialized")
+        
+        def extract_video_id(self, url: str) -> Optional[str]:
+            """Extract YouTube video ID from URL."""
+            patterns = [
+                r'youtube\.com/watch\?v=([a-zA-Z0-9_-]{11})',
+                r'youtube\.com/embed/([a-zA-Z0-9_-]{11})',
+                r'youtu\.be/([a-zA-Z0-9_-]{11})',
+                r'youtube\.com/v/([a-zA-Z0-9_-]{11})',
+                r'videoplayback.*?id=([a-zA-Z0-9_-]{11})',
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, url)
+                if match:
+                    return match.group(1)
+            
+            # Try query parameters
+            parsed = urlparse(url)
+            query = parse_qs(parsed.query)
+            if 'v' in query:
+                return query['v'][0][:11]
+            if 'video_id' in query:
+                return query['video_id'][0][:11]
+            
+            return None
+        
+        def request(self, flow: http.HTTPFlow) -> None:
+            """Process incoming request."""
+            self.metrics.increment('requests_processed')
+            
+            # Layer 1: URL Pattern Blocking
+            should_block, reason = self.url_blocker.should_block(flow)
+            if should_block:
+                self.metrics.increment('ads_blocked_url')
+                ctx.log.info(f"[SSAI] BLOCKED: {flow.request.pretty_url[:80]}... | {reason}")
+                flow.response = http.Response.make(
+                    204,
+                    b"",
+                    {"Content-Type": "text/plain", "X-Blocked-By": "mitmproxy-ssai"}
+                )
+                return
+            
+            # Extract video ID for SponsorBlock lookup
+            video_id = self.extract_video_id(flow.request.pretty_url)
+            if video_id and video_id != self.current_video_id:
+                self.current_video_id = video_id
+                # Fetch SponsorBlock segments in background
+                self._fetch_segments_async(video_id)
+        
+        def _fetch_segments_async(self, video_id: str):
+            """Fetch SponsorBlock segments asynchronously."""
+            def fetch():
+                segments = self.sponsorblock.get_segments(video_id)
+                if segments:
+                    self.current_segments = segments
+                    self.metrics.increment('sponsorblock_hits')
+                    ctx.log.info(f"[SSAI] SponsorBlock: Found {len(segments)} segments for {video_id}")
+                else:
+                    self.current_segments = []
+                    self.metrics.increment('sponsorblock_misses')
+            
+            thread = threading.Thread(target=fetch, daemon=True)
+            thread.start()
+        
+        def response(self, flow: http.HTTPFlow) -> None:
+            """Process response - filter manifests."""
+            if not flow.response or not flow.response.content:
+                return
+            
+            content_type = flow.response.headers.get("content-type", "")
+            url = flow.request.pretty_url
+            
+            # Layer 2: Manifest Filtering
+            # Check for DASH manifest
+            if any(t in content_type for t in ['dash+xml', 'mpd']) or url.endswith('.mpd'):
+                self._filter_dash_response(flow)
+            
+            # Check for HLS manifest
+            elif any(t in content_type for t in ['x-mpegurl', 'vnd.apple.mpegurl', 'm3u8']) or url.endswith('.m3u8'):
+                self._filter_hls_response(flow)
+            
+            # Layer 3: Inject SponsorBlock data into player responses
+            elif 'youtube.com' in flow.request.host and '/youtubei/v1/player' in flow.request.path:
+                self._inject_sponsorblock_data(flow)
+        
+        def _filter_dash_response(self, flow: http.HTTPFlow):
+            """Filter DASH MPD manifest."""
+            try:
+                content = flow.response.get_text()
+                if not content:
+                    return
+                
+                filtered_content, ads_removed = self.manifest_filter.filter_dash_manifest(content)
+                
+                if ads_removed > 0:
+                    self.metrics.increment('ads_blocked_manifest', ads_removed)
+                    self.metrics.increment('manifests_modified')
+                    flow.response.set_text(filtered_content)
+                    ctx.log.info(f"[SSAI] Filtered DASH manifest: removed {ads_removed} ad periods")
+            
+            except Exception as e:
+                ctx.log.warn(f"[SSAI] Error filtering DASH: {e}")
+        
+        def _filter_hls_response(self, flow: http.HTTPFlow):
+            """Filter HLS M3U8 manifest."""
+            try:
+                content = flow.response.get_text()
+                if not content:
+                    return
+                
+                filtered_content, ads_removed = self.manifest_filter.filter_hls_manifest(content)
+                
+                if ads_removed > 0:
+                    self.metrics.increment('ads_blocked_manifest', ads_removed)
+                    self.metrics.increment('manifests_modified')
+                    flow.response.set_text(filtered_content)
+                    ctx.log.info(f"[SSAI] Filtered HLS manifest: removed {ads_removed} ad segments")
+            
+            except Exception as e:
+                ctx.log.warn(f"[SSAI] Error filtering HLS: {e}")
+        
+        def _inject_sponsorblock_data(self, flow: http.HTTPFlow):
+            """Inject SponsorBlock segment data into player response."""
+            if not self.current_segments:
+                return
+            
+            try:
+                content = flow.response.get_text()
+                if not content:
+                    return
+                
+                data = json.loads(content)
+                
+                # Add SponsorBlock segments to response
+                # This allows client-side handling if supported
+                data['sponsorBlockSegments'] = [
+                    {
+                        'start': seg['segment'][0],
+                        'end': seg['segment'][1],
+                        'category': seg.get('category', 'sponsor'),
+                    }
+                    for seg in self.current_segments
+                ]
+                
+                flow.response.set_text(json.dumps(data))
+                ctx.log.info(f"[SSAI] Injected {len(self.current_segments)} SponsorBlock segments")
+            
+            except Exception as e:
+                # Don't break video playback on errors
+                pass
+        
+        def done(self):
+            """Log final statistics."""
+            stats = self.metrics.get_stats()
+            ctx.log.info(f"[SSAI] Final stats: {json.dumps(stats)}")
+
+
+    addons = [YouTubeSSAIBypass()]
+
+  # General ad blocker addon (unchanged but moved here for organization)
+  general_adblock.py: |
+    """
+    General ad blocker addon for mitmproxy.
+    Blocks common ad networks and tracking domains.
+    """
+    import re
+    from mitmproxy import http, ctx
+
+    class GeneralAdBlocker:
+        def __init__(self):
+            self.blocked_domains = [
+                # Major ad networks
+                r".*\.doubleclick\.net$",
+                r".*\.googlesyndication\.com$",
+                r".*\.googleadservices\.com$",
+                r".*\.facebook\.com/tr$",
+                r".*\.amazon-adsystem\.com$",
+                r".*\.adnxs\.com$",
+                r".*\.criteo\.com$",
+                r".*\.outbrain\.com$",
+                r".*\.taboola\.com$",
+                r".*\.pubmatic\.com$",
+                r".*\.rubiconproject\.com$",
+
+                # Tracking
+                r".*\.google-analytics\.com$",
+                r".*\.hotjar\.com$",
+                r".*\.mixpanel\.com$",
+                r".*\.segment\.io$",
+                r".*\.amplitude\.com$",
+                r".*\.newrelic\.com$",
+
+                # More ad domains
+                r".*\.adsrvr\.org$",
+                r".*\.adform\.net$",
+                r".*\.serving-sys\.com$",
+                r".*\.moatads\.com$",
+            ]
+
+            self.compiled_domains = [
+                re.compile(pattern, re.IGNORECASE)
+                for pattern in self.blocked_domains
+            ]
+
+            self.blocked_count = 0
+
+        def request(self, flow: http.HTTPFlow) -> None:
+            host = flow.request.host
+
+            for pattern in self.compiled_domains:
+                if pattern.match(host):
+                    self.blocked_count += 1
+                    ctx.log.info(f"[ADBLOCK] Blocked: {host}")
+                    flow.response = http.Response.make(
+                        204,
+                        b"",
+                        {"Content-Type": "text/plain"}
+                    )
+                    return
+
+
+    addons = [GeneralAdBlocker()]

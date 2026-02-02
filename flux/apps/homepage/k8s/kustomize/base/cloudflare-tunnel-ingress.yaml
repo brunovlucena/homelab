@@ -1,0 +1,23 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Homepage Frontend - Cloudflare Tunnel Ingress
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Exposes the homepage frontend via Cloudflare Tunnel at lucena.cloud
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: tunnel.cloudflare.io/v1alpha1
+kind: CloudflareTunnelIngress
+metadata:
+  name: homepage-frontend
+  namespace: homepage
+  labels:
+    app: homepage
+    component: frontend
+spec:
+  hostname: lucena.cloud
+  service:
+    name: homepage-frontend
+    namespace: homepage
+    port: 80
+    protocol: http
+  syncInterval: "5m"
+  enabled: true

@@ -1,0 +1,185 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔴 K6 PARALLEL ATTACK TEST - AGENT-REDTEAM
+#
+#  Purpose: Simulate multiple attackers launching exploits simultaneously
+#  Scenario: Coordinated attack with multiple exploits running in parallel
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-redteam-attack-parallel
+  namespace: agent-redteam
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: testing
+    test-type: attack
+    attack-pattern: parallel
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-redteam-attack-parallel-script
+      file: script.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: TARGET_URL
+        value: "http://agent-redteam.agent-redteam.svc.cluster.local"
+      - name: TARGET_NAMESPACE
+        value: "redteam-test"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 1Gi
+        cpu: 1000m
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-redteam-attack-parallel-script
+  namespace: agent-redteam
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: testing
+    test-type: attack
+data:
+  script.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // Custom Metrics
+    const parallelExploitSuccess = new Rate('parallel_exploit_success');
+    const parallelExploitBlocked = new Rate('parallel_exploit_blocked');
+    const parallelExploitFailed = new Rate('parallel_exploit_failed');
+    const parallelExploitDuration = new Trend('parallel_exploit_duration_ms');
+    const concurrentAttacks = new Counter('concurrent_attacks_total');
+    
+    // Configuration
+    const BASE_URL = __ENV.TARGET_URL || 'http://agent-redteam.agent-redteam.svc.cluster.local';
+    const TARGET_NAMESPACE = __ENV.TARGET_NAMESPACE || 'redteam-test';
+    
+    // Critical exploits for parallel attack
+    const CRITICAL_EXPLOITS = [
+      'vuln-001', // Command Injection Git
+      'vuln-002', // Command Injection MinIO
+      'vuln-003', // Inline Code Execution
+      'blue-001', // SSRF
+      'blue-002', // Template Injection
+    ];
+    
+    export const options = {
+      scenarios: {
+        parallel_attack: {
+          executor: 'ramping-arrival-rate',
+          startRate: 1,
+          stages: [
+            { duration: '10s', target: 5 },  // Ramp up to 5 concurrent attacks
+            { duration: '30s', target: 5 },  // Sustain 5 concurrent
+            { duration: '10s', target: 0 },   // Ramp down
+          ],
+          preAllocatedVUs: 5,
+          maxVUs: 10,
+        },
+      },
+      thresholds: {
+        'parallel_exploit_success': ['rate>0.0'],
+        'parallel_exploit_duration_ms': ['p(95)<60000'], // Allow longer for parallel load
+        'http_req_failed': ['rate<0.2'],
+      },
+    };
+    
+    export default function() {
+      // Each VU picks a random critical exploit
+      const exploitId = CRITICAL_EXPLOITS[Math.floor(Math.random() * CRITICAL_EXPLOITS.length)];
+      
+      group(`Parallel Attack - ${exploitId}`, () => {
+        concurrentAttacks.add(1, { exploit_id: exploitId });
+        
+        const startTime = Date.now();
+        
+        // Execute exploit
+        const exploitRes = http.post(
+          `${BASE_URL}/exploit/run`,
+          JSON.stringify({
+            exploit_id: exploitId,
+            namespace: TARGET_NAMESPACE,
+          }),
+          {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: '90s', // Longer timeout for parallel load
+            tags: { exploit_id: exploitId, attack_type: 'parallel' },
+          }
+        );
+        
+        const duration = Date.now() - startTime;
+        parallelExploitDuration.add(duration, { exploit_id: exploitId });
+        
+        const exploitOk = check(exploitRes, {
+          'exploit request succeeds': (r) => r.status >= 200 && r.status < 300,
+          'exploit returns result': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.status && body.exploit_id === exploitId;
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+        
+        if (exploitOk) {
+          try {
+            const body = JSON.parse(exploitRes.body);
+            const status = body.status || 'unknown';
+            
+            if (status === 'success') {
+              parallelExploitSuccess.add(1, { exploit_id: exploitId });
+            } else if (status === 'blocked') {
+              parallelExploitBlocked.add(1, { exploit_id: exploitId });
+            } else {
+              parallelExploitFailed.add(1, { exploit_id: exploitId });
+            }
+          } catch (e) {
+            parallelExploitFailed.add(1, { exploit_id: exploitId });
+          }
+        } else {
+          parallelExploitFailed.add(1, { exploit_id: exploitId });
+        }
+        
+        sleep(1);
+      });
+    }
+    
+    export function handleSummary(data) {
+      const successMetric = data.metrics['parallel_exploit_success'];
+      const blockedMetric = data.metrics['parallel_exploit_blocked'];
+      const failedMetric = data.metrics['parallel_exploit_failed'];
+      const durationMetric = data.metrics['parallel_exploit_duration_ms'];
+      const concurrentMetric = data.metrics['concurrent_attacks_total'];
+      
+      const successRate = (successMetric && successMetric.values && successMetric.values.rate) || 0;
+      const blockedRate = (blockedMetric && blockedMetric.values && blockedMetric.values.rate) || 0;
+      const failedRate = (failedMetric && failedMetric.values && failedMetric.values.rate) || 0;
+      const p95Duration = (durationMetric && durationMetric.values && durationMetric.values['p(95)']) || 0;
+      const totalAttacks = (concurrentMetric && concurrentMetric.values && concurrentMetric.values.count) || 0;
+      
+      console.log('\n' + '═'.repeat(70));
+      console.log('🔴 PARALLEL ATTACK TEST RESULTS');
+      console.log('═'.repeat(70));
+      console.log(`Total Concurrent Attacks: ${totalAttacks}`);
+      console.log(`Success Rate: ${(successRate * 100).toFixed(1)}%`);
+      console.log(`Blocked Rate: ${(blockedRate * 100).toFixed(1)}%`);
+      console.log(`Failed Rate: ${(failedRate * 100).toFixed(1)}%`);
+      console.log(`P95 Duration: ${(p95Duration || 0).toFixed(0)}ms`);
+      console.log('═'.repeat(70) + '\n');
+      
+      return {};
+    }

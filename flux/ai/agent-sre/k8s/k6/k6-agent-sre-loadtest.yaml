@@ -1,0 +1,347 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 K6 AGENT-SRE LOAD TEST - Load test agent-sre LambdaFunctions
+#
+#  Purpose: Execute agent-sre LambdaFunctions with sustained load
+#  Functions: All 7 agent-sre remediation LambdaFunctions
+#  Event Type: io.knative.lambda.invoke.sync (synchronous execution)
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-sre-loadtest
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-sre
+    app.kubernetes.io/component: testing
+    test-type: loadtest
+    test-variant: default
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw --tag test_type=loadtest_default
+  script:
+    configMap:
+      name: agent-sre-k6-tests
+      file: loadtest.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: BROKER_URL
+        value: "http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local"
+      - name: NAMESPACE
+        value: "ai"
+      - name: TARGET_EVENTS
+        value: "1000"
+      # Prometheus Remote Write Configuration
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+      - name: K6_PROMETHEUS_RW_STALE_MARKERS
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+      requests:
+        memory: 256Mi
+        cpu: 100m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-sre-k6-tests
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-sre
+    app.kubernetes.io/component: testing
+data:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 🚀 LOAD TEST - Execute agent-sre LambdaFunctions with sustained load
+  # ────────────────────────────────────────────────────────────────────────────
+  loadtest.js: |
+    import http from 'k6/http';
+    import { check, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+    import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 📊 CUSTOM METRICS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const loadtestEventsPublished = new Counter('agent_sre_loadtest_events_published_total');
+    const loadtestEventsSuccess = new Rate('agent_sre_loadtest_events_success');
+    const loadtestEventsDuration = new Trend('agent_sre_loadtest_events_duration_ms');
+    const loadtestEventsByFunction = new Counter('agent_sre_loadtest_events_by_function_total');
+    const loadtestCurrentVUs = new Gauge('agent_sre_loadtest_current_vus');
+    const coldStartCounter = new Counter('agent_sre_cold_starts');
+    
+    // Function-specific counters
+    const fluxReconcileKustomizationTotal = new Counter('agent_sre_loadtest_flux_reconcile_kustomization_total');
+    const podRestartTotal = new Counter('agent_sre_loadtest_pod_restart_total');
+    const podCheckStatusTotal = new Counter('agent_sre_loadtest_pod_check_status_total');
+    const scaleDeploymentTotal = new Counter('agent_sre_loadtest_scale_deployment_total');
+    const checkPvcStatusTotal = new Counter('agent_sre_loadtest_check_pvc_status_total');
+    const fluxReconcileGitRepositoryTotal = new Counter('agent_sre_loadtest_flux_reconcile_gitrepository_total');
+    const fluxReconcileHelmReleaseTotal = new Counter('agent_sre_loadtest_flux_reconcile_helmrelease_total');
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ⚙️ CONFIGURATION
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const BROKER_URL = __ENV.BROKER_URL || 'http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local';
+    const NAMESPACE = __ENV.NAMESPACE || 'ai';
+    const TARGET_EVENTS = parseInt(__ENV.TARGET_EVENTS || '1000');
+    
+    // All 7 agent-sre LambdaFunction configurations
+    const FUNCTIONS = [
+      {
+        name: 'flux-reconcile-kustomization',
+        description: 'Reconcile Flux Kustomization',
+        sampleParams: { name: 'test-kustomization', namespace: 'flux-system' }
+      },
+      {
+        name: 'pod-restart',
+        description: 'Restart pods or deployments',
+        sampleParams: { name: 'test-pod', namespace: 'default', type: 'pod' }
+      },
+      {
+        name: 'pod-check-status',
+        description: 'Check pod status',
+        sampleParams: { name: 'test-pod', namespace: 'default' }
+      },
+      {
+        name: 'scale-deployment',
+        description: 'Scale deployments',
+        sampleParams: { name: 'test-deployment', namespace: 'default', replicas: 3 }
+      },
+      {
+        name: 'check-pvc-status',
+        description: 'Check PVC status',
+        sampleParams: { namespace: 'default' }
+      },
+      {
+        name: 'flux-reconcile-gitrepository',
+        description: 'Reconcile Flux GitRepository',
+        sampleParams: { name: 'test-gitrepo', namespace: 'flux-system' }
+      },
+      {
+        name: 'flux-reconcile-helmrelease',
+        description: 'Reconcile Flux HelmRelease',
+        sampleParams: { name: 'test-helmrelease', namespace: 'flux-system' }
+      },
+    ];
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ⚙️ TEST OPTIONS - Sustained load test with ramping arrival rate
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export const options = {
+      scenarios: {
+        loadtest_default: {
+          executor: 'ramping-arrival-rate',
+          startRate: 10,  // Start with 10 events per second
+          timeUnit: '1s',
+          stages: [
+            { duration: '30s', target: 20 },   // Ramp up to 20 events/sec over 30s
+            { duration: '1m', target: 50 },     // Ramp up to 50 events/sec over 1m
+            { duration: '2m', target: 100 },    // Ramp up to 100 events/sec over 2m
+            { duration: '1m', target: 50 },    // Scale down to 50 events/sec
+            { duration: '30s', target: 10 },   // Scale down to 10 events/sec
+          ],
+          preAllocatedVUs: 20,
+          maxVUs: 100,  // Allow up to 100 concurrent VUs
+        },
+      },
+      thresholds: {
+        // Duration thresholds for all requests
+        'http_req_duration': ['p(95)<10000', 'p(99)<20000'],
+        // Overall failure rate
+        'http_req_failed': ['rate<0.20'],
+        // Event publishing success rate
+        'agent_sre_loadtest_events_success': ['rate>0.90'],
+      },
+      tags: {
+        test_type: 'loadtest_default',
+      },
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔧 SETUP
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export function setup() {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🔧 LOAD TEST SETUP');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      const healthCheck = http.get(BROKER_URL, { timeout: '10s' });
+      const brokerAlive = healthCheck.status === 405 || healthCheck.status === 200;
+      
+      if (!brokerAlive) {
+        fail('Broker is not accessible. Aborting test.');
+      }
+      
+      console.log(`✅ Broker accessible: ${BROKER_URL}`);
+      console.log(`📋 Testing ${FUNCTIONS.length} functions: ${FUNCTIONS.map(f => f.name).join(', ')}`);
+      console.log(`🎯 Target: ${TARGET_EVENTS} total events (~${Math.ceil(TARGET_EVENTS / FUNCTIONS.length)} per function)`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      
+      return { 
+        startTime: new Date().toISOString(),
+        readinessResult: { success: true }
+      };
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🏭 EVENT FACTORY - Invoke Events
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    function createInvokeSyncEvent(func, params) {
+      const correlationId = `k6-loadtest-${func.name}-${__VU}-${__ITER}-${randomString(8)}`;
+      
+      return {
+        specversion: '1.0',
+        type: 'io.knative.lambda.invoke.sync',
+        source: `k6-agent-sre-loadtest/${__VU}`,
+        id: correlationId,
+        subject: func.name,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        correlationId: correlationId,
+        data: Object.assign({
+          functionName: func.name,
+          namespace: NAMESPACE,
+          invocationId: correlationId,
+        }, params || func.sampleParams),
+      };
+    }
+    
+    function publishInvokeSyncEvent(func, params) {
+      const event = createInvokeSyncEvent(func, params);
+      
+      // Use structured CloudEvents format (application/cloudevents+json)
+      const params_http = {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'X-Correlation-ID': event.correlationId || event.id,
+        },
+        timeout: '30s',
+        tags: { 
+          function: func.name, 
+          event_type: 'invoke.sync',
+          request_type: 'event_publish'
+        }
+      };
+      
+      const startTime = Date.now();
+      // Send the complete CloudEvent as JSON
+      const response = http.post(BROKER_URL, JSON.stringify(event), params_http);
+      const duration = Date.now() - startTime;
+      
+      const success = [200, 202, 204].includes(response.status);
+      loadtestEventsPublished.add(1, { function: func.name });
+      loadtestEventsSuccess.add(success ? 1 : 0, { function: func.name });
+      loadtestEventsDuration.add(duration, { function: func.name });
+      loadtestEventsByFunction.add(1, { function: func.name });
+      loadtestCurrentVUs.add(__VU);
+      
+      // Track cold starts (responses > 5s often indicate cold start)
+      if (duration > 5000 && success) {
+        coldStartCounter.add(1, { function: func.name });
+      }
+      
+      // Update function-specific counters
+      if (success) {
+        switch (func.name) {
+          case 'flux-reconcile-kustomization':
+            fluxReconcileKustomizationTotal.add(1);
+            break;
+          case 'pod-restart':
+            podRestartTotal.add(1);
+            break;
+          case 'pod-check-status':
+            podCheckStatusTotal.add(1);
+            break;
+          case 'scale-deployment':
+            scaleDeploymentTotal.add(1);
+            break;
+          case 'check-pvc-status':
+            checkPvcStatusTotal.add(1);
+            break;
+          case 'flux-reconcile-gitrepository':
+            fluxReconcileGitRepositoryTotal.add(1);
+            break;
+          case 'flux-reconcile-helmrelease':
+            fluxReconcileHelmReleaseTotal.add(1);
+            break;
+        }
+      }
+      
+      return { response, duration, success };
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🚀 MAIN TEST
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    let iterationCounter = 0;
+    
+    export default function () {
+      iterationCounter++;
+      
+      // Round-robin through all functions to distribute load evenly
+      const func = FUNCTIONS[iterationCounter % FUNCTIONS.length];
+      
+      // Use sample parameters for the function
+      const { success } = publishInvokeSyncEvent(func, func.sampleParams);
+      
+      if (!success && iterationCounter % 100 === 0) {
+        console.log(`❌ Failed: ${func.name} - Iteration ${iterationCounter}`);
+      }
+      
+      if (iterationCounter % 1000 === 0) {
+        console.log(`📤 Progress: ${iterationCounter} events sent`);
+      }
+      
+      // Small sleep to avoid overwhelming the system
+      sleep(0.05);
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🧹 TEARDOWN
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export function teardown(data) {
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🧹 LOAD TEST TEARDOWN');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`   Started: ${data.startTime}`);
+      console.log(`   Ended:   ${new Date().toISOString()}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 📊 SUMMARY
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export function handleSummary(data) {
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🚀 AGENT-SRE LOAD TEST SUMMARY');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`📋 Functions Tested: ${FUNCTIONS.map(f => f.name).join(', ')}`);
+      console.log(`🎯 Target Events: ${TARGET_EVENTS}`);
+      console.log('');
+      if (data.metrics.agent_sre_loadtest_events_published_total) {
+        console.log(`✅ Total Events Published: ${data.metrics.agent_sre_loadtest_events_published_total.values.count}`);
+      }
+      if (data.metrics.agent_sre_loadtest_events_success) {
+        console.log(`✅ Success Rate: ${(data.metrics.agent_sre_loadtest_events_success.values.rate * 100).toFixed(2)}%`);
+      }
+      if (data.metrics.agent_sre_cold_starts) {
+        console.log(`❄️  Cold Starts (>5s): ${data.metrics.agent_sre_cold_starts.values.count}`);
+      }
+      if (data.metrics.agent_sre_loadtest_events_duration_ms) {
+        console.log(`⏱️  Avg Duration: ${data.metrics.agent_sre_loadtest_events_duration_ms.values.avg.toFixed(2)}ms`);
+        console.log(`⏱️  P95 Duration: ${data.metrics.agent_sre_loadtest_events_duration_ms.values['p(95)'].toFixed(2)}ms`);
+      }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      return {
+        'stdout': textSummary(data, { indent: ' ', enableColors: true }),
+      };
+    }
+

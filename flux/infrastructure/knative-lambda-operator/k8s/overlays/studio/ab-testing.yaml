@@ -1,0 +1,106 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔀 A/B TESTING CONFIGURATION - Studio
+#
+#  Purpose: Header-based A/B testing with Linkerd
+#  
+#  How it works:
+#  1. Traffic with header x-ab-test: canary → routes to canary
+#  2. Traffic with header x-ab-test: primary → routes to primary
+#  3. No header → follows canary weight distribution
+#
+#  Usage:
+#    curl -H "x-ab-test: canary" http://knative-lambda.example.com/
+#    curl -H "x-ab-test: primary" http://knative-lambda.example.com/
+#
+#  DISABLED: TrafficSplit CRD not available in cluster
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ---
+# # TrafficSplit for header-based A/B testing - DISABLED
+# apiVersion: split.smi-spec.io/v1alpha3
+# kind: TrafficSplit
+# metadata:
+#   name: knative-lambda-operator-ab
+#   namespace: knative-lambda
+#   labels:
+#     app.kubernetes.io/name: knative-lambda-operator
+#     app.kubernetes.io/component: ab-testing
+#     environment: studio
+# spec:
+#   # Root service
+#   service: knative-lambda-operator
+#   # Traffic backends
+#   backends:
+#     - service: knative-lambda-operator-primary
+#       weight: 90
+#     - service: knative-lambda-operator-canary
+#       weight: 10
+# ---
+# # HTTPRoute for header-based routing (Linkerd SMI) - DISABLED
+# apiVersion: policy.linkerd.io/v1beta2
+# kind: HTTPRoute
+# metadata:
+#   name: knative-lambda-ab-routing
+#   namespace: knative-lambda
+#   labels:
+#     app.kubernetes.io/name: knative-lambda-operator
+#     app.kubernetes.io/component: ab-testing
+# spec:
+#   parentRefs:
+#     - name: knative-lambda-operator
+#       kind: Service
+#       group: core
+#       port: 8080
+#   rules:
+#     # Route with x-ab-test: canary header to canary
+#     - matches:
+#         - headers:
+#             - name: x-ab-test
+#               value: canary
+#       backendRefs:
+#         - name: knative-lambda-operator-canary
+#           port: 8080
+#           weight: 100
+#     # Route with x-ab-test: primary header to primary
+#     - matches:
+#         - headers:
+#             - name: x-ab-test
+#               value: primary
+#       backendRefs:
+#         - name: knative-lambda-operator-primary
+#           port: 8080
+#           weight: 100
+#     # Default routing (no header) - follow canary weight
+#     - backendRefs:
+#         - name: knative-lambda-operator-primary
+#           port: 8080
+#           weight: 90
+#         - name: knative-lambda-operator-canary
+#           port: 8080
+#           weight: 10
+# ---
+# # Service for internal A/B testing - DISABLED
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: knative-lambda-operator-ab
+#   namespace: knative-lambda
+#   labels:
+#     app.kubernetes.io/name: knative-lambda-operator
+#     app.kubernetes.io/component: ab-testing
+#   annotations:
+#     # Enable Linkerd service profiles
+#     linkerd.io/proxy-protocol: HTTP/2
+# spec:
+#   type: ClusterIP
+#   selector:
+#     app.kubernetes.io/name: knative-lambda-operator
+#   ports:
+#     - name: metrics
+#       port: 8080
+#       targetPort: metrics
+#     - name: health
+#       port: 8081
+#       targetPort: health
+

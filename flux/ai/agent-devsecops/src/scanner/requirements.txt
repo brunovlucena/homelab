@@ -1,0 +1,9 @@
+# Agent DevSecOps - Python Dependencies
+flask>=3.1.0
+cloudevents>=1.12.0  # Latest secure version
+kubernetes>=34.1.0  # Latest version (no known vulnerabilities)
+opentelemetry-api>=1.30.0
+opentelemetry-sdk>=1.30.0
+opentelemetry-exporter-otlp>=1.30.0
+prometheus-client>=0.21.0
+packaging>=24.2

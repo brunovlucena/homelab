@@ -1,0 +1,38 @@
+---
+# Flux Source Controller - NodePort service for Cursor access
+apiVersion: v1
+kind: Service
+metadata:
+  name: source-controller-nodeport
+  namespace: flux-system
+  labels:
+    app: source-controller
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      nodePort: 30008
+      protocol: TCP
+  selector:
+    app: source-controller
+---
+# Flux Notification Controller - NodePort service for Cursor access
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-controller-nodeport
+  namespace: flux-system
+  labels:
+    app: notification-controller
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      nodePort: 30009
+      protocol: TCP
+  selector:
+    app: notification-controller

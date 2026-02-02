@@ -1,0 +1,47 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+namespace: ai
+
+kind: Kustomization
+
+resources:
+  - ../base
+
+# 📝 Pro-specific patches (add tags if needed)
+# Note: Pro uses localhost:5001, tags should match VERSION file
+patches:
+  # Contract Fetcher
+  - target:
+      kind: LambdaAgent
+      name: contract-fetcher
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.3.0"
+  # Vulnerability Scanner
+  - target:
+      kind: LambdaAgent
+      name: vuln-scanner
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.3.0"
+  # Exploit Generator
+  - target:
+      kind: LambdaAgent
+      name: exploit-generator
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.3.0"
+  # Notifi Adapter
+  - target:
+      kind: LambdaAgent
+      name: notifi-adapter
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.3.0"
+
+# 📝 Pro-specific labels
+commonLabels:
+  environment: pro

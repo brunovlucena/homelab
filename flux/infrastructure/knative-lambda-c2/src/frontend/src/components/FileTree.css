@@ -1,0 +1,101 @@
+.file-tree {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 600px;
+  overflow-y: auto;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+}
+
+.file-tree-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #9ca3af;
+}
+
+.tree-node {
+  user-select: none;
+}
+
+.tree-folder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+  color: #4b5563;
+}
+
+.tree-folder:hover {
+  background: #f3f4f6;
+}
+
+.tree-folder svg:first-child {
+  flex-shrink: 0;
+  color: #6b7280;
+}
+
+.tree-folder svg:nth-child(2) {
+  flex-shrink: 0;
+  color: #f59e0b;
+}
+
+.folder-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.tree-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+  color: #4b5563;
+}
+
+.tree-file:hover {
+  background: #f3f4f6;
+}
+
+.tree-file.selected {
+  background: #eff6ff;
+  color: #1e40af;
+  font-weight: 500;
+}
+
+.tree-file.selected .file-name {
+  color: #1e40af;
+}
+
+.tree-file svg {
+  flex-shrink: 0;
+  color: #6b7280;
+}
+
+.tree-file.selected svg {
+  color: #3b82f6;
+}
+
+.file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-size {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-left: 8px;
+}
+
+.tree-file.selected .file-size {
+  color: #60a5fa;
+}

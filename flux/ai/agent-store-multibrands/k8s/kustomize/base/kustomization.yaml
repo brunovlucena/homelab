@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: agent-store-multibrands
+
+resources:
+  - rbac.yaml
+  - secrets-job.yaml  # Creates whatsapp-credentials and ai-credentials secrets
+  - configmap-products.yaml
+  - ingress.yaml
+  # Web Command Center (includes tunnel ingress)
+  - ../../../web-command-center/k8s/kustomize/base
+  # Gateway
+  - lambdaagent-whatsapp-gateway.yaml
+  # AI Sellers (one per brand)
+  - lambdaagent-ai-seller-fashion.yaml
+  - lambdaagent-ai-seller-tech.yaml
+  - lambdaagent-ai-seller-gaming.yaml
+  - lambdaagent-ai-seller-beauty.yaml
+  - lambdaagent-ai-seller-home.yaml
+  # Support Agents
+  - lambdaagent-sales-assistant.yaml
+  - lambdaagent-product-catalog.yaml
+  - lambdaagent-order-processor.yaml

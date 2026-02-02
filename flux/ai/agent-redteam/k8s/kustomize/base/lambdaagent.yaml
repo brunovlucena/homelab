@@ -1,0 +1,147 @@
+---
+# Agent-Redteam - Security Testing Agent for Exploit Validation
+# ⚠️ WARNING: This agent runs security exploits - AUTHORIZED TESTING ONLY
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: agent-redteam
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: security-testing
+    app.kubernetes.io/part-of: homelab-ai
+    security.homelab.io/redteam: "true"
+  annotations:
+    description: "Security testing agent for running exploits against Knative Lambda Operator"
+    warning: "⚠️ AUTHORIZED TESTING ONLY - Only run against test environments"
+spec:
+  # ServiceAccount for K8s API access (lambda-agent-security-tester role)
+  serviceAccountName: agent-redteam-sa
+  
+  # Pre-built Docker image
+  image:
+    repository: localhost:5001/agent-redteam/exploit-runner
+    tag: "v1.2.0"
+    port: 8080
+
+  # No AI needed - this is a test runner
+  ai:
+    provider: none
+
+  # Operation mode: agentic (autonomous) or supervised (requires approval)
+  operationMode: agentic  # Default: autonomous execution
+
+  # Agent behavior
+  behavior:
+    emitEvents: true
+
+  # Environment variables
+  env:
+    - name: TARGET_NAMESPACE
+      value: "redteam-test"
+    - name: DRY_RUN
+      value: "true"  # Default to dry-run for safety
+    - name: K8S_TIMEOUT
+      value: "120"
+    - name: EXPLOITS_PATH
+      value: "/app/exploits"
+
+  # Scaling - scale to zero when not in use
+  scaling:
+    minReplicas: 0
+    maxReplicas: 2
+    targetConcurrency: 1
+    scaleToZeroGracePeriod: 120s
+
+  # Resources - needs more memory for kubectl operations
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  # Eventing - operator creates Broker, Triggers automatically
+  eventing:
+    enabled: true
+    eventSource: "/agent-redteam/exploit-runner"
+    
+    # Events this agent EMITS
+    intents:
+      - exploit.executed
+      - exploit.success
+      - exploit.blocked
+      - exploit.failed
+      - test.completed
+    
+    # Events this agent RECEIVES
+    subscriptions:
+      # Manual trigger events
+      - eventType: io.homelab.redteam.run
+        description: "Trigger to run specific exploit (requires exploit_id in payload)"
+      - eventType: io.homelab.redteam.run.random
+        description: "Trigger to run RANDOM exploit (optional severity filter)"
+      - eventType: io.homelab.redteam.cleanup
+        description: "Trigger to cleanup exploit resources"
+      - eventType: io.homelab.redteam.test.k6
+        description: "Explicit k6 test trigger (payload: {test_type, namespace?})"
+      # Cross-agent events
+      - eventType: io.homelab.vuln.found
+        description: "Vulnerability found - runs matching exploit, or RANDOM if no match!"
+      # Events from knative-lambda-operator (triggers k6 tests automatically)
+      - eventType: io.knative.lambda.lifecycle.function.created
+        description: "Function created - triggers sequential attack test"
+      - eventType: io.knative.lambda.lifecycle.function.ready
+        description: "Function ready - triggers parallel attack test"
+      - eventType: io.knative.lambda.lifecycle.build.failed
+        description: "Build failed - triggers vulnerability assessment"
+      - eventType: io.knative.lambda.notification.alert.critical
+        description: "Critical alert - triggers random chaos test"
+      - eventType: io.knative.lambda.lifecycle.service.scaled
+        description: "Service scaled - triggers parallel attack test (load simulation)"
+    
+    # Forward results to other agents
+    forwards:
+      - eventTypes:
+          - io.homelab.exploit.success
+          - io.homelab.exploit.blocked
+        targetAgent: agent-bruno
+        targetNamespace: agent-bruno
+        description: "Notify agent-bruno of exploit results"
+    
+    dlq:
+      enabled: true
+      retryMaxAttempts: 2
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  # Observability
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  # RBAC Permissions (security-tester role - full access in test namespaces)
+  permissions:
+    disableBrokerCreation: false
+    disableTriggerCreation: false
+    disableFunctionCreation: false
+    allowedTargetNamespaces:
+      - agent-redteam
+      - redteam-test
+      - security-test
+    eventControls:
+      allowEventDisable: true
+      controlEventTypes:
+        - io.homelab.rbac.disable
+        - io.homelab.rbac.enable
+        - io.homelab.redteam.disable

@@ -1,0 +1,26 @@
+---
+# Test Pod: OOMKilled
+# Purpose: Test pod-restart LambdaFunction after OOM
+# Expected: LambdaFunction should restart pod (may need memory limit increase)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-oomkilled
+  namespace: ai
+  labels:
+    app: test-oomkilled
+    test.agent-sre.io/scenario: oomkilled
+    test.agent-sre.io/lambda-function: pod-restart
+spec:
+  containers:
+  - name: test-container
+    image: busybox:latest
+    command: ["/bin/sh", "-c", "dd if=/dev/zero of=/dev/null bs=1M"]  # Will consume memory
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "64Mi"  # Very low limit
+      limits:
+        cpu: "200m"
+        memory: "128Mi"  # Will be OOMKilled
+

@@ -1,0 +1,159 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 DEPLOYMENT - Knative Lambda Operator
+#
+#  Features:
+#  - Linkerd service mesh injection
+#  - Prometheus metrics exposure
+#  - Security hardened container
+#  - Leader election for HA
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knative-lambda-operator
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: knative-lambda-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: knative-lambda-operator
+        app.kubernetes.io/component: operator
+      annotations:
+        # 🔗 Linkerd mesh injection
+        linkerd.io/inject: enabled
+        config.linkerd.io/proxy-cpu-limit: "100m"
+        config.linkerd.io/proxy-memory-limit: "128Mi"
+    spec:
+      serviceAccountName: knative-lambda-operator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: manager
+          image: localhost:5001/knative-lambda-operator:v1.13.14
+          imagePullPolicy: Always
+          args:
+            - --metrics-bind-address=:8080
+            - --health-probe-bind-address=:8081
+            - --leader-elect=true
+            - --enable-events=true
+            - --enable-tracing=true
+          ports:
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              # cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          # 📁 Volume mounts for writable directories (security hardened)
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          env:
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # K8s Downward API - Pod metadata for OpenTelemetry resource attributes
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # OpenTelemetry Tracing Configuration
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # OTLP endpoint for traces (Tempo OTLP gRPC port)
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "tempo.tempo.svc:4317"
+            # Service name for traces
+            - name: OTEL_SERVICE_NAME
+              value: "knative-lambda-operator"
+            # Service namespace for traces
+            - name: OTEL_SERVICE_NAMESPACE
+              value: "knative-lambda"
+            # Trace sampling rate (1.0 = 100% for development)
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "1.0"
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # Operator Registry Configuration
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # OPERATOR_REGISTRY: Used to construct lambda-command-receiver image
+            # Override in overlay for ghcr.io (studio) vs localhost (pro)
+            - name: OPERATOR_REGISTRY
+              value: "localhost:5001"
+            # =================================================================
+            # Registry Configuration Notes:
+            # - Kubelet pulls images using host network (containerd mirror)
+            # - Pod containers access registry via k8s service DNS
+            # - Init containers are pulled by kubelet, not from inside pods
+            # =================================================================
+            # Kaniko PUSH: uses k8s service DNS (pod networking, no hostNetwork)
+            - name: BUILD_DEFAULT_REGISTRY
+              value: "kind-registry:5000"
+            # Kubelet PULL: uses localhost:5001 (containerd registry mirror)
+            - name: BUILD_PULL_REGISTRY
+              value: "localhost:5001"
+            # Kaniko image - pulled by kubelet (containerd mirror)
+            - name: BUILD_KANIKO_IMAGE
+              value: "localhost:5001/kaniko-executor:v1.19.2"
+            # MinIO client image - pulled by kubelet (containerd mirror)
+            - name: BUILD_MINIO_CLIENT_IMAGE
+              value: "localhost:5001/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1"
+            # Init container images - pulled by kubelet (containerd mirror)
+            - name: BUILD_ALPINE_INIT_IMAGE
+              value: "localhost:5001/alpine:3.19"
+            # Base images for Dockerfile FROM - used by Kaniko (use kind-registry:5000 k8s service DNS)
+            # IMPORTANT: Must include version tags matching available images in registry
+            - name: BUILD_NODE_BASE_IMAGE
+              value: "kind-registry:5000/node:20-alpine"
+            - name: BUILD_PYTHON_BASE_IMAGE
+              value: "kind-registry:5000/python:3.11-slim"
+            - name: BUILD_GO_BASE_IMAGE
+              value: "kind-registry:5000/golang:1.21-alpine"
+            # Alpine runtime image - used by Kaniko for Go Dockerfile FROM
+            - name: BUILD_ALPINE_RUNTIME_IMAGE
+              value: "kind-registry:5000/alpine:3.19"
+      # 📁 Volumes - emptyDir for /tmp (required for Git clone operations)
+      # This maintains readOnlyRootFilesystem: true while allowing Git operations
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi  # Limit to prevent runaway disk usage
+      terminationGracePeriodSeconds: 10
+

@@ -1,0 +1,88 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pihole
+  namespace: pihole
+  labels:
+    app: pihole
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pihole
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: pihole
+    spec:
+      containers:
+        - name: pihole
+          image: pihole/pihole:2025.11.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            # DNS Ports
+            - name: dns-tcp
+              containerPort: 53
+              protocol: TCP
+            - name: dns-udp
+              containerPort: 53
+              protocol: UDP
+            # HTTP Port for web interface
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            # HTTPS Port for web interface
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: pihole-config
+            - secretRef:
+                name: pihole-secret
+          volumeMounts:
+            - name: pihole-data
+              mountPath: /etc/pihole
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          securityContext:
+            capabilities:
+              add:
+                # Required if using Pi-hole as DHCP server
+                - NET_ADMIN
+                # Required if using Pi-hole as NTP client
+                - SYS_TIME
+                # Optional, gives Pi-hole more processing priority
+                - SYS_NICE
+          livenessProbe:
+            httpGet:
+              path: /admin/
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /admin/
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: pihole-data
+          persistentVolumeClaim:
+            claimName: pihole-data
+      # DNS is critical - prefer nodes with more resources
+      # Uncomment if you have node labels set up
+      # nodeSelector:
+      #   kubernetes.io/arch: amd64

@@ -1,0 +1,809 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🏪 K6 STORE MULTIBRANDS CUSTOMER JOURNEY
+#
+#  Purpose: E-commerce customer flow with WhatsApp integration and AI sellers
+#
+#  Agents Tested:
+#    • 📱 WhatsApp Gateway - Message routing
+#    • 👗 Fashion Seller - Clothing/accessories AI
+#    • 📱 Tech Seller - Electronics AI
+#    • 🏠 Home Seller - Furniture/decor AI
+#    • 💄 Beauty Seller - Cosmetics AI
+#    • 🎮 Gaming Seller - Games/consoles AI
+#    • 📦 Order Processor - Order management
+#    • 🤝 Sales Assistant - Human escalation
+#
+#  Scenarios:
+#    1. Single Brand Shopping - One brand interaction
+#    2. Cross-Brand Cart - Multiple brands in one cart
+#    3. Human Escalation - Complex queries to human sellers
+#    4. High Volume Shopping Season - Black Friday simulation
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: store-customer-journey
+  namespace: agent-store-multibrands
+  labels:
+    app.kubernetes.io/name: agent-store-multibrands
+    app.kubernetes.io/component: testing
+    test-type: customer-journey
+spec:
+  parallelism: 3
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: store-customer-journey-script
+      file: customer-journey.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: WHATSAPP_GATEWAY_URL
+        value: "http://whatsapp-gateway.agent-store-multibrands.svc.cluster.local"
+      - name: AI_SELLER_URL
+        value: "http://ai-seller.agent-store-multibrands.svc.cluster.local"
+      - name: ORDER_PROCESSOR_URL
+        value: "http://order-processor.agent-store-multibrands.svc.cluster.local"
+      - name: SALES_ASSISTANT_URL
+        value: "http://sales-assistant.agent-store-multibrands.svc.cluster.local"
+      - name: PRODUCT_CATALOG_URL
+        value: "http://product-catalog.agent-store-multibrands.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: store-customer-journey-script
+  namespace: agent-store-multibrands
+  labels:
+    app.kubernetes.io/name: agent-store-multibrands
+    app.kubernetes.io/component: testing
+data:
+  customer-journey.js: |
+    import http from 'k6/http';
+    import { check, group, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CUSTOM METRICS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Customer Metrics
+    const customersServed = new Counter('store_customers_served');
+    const messagesProcessed = new Counter('store_messages_processed');
+    const ordersPlaced = new Counter('store_orders_placed');
+    const ordersCompleted = new Counter('store_orders_completed');
+    const revenueTotal = new Counter('store_revenue_total');
+    const activeCustomers = new Gauge('store_active_customers');
+
+    // Brand Metrics
+    const fashionSales = new Counter('store_fashion_sales');
+    const techSales = new Counter('store_tech_sales');
+    const homeSales = new Counter('store_home_sales');
+    const beautySales = new Counter('store_beauty_sales');
+    const gamingSales = new Counter('store_gaming_sales');
+
+    // Performance Metrics
+    const gatewayResponseTime = new Trend('store_gateway_response_ms');
+    const sellerResponseTime = new Trend('store_seller_response_ms');
+    const orderResponseTime = new Trend('store_order_response_ms');
+    const catalogResponseTime = new Trend('store_catalog_response_ms');
+
+    // Quality Metrics
+    const conversionRate = new Rate('store_conversion_rate');
+    const escalationRate = new Rate('store_escalation_rate');
+    const customerSatisfaction = new Gauge('store_customer_satisfaction');
+    const journeyCompletionRate = new Rate('store_journey_completion');
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONFIGURATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    const WHATSAPP_GATEWAY_URL = __ENV.WHATSAPP_GATEWAY_URL || 'http://whatsapp-gateway.agent-store-multibrands.svc.cluster.local';
+    const AI_SELLER_URL = __ENV.AI_SELLER_URL || 'http://ai-seller.agent-store-multibrands.svc.cluster.local';
+    const ORDER_PROCESSOR_URL = __ENV.ORDER_PROCESSOR_URL || 'http://order-processor.agent-store-multibrands.svc.cluster.local';
+    const SALES_ASSISTANT_URL = __ENV.SALES_ASSISTANT_URL || 'http://sales-assistant.agent-store-multibrands.svc.cluster.local';
+    const PRODUCT_CATALOG_URL = __ENV.PRODUCT_CATALOG_URL || 'http://product-catalog.agent-store-multibrands.svc.cluster.local';
+
+    // Brand Configuration
+    const BRANDS = {
+      fashion: {
+        name: 'Fashion Store',
+        emoji: '👗',
+        products: [
+          { name: 'Summer Dress', price: 89.99, category: 'dresses' },
+          { name: 'Leather Jacket', price: 249.99, category: 'outerwear' },
+          { name: 'Designer Handbag', price: 199.99, category: 'accessories' },
+          { name: 'Silk Scarf', price: 59.99, category: 'accessories' },
+          { name: 'Sneakers Limited Edition', price: 179.99, category: 'footwear' },
+        ],
+        counter: fashionSales,
+      },
+      tech: {
+        name: 'Tech Hub',
+        emoji: '📱',
+        products: [
+          { name: 'Wireless Earbuds Pro', price: 199.99, category: 'audio' },
+          { name: 'Smart Watch', price: 349.99, category: 'wearables' },
+          { name: 'Portable Charger 20000mAh', price: 49.99, category: 'accessories' },
+          { name: 'Bluetooth Speaker', price: 129.99, category: 'audio' },
+          { name: 'Tablet Stand', price: 39.99, category: 'accessories' },
+        ],
+        counter: techSales,
+      },
+      home: {
+        name: 'Home & Living',
+        emoji: '🏠',
+        products: [
+          { name: 'Velvet Throw Pillows Set', price: 79.99, category: 'decor' },
+          { name: 'Scented Candle Collection', price: 45.99, category: 'fragrance' },
+          { name: 'Indoor Plant Set', price: 89.99, category: 'plants' },
+          { name: 'Minimalist Wall Clock', price: 65.99, category: 'decor' },
+          { name: 'Cozy Blanket', price: 99.99, category: 'textiles' },
+        ],
+        counter: homeSales,
+      },
+      beauty: {
+        name: 'Beauty Boutique',
+        emoji: '💄',
+        products: [
+          { name: 'Skincare Set', price: 149.99, category: 'skincare' },
+          { name: 'Luxury Lipstick Collection', price: 89.99, category: 'makeup' },
+          { name: 'Perfume Eau de Parfum', price: 129.99, category: 'fragrance' },
+          { name: 'Hair Care Bundle', price: 79.99, category: 'haircare' },
+          { name: 'Nail Polish Set', price: 49.99, category: 'nails' },
+        ],
+        counter: beautySales,
+      },
+      gaming: {
+        name: 'Gaming Zone',
+        emoji: '🎮',
+        products: [
+          { name: 'RGB Gaming Keyboard', price: 149.99, category: 'peripherals' },
+          { name: 'Gaming Mouse Pro', price: 89.99, category: 'peripherals' },
+          { name: 'Gaming Headset 7.1', price: 199.99, category: 'audio' },
+          { name: 'Controller Wireless', price: 69.99, category: 'controllers' },
+          { name: 'Gaming Chair', price: 399.99, category: 'furniture' },
+        ],
+        counter: gamingSales,
+      },
+    };
+
+    const CUSTOMER_QUERIES = {
+      greeting: [
+        'Hi! What do you have on sale?',
+        'Hello, I am looking for something special',
+        'Hey, can you help me find a gift?',
+      ],
+      product_inquiry: [
+        'Do you have this in other colors?',
+        'What size options are available?',
+        'Is this product in stock?',
+        'Can you tell me more about this item?',
+      ],
+      purchase_intent: [
+        'I want to buy this!',
+        'Add this to my cart please',
+        'I will take it!',
+        'Lets proceed with the order',
+      ],
+      complex_query: [
+        'I need to return an item from last week',
+        'There is a problem with my order',
+        'Can I speak to someone about a warranty issue?',
+        'I have a complaint about my delivery',
+      ],
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TEST OPTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export const options = {
+      scenarios: {
+        // Scenario 1: Single brand shopping
+        single_brand: {
+          executor: 'per-vu-iterations',
+          vus: 3,
+          iterations: 5,
+          maxDuration: '10m',
+          tags: { shopping_type: 'single_brand' },
+          exec: 'singleBrandShopping',
+        },
+        // Scenario 2: Cross-brand shopping
+        cross_brand: {
+          executor: 'per-vu-iterations',
+          vus: 2,
+          iterations: 3,
+          maxDuration: '10m',
+          startTime: '3m',
+          tags: { shopping_type: 'cross_brand' },
+          exec: 'crossBrandShopping',
+        },
+        // Scenario 3: Human escalation
+        escalation: {
+          executor: 'constant-vus',
+          vus: 2,
+          duration: '5m',
+          startTime: '8m',
+          tags: { shopping_type: 'escalation' },
+          exec: 'humanEscalation',
+        },
+        // Scenario 4: Black Friday rush
+        black_friday: {
+          executor: 'ramping-vus',
+          startVUs: 0,
+          stages: [
+            { duration: '30s', target: 10 },   // Sale starts
+            { duration: '2m', target: 30 },    // Peak rush
+            { duration: '3m', target: 50 },    // Maximum load
+            { duration: '2m', target: 20 },    // Cooling down
+            { duration: '30s', target: 0 },    // Sale ends
+          ],
+          startTime: '13m',
+          tags: { shopping_type: 'black_friday' },
+          exec: 'blackFridayRush',
+        },
+      },
+      thresholds: {
+        'store_conversion_rate': ['rate>0.40'],
+        'store_journey_completion': ['rate>0.60'],
+        'store_gateway_response_ms': ['p(95)<30000'],
+        'store_seller_response_ms': ['p(95)<60000'],
+        'http_req_failed': ['rate<0.30'],
+      },
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HELPER FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function createCloudEvent(type, data, source) {
+      return {
+        specversion: '1.0',
+        id: `k6-store-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        type: type,
+        source: source || '/k6-store-test',
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+
+    function sendCloudEvent(url, event, timeout = '120s') {
+      return http.post(url, JSON.stringify(event), {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+          'Ce-Specversion': '1.0',
+        },
+        timeout: timeout,
+      });
+    }
+
+    function randomItem(array) {
+      return array[Math.floor(Math.random() * array.length)];
+    }
+
+    function randomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function getBrandKeys() {
+      return Object.keys(BRANDS);
+    }
+
+    class CustomerSession {
+      constructor(type) {
+        this.sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        this.customerId = `customer-${this.sessionId}`;
+        this.phoneNumber = `+551199${randomInt(1000000, 9999999)}`;
+        this.type = type;
+        this.cart = [];
+        this.cartTotal = 0;
+        this.startTime = Date.now();
+        this.stages = [];
+        this.converted = false;
+        this.escalated = false;
+      }
+
+      addToCart(product, brand) {
+        this.cart.push({ ...product, brand });
+        this.cartTotal += product.price;
+      }
+
+      recordStage(name, success, duration) {
+        this.stages.push({ name, success, duration, timestamp: Date.now() });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 1: SINGLE BRAND SHOPPING
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function singleBrandShopping() {
+      const brandKey = randomItem(getBrandKeys());
+      const brand = BRANDS[brandKey];
+      const session = new CustomerSession('single_brand');
+      let journeyComplete = true;
+
+      console.log(`\n${brand.emoji} Single Brand Shopping: ${brand.name}`);
+      console.log('─'.repeat(50));
+
+      activeCustomers.add(1);
+
+      // Stage 1: Initial WhatsApp message
+      group('📱 WhatsApp Contact', () => {
+        const greeting = randomItem(CUSTOMER_QUERIES.greeting);
+
+        const event = createCloudEvent('store.whatsapp.message.received', {
+          from: session.phoneNumber,
+          customerId: session.customerId,
+          message: greeting,
+          timestamp: new Date().toISOString(),
+        }, '/k6-single-brand');
+
+        const start = Date.now();
+        const res = sendCloudEvent(WHATSAPP_GATEWAY_URL, event);
+        const duration = Date.now() - start;
+
+        gatewayResponseTime.add(duration);
+        messagesProcessed.add(1);
+
+        const success = check(res, {
+          'whatsapp received': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        session.recordStage('whatsapp_contact', success, duration);
+        if (!success) journeyComplete = false;
+      });
+
+      sleep(1);
+
+      // Stage 2: AI Seller interaction
+      group(`${brand.emoji} AI Seller Chat`, () => {
+        const product = randomItem(brand.products);
+        const inquiry = randomItem(CUSTOMER_QUERIES.product_inquiry);
+
+        const event = createCloudEvent('store.chat.message.new', {
+          customerId: session.customerId,
+          brand: brandKey,
+          message: `I'm interested in the ${product.name}. ${inquiry}`,
+          context: {
+            previousProducts: [],
+            sessionStart: session.startTime,
+          },
+        }, '/k6-single-brand');
+
+        const start = Date.now();
+        const res = sendCloudEvent(AI_SELLER_URL, event);
+        const duration = Date.now() - start;
+
+        sellerResponseTime.add(duration, { brand: brandKey });
+
+        const success = check(res, {
+          'AI seller responds': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        session.recordStage('ai_seller_chat', success, duration);
+
+        if (success) {
+          console.log(`  ✓ ${brand.name} AI responded in ${duration}ms`);
+          session.addToCart(product, brandKey);
+        } else {
+          journeyComplete = false;
+        }
+      });
+
+      sleep(2);
+
+      // Stage 3: Purchase decision
+      group('🛒 Purchase Decision', () => {
+        const purchaseIntent = randomItem(CUSTOMER_QUERIES.purchase_intent);
+
+        const event = createCloudEvent('store.chat.message.new', {
+          customerId: session.customerId,
+          brand: brandKey,
+          message: purchaseIntent,
+          cart: session.cart,
+          cartTotal: session.cartTotal,
+        }, '/k6-single-brand');
+
+        const start = Date.now();
+        const res = sendCloudEvent(AI_SELLER_URL, event);
+        const duration = Date.now() - start;
+
+        sellerResponseTime.add(duration, { brand: brandKey });
+
+        const success = check(res, {
+          'purchase intent processed': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        session.recordStage('purchase_decision', success, duration);
+
+        // 70% conversion rate
+        if (success && Math.random() > 0.3) {
+          session.converted = true;
+          console.log(`  ✓ Customer decided to purchase`);
+        }
+      });
+
+      sleep(1);
+
+      // Stage 4: Order placement (if converted)
+      if (session.converted) {
+        group('📦 Order Placement', () => {
+          const event = createCloudEvent('store.order.create', {
+            customerId: session.customerId,
+            orderId: `order-${session.sessionId}`,
+            items: session.cart,
+            total: session.cartTotal,
+            paymentMethod: Math.random() > 0.5 ? 'credit_card' : 'pix',
+            shippingAddress: {
+              city: 'São Paulo',
+              state: 'SP',
+              country: 'Brazil',
+            },
+          }, '/k6-single-brand');
+
+          const start = Date.now();
+          const res = sendCloudEvent(ORDER_PROCESSOR_URL, event);
+          const duration = Date.now() - start;
+
+          orderResponseTime.add(duration);
+
+          const success = check(res, {
+            'order placed': (r) => r.status >= 200 && r.status < 300,
+          });
+
+          session.recordStage('order_placement', success, duration);
+
+          if (success) {
+            ordersPlaced.add(1);
+            revenueTotal.add(session.cartTotal);
+            brand.counter.add(session.cartTotal);
+            console.log(`  ✓ Order placed: $${session.cartTotal.toFixed(2)}`);
+          } else {
+            journeyComplete = false;
+          }
+        });
+      }
+
+      activeCustomers.add(-1);
+      customersServed.add(1);
+      conversionRate.add(session.converted);
+      journeyCompletionRate.add(journeyComplete);
+
+      const duration = Date.now() - session.startTime;
+      console.log(`\n${journeyComplete ? '✅' : '❌'} Journey: ${(duration/1000).toFixed(1)}s | Cart: $${session.cartTotal.toFixed(2)} | Converted: ${session.converted}\n`);
+
+      sleep(3);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 2: CROSS-BRAND SHOPPING
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function crossBrandShopping() {
+      const session = new CustomerSession('cross_brand');
+      const selectedBrands = getBrandKeys().sort(() => Math.random() - 0.5).slice(0, 3);
+      let journeyComplete = true;
+
+      console.log(`\n🛍️ Cross-Brand Shopping: ${selectedBrands.map(b => BRANDS[b].emoji).join(' ')}`);
+      console.log('─'.repeat(50));
+
+      activeCustomers.add(1);
+
+      // Initial contact
+      group('📱 Initial Contact', () => {
+        const event = createCloudEvent('store.whatsapp.message.received', {
+          from: session.phoneNumber,
+          customerId: session.customerId,
+          message: 'Hi! Im looking for items across different categories today',
+        }, '/k6-cross-brand');
+
+        const start = Date.now();
+        const res = sendCloudEvent(WHATSAPP_GATEWAY_URL, event);
+        gatewayResponseTime.add(Date.now() - start);
+        messagesProcessed.add(1);
+
+        check(res, { 'contact ok': (r) => r.status >= 200 && r.status < 300 });
+      });
+
+      sleep(1);
+
+      // Shop from each brand
+      for (const brandKey of selectedBrands) {
+        const brand = BRANDS[brandKey];
+
+        group(`${brand.emoji} Shop ${brand.name}`, () => {
+          const product = randomItem(brand.products);
+
+          const event = createCloudEvent('store.chat.message.new', {
+            customerId: session.customerId,
+            brand: brandKey,
+            message: `Show me the ${product.name}`,
+            cart: session.cart,
+          }, '/k6-cross-brand');
+
+          const start = Date.now();
+          const res = sendCloudEvent(AI_SELLER_URL, event);
+          const duration = Date.now() - start;
+
+          sellerResponseTime.add(duration, { brand: brandKey });
+
+          const success = check(res, {
+            [`${brandKey} seller responds`]: (r) => r.status >= 200 && r.status < 300,
+          });
+
+          if (success) {
+            session.addToCart(product, brandKey);
+            console.log(`  ✓ Added ${product.name} from ${brand.name}`);
+          } else {
+            journeyComplete = false;
+          }
+        });
+
+        sleep(1);
+      }
+
+      // Combined order
+      if (session.cart.length > 0) {
+        group('📦 Combined Order', () => {
+          const event = createCloudEvent('store.order.create', {
+            customerId: session.customerId,
+            orderId: `order-${session.sessionId}`,
+            items: session.cart,
+            total: session.cartTotal,
+            crossBrand: true,
+            brandsInvolved: selectedBrands,
+          }, '/k6-cross-brand');
+
+          const start = Date.now();
+          const res = sendCloudEvent(ORDER_PROCESSOR_URL, event);
+          orderResponseTime.add(Date.now() - start);
+
+          const success = check(res, {
+            'combined order placed': (r) => r.status >= 200 && r.status < 300,
+          });
+
+          if (success) {
+            ordersPlaced.add(1);
+            revenueTotal.add(session.cartTotal);
+            session.converted = true;
+
+            // Track per-brand revenue
+            for (const item of session.cart) {
+              BRANDS[item.brand].counter.add(item.price);
+            }
+          } else {
+            journeyComplete = false;
+          }
+        });
+      }
+
+      activeCustomers.add(-1);
+      customersServed.add(1);
+      conversionRate.add(session.converted);
+      journeyCompletionRate.add(journeyComplete);
+
+      console.log(`\n✅ Cross-brand order: ${session.cart.length} items, $${session.cartTotal.toFixed(2)}\n`);
+
+      sleep(3);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 3: HUMAN ESCALATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function humanEscalation() {
+      const session = new CustomerSession('escalation');
+      const brandKey = randomItem(getBrandKeys());
+      const brand = BRANDS[brandKey];
+
+      console.log(`\n🤝 Human Escalation Test: ${brand.name}`);
+
+      activeCustomers.add(1);
+
+      // Complex query that requires human
+      group('❓ Complex Query', () => {
+        const complexQuery = randomItem(CUSTOMER_QUERIES.complex_query);
+
+        const event = createCloudEvent('store.chat.message.new', {
+          customerId: session.customerId,
+          brand: brandKey,
+          message: complexQuery,
+          requiresEscalation: true,
+        }, '/k6-escalation');
+
+        const start = Date.now();
+        const res = sendCloudEvent(AI_SELLER_URL, event);
+        sellerResponseTime.add(Date.now() - start, { brand: brandKey });
+
+        check(res, { 'complex query handled': (r) => r.status >= 200 && r.status < 300 });
+      });
+
+      sleep(1);
+
+      // Escalation to human
+      group('🤝 Human Escalation', () => {
+        const event = createCloudEvent('store.sales.escalate', {
+          customerId: session.customerId,
+          brand: brandKey,
+          reason: 'Customer issue requiring human attention',
+          conversationHistory: [
+            { role: 'customer', message: randomItem(CUSTOMER_QUERIES.complex_query) },
+            { role: 'ai_seller', message: 'I understand your concern. Let me connect you with a human assistant.' },
+          ],
+          priority: 'high',
+        }, '/k6-escalation');
+
+        const start = Date.now();
+        const res = sendCloudEvent(SALES_ASSISTANT_URL, event);
+        const duration = Date.now() - start;
+
+        const success = check(res, {
+          'escalation handled': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        if (success) {
+          session.escalated = true;
+          console.log(`  ✓ Escalated to human in ${duration}ms`);
+        }
+
+        escalationRate.add(session.escalated);
+      });
+
+      activeCustomers.add(-1);
+      customersServed.add(1);
+
+      sleep(2);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 4: BLACK FRIDAY RUSH
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function blackFridayRush() {
+      const brandKey = randomItem(getBrandKeys());
+      const brand = BRANDS[brandKey];
+      const session = new CustomerSession('black_friday');
+
+      activeCustomers.add(1);
+
+      // Quick purchase flow for Black Friday
+      group('⚡ Black Friday Quick Purchase', () => {
+        const product = randomItem(brand.products);
+        const discountedPrice = product.price * 0.7; // 30% off
+
+        // Quick inquiry
+        const inquiryEvent = createCloudEvent('store.chat.message.new', {
+          customerId: session.customerId,
+          brand: brandKey,
+          message: `BLACK FRIDAY! I want the ${product.name} NOW!`,
+          isBlackFriday: true,
+        }, '/k6-black-friday');
+
+        let start = Date.now();
+        let res = sendCloudEvent(AI_SELLER_URL, inquiryEvent, '30s');
+        sellerResponseTime.add(Date.now() - start, { brand: brandKey });
+
+        const inquiryOk = check(res, { 'quick inquiry ok': (r) => r.status >= 200 && r.status < 300 });
+
+        if (inquiryOk) {
+          session.addToCart({ ...product, price: discountedPrice }, brandKey);
+        }
+
+        // Fast checkout
+        if (session.cart.length > 0) {
+          const orderEvent = createCloudEvent('store.order.create', {
+            customerId: session.customerId,
+            orderId: `bf-${session.sessionId}`,
+            items: session.cart,
+            total: session.cartTotal,
+            isBlackFriday: true,
+            expeditedProcessing: true,
+          }, '/k6-black-friday');
+
+          start = Date.now();
+          res = sendCloudEvent(ORDER_PROCESSOR_URL, orderEvent, '30s');
+          orderResponseTime.add(Date.now() - start);
+
+          const orderOk = check(res, { 'black friday order ok': (r) => r.status >= 200 && r.status < 300 });
+
+          if (orderOk) {
+            ordersPlaced.add(1);
+            revenueTotal.add(session.cartTotal);
+            brand.counter.add(session.cartTotal);
+            session.converted = true;
+          }
+        }
+
+        conversionRate.add(session.converted);
+        messagesProcessed.add(1);
+      });
+
+      activeCustomers.add(-1);
+      customersServed.add(1);
+
+      sleep(randomInt(1, 3));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SUMMARY
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function handleSummary(data) {
+      const customers = data.metrics['store_customers_served'];
+      const messages = data.metrics['store_messages_processed'];
+      const orders = data.metrics['store_orders_placed'];
+      const revenue = data.metrics['store_revenue_total'];
+      const conversion = data.metrics['store_conversion_rate'];
+      const escalation = data.metrics['store_escalation_rate'];
+      const completion = data.metrics['store_journey_completion'];
+
+      const gatewayTime = data.metrics['store_gateway_response_ms'];
+      const sellerTime = data.metrics['store_seller_response_ms'];
+      const orderTime = data.metrics['store_order_response_ms'];
+
+      const fashion = data.metrics['store_fashion_sales'];
+      const tech = data.metrics['store_tech_sales'];
+      const home = data.metrics['store_home_sales'];
+      const beauty = data.metrics['store_beauty_sales'];
+      const gaming = data.metrics['store_gaming_sales'];
+
+      const customersCount = customers && customers.values ? customers.values.count : 0;
+      const ordersCount = orders && orders.values ? orders.values.count : 0;
+      const revenueTotal = revenue && revenue.values ? revenue.values.count : 0;
+      const conversionRate = conversion && conversion.values ? conversion.values.rate : 0;
+      const escalationRate = escalation && escalation.values ? escalation.values.rate : 0;
+      const completionRate = completion && completion.values ? completion.values.rate : 0;
+
+      const gatewayP95 = gatewayTime && gatewayTime.values ? gatewayTime.values['p(95)'] : 0;
+      const sellerP95 = sellerTime && sellerTime.values ? sellerTime.values['p(95)'] : 0;
+      const orderP95 = orderTime && orderTime.values ? orderTime.values['p(95)'] : 0;
+
+      const passed = conversionRate >= 0.40 && completionRate >= 0.60;
+
+      console.log('\n' + '═'.repeat(70));
+      console.log('🏪 STORE MULTIBRANDS CUSTOMER JOURNEY RESULTS');
+      console.log('═'.repeat(70));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('─'.repeat(70));
+      console.log('📊 BUSINESS METRICS');
+      console.log('   Customers Served:    ' + customersCount);
+      console.log('   Orders Placed:       ' + ordersCount);
+      console.log('   Total Revenue:       $' + revenueTotal.toFixed(2));
+      console.log('   Conversion Rate:     ' + (conversionRate * 100).toFixed(1) + '%');
+      console.log('   Escalation Rate:     ' + (escalationRate * 100).toFixed(1) + '%');
+      console.log('─'.repeat(70));
+      console.log('🏷️ BRAND PERFORMANCE');
+      console.log('   👗 Fashion:          $' + (fashion && fashion.values ? fashion.values.count : 0).toFixed(2));
+      console.log('   📱 Tech:             $' + (tech && tech.values ? tech.values.count : 0).toFixed(2));
+      console.log('   🏠 Home:             $' + (home && home.values ? home.values.count : 0).toFixed(2));
+      console.log('   💄 Beauty:           $' + (beauty && beauty.values ? beauty.values.count : 0).toFixed(2));
+      console.log('   🎮 Gaming:           $' + (gaming && gaming.values ? gaming.values.count : 0).toFixed(2));
+      console.log('─'.repeat(70));
+      console.log('⏱️ RESPONSE TIMES (P95)');
+      console.log('   Gateway:             ' + (gatewayP95 || 0).toFixed(0) + 'ms');
+      console.log('   AI Sellers:          ' + (sellerP95 || 0).toFixed(0) + 'ms');
+      console.log('   Order Processor:     ' + (orderP95 || 0).toFixed(0) + 'ms');
+      console.log('─'.repeat(70));
+      console.log('📈 QUALITY METRICS');
+      console.log('   Journey Completion:  ' + (completionRate * 100).toFixed(1) + '%');
+      console.log('═'.repeat(70) + '\n');
+
+      return {};
+    }

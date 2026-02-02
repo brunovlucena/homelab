@@ -1,0 +1,113 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🏪 Agent-POS-Edge - Studio Environment
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: kustomize.config.k8s.io/v1beta1
+namespace: ai
+
+kind: Kustomization
+
+resources:
+  - ../base
+
+labels:
+  - pairs:
+      environment: studio
+
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+# NOTE: Using localhost:5001 for studio (local development)
+# GHCR images don't exist yet - update to ghcr.io after images are built/pushed
+patches:
+  # Update image tags for all LambdaAgents (use localhost:5001 for studio)
+  - target:
+      kind: LambdaAgent
+      name: pos-edge-command-center
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v0.2.0"  # Use version that exists locally
+      - op: replace
+        path: /spec/image/repository
+        value: "localhost:5001/agent-pos-edge/command-center"
+  - target:
+      kind: LambdaAgent
+      name: pos-edge
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v0.2.0"
+      - op: replace
+        path: /spec/image/repository
+        value: "localhost:5001/agent-pos-edge/pos-edge"
+  - target:
+      kind: LambdaAgent
+      name: kitchen-agent
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v0.2.0"
+      - op: replace
+        path: /spec/image/repository
+        value: "localhost:5001/agent-pos-edge/kitchen-agent"
+  - target:
+      kind: LambdaAgent
+      name: pump-agent
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v0.2.0"
+      - op: replace
+        path: /spec/image/repository
+        value: "localhost:5001/agent-pos-edge/pump-agent"
+  
+  # Reduce resources for studio
+  - target:
+      kind: LambdaAgent
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/cpu
+        value: "50m"
+      - op: replace
+        path: /spec/resources/requests/memory
+        value: "64Mi"
+      - op: replace
+        path: /spec/resources/limits/cpu
+        value: "200m"
+      - op: replace
+        path: /spec/resources/limits/memory
+        value: "256Mi"
+  
+  # Scale down for studio
+  - target:
+      kind: LambdaAgent
+      name: pos-edge-command-center
+    patch: |-
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 1
+  
+  - target:
+      kind: LambdaAgent
+      name: pos-edge
+    patch: |-
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 5
+  
+  - target:
+      kind: LambdaAgent
+      name: kitchen-agent
+    patch: |-
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 2
+  
+  - target:
+      kind: LambdaAgent
+      name: pump-agent
+    patch: |-
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 2

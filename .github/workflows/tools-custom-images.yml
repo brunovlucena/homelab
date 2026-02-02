@@ -1,0 +1,260 @@
+name: 🛠️ Homelab - CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/mac/docker/rabbitmq-kubectl.Dockerfile'
+      - 'scripts/mac/docker/linkerd-cli.Dockerfile'
+      - 'scripts/mac/docker/cloudflare-tunnel-updater.Dockerfile'
+      - '.github/workflows/tools-custom-images.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prd
+      force_rebuild:
+        description: 'Force rebuild images'
+        required: false
+        default: false
+        type: boolean
+      tool:
+        description: 'Tool to build'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - kubectl
+          - linkerd-cli
+          - warp
+      kubectl_version:
+        description: 'kubectl version (e.g., v1.34.0)'
+        required: false
+        default: 'v1.34.0'
+      krew_version:
+        description: 'krew version (e.g., v0.4.4)'
+        required: false
+        default: 'v0.4.4'
+      linkerd_version:
+        description: 'Linkerd version (e.g., edge-25.9.1)'
+        required: false
+        default: 'edge-25.9.1'
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-kubectl:
+    name: 🐋 Build kubectl
+    runs-on: [self-hosted]
+    if: |
+      (github.event_name == 'push' && contains(github.event.head_commit.modified, 'scripts/mac/docker/rabbitmq-kubectl.Dockerfile')) ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.tool == 'all' || github.event.inputs.tool == 'kubectl'))
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/kubectl
+          tags: |
+            type=raw,value=v1.34.0
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+          flavor: |
+            latest=auto
+          labels: |
+            org.opencontainers.image.title=kubectl
+            org.opencontainers.image.description=kubectl with krew plugins
+
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./scripts/mac/docker
+          file: ./scripts/mac/docker/rabbitmq-kubectl.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=kubectl
+          cache-to: type=gha,mode=max,scope=kubectl
+          build-args: |
+            KUBECTL_VERSION=${{ github.event.inputs.kubectl_version || 'v1.34.0' }}
+            KREW_VERSION=${{ github.event.inputs.krew_version || 'v0.4.4' }}
+
+  build-linkerd-cli:
+    name: 🔗 Build Linkerd CLI
+    runs-on: [self-hosted]
+    if: |
+      (github.event_name == 'push' && contains(github.event.head_commit.modified, 'scripts/mac/docker/linkerd-cli.Dockerfile')) ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.tool == 'all' || github.event.inputs.tool == 'linkerd-cli'))
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/linkerd-cli
+          tags: |
+            type=raw,value=edge-25.9.1
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./scripts/mac/docker
+          file: ./scripts/mac/docker/linkerd-cli.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=linkerd-cli
+          cache-to: type=gha,mode=max,scope=linkerd-cli
+          build-args: |
+            LINKERD_VERSION=${{ github.event.inputs.linkerd_version || 'edge-25.9.1' }}
+
+  build-warp:
+    name: 🔒 Build Cloudflare WARP
+    runs-on: [self-hosted]
+    if: |
+      (github.event_name == 'push' && contains(github.event.head_commit.modified, 'scripts/mac/docker/cloudflare-tunnel-updater.Dockerfile')) ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.tool == 'all' || github.event.inputs.tool == 'warp'))
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/cloudflare-warp
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+          flavor: |
+            latest=auto
+          labels: |
+            org.opencontainers.image.title=cloudflare-warp
+            org.opencontainers.image.description=Cloudflare WARP client with pre-installed WARP connector
+
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./scripts/mac/docker
+          file: ./scripts/mac/docker/cloudflare-tunnel-updater.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=cloudflare-warp
+          cache-to: type=gha,mode=max,scope=cloudflare-warp
+
+  mirror-cloudflared:
+    name: 🌐 Mirror Cloudflare Tunnel
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/cloudflared
+          tags: |
+            type=raw,value=latest
+            type=raw,value=2024.11.0
+            type=sha,prefix={{branch}}-
+          flavor: |
+            latest=auto
+          labels: |
+            org.opencontainers.image.title=cloudflared
+            org.opencontainers.image.description=Cloudflare Tunnel client (mirrored from docker.io/cloudflare/cloudflared)
+            org.opencontainers.image.source=https://github.com/cloudflare/cloudflared
+
+      - name: 🪞 Pull and push Cloudflare Tunnel image
+        run: |
+          # Pull the official image
+          docker pull cloudflare/cloudflared:latest
+          
+          # Get all tags from metadata
+          TAGS="${{ steps.meta.outputs.tags }}"
+          
+          # Tag and push each tag
+          for tag in $TAGS; do
+            echo "Tagging and pushing: $tag"
+            docker tag cloudflare/cloudflared:latest "$tag"
+            docker push "$tag"
+          done
+

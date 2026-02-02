@@ -1,0 +1,50 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: persistent-volume-alerts
+  namespace: prometheus
+  labels:
+    app: kubernetes-volumes
+    prometheus: kube-prometheus-stack
+spec:
+  groups:
+    - name: persistent.volumes
+      interval: 30s
+      rules:
+        - alert: PersistentVolumeFillingUpWarning
+          annotations:
+            description: "PersistentVolumeClaim {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} has only {{ printf \"%.1f\" $value }}% space remaining. Volume is filling up."
+            summary: "Persistent volume filling up (warning)"
+            runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/persistent-volume-full.md"
+            lambda_function: "check-pvc-status"
+            lambda_parameters: '{"pvc_name": "{{ $labels.persistentvolumeclaim }}", "namespace": "{{ $labels.namespace }}"}'
+          expr: |
+            (
+              kubelet_volume_stats_available_bytes{persistentvolumeclaim!=""} 
+              / 
+              kubelet_volume_stats_capacity_bytes{persistentvolumeclaim!=""}
+            ) * 100 < 15
+          for: 10m
+          labels:
+            severity: warning
+            component: persistent-volume
+
+        - alert: PersistentVolumeFillingUpCritical
+          annotations:
+            description: "PersistentVolumeClaim {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} has only {{ printf \"%.1f\" $value }}% space remaining. Critical threshold reached. Immediate action required."
+            summary: "Persistent volume filling up (critical)"
+            runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/persistent-volume-full.md"
+            lambda_function: "check-pvc-status"
+            lambda_parameters: '{"pvc_name": "{{ $labels.persistentvolumeclaim }}", "namespace": "{{ $labels.namespace }}"}'
+          expr: |
+            (
+              kubelet_volume_stats_available_bytes{persistentvolumeclaim!=""} 
+              / 
+              kubelet_volume_stats_capacity_bytes{persistentvolumeclaim!=""}
+            ) * 100 < 10
+          for: 5m
+          labels:
+            severity: critical
+            component: persistent-volume
+

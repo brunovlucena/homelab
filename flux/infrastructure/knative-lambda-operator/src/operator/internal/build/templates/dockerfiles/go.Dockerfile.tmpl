@@ -1,0 +1,39 @@
+# Build stage
+FROM {{ .BaseImage }}:{{ .Version }}-alpine AS builder
+
+WORKDIR /app
+
+# Copy go mod files first for better caching
+COPY go.mod go.sum* ./
+RUN go mod download 2>/dev/null || true
+
+# Copy Lambda runtime wrapper
+COPY runtime.go ./
+
+# Copy user source code
+COPY app/ ./app/
+
+# Build static binary with runtime wrapper
+# The runtime.go imports the user's handler from ./app/
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /app/lambda-runtime .
+
+# Runtime stage
+FROM {{ .AlpineImage }}
+
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /app
+
+COPY --from=builder /app/lambda-runtime .
+
+ENV HANDLER={{ .Handler }}
+ENV FUNCTION_NAME={{ .FunctionName }}
+ENV FUNCTION_NAMESPACE={{ .FunctionNamespace }}
+ENV TIMEOUT_SECONDS={{ .TimeoutSeconds }}
+ENV PORT=8080
+
+EXPOSE 8080
+
+# Run the Lambda runtime (includes wrapper + user handler)
+CMD ["./lambda-runtime"]
+

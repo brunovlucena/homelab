@@ -1,0 +1,274 @@
+# ============================================================================
+# 🐹 Reusable Workflow: Go CI
+# ============================================================================
+# Provides standardized Go CI for all homelab Go components.
+#
+# Usage:
+#   jobs:
+#     go-ci:
+#       uses: ./.github/workflows/_reusable-go-ci.yml
+#       with:
+#         working-directory: flux/infrastructure/knative-lambda-operator/src/operator
+#         go-version: '1.24'
+# ============================================================================
+
+name: 🐹 Reusable Go CI
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: 'Working directory containing go.mod'
+        required: true
+        type: string
+      go-version:
+        description: 'Go version to use'
+        required: false
+        type: string
+        default: '1.24'
+      golangci-lint-version:
+        description: 'golangci-lint version'
+        required: false
+        type: string
+        default: 'v1.62.2'
+      golangci-config:
+        description: 'Path to golangci-lint config (relative to repo root)'
+        required: false
+        type: string
+        default: ''
+      run-tests:
+        description: 'Whether to run tests'
+        required: false
+        type: boolean
+        default: true
+      run-lint:
+        description: 'Whether to run linting'
+        required: false
+        type: boolean
+        default: true
+      test-path:
+        description: 'Path to test files (relative to working-directory)'
+        required: false
+        type: string
+        default: './...'
+      test-timeout:
+        description: 'Test timeout'
+        required: false
+        type: string
+        default: '15m'
+      coverage-threshold:
+        description: 'Minimum coverage percentage (0 to disable)'
+        required: false
+        type: number
+        default: 0
+      fail-on-lint-error:
+        description: 'Fail workflow on lint errors'
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      lint-passed:
+        description: 'Whether linting passed'
+        value: ${{ jobs.lint.outputs.passed }}
+      test-passed:
+        description: 'Whether tests passed'
+        value: ${{ jobs.test.outputs.passed }}
+      coverage:
+        description: 'Test coverage percentage'
+        value: ${{ jobs.test.outputs.coverage }}
+
+jobs:
+  lint:
+    name: 🔍 Lint & Format
+    runs-on: [self-hosted]
+    timeout-minutes: 15
+    if: inputs.run-lint
+    outputs:
+      passed: ${{ steps.lint-result.outputs.passed }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐹 Set up Go ${{ inputs.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+      - name: 📐 Check code formatting
+        id: fmt
+        run: |
+          echo "🔍 Checking code formatting..."
+          UNFORMATTED=$(gofmt -s -l . 2>&1 || true)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "❌ The following files need formatting:"
+            echo "$UNFORMATTED"
+            echo "formatted=false" >> $GITHUB_OUTPUT
+            if [ "${{ inputs.fail-on-lint-error }}" = "true" ]; then
+              exit 1
+            fi
+          else
+            echo "✅ Code is properly formatted"
+            echo "formatted=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔍 Run go vet
+        run: |
+          echo "🔍 Running go vet..."
+          go vet ./...
+          echo "✅ go vet passed"
+
+      - name: 📦 Verify go.mod
+        run: |
+          echo "🔍 Verifying go modules..."
+          go mod verify
+          go mod tidy -diff || true
+          echo "✅ go.mod verified"
+
+      - name: 🔍 Run golangci-lint
+        id: golangci
+        uses: golangci/golangci-lint-action@v6
+        continue-on-error: ${{ !inputs.fail-on-lint-error }}
+        with:
+          version: ${{ inputs.golangci-lint-version }}
+          working-directory: ${{ inputs.working-directory }}
+          args: >-
+            --timeout=10m
+            ${{ inputs.golangci-config != '' && format('--config={0}', inputs.golangci-config) || '' }}
+
+      - name: 📋 Lint Result
+        id: lint-result
+        run: |
+          if [ "${{ steps.golangci.outcome }}" = "success" ] && [ "${{ steps.fmt.outputs.formatted }}" = "true" ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ All lint checks passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Some lint checks failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  test:
+    name: 🧪 Tests
+    runs-on: [self-hosted]
+    timeout-minutes: 20
+    if: inputs.run-tests
+    outputs:
+      passed: ${{ steps.test-result.outputs.passed }}
+      coverage: ${{ steps.coverage.outputs.coverage }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐹 Set up Go ${{ inputs.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+      - name: 📦 Download dependencies
+        run: go mod download
+
+      - name: 🧪 Run tests
+        id: test
+        run: |
+          echo "🧪 Running tests..."
+          go test -v -race -coverprofile=coverage.out -covermode=atomic \
+            -timeout=${{ inputs.test-timeout }} \
+            ${{ inputs.test-path }} 2>&1 | tee test-output.txt || true
+
+          # Check exit code
+          if grep -q "FAIL" test-output.txt; then
+            echo "result=failed" >> $GITHUB_OUTPUT
+          else
+            echo "result=passed" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📊 Extract coverage
+        id: coverage
+        run: |
+          if [ -f coverage.out ]; then
+            COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+            echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+            echo "📊 Coverage: $COVERAGE%"
+
+            # Generate coverage report
+            go tool cover -func=coverage.out | tail -20 > coverage-summary.txt
+          else
+            echo "coverage=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📋 Test Result
+        id: test-result
+        run: |
+          COVERAGE="${{ steps.coverage.outputs.coverage }}"
+          THRESHOLD="${{ inputs.coverage-threshold }}"
+
+          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.test.outputs.result }}" = "passed" ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Some tests failed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage | ${COVERAGE}% |" >> $GITHUB_STEP_SUMMARY
+          echo "| Threshold | ${THRESHOLD}% |" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f coverage-summary.txt ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Coverage Details" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            cat coverage-summary.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📤 Upload coverage
+        uses: codecov/codecov-action@v5
+        continue-on-error: true
+        with:
+          files: ${{ inputs.working-directory }}/coverage.out
+          flags: go
+          fail_ci_if_error: false
+
+  security:
+    name: 🔒 Security Scan
+    runs-on: [self-hosted]
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐹 Set up Go ${{ inputs.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache-dependency-path: ${{ inputs.working-directory }}/go.sum
+
+      - name: 🔍 Run govulncheck
+        continue-on-error: true
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./... 2>&1 | tee govulncheck-results.txt || true
+
+          echo "## 🔒 Security Scan" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if grep -q "Vulnerability" govulncheck-results.txt; then
+            echo "⚠️ Vulnerabilities found - see logs" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+          fi

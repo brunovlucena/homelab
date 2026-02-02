@@ -1,0 +1,23 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: flyte
+
+resources:
+  - k8s/register-workflow-job.yaml
+
+# Generate ConfigMap from workflow source file
+# Note: Path is relative to the kustomization.yaml file location
+configMapGenerator:
+  - name: agent-training-workflow
+    files:
+      - agent_training.py=workflows/agent_training.py
+    options:
+      labels:
+        app: flyte-workflow-registration
+        workflow: agent-training
+
+commonLabels:
+  app: flyte-workflow-registration
+  managed-by: flux

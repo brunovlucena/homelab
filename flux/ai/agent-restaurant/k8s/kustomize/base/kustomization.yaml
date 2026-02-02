@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: agent-restaurant
+
+resources:
+  - rbac.yaml
+  - configmap-menu.yaml
+  - secrets-job.yaml  # Creates restaurant-redis and restaurant-postgres secrets
+  
+  # Web Command Center
+  - ../../../web/k8s/kustomize/base
+  
+  # LambdaAgents
+  - lambdaagent-host.yaml
+  - lambdaagent-waiter.yaml
+  - lambdaagent-chef.yaml
+  - lambdaagent-sommelier.yaml

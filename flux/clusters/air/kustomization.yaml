@@ -1,0 +1,16 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 🧪 Air Cluster - Minimal Test Cluster for Agent-Reasoning
+# Minimal components needed to test Agent-Reasoning service
+# Based on pro cluster but with only essential components
+
+resources:
+  - deploy/01-core-kustomization.yaml
+  - deploy/02-observability-kustomization.yaml
+  - deploy/03-knative-deps-kustomization.yaml
+  # deploy/04-knative-instances is intentionally empty (Knative instances managed elsewhere)
+  # - deploy/07-apps-kustomization.yaml  # Commented out temporarily (agent-reasoning disabled)
+  # - deploy/09-extra-kustomization.yaml  # Commented out: linkerd-viz and multicluster have kustomize path issues
+

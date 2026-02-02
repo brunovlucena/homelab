@@ -1,0 +1,167 @@
+# Docker Compose for local development
+# Usage: docker-compose -f docker-compose.dev.yaml up -d
+
+version: '3.8'
+
+services:
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # MinIO for S3-compatible storage
+  minio:
+    image: minio/minio:RELEASE.2024-01-16T16-07-38Z
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Anvil for local Ethereum fork (Foundry)
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:nightly-ea2eff95b5c17edd3ffbdfc6daab5ce5cc80afc0
+    ports:
+      - "8545:8545"
+    entrypoint: ["anvil", "--host", "0.0.0.0", "--port", "8545"]
+    # For mainnet fork, add:
+    # entrypoint: ["anvil", "--host", "0.0.0.0", "--port", "8545", "--fork-url", "${ETHEREUM_RPC_URL}"]
+
+  # RabbitMQ for CloudEvents
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"  # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./dev/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Alertmanager for alert routing
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./dev/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+    depends_on:
+      - notifi-adapter
+
+  # Contract Fetcher
+  contract-fetcher:
+    build:
+      context: ./src
+      dockerfile: contract_fetcher/Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      ETHERSCAN_API_KEY: ${ETHERSCAN_API_KEY:-}
+      ETHEREUM_RPC_URL: ${ETHEREUM_RPC_URL:-}
+      K_SINK: http://rabbitmq:15672  # Would be broker in real deployment
+    depends_on:
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # Vulnerability Scanner
+  vuln-scanner:
+    build:
+      context: ./src
+      dockerfile: vuln_scanner/Dockerfile
+    ports:
+      - "8082:8080"
+    environment:
+      REDIS_URL: redis://redis:6379
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      K_SINK: http://rabbitmq:15672
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Exploit Generator
+  exploit-generator:
+    build:
+      context: ./src
+      dockerfile: exploit_generator/Dockerfile
+    ports:
+      - "8083:8080"
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANVIL_URL: http://anvil:8545
+      K_SINK: http://rabbitmq:15672
+    depends_on:
+      - anvil
+
+  # Notifi Adapter (replaces alert-dispatcher)
+  # Receives webhooks from Alertmanager and forwards to notifi-services
+  notifi-adapter:
+    build:
+      context: ./src
+      dockerfile: notifi_adapter/Dockerfile
+    ports:
+      - "8084:8080"
+    environment:
+      # Configure these to connect to notifi-services
+      NOTIFI_WEBHOOK_URL: ${NOTIFI_WEBHOOK_URL:-}
+      NOTIFI_API_KEY: ${NOTIFI_API_KEY:-}
+      NOTIFI_TENANT_ID: ${NOTIFI_TENANT_ID:-agent-contracts}
+
+volumes:
+  redis-data:
+  minio-data:
+  rabbitmq-data:
+  prometheus-data:
+
+networks:
+  default:
+    name: agent-contracts-network

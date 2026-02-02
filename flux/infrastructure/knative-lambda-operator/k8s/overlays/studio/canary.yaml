@@ -1,0 +1,94 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🐦 FLAGGER CANARY - Studio
+#
+#  Purpose: Conservative progressive delivery for studio
+#  Strategy: Canary deployment with Linkerd traffic splitting
+#
+#  Rollout Strategy:
+#  - stepWeight: 5% increments (conservative)
+#  - maxWeight: 30% (limit blast radius)
+#  - interval: 2m between steps
+#  - Success threshold: request-success-rate >= 99.5%
+#  - Auto-rollback on failure
+#
+#  DISABLED: Flagger CRD not available in cluster
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ---
+# # Flagger Canary - DISABLED
+# apiVersion: flagger.app/v1beta1
+# kind: Canary
+# metadata:
+#   name: knative-lambda-operator
+#   namespace: knative-lambda
+#   labels:
+#     app.kubernetes.io/name: knative-lambda-operator
+#     app.kubernetes.io/component: canary
+#     environment: studio
+# spec:
+#   # 🎯 Target deployment
+#   targetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: knative-lambda-operator
+#   
+#   # 🔗 Linkerd traffic routing
+#   service:
+#     port: 8080
+#     targetPort: metrics
+#     # 🏷️ Service annotations for A/B testing
+#     headers:
+#       request:
+#         add:
+#           x-canary-version: "{{ .Metadata.version }}"
+#     # Traffic split configuration
+#     trafficPolicy:
+#       tls:
+#         mode: DISABLE
+#   
+#   # 📊 Analysis configuration - CONSERVATIVE
+#   analysis:
+#     # Check interval - longer for stability
+#     interval: 2m
+#     # Max consecutive failures before rollback
+#     threshold: 3
+#     # Max traffic weight routed to canary
+#     maxWeight: 30
+#     # Increment step - small for safety
+#     stepWeight: 5
+#     # 📏 Metrics for validation
+#     metrics:
+#       # Request success rate - strict threshold
+#       - name: request-success-rate
+#         templateRef:
+#           name: request-success-rate
+#           namespace: knative-lambda
+#         thresholdRange:
+#           min: 99.5
+#         interval: 2m
+#       # Request duration - P99 latency
+#       - name: request-duration
+#         templateRef:
+#           name: request-duration
+#           namespace: knative-lambda
+#         thresholdRange:
+#           max: 300
+#         interval: 2m
+#       # Linkerd success rate (backup metric)
+#       - name: linkerd-success-rate
+#         templateRef:
+#           name: linkerd-success-rate
+#           namespace: knative-lambda
+#         thresholdRange:
+#           min: 99
+#         interval: 2m
+#   
+#   # 🔄 Progressive delivery settings
+#   progressDeadlineSeconds: 1200  # 20 minutes max
+#   
+#   # 📦 Skip analysis for first deployment
+#   skipAnalysis: false
+#   
+#   # 🔙 Auto-revert on failed promotion
+#   revertOnDeletion: true

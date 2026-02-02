@@ -1,0 +1,291 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔗 K6 LINKERD LOAD TEST
+#
+#  Purpose: Load test Linkerd Viz metrics API and dashboard endpoints
+#  Coverage:
+#    - Metrics API queries (stat, tap, edges, routes, etc.)
+#    - Dashboard health endpoints
+#    - Service metrics queries
+#    - Traffic statistics
+#    - Service mesh health checks
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: linkerd-load-test
+  namespace: linkerd-viz
+  labels:
+    app.kubernetes.io/name: linkerd-viz
+    app.kubernetes.io/component: testing
+    test-type: load
+spec:
+  parallelism: 2
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: linkerd-load-test
+      file: linkerd-load-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: LINKERD_METRICS_API_URL
+        value: "http://metrics-api.linkerd-viz.svc.cluster.local:8085"
+      - name: LINKERD_WEB_URL
+        value: "http://web.linkerd-viz.svc.cluster.local:8084"
+      - name: LINKERD_TAP_URL
+        value: "http://tap.linkerd-viz.svc.cluster.local:8088"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: linkerd-load-test
+  namespace: linkerd-viz
+  labels:
+    app.kubernetes.io/name: linkerd-viz
+    app.kubernetes.io/component: testing
+    test-type: load
+data:
+  linkerd-load-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+
+    // Custom metrics
+    const apiSuccessRate = new Rate('linkerd_api_success');
+    const apiCounter = new Counter('linkerd_api_requests_total');
+    const apiDuration = new Trend('linkerd_api_duration_ms');
+
+    // Test configuration
+    const METRICS_API_URL = __ENV.LINKERD_METRICS_API_URL || 'http://metrics-api.linkerd-viz.svc.cluster.local:8085';
+    const WEB_URL = __ENV.LINKERD_WEB_URL || 'http://web.linkerd-viz.svc.cluster.local:8084';
+    const TAP_URL = __ENV.LINKERD_TAP_URL || 'http://tap.linkerd-viz.svc.cluster.local:8088';
+
+    // Common service namespaces to test
+    const testNamespaces = ['default', 'kube-system', 'linkerd', 'linkerd-viz', 'prometheus'];
+
+    export const options = {
+      scenarios: {
+        linkerd_load: {
+          executor: 'ramping-vus',
+          startVUs: 1,
+          stages: [
+            { duration: '30s', target: 5 },   // Ramp up to 5 VUs
+            { duration: '1m', target: 10 },   // Increase to 10 VUs
+            { duration: '1m', target: 10 },   // Stay at 10 VUs
+            { duration: '30s', target: 0 },    // Ramp down
+          ],
+        },
+      },
+      thresholds: {
+        http_req_duration: ['p(95)<2000'],    // 95% of requests should be below 2s
+        http_req_failed: ['rate<0.10'],       // Error rate should be below 10% (some services might not exist)
+        linkerd_api_success: ['rate>0.90'],   // API success rate > 90%
+      },
+    };
+
+    function queryMetricsAPI(endpoint, params = {}) {
+      const startTime = Date.now();
+      const queryString = Object.entries(params)
+        .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+        .join('&');
+      const url = `${METRICS_API_URL}${endpoint}${queryString ? '?' + queryString : ''}`;
+      
+      const res = http.get(url, {
+        timeout: '10s',
+        tags: { endpoint: endpoint },
+      });
+
+      const duration = Date.now() - startTime;
+      apiDuration.add(duration);
+      apiCounter.add(1);
+
+      const success = res.status === 200;
+      apiSuccessRate.add(success ? 1 : 0);
+
+      return { res, duration, success };
+    }
+
+    export default function () {
+      // Test 1: Metrics API - Stat summary
+      group('Linkerd Metrics API - Stat Summary', () => {
+        const namespace = testNamespaces[Math.floor(Math.random() * testNamespaces.length)];
+        const { res } = queryMetricsAPI('/api/v1/stat', {
+          resource: 'namespace',
+          namespace: namespace,
+          timeWindow: '1m',
+        });
+
+        check(res, {
+          'stat API status is 200': (r) => r.status === 200 || r.status === 404, // 404 is OK if namespace has no services
+          'stat API returns valid JSON': (r) => {
+            if (r.status === 404) return true; // No services in namespace
+            try {
+              const data = JSON.parse(r.body);
+              return data && (data.ok !== undefined || data.statTable !== undefined);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 2: Metrics API - Edges
+      group('Linkerd Metrics API - Edges', () => {
+        const namespace = testNamespaces[Math.floor(Math.random() * testNamespaces.length)];
+        const { res } = queryMetricsAPI('/api/v1/edges', {
+          namespace: namespace,
+          timeWindow: '1m',
+        });
+
+        check(res, {
+          'edges API status is 200': (r) => r.status === 200 || r.status === 404,
+          'edges API returns valid JSON': (r) => {
+            if (r.status === 404) return true;
+            try {
+              const data = JSON.parse(r.body);
+              return data && (data.ok !== undefined || Array.isArray(data.edges));
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 3: Metrics API - Routes
+      group('Linkerd Metrics API - Routes', () => {
+        const namespace = testNamespaces[Math.floor(Math.random() * testNamespaces.length)];
+        const resource = `deployment/test-${Math.floor(Math.random() * 10)}`;
+        
+        const { res } = queryMetricsAPI('/api/v1/routes', {
+          namespace: namespace,
+          resource: resource,
+          timeWindow: '1m',
+        });
+
+        check(res, {
+          'routes API status is 200 or 404': (r) => r.status === 200 || r.status === 404,
+          'routes API returns valid JSON': (r) => {
+            if (r.status === 404) return true;
+            try {
+              const data = JSON.parse(r.body);
+              return data && (data.ok !== undefined || Array.isArray(data.routes));
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 4: Metrics API - Top
+      group('Linkerd Metrics API - Top', () => {
+        const namespace = testNamespaces[Math.floor(Math.random() * testNamespaces.length)];
+        const { res } = queryMetricsAPI('/api/v1/top', {
+          namespace: namespace,
+          stat: 'success_rate',
+          timeWindow: '1m',
+        });
+
+        check(res, {
+          'top API status is 200 or 404': (r) => r.status === 200 || r.status === 404,
+          'top API returns valid JSON': (r) => {
+            if (r.status === 404) return true;
+            try {
+              const data = JSON.parse(r.body);
+              return data && (data.ok !== undefined || data.topTable !== undefined);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 5: Metrics API - Self
+      group('Linkerd Metrics API - Self', () => {
+        const { res } = queryMetricsAPI('/api/v1/self', {
+          timeWindow: '1m',
+        });
+
+        check(res, {
+          'self API status is 200': (r) => r.status === 200,
+          'self API returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && (data.ok !== undefined || data.resource !== undefined);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 6: Web Dashboard - Health
+      group('Linkerd Web Dashboard - Health', () => {
+        const healthRes = http.get(`${WEB_URL}/health`, { timeout: '5s' });
+        check(healthRes, {
+          'web health status is 200': (r) => r.status === 200,
+          'web health response time < 500ms': (r) => r.timings.duration < 500,
+        });
+      });
+
+      // Test 7: Web Dashboard - API Version
+      group('Linkerd Web Dashboard - API Version', () => {
+        const versionRes = http.get(`${WEB_URL}/api/version`, { timeout: '5s' });
+        check(versionRes, {
+          'version API status is 200': (r) => versionRes.status === 200,
+          'version API returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && (data.releaseVersion !== undefined || data.version !== undefined);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 8: Tap API - Health (if available)
+      group('Linkerd Tap API - Health', () => {
+        const tapHealthRes = http.get(`${TAP_URL}/ping`, { timeout: '5s' });
+        // Tap might not always be available, so accept 200 or 404
+        check(tapHealthRes, {
+          'tap ping status is 200 or 404': (r) => r.status === 200 || r.status === 404,
+        });
+      });
+
+      // Test 9: Metrics API - Namespaces
+      group('Linkerd Metrics API - Namespaces', () => {
+        const { res } = queryMetricsAPI('/api/v1/namespaces');
+        
+        check(res, {
+          'namespaces API status is 200': (r) => res.status === 200,
+          'namespaces API returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && (data.ok !== undefined || Array.isArray(data.namespaces));
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Random sleep between iterations
+      sleep(Math.random() * 2 + 1);
+    }
+
+    export function handleSummary(data) {
+      return {
+        'stdout': JSON.stringify(data, null, 2),
+      };
+    }

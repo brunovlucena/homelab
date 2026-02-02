@@ -1,0 +1,132 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Poppins:wght@400;500;600;700;800&display=swap');
+
+@layer base {
+  body {
+    @apply bg-mc-black text-white antialiased;
+  }
+}
+
+@layer components {
+  .mc-card {
+    @apply bg-mc-dark/90 backdrop-blur-sm border border-mc-gray/50 rounded-xl shadow-card;
+  }
+
+  .mc-button {
+    @apply px-4 py-2 rounded-lg font-semibold transition-all duration-200;
+    @apply bg-mc-red text-white;
+    @apply hover:bg-mc-red-dark hover:shadow-mc-red;
+  }
+
+  .mc-button-gold {
+    @apply px-4 py-2 rounded-lg font-semibold transition-all duration-200;
+    @apply bg-mc-gold text-mc-black;
+    @apply hover:bg-mc-yellow hover:shadow-mc-gold;
+  }
+
+  .mc-button-outline {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200;
+    @apply bg-transparent border-2 border-mc-red text-mc-red;
+    @apply hover:bg-mc-red/10;
+  }
+
+  .order-card {
+    @apply relative rounded-xl overflow-hidden transition-all duration-300;
+    @apply bg-gradient-to-br from-mc-dark to-mc-gray/50;
+    @apply border-2;
+  }
+
+  .order-new {
+    @apply border-status-new shadow-[0_0_15px_rgba(52,152,219,0.3)];
+  }
+
+  .order-preparing {
+    @apply border-status-preparing shadow-[0_0_15px_rgba(243,156,18,0.3)] animate-order-pulse;
+  }
+
+  .order-ready {
+    @apply border-status-ready shadow-[0_0_15px_rgba(39,174,96,0.3)];
+  }
+
+  .status-dot {
+    @apply w-3 h-3 rounded-full;
+  }
+
+  .status-dot-new {
+    @apply bg-status-new animate-pulse;
+  }
+
+  .status-dot-preparing {
+    @apply bg-status-preparing animate-pulse;
+  }
+
+  .status-dot-ready {
+    @apply bg-status-ready animate-pulse;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200;
+    @apply text-gray-400 hover:text-white hover:bg-mc-gray/50;
+  }
+
+  .nav-item-active {
+    @apply text-mc-gold bg-mc-gold/10 border-l-4 border-mc-gold;
+  }
+
+  .timer-urgent {
+    @apply text-mc-red animate-timer-tick;
+  }
+
+  .timer-warning {
+    @apply text-mc-orange;
+  }
+
+  .timer-normal {
+    @apply text-mc-green;
+  }
+
+  .menu-item {
+    @apply p-3 rounded-lg bg-mc-gray/30 hover:bg-mc-gray/50 transition-colors cursor-pointer;
+  }
+
+  .quantity-badge {
+    @apply w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold;
+    @apply bg-mc-red text-white;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-mc-dark;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-mc-gray rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-mc-red/50;
+}
+
+/* Order timer animation */
+@keyframes timer-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.timer-blink {
+  animation: timer-blink 1s ease-in-out infinite;
+}
+
+/* Golden arches gradient */
+.golden-gradient {
+  background: linear-gradient(135deg, #ffc72c 0%, #ffbc0d 50%, #ffc72c 100%);
+}

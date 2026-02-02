@@ -1,0 +1,75 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🛠️ PRO OVERLAY - Development Environment
+#
+#  Purpose: Local development with minimal resources
+#  Features:
+#  - Single replica
+#  - Debug logging enabled
+#  - Relaxed resource limits
+#  - k6 load testing available
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: knative-lambda
+
+commonLabels:
+  environment: pro
+  app.kubernetes.io/instance: knative-lambda-pro
+
+resources:
+  - ../../base
+  - lambda-samples-configmap.yaml
+  - lambda-samples-job.yaml
+  - lambdafunctions.yaml
+  - ../../tests
+
+# 🏷️ Image override for pro
+# NOTE: MUST match OPERATOR_VERSION below - use 'make version-bump' to update both
+images:
+  - name: localhost:5001/knative-lambda-operator
+    newTag: v1.13.16
+
+# 📝 Patches for pro-specific config
+patches:
+  # Reduce replicas and resources for pro (development)
+  - target:
+      kind: Deployment
+      name: knative-lambda-operator
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            # cpu: 5m
+            memory: 64Mi
+          limits:
+            # cpu: 200m
+            memory: 256Mi
+      - op: add
+        path: /spec/template/metadata/annotations/config.linkerd.io~1proxy-cpu-request
+        value: "1m"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: LOG_LEVEL
+          value: debug
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ENVIRONMENT
+          value: pro
+      # OPERATOR_REGISTRY is already set to localhost:5001 in base, no patch needed
+      # OPERATOR_VERSION must match image tag for lambda-command-receiver
+      # NOTE: Use 'make version-bump' to update - NEVER edit manually!
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OPERATOR_VERSION
+          value: "v1.13.16"

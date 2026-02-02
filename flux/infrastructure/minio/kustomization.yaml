@@ -1,0 +1,18 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: minio
+  namespace: minio
+
+resources:
+  - namespace.yaml
+  - secret-init-job.yaml
+  - pvc.yaml
+  - service.yaml
+  - deployment.yaml
+  - bucket-init-job.yaml
+  # Flyte bucket initialization
+  - ../flyte/k8s/bucket-init-job.yaml
+

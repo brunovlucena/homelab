@@ -1,0 +1,87 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: github-runners-alerts
+  namespace: prometheus
+  labels:
+    app: github-runners
+    prometheus: kube-prometheus-stack
+spec:
+  groups:
+    - name: github-runners
+      interval: 30s
+      rules:
+        - alert: GitHubRunnersControllerAbsent
+          annotations:
+            description: "GitHub Actions runner controller has disappeared from Prometheus target discovery."
+            summary: "GitHub runners controller is down"
+          expr: |
+            absent(up{job="github-runners-controller"})
+          for: 10m
+          labels:
+            severity: warning
+
+        - alert: NoAvailableRunners
+          annotations:
+            description: "No GitHub Actions runners are available in the pool."
+            summary: "No available GitHub runners"
+          expr: |
+            sum(gha_runners_available) == 0
+          for: 15m
+          labels:
+            severity: warning
+
+        - alert: LocalRegistryImagePullBackoff
+          annotations:
+            description: "Pod {{ $labels.pod }} (namespace {{ $labels.namespace }}, container {{ $labels.container }}) está em {{ $labels.reason }} ao puxar a imagem {{ $labels.image }} do registry local."
+            summary: "Falha ao baixar imagem de localhost:5001"
+          expr: |
+            sum by (namespace, pod, container, image, reason) (
+              kube_pod_container_status_waiting_reason{
+                reason=~"ImagePullBackOff|ErrImagePull",
+                image=~"localhost:5001/.+"
+              }
+            ) > 0
+          for: 5m
+          labels:
+            severity: critical
+
+        - alert: TooManyRunnerPodFailures
+          annotations:
+            description: "The ARC controller reported {{ printf \"%.0f\" $value }} TooManyPodFailures for namespace {{ $labels.namespace }} in the last 15 minutes. Runner pods are being recycled faster than they can register."
+            summary: "GitHub runners are hitting TooManyPodFailures"
+          expr: |
+            sum by (namespace) (
+              increase(
+                kube_events_total{
+                  reason="TooManyPodFailures",
+                  involved_object_kind="EphemeralRunner"
+                }[15m]
+              )
+            ) > 0
+          for: 2m
+          labels:
+            severity: critical
+
+        - alert: RunnerPodDiskSpaceExhausted
+          annotations:
+            description: "GitHub runner pod {{ $labels.pod }} on node {{ $labels.node }} is failing due to disk space exhaustion. Node has {{ printf \"%.1f\" $value }}% disk space remaining."
+            summary: "Runner pod failing due to low disk space on node"
+          expr: |
+            (
+              node_filesystem_avail_bytes{mountpoint="/", fstype!="tmpfs"} 
+              / 
+              node_filesystem_size_bytes{mountpoint="/", fstype!="tmpfs"}
+            ) * 100 < 5
+            and
+            on(node) 
+            kube_pod_container_status_waiting_reason{
+              namespace="github-runners",
+              reason=~"Init:Error|CrashLoopBackOff"
+            } > 0
+          for: 5m
+          labels:
+            severity: critical
+            component: github-runners
+

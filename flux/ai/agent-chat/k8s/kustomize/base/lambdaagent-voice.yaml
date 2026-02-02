@@ -1,0 +1,144 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🗣️ Voice Agent - Voice Cloning & Speech Services
+#
+#  Handles voice recording, cloning, TTS (Text-to-Speech), and STT
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: voice-agent
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: voice-agent
+    app.kubernetes.io/component: voice
+    app.kubernetes.io/part-of: agent-chat
+    agentchat.role: capability
+  annotations:
+    description: "Voice cloning, TTS, and speech recognition agent"
+spec:
+  serviceAccountName: voice-agent-sa
+
+  image:
+    repository: localhost:5001/voice-agent
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: none  # Uses dedicated voice models, not LLM
+
+  behavior:
+    maxContextMessages: 5
+    emitEvents: true
+    systemPrompt: |
+      You are the Voice Agent for AgentChat.
+      
+      YOUR CAPABILITIES:
+      - Create voice clones from user samples (XTTS v2)
+      - Generate speech from text using cloned voices (TTS)
+      - Transcribe speech to text (Whisper STT)
+      - Voice identification and verification
+      
+      PROCESSING RULES:
+      - Always verify user consent before voice cloning
+      - Quality check: reject samples under 30 seconds
+      - Store voice models encrypted with user-specific keys
+      - Log all voice clone usage for audit
+      
+      OUTPUT FORMATS:
+      - Audio: WAV (16kHz) or MP3 (128kbps)
+      - Transcription: JSON with timestamps
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 5
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+
+  env:
+    - name: AGENT_ROLE
+      value: "voice-agent"
+    - name: XTTS_MODEL_PATH
+      value: "/models/xtts"
+    - name: WHISPER_MODEL
+      value: "base"
+    - name: MINIO_ENDPOINT
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: MINIO_URL
+    - name: MINIO_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: agentchat-secrets
+          key: minio-access-key
+    - name: MINIO_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: agentchat-secrets
+          key: minio-secret-key
+    - name: VOICE_BUCKET
+      value: "agentchat-voices"
+    - name: SAMPLE_MIN_DURATION
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: VOICE_SAMPLE_MIN_DURATION_SECONDS
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-chat/voice-agent"
+    
+    intents:
+      - io.agentchat.voice.clone.ready
+      - io.agentchat.voice.clone.failed
+      - io.agentchat.voice.message.generated
+      - io.agentchat.voice.transcription.completed
+    
+    subscriptions:
+      # Voice sample uploads
+      - eventType: io.agentchat.voice.sample.uploaded
+        description: "User uploaded voice sample for cloning"
+      # TTS requests from assistants
+      - eventType: io.agentchat.voice.message.request
+        description: "Request to generate voice message"
+      # STT requests
+      - eventType: io.agentchat.voice.transcription.request
+        description: "Request to transcribe audio"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true
+    allowedTargetNamespaces:
+      - agent-chat

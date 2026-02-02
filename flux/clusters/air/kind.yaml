@@ -1,0 +1,141 @@
+# =============================================================================
+# Air Cluster Configuration - Minimal Test Cluster
+# =============================================================================
+# Purpose: Minimal cluster for testing Agent-Reasoning
+# Total Nodes: 1 (single control-plane node)
+# Network: 10.248.0.0/16 (pods), 10.98.0.0/16 (services)
+# Components: cert-manager, knative-operator, prometheus, rabbitmq, agent-reasoning
+# =============================================================================
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: air
+networking:
+  # Air cluster private network CIDRs (non-overlapping with pro/studio)
+  podSubnet: "10.248.0.0/16"
+  serviceSubnet: "10.98.0.0/16"
+  # API server configuration for remote access
+  apiServerAddress: "0.0.0.0"  # Listen on all interfaces (required for remote access)
+  apiServerPort: 6443           # Default Kubernetes API port
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry]
+    config_path = "/etc/containerd/certs.d"
+
+nodes:
+# =============================================================================
+# Control Plane Node - All Workloads (Minimal)
+# =============================================================================
+# Single node hosts all minimal services:
+# - Platform: cert-manager, knative-operator, sealed-secrets
+# - Observability: Prometheus (for metrics)
+# - Serverless: Knative Serving/Eventing, RabbitMQ broker
+# - Application: Agent-Reasoning
+- role: control-plane
+  image: localhost:5001/kindest-node:v1.34.0
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true,tier=control-plane,workload-type=all,role=serverless"
+  - |
+    kind: ClusterConfiguration
+    networking:
+      podSubnet: "10.248.0.0/16"
+      serviceSubnet: "10.98.0.0/16"
+    apiServer:
+      certSANs:
+      - 0.0.0.0
+  labels:
+    role: serverless  # Required for Knative/RabbitMQ components
+    tier: infrastructure
+    workload-type: all
+  extraMounts:
+  - hostPath: /var/run/docker.sock
+    containerPath: /var/run/docker.sock
+  # Minimal port mappings for Air cluster
+  extraPortMappings:
+  # Platform ports
+  - containerPort: 30001  # metrics-server
+    hostPort: 34001
+    protocol: TCP
+  # Serverless ports
+  - containerPort: 30130  # knative serving
+    hostPort: 34130
+    protocol: TCP
+  - containerPort: 30131  # knative eventing
+    hostPort: 34131
+    protocol: TCP
+  - containerPort: 30133  # RabbitMQ broker
+    hostPort: 34133
+    protocol: TCP
+  # Observability ports
+  - containerPort: 30040  # grafana
+    hostPort: 34040
+    protocol: TCP
+  - containerPort: 30041  # prometheus
+    hostPort: 34041
+    protocol: TCP
+  - containerPort: 30042  # loki
+    hostPort: 34042
+    protocol: TCP
+  - containerPort: 30043  # tempo
+    hostPort: 34043
+    protocol: TCP
+  - containerPort: 4317   # tempo otlp grpc
+    hostPort: 34431
+    protocol: TCP
+  - containerPort: 4318   # tempo otlp http
+    hostPort: 34432
+    protocol: TCP
+  # Infrastructure ports
+  - containerPort: 30081  # flyteadmin grpc API (NodePort via flyteadmin-nodeport service)
+    hostPort: 34081
+    protocol: TCP
+  - containerPort: 30082  # vault
+    hostPort: 34082
+    protocol: TCP
+  # Data ports
+  - containerPort: 30060  # minio
+    hostPort: 34060
+    protocol: TCP
+  - containerPort: 30061  # minio console
+    hostPort: 34061
+    protocol: TCP
+  - containerPort: 30062  # postgres
+    hostPort: 34062
+    protocol: TCP
+  - containerPort: 30064  # redis
+    hostPort: 34064
+    protocol: TCP
+  # Application ports
+  - containerPort: 30150  # agent-reasoning
+    hostPort: 34150
+    protocol: TCP
+  - containerPort: 30192  # agent-sre
+    hostPort: 34192
+    protocol: TCP
+  # Ingress ports
+  - containerPort: 80      # http
+    hostPort: 8480
+    protocol: TCP
+  - containerPort: 443     # https
+    hostPort: 8443
+    protocol: TCP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: air
+  namespace: kube-system
+spec:
+  type: NodePort
+  port: 30000
+  nodePort: 34000
+  protocol: TCP
+  selector:
+    app: air
+
+

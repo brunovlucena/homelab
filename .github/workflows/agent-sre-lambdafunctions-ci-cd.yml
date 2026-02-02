@@ -1,0 +1,118 @@
+# ============================================================================
+# 🤖 Agent-SRE LambdaFunctions - CI/CD
+# ============================================================================
+# Build and push LambdaFunction Docker images to GHCR and localhost:5001
+# ============================================================================
+
+name: 🤖 Agent-SRE LambdaFunctions - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-sre/k8s/lambdafunctions/**'
+      - '.github/workflows/agent-sre-lambdafunctions-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agent-sre/k8s/lambdafunctions/**'
+      - '.github/workflows/agent-sre-lambdafunctions-ci-cd.yml'
+    tags:
+      - 'agent-sre-lambdafunctions-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  LOCAL_REGISTRY: localhost:5001
+  WORKING_DIR: flux/ai/agent-sre/k8s/lambdafunctions
+
+jobs:
+  build-lambdafunctions:
+    name: 🏗️ Build LambdaFunctions
+    runs-on: [self-hosted]
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        function:
+          - pod-restart
+          - pod-check-status
+          - scale-deployment
+          - check-pvc-status
+          - flux-reconcile-kustomization
+          - flux-reconcile-gitrepository
+          - flux-reconcile-helmrelease
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: 🔐 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔐 Login to Local Registry
+        if: env.LOCAL_REGISTRY_AVAILABLE == 'true'
+        run: |
+          echo "Logging in to local registry ${{ env.LOCAL_REGISTRY }}"
+          # Local registry login handled by buildx with network=host
+
+      - name: 🏷️ Extract metadata (GHCR)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/agent-sre-${{ matrix.function }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+
+      - name: 🏷️ Extract metadata (Local Registry)
+        id: local-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.LOCAL_REGISTRY }}/ai/${{ matrix.function }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.WORKING_DIR }}/src/${{ matrix.function }}
+          file: ${{ env.WORKING_DIR }}/src/${{ matrix.function }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ steps.local-meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=agent-sre-${{ matrix.function }}
+          cache-to: type=gha,mode=max,scope=agent-sre-${{ matrix.function }}
+          provenance: true
+          sbom: true
+
+      - name: 📋 Build Summary
+        run: |
+          echo "## 🏗️ ${{ matrix.function }} Build" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image (GHCR):** \`${{ steps.meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image (Local):** \`${{ steps.local-meta.outputs.tags }}\`" >> $GITHUB_STEP_SUMMARY
+

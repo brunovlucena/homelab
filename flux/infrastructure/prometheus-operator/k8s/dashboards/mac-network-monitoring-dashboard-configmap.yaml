@@ -1,0 +1,465 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mac-network-monitoring-dashboard
+  namespace: prometheus
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: dashboard
+data:
+  mac-network-monitoring.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "type": "row",
+          "title": "🌐 Network Connectivity Status",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "collapsed": false
+        },
+        {
+          "type": "stat",
+          "title": "Mac Studio → Mac Pro (Thunderbolt)",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } },
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "value": null, "color": "red" },
+                  { "value": 1, "color": "green" }
+                ]
+              }
+            }
+          },
+          "options": {
+            "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "targets": [
+            {
+              "expr": "network_probe_up{source=\"mac-studio\",interface=\"thunderbolt\"}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Mac Pro → Mac Studio (Thunderbolt)",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } },
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "value": null, "color": "red" },
+                  { "value": 1, "color": "green" }
+                ]
+              }
+            }
+          },
+          "options": {
+            "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "targets": [
+            {
+              "expr": "network_probe_up{source=\"mac-pro\",interface=\"thunderbolt\"}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Mac Studio → Mac Pro (WiFi)",
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } },
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "value": null, "color": "red" },
+                  { "value": 1, "color": "green" }
+                ]
+              }
+            }
+          },
+          "options": {
+            "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "targets": [
+            {
+              "expr": "network_probe_up{source=\"mac-studio\",interface=\"wifi\"}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "Mac Pro → Mac Studio (WiFi)",
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } },
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "value": null, "color": "red" },
+                  { "value": 1, "color": "green" }
+                ]
+              }
+            }
+          },
+          "options": {
+            "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+            "colorMode": "background",
+            "graphMode": "none"
+          },
+          "targets": [
+            {
+              "expr": "network_probe_up{source=\"mac-pro\",interface=\"wifi\"}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "📊 Latency Metrics",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "Thunderbolt Latency (ms)",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "value": null, "color": "green" },
+                  { "value": 1, "color": "yellow" },
+                  { "value": 5, "color": "red" }
+                ]
+              },
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "pointSize": 5,
+                "showPoints": "auto"
+              }
+            }
+          },
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "expr": "network_probe_latency_ms{interface=\"thunderbolt\"}",
+              "legendFormat": "{{source}} → remote",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "WiFi Latency (ms)",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ms",
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "value": null, "color": "green" },
+                  { "value": 5, "color": "yellow" },
+                  { "value": 20, "color": "red" }
+                ]
+              },
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "pointSize": 5,
+                "showPoints": "auto"
+              }
+            }
+          },
+          "options": {
+            "legend": { "displayMode": "list", "placement": "bottom" },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "expr": "network_probe_latency_ms{interface=\"wifi\"}",
+              "legendFormat": "{{source}} → remote",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "💻 Mac Studio System Metrics",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+          "collapsed": false
+        },
+        {
+          "type": "gauge",
+          "title": "Mac Studio CPU Usage",
+          "gridPos": { "h": 5, "w": 6, "x": 0, "y": 15 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1,
+              "thresholds": {
+                "mode": "percentage",
+                "steps": [
+                  { "value": null, "color": "green" },
+                  { "value": 70, "color": "yellow" },
+                  { "value": 90, "color": "red" }
+                ]
+              }
+            }
+          },
+          "targets": [
+            {
+              "expr": "1 - avg(rate(node_cpu_seconds_total{instance=\"mac-studio\",mode=\"idle\"}[5m]))",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "gauge",
+          "title": "Mac Studio Memory Usage",
+          "gridPos": { "h": 5, "w": 6, "x": 6, "y": 15 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1,
+              "thresholds": {
+                "mode": "percentage",
+                "steps": [
+                  { "value": null, "color": "green" },
+                  { "value": 70, "color": "yellow" },
+                  { "value": 90, "color": "red" }
+                ]
+              }
+            }
+          },
+          "targets": [
+            {
+              "expr": "1 - (node_memory_free_bytes{instance=\"mac-studio\"} / node_memory_total_bytes{instance=\"mac-studio\"})",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Mac Studio Network Traffic",
+          "gridPos": { "h": 5, "w": 12, "x": 12, "y": 15 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 20
+              }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byRegexp", "options": ".*transmit.*" },
+                "properties": [{ "id": "custom.transform", "value": "negative-Y" }]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "expr": "rate(node_network_receive_bytes_total{instance=\"mac-studio\",device=~\"en.*|bridge.*\"}[1m])",
+              "legendFormat": "{{device}} receive",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(node_network_transmit_bytes_total{instance=\"mac-studio\",device=~\"en.*|bridge.*\"}[1m])",
+              "legendFormat": "{{device}} transmit",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "🖥️ Mac Pro System Metrics",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 },
+          "collapsed": false
+        },
+        {
+          "type": "gauge",
+          "title": "Mac Pro CPU Usage",
+          "gridPos": { "h": 5, "w": 6, "x": 0, "y": 21 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1,
+              "thresholds": {
+                "mode": "percentage",
+                "steps": [
+                  { "value": null, "color": "green" },
+                  { "value": 70, "color": "yellow" },
+                  { "value": 90, "color": "red" }
+                ]
+              }
+            }
+          },
+          "targets": [
+            {
+              "expr": "1 - avg(rate(node_cpu_seconds_total{instance=\"mac-pro\",mode=\"idle\"}[5m]))",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "gauge",
+          "title": "Mac Pro Memory Usage",
+          "gridPos": { "h": 5, "w": 6, "x": 6, "y": 21 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0,
+              "max": 1,
+              "thresholds": {
+                "mode": "percentage",
+                "steps": [
+                  { "value": null, "color": "green" },
+                  { "value": 70, "color": "yellow" },
+                  { "value": 90, "color": "red" }
+                ]
+              }
+            }
+          },
+          "targets": [
+            {
+              "expr": "1 - (node_memory_free_bytes{instance=\"mac-pro\"} / node_memory_total_bytes{instance=\"mac-pro\"})",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Mac Pro Network Traffic",
+          "gridPos": { "h": 5, "w": 12, "x": 12, "y": 21 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "custom": {
+                "lineWidth": 1,
+                "fillOpacity": 20
+              }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byRegexp", "options": ".*transmit.*" },
+                "properties": [{ "id": "custom.transform", "value": "negative-Y" }]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "expr": "rate(node_network_receive_bytes_total{instance=\"mac-pro\",device=~\"en.*|bridge.*\"}[1m])",
+              "legendFormat": "{{device}} receive",
+              "refId": "A"
+            },
+            {
+              "expr": "rate(node_network_transmit_bytes_total{instance=\"mac-pro\",device=~\"en.*|bridge.*\"}[1m])",
+              "legendFormat": "{{device}} transmit",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "📈 Connectivity History",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
+          "collapsed": false
+        },
+        {
+          "type": "state-timeline",
+          "title": "Connection Status History",
+          "gridPos": { "h": 6, "w": 24, "x": 0, "y": 27 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } },
+                { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+              ]
+            }
+          },
+          "options": {
+            "showValue": "auto",
+            "rowHeight": 0.8,
+            "mergeValues": true
+          },
+          "targets": [
+            {
+              "expr": "network_probe_up",
+              "legendFormat": "{{source}} → {{target}} ({{interface}})",
+              "refId": "A"
+            }
+          ]
+        }
+      ],
+      "schemaVersion": 39,
+      "tags": ["mac", "network", "thunderbolt", "monitoring"],
+      "templating": { "list": [] },
+      "time": { "from": "now-1h", "to": "now" },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "Mac Network Monitoring",
+      "uid": "mac-network-monitoring",
+      "version": 1
+    }

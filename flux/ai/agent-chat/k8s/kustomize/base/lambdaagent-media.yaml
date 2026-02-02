@@ -1,0 +1,168 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🎨 Media Agent - Image & Video Generation
+#
+#  Generates images and videos using AI models (Stable Diffusion, etc.)
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: media-agent
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: media-agent
+    app.kubernetes.io/component: media
+    app.kubernetes.io/part-of: agent-chat
+    agentchat.role: capability
+  annotations:
+    description: "AI-powered image and video generation agent"
+spec:
+  serviceAccountName: media-agent-sa
+
+  image:
+    repository: localhost:5001/media-agent
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llava:7b"  # Vision model for image understanding
+    maxTokens: 512
+    temperature: "0.7"
+
+  behavior:
+    maxContextMessages: 10
+    emitEvents: true
+    systemPrompt: |
+      You are the Media Agent for AgentChat.
+      
+      YOUR CAPABILITIES:
+      - Generate images from text descriptions (Stable Diffusion XL)
+      - Apply style transfers and filters
+      - Generate short videos (when enabled)
+      - Analyze and describe images
+      
+      GENERATION RULES:
+      - Always respect content safety guidelines
+      - Block NSFW content generation
+      - Optimize prompts for better results
+      - Add quality tags: "high quality, detailed, 4k"
+      
+      WHEN RECEIVING IMAGE REQUESTS:
+      1. Validate the prompt for safety
+      2. Enhance prompt with quality modifiers
+      3. Generate image via Stable Diffusion
+      4. Store in MinIO and return URL
+      
+      OUTPUT:
+      {
+        "status": "success|failed|blocked",
+        "imageUrl": "minio://...",
+        "prompt": "enhanced prompt used",
+        "metadata": {
+          "model": "sdxl",
+          "resolution": "1024x1024",
+          "seed": 12345
+        }
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 3
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 300s  # GPU resources expensive
+
+  resources:
+    requests:
+      cpu: "1000m"
+      memory: "4Gi"
+    limits:
+      cpu: "4000m"
+      memory: "8Gi"
+
+  env:
+    - name: AGENT_ROLE
+      value: "media-agent"
+    - name: STABLE_DIFFUSION_URL
+      value: "http://stable-diffusion.ai-services.svc.cluster.local:7860"
+    - name: IMAGE_MODEL
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: IMAGE_MODEL
+    - name: IMAGE_MAX_RESOLUTION
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: IMAGE_MAX_RESOLUTION
+    - name: MINIO_ENDPOINT
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: MINIO_URL
+    - name: MINIO_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: agentchat-secrets
+          key: minio-access-key
+    - name: MINIO_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: agentchat-secrets
+          key: minio-secret-key
+    - name: MEDIA_BUCKET
+      value: "agentchat-media"
+    - name: NSFW_FILTER_ENABLED
+      value: "true"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-chat/media-agent"
+    
+    intents:
+      - io.agentchat.media.image.generated
+      - io.agentchat.media.image.failed
+      - io.agentchat.media.video.generated
+      - io.agentchat.media.video.failed
+      - io.agentchat.media.analysis.completed
+    
+    subscriptions:
+      # Image generation requests
+      - eventType: io.agentchat.media.image.request
+        description: "Request to generate an image"
+      # Video generation requests
+      - eventType: io.agentchat.media.video.request
+        description: "Request to generate a video"
+      # Image analysis requests
+      - eventType: io.agentchat.media.analysis.request
+        description: "Request to analyze/describe an image"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 2
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true
+    allowedTargetNamespaces:
+      - agent-chat

@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dj-collab-p2p-config
+  namespace: dj-collab-p2p
+data:
+  signaling.host: "coturn.dj-collab-p2p.svc.cluster.local"
+  signaling.port: "3478"
+  ipfs.api.url: "http://ipfs.dj-collab-p2p.svc.cluster.local:5001"
+  ipfs.gateway.url: "http://ipfs.dj-collab-p2p.svc.cluster.local:8080"
+  p2p.enabled: "true"
+  p2p.ice.servers: "stun:stun.l.google.com:19302"

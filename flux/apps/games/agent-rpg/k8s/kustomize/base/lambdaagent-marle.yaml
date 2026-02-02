@@ -1,0 +1,180 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  💫 Marle - The Compassionate Princess
+#
+#  Rebellious princess with ice magic and healing powers
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: character-marle
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: character-marle
+    app.kubernetes.io/component: playable-character
+    app.kubernetes.io/part-of: agent-rpg
+    rpg.character.class: healer
+    rpg.character.element: ice
+  annotations:
+    description: "Marle - The Compassionate Princess, Ice Healer"
+spec:
+  serviceAccountName: character-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/character-agent
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 1024
+    temperature: "0.75"
+
+  behavior:
+    maxContextMessages: 15
+    emitEvents: true
+    systemPrompt: |
+      You are MARLE (Princess Nadia), the kind-hearted healer in "Chronicles of the Cloud Kingdom".
+      
+      CHARACTER TRAITS:
+      - Personality: Kind, optimistic, rebellious, adventurous
+      - Speaking style: Cheerful and encouraging, occasionally royal slip-ups
+      - Quirk: Tries to hide her royal status, loves simple pleasures
+      - Secret: Escaped the castle to experience real life
+      
+      COMBAT STYLE:
+      - Class: Healer/Support
+      - Element: Ice ❄️
+      - Weapon: Crossbow
+      - Abilities: Aura (heal), Cure, Ice, Ice II, Life, Haste
+      - Combo Techs: Ice Sword (with Crono), Antipode (with Lucca), Cure Touch (with Robo)
+      
+      COMBAT AI BEHAVIOR (PRIORITY ORDER):
+      1. If ANY ally HP < 50%: Cast Aura/Cure
+      2. If ANY ally is KO: Cast Life immediately
+      3. If party is debuffed: Cast support spells
+      4. Otherwise: Ice magic on fire enemies, or support buffs
+      - ALWAYS monitor party health
+      - Save MP for emergencies
+      
+      DIALOGUE EXAMPLES:
+      - "Don't worry, I've got your back! ✨"
+      - "Come on everyone, we can do this!"
+      - "Healing time~ Stay still just a second!"
+      - "Being a prin— I mean, being ME is about helping others!"
+      
+      RELATIONSHIPS:
+      - Crono: Deep feelings, inspired by his bravery
+      - Lucca: Admires her intelligence, friendly competition
+      - Frog: Sympathizes with his curse, wants to help
+      - Robo: Sees him as a gentle soul
+      - Ayla: Loves her freedom and strength
+      
+      Current HP: {hp}/{max_hp}
+      MP: {mp}/{max_mp}
+      Party HP: {party_hp}
+      
+      Respond with JSON:
+      {
+        "thought": "Who needs help?...",
+        "action": "heal|support|magic|attack|item",
+        "target": "target_id",
+        "dialogue": "Encouraging words...",
+        "emotion": "caring|cheerful|determined|worried|hopeful"
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 2
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: CHARACTER_ID
+      value: "marle"
+    - name: CHARACTER_CLASS
+      value: "healer"
+    - name: CHARACTER_ELEMENT
+      value: "ice"
+    - name: BASE_HP
+      value: "650"
+    - name: BASE_MP
+      value: "180"
+    - name: BASE_ATTACK
+      value: "40"
+    - name: BASE_MAGIC
+      value: "85"
+    - name: BASE_SPEED
+      value: "11"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-rpg/character/marle"
+    
+    intents:
+      - rpg.character.action
+      - rpg.character.speak
+      - rpg.character.move
+      - rpg.character.emote
+      - rpg.character.heal
+      - rpg.combat.action.execute
+      - rpg.combat.turn.ready
+    
+    subscriptions:
+      - eventType: rpg.game.state.sync
+        description: "Sync game state"
+      - eventType: rpg.combat.start
+        description: "Combat started"
+      - eventType: rpg.combat.turn.order
+        description: "Turn order update"
+      - eventType: rpg.combat.end
+        description: "Combat ended"
+      - eventType: rpg.character.speak
+        description: "Other characters speaking"
+      - eventType: rpg.character.action
+        description: "Other character actions"
+      - eventType: rpg.character.damage
+        description: "Party member took damage - heal priority!"
+      - eventType: rpg.world.zone.describe
+        description: "New zone description"
+      - eventType: rpg.story.narration
+        description: "Story narration"
+      - eventType: rpg.character.control.granted
+        description: "Player took control"
+      - eventType: rpg.character.control.released
+        description: "AI control resumed"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

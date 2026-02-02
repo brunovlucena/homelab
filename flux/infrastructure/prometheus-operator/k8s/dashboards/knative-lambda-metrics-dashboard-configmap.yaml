@@ -1,0 +1,359 @@
+---
+# Grafana Dashboard ConfigMap for Knative Lambda Metrics
+# This dashboard is automatically discovered by Grafana via the sidecar
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-knative-lambda-metrics-dashboard
+  namespace: prometheus
+  labels:
+    grafana_dashboard: '1'
+data:
+  knative-lambda-metrics-dashboard.json: "{\n  \"title\": \"Knative Lambda Metrics (v1) [v39]\"\
+    ,\n  \"tags\": [\"knative\", \"lambda\", \"serverless\", \"functions\"],\n  \"\
+    timezone\": \"browser\",\n  \"schemaVersion\": 39,\n  \"version\": 1,\n  \"refresh\"\
+    : \"30s\",\n  \"uid\": \"knative-lambda-metrics\",\n  \"editable\": true,\n  \"\
+    fiscalYearStartMonth\": 0,\n  \"graphTooltip\": 0,\n  \"links\": [],\n  \"liveNow\"\
+    : false,\n  \"templating\": {\n    \"list\": [\n      {\n        \"name\": \"\
+    namespace\",\n        \"type\": \"query\",\n        \"datasource\": {\n      \
+    \    \"type\": \"prometheus\",\n          \"uid\": \"prometheus\"\n        },\n\
+    \        \"query\": {\n          \"query\": \"label_values(knative_lambda_operator_lambdafunctions_total,\
+    \ namespace)\",\n          \"refId\": \"StandardVariableQuery\"\n        },\n\
+    \        \"current\": {\n          \"selected\": true,\n          \"text\": \"\
+    knative-lambda\",\n          \"value\": \"knative-lambda\"\n        },\n     \
+    \   \"includeAll\": true,\n        \"multi\": false,\n        \"allValue\": \"\
+    .*\",\n        \"label\": \"Namespace\"\n      },\n      {\n        \"name\":\
+    \ \"function\",\n        \"type\": \"query\",\n        \"datasource\": {\n   \
+    \       \"type\": \"prometheus\",\n          \"uid\": \"prometheus\"\n       \
+    \ },\n        \"query\": {\n          \"query\": \"label_values(knative_lambda_function_invocations_total{namespace=~\\\
+    \"$namespace\\\"}, function)\",\n          \"refId\": \"StandardVariableQuery\"\
+    \n        },\n        \"current\": {\n          \"selected\": true,\n        \
+    \  \"text\": [\"All\"],\n          \"value\": [\"$__all\"]\n        },\n     \
+    \   \"includeAll\": true,\n        \"multi\": true,\n        \"allValue\": \"\
+    .*\",\n        \"label\": \"Function\"\n      }\n    ]\n  },\n  \"panels\": [\n\
+    \    {\n      \"collapsed\": false,\n      \"gridPos\": {\n        \"h\": 1,\n\
+    \        \"w\": 24,\n        \"x\": 0,\n        \"y\": 0\n      },\n      \"id\"\
+    : 100,\n      \"panels\": [],\n      \"title\": \"Overview - Function Metrics\"\
+    ,\n      \"type\": \"row\"\n    },\n    {\n      \"datasource\": {\n        \"\
+    type\": \"prometheus\",\n        \"uid\": \"prometheus\"\n      },\n      \"fieldConfig\"\
+    : {\n        \"defaults\": {\n          \"color\": {\n            \"mode\": \"\
+    thresholds\"\n          },\n          \"mappings\": [],\n          \"thresholds\"\
+    : {\n            \"mode\": \"absolute\",\n            \"steps\": [\n         \
+    \     {\n                \"color\": \"green\",\n                \"value\": null\n\
+    \              }\n            ]\n          },\n          \"unit\": \"short\"\n\
+    \        }\n      },\n      \"gridPos\": {\n        \"h\": 4,\n        \"w\":\
+    \ 6,\n        \"x\": 0,\n        \"y\": 1\n      },\n      \"id\": 1,\n      \"\
+    options\": {\n        \"colorMode\": \"value\",\n        \"graphMode\": \"area\"\
+    ,\n        \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n  \
+    \      \"reduceOptions\": {\n          \"calcs\": [\"lastNotNull\"],\n       \
+    \   \"fields\": \"\",\n          \"values\": false\n        },\n        \"textMode\"\
+    : \"auto\"\n      },\n      \"pluginVersion\": \"10.0.0\",\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"sum(knative_lambda_function_invocations_total{namespace=~\\\
+    \"$namespace\\\", function=~\\\"$function\\\"})\",\n          \"refId\": \"A\"\
+    \n        }\n      ],\n      \"title\": \"Total Invocations\",\n      \"type\"\
+    : \"stat\"\n    },\n    {\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    ,\n        \"uid\": \"prometheus\"\n      },\n      \"fieldConfig\": {\n     \
+    \   \"defaults\": {\n          \"color\": {\n            \"mode\": \"thresholds\"\
+    \n          },\n          \"mappings\": [],\n          \"thresholds\": {\n   \
+    \         \"mode\": \"absolute\",\n            \"steps\": [\n              {\n\
+    \                \"color\": \"green\",\n                \"value\": null\n    \
+    \          },\n              {\n                \"color\": \"red\",\n        \
+    \        \"value\": 1\n              }\n            ]\n          },\n        \
+    \  \"unit\": \"short\"\n        }\n      },\n      \"gridPos\": {\n        \"\
+    h\": 4,\n        \"w\": 6,\n        \"x\": 6,\n        \"y\": 1\n      },\n  \
+    \    \"id\": 2,\n      \"options\": {\n        \"colorMode\": \"value\",\n   \
+    \     \"graphMode\": \"area\",\n        \"justifyMode\": \"auto\",\n        \"\
+    orientation\": \"auto\",\n        \"reduceOptions\": {\n          \"calcs\": [\"\
+    lastNotNull\"],\n          \"fields\": \"\",\n          \"values\": false\n  \
+    \      },\n        \"textMode\": \"auto\"\n      },\n      \"pluginVersion\":\
+    \ \"10.0.0\",\n      \"targets\": [\n        {\n          \"datasource\": {\n\
+    \            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n\
+    \          },\n          \"expr\": \"sum(knative_lambda_function_errors_total{namespace=~\\\
+    \"$namespace\\\", function=~\\\"$function\\\"})\",\n          \"refId\": \"A\"\
+    \n        }\n      ],\n      \"title\": \"Total Errors\",\n      \"type\": \"\
+    stat\"\n    },\n    {\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    ,\n        \"uid\": \"prometheus\"\n      },\n      \"fieldConfig\": {\n     \
+    \   \"defaults\": {\n          \"color\": {\n            \"mode\": \"thresholds\"\
+    \n          },\n          \"mappings\": [],\n          \"thresholds\": {\n   \
+    \         \"mode\": \"absolute\",\n            \"steps\": [\n              {\n\
+    \                \"color\": \"blue\",\n                \"value\": null\n     \
+    \         }\n            ]\n          },\n          \"unit\": \"short\"\n    \
+    \    }\n      },\n      \"gridPos\": {\n        \"h\": 4,\n        \"w\": 6,\n\
+    \        \"x\": 12,\n        \"y\": 1\n      },\n      \"id\": 3,\n      \"options\"\
+    : {\n        \"colorMode\": \"value\",\n        \"graphMode\": \"area\",\n   \
+    \     \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n       \
+    \ \"reduceOptions\": {\n          \"calcs\": [\"lastNotNull\"],\n          \"\
+    fields\": \"\",\n          \"values\": false\n        },\n        \"textMode\"\
+    : \"auto\"\n      },\n      \"pluginVersion\": \"10.0.0\",\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"sum(knative_lambda_function_cold_starts_total{namespace=~\\\
+    \"$namespace\\\", function=~\\\"$function\\\"})\",\n          \"refId\": \"A\"\
+    \n        }\n      ],\n      \"title\": \"Total Cold Starts\",\n      \"type\"\
+    : \"stat\"\n    },\n    {\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    ,\n        \"uid\": \"prometheus\"\n      },\n      \"fieldConfig\": {\n     \
+    \   \"defaults\": {\n          \"color\": {\n            \"mode\": \"thresholds\"\
+    \n          },\n          \"mappings\": [],\n          \"thresholds\": {\n   \
+    \         \"mode\": \"absolute\",\n            \"steps\": [\n              {\n\
+    \                \"color\": \"green\",\n                \"value\": null\n    \
+    \          },\n              {\n                \"color\": \"yellow\",\n     \
+    \           \"value\": 0.01\n              },\n              {\n             \
+    \   \"color\": \"red\",\n                \"value\": 0.05\n              }\n  \
+    \          ]\n          },\n          \"unit\": \"percentunit\"\n        }\n \
+    \     },\n      \"gridPos\": {\n        \"h\": 4,\n        \"w\": 6,\n       \
+    \ \"x\": 18,\n        \"y\": 1\n      },\n      \"id\": 4,\n      \"options\"\
+    : {\n        \"colorMode\": \"value\",\n        \"graphMode\": \"area\",\n   \
+    \     \"justifyMode\": \"auto\",\n        \"orientation\": \"auto\",\n       \
+    \ \"reduceOptions\": {\n          \"calcs\": [\"lastNotNull\"],\n          \"\
+    fields\": \"\",\n          \"values\": false\n        },\n        \"textMode\"\
+    : \"auto\"\n      },\n      \"pluginVersion\": \"10.0.0\",\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"sum(rate(knative_lambda_function_errors_total{namespace=~\\\
+    \"$namespace\\\", function=~\\\"$function\\\"}[5m])) / sum(rate(knative_lambda_function_invocations_total{namespace=~\\\
+    \"$namespace\\\", function=~\\\"$function\\\"}[5m])) or vector(0)\",\n       \
+    \   \"refId\": \"A\"\n        }\n      ],\n      \"title\": \"Error Rate\",\n\
+    \      \"type\": \"stat\"\n    },\n    {\n      \"collapsed\": false,\n      \"\
+    gridPos\": {\n        \"h\": 1,\n        \"w\": 24,\n        \"x\": 0,\n     \
+    \   \"y\": 5\n      },\n      \"id\": 101,\n      \"panels\": [],\n      \"title\"\
+    : \"RED Metrics - Rate, Errors, Duration\",\n      \"type\": \"row\"\n    },\n\
+    \    {\n      \"datasource\": {\n        \"type\": \"prometheus\",\n        \"\
+    uid\": \"prometheus\"\n      },\n      \"fieldConfig\": {\n        \"defaults\"\
+    : {\n          \"color\": {\n            \"mode\": \"palette-classic\"\n     \
+    \     },\n          \"custom\": {\n            \"axisCenteredZero\": false,\n\
+    \            \"axisColorMode\": \"text\",\n            \"axisLabel\": \"\",\n\
+    \            \"axisPlacement\": \"auto\",\n            \"barAlignment\": 0,\n\
+    \            \"drawStyle\": \"line\",\n            \"fillOpacity\": 10,\n    \
+    \        \"gradientMode\": \"none\",\n            \"hideFrom\": {\n          \
+    \    \"tooltip\": false,\n              \"viz\": false,\n              \"legend\"\
+    : false\n            },\n            \"lineInterpolation\": \"linear\",\n    \
+    \        \"lineWidth\": 1,\n            \"pointSize\": 5,\n            \"scaleDistribution\"\
+    : {\n              \"type\": \"linear\"\n            },\n            \"showPoints\"\
+    : \"never\",\n            \"spanNulls\": false,\n            \"stacking\": {\n\
+    \              \"group\": \"A\",\n              \"mode\": \"none\"\n         \
+    \   },\n            \"thresholdsStyle\": {\n              \"mode\": \"off\"\n\
+    \            }\n          },\n          \"mappings\": [],\n          \"thresholds\"\
+    : {\n            \"mode\": \"absolute\",\n            \"steps\": [\n         \
+    \     {\n                \"color\": \"green\",\n                \"value\": null\n\
+    \              }\n            ]\n          },\n          \"unit\": \"ops\"\n \
+    \       }\n      },\n      \"gridPos\": {\n        \"h\": 8,\n        \"w\": 12,\n\
+    \        \"x\": 0,\n        \"y\": 6\n      },\n      \"id\": 5,\n      \"options\"\
+    : {\n        \"legend\": {\n          \"calcs\": [\"mean\", \"max\"],\n      \
+    \    \"displayMode\": \"list\",\n          \"placement\": \"bottom\",\n      \
+    \    \"showLegend\": true\n        },\n        \"tooltip\": {\n          \"mode\"\
+    : \"multi\",\n          \"sort\": \"none\"\n        }\n      },\n      \"pluginVersion\"\
+    : \"10.0.0\",\n      \"targets\": [\n        {\n          \"datasource\": {\n\
+    \            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n\
+    \          },\n          \"expr\": \"sum by (function, status) (rate(knative_lambda_function_invocations_total{namespace=~\\\
+    \"$namespace\\\", function=~\\\"$function\\\"}[5m]))\",\n          \"legendFormat\"\
+    : \"{{function}} - {{status}}\",\n          \"refId\": \"A\"\n        }\n    \
+    \  ],\n      \"title\": \"Invocation Rate by Function (Rate)\",\n      \"type\"\
+    : \"timeseries\"\n    },\n    {\n      \"datasource\": {\n        \"type\": \"\
+    prometheus\",\n        \"uid\": \"prometheus\"\n      },\n      \"fieldConfig\"\
+    : {\n        \"defaults\": {\n          \"color\": {\n            \"mode\": \"\
+    palette-classic\"\n          },\n          \"custom\": {\n            \"axisCenteredZero\"\
+    : false,\n            \"axisColorMode\": \"text\",\n            \"axisLabel\"\
+    : \"\",\n            \"axisPlacement\": \"auto\",\n            \"barAlignment\"\
+    : 0,\n            \"drawStyle\": \"line\",\n            \"fillOpacity\": 10,\n\
+    \            \"gradientMode\": \"none\",\n            \"hideFrom\": {\n      \
+    \        \"tooltip\": false,\n              \"viz\": false,\n              \"\
+    legend\": false\n            },\n            \"lineInterpolation\": \"linear\"\
+    ,\n            \"lineWidth\": 1,\n            \"pointSize\": 5,\n            \"\
+    scaleDistribution\": {\n              \"type\": \"linear\"\n            },\n \
+    \           \"showPoints\": \"never\",\n            \"spanNulls\": false,\n  \
+    \          \"stacking\": {\n              \"group\": \"A\",\n              \"\
+    mode\": \"none\"\n            },\n            \"thresholdsStyle\": {\n       \
+    \       \"mode\": \"off\"\n            }\n          },\n          \"mappings\"\
+    : [],\n          \"thresholds\": {\n            \"mode\": \"absolute\",\n    \
+    \        \"steps\": [\n              {\n                \"color\": \"red\",\n\
+    \                \"value\": null\n              }\n            ]\n          },\n\
+    \          \"unit\": \"ops\"\n        }\n      },\n      \"gridPos\": {\n    \
+    \    \"h\": 8,\n        \"w\": 12,\n        \"x\": 12,\n        \"y\": 6\n   \
+    \   },\n      \"id\": 6,\n      \"options\": {\n        \"legend\": {\n      \
+    \    \"calcs\": [\"mean\", \"max\"],\n          \"displayMode\": \"list\",\n \
+    \         \"placement\": \"bottom\",\n          \"showLegend\": true\n       \
+    \ },\n        \"tooltip\": {\n          \"mode\": \"multi\",\n          \"sort\"\
+    : \"none\"\n        }\n      },\n      \"pluginVersion\": \"10.0.0\",\n      \"\
+    targets\": [\n        {\n          \"datasource\": {\n            \"type\": \"\
+    prometheus\",\n            \"uid\": \"prometheus\"\n          },\n          \"\
+    expr\": \"sum by (function, error_type) (rate(knative_lambda_function_errors_total{namespace=~\\\
+    \"$namespace\\\", function=~\\\"$function\\\"}[5m]))\",\n          \"legendFormat\"\
+    : \"{{function}} - {{error_type}}\",\n          \"refId\": \"A\"\n        }\n\
+    \      ],\n      \"title\": \"Error Rate by Function (Errors)\",\n      \"type\"\
+    : \"timeseries\"\n    },\n    {\n      \"datasource\": {\n        \"type\": \"\
+    prometheus\",\n        \"uid\": \"prometheus\"\n      },\n      \"fieldConfig\"\
+    : {\n        \"defaults\": {\n          \"color\": {\n            \"mode\": \"\
+    palette-classic\"\n          },\n          \"custom\": {\n            \"axisCenteredZero\"\
+    : false,\n            \"axisColorMode\": \"text\",\n            \"axisLabel\"\
+    : \"\",\n            \"axisPlacement\": \"auto\",\n            \"barAlignment\"\
+    : 0,\n            \"drawStyle\": \"line\",\n            \"fillOpacity\": 10,\n\
+    \            \"gradientMode\": \"none\",\n            \"hideFrom\": {\n      \
+    \        \"tooltip\": false,\n              \"viz\": false,\n              \"\
+    legend\": false\n            },\n            \"lineInterpolation\": \"linear\"\
+    ,\n            \"lineWidth\": 1,\n            \"pointSize\": 5,\n            \"\
+    scaleDistribution\": {\n              \"type\": \"linear\"\n            },\n \
+    \           \"showPoints\": \"never\",\n            \"spanNulls\": false,\n  \
+    \          \"stacking\": {\n              \"group\": \"A\",\n              \"\
+    mode\": \"none\"\n            },\n            \"thresholdsStyle\": {\n       \
+    \       \"mode\": \"off\"\n            }\n          },\n          \"mappings\"\
+    : [],\n          \"thresholds\": {\n            \"mode\": \"absolute\",\n    \
+    \        \"steps\": [\n              {\n                \"color\": \"green\",\n\
+    \                \"value\": null\n              }\n            ]\n          },\n\
+    \          \"unit\": \"s\"\n        }\n      },\n      \"gridPos\": {\n      \
+    \  \"h\": 8,\n        \"w\": 12,\n        \"x\": 0,\n        \"y\": 14\n     \
+    \ },\n      \"id\": 7,\n      \"options\": {\n        \"legend\": {\n        \
+    \  \"calcs\": [\"mean\", \"max\"],\n          \"displayMode\": \"list\",\n   \
+    \       \"placement\": \"bottom\",\n          \"showLegend\": true\n        },\n\
+    \        \"tooltip\": {\n          \"mode\": \"multi\",\n          \"sort\": \"\
+    none\"\n        }\n      },\n      \"pluginVersion\": \"10.0.0\",\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"prometheus\"\n          },\n          \"expr\": \"histogram_quantile(0.50,\
+    \ sum by (function, le) (rate(knative_lambda_function_duration_seconds_bucket{namespace=~\\\
+    \"$namespace\\\", function=~\\\"$function\\\"}[5m])))\",\n          \"legendFormat\"\
+    : \"P50 - {{function}}\",\n          \"refId\": \"A\"\n        },\n        {\n\
+    \          \"datasource\": {\n            \"type\": \"prometheus\",\n        \
+    \    \"uid\": \"prometheus\"\n          },\n          \"expr\": \"histogram_quantile(0.95,\
+    \ sum by (function, le) (rate(knative_lambda_function_duration_seconds_bucket{namespace=~\\\
+    \"$namespace\\\", function=~\\\"$function\\\"}[5m])))\",\n          \"legendFormat\"\
+    : \"P95 - {{function}}\",\n          \"refId\": \"B\"\n        },\n        {\n\
+    \          \"datasource\": {\n            \"type\": \"prometheus\",\n        \
+    \    \"uid\": \"prometheus\"\n          },\n          \"expr\": \"histogram_quantile(0.99,\
+    \ sum by (function, le) (rate(knative_lambda_function_duration_seconds_bucket{namespace=~\\\
+    \"$namespace\\\", function=~\\\"$function\\\"}[5m])))\",\n          \"legendFormat\"\
+    : \"P99 - {{function}}\",\n          \"refId\": \"C\"\n        }\n      ],\n \
+    \     \"title\": \"Function Duration (P50/P95/P99)\",\n      \"type\": \"timeseries\"\
+    \n    },\n    {\n      \"datasource\": {\n        \"type\": \"prometheus\",\n\
+    \        \"uid\": \"prometheus\"\n      },\n      \"fieldConfig\": {\n       \
+    \ \"defaults\": {\n          \"color\": {\n            \"mode\": \"palette-classic\"\
+    \n          },\n          \"custom\": {\n            \"axisCenteredZero\": false,\n\
+    \            \"axisColorMode\": \"text\",\n            \"axisLabel\": \"\",\n\
+    \            \"axisPlacement\": \"auto\",\n            \"barAlignment\": 0,\n\
+    \            \"drawStyle\": \"line\",\n            \"fillOpacity\": 10,\n    \
+    \        \"gradientMode\": \"none\",\n            \"hideFrom\": {\n          \
+    \    \"tooltip\": false,\n              \"viz\": false,\n              \"legend\"\
+    : false\n            },\n            \"lineInterpolation\": \"linear\",\n    \
+    \        \"lineWidth\": 1,\n            \"pointSize\": 5,\n            \"scaleDistribution\"\
+    : {\n              \"type\": \"linear\"\n            },\n            \"showPoints\"\
+    : \"never\",\n            \"spanNulls\": false,\n            \"stacking\": {\n\
+    \              \"group\": \"A\",\n              \"mode\": \"none\"\n         \
+    \   },\n            \"thresholdsStyle\": {\n              \"mode\": \"off\"\n\
+    \            }\n          },\n          \"mappings\": [],\n          \"thresholds\"\
+    : {\n            \"mode\": \"absolute\",\n            \"steps\": [\n         \
+    \     {\n                \"color\": \"blue\",\n                \"value\": null\n\
+    \              }\n            ]\n          },\n          \"unit\": \"ops\"\n \
+    \       }\n      },\n      \"gridPos\": {\n        \"h\": 8,\n        \"w\": 12,\n\
+    \        \"x\": 12,\n        \"y\": 14\n      },\n      \"id\": 8,\n      \"options\"\
+    : {\n        \"legend\": {\n          \"calcs\": [\"sum\"],\n          \"displayMode\"\
+    : \"list\",\n          \"placement\": \"bottom\",\n          \"showLegend\": true\n\
+    \        },\n        \"tooltip\": {\n          \"mode\": \"multi\",\n        \
+    \  \"sort\": \"none\"\n        }\n      },\n      \"pluginVersion\": \"10.0.0\"\
+    ,\n      \"targets\": [\n        {\n          \"datasource\": {\n            \"\
+    type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n          },\n \
+    \         \"expr\": \"sum by (function) (rate(knative_lambda_function_cold_starts_total{namespace=~\\\
+    \"$namespace\\\", function=~\\\"$function\\\"}[5m]))\",\n          \"legendFormat\"\
+    : \"{{function}}\",\n          \"refId\": \"A\"\n        }\n      ],\n      \"\
+    title\": \"Cold Starts Rate by Function\",\n      \"type\": \"timeseries\"\n \
+    \   },\n    {\n      \"collapsed\": false,\n      \"gridPos\": {\n        \"h\"\
+    : 1,\n        \"w\": 24,\n        \"x\": 0,\n        \"y\": 22\n      },\n   \
+    \   \"id\": 102,\n      \"panels\": [],\n      \"title\": \"Resource Usage\",\n\
+    \      \"type\": \"row\"\n    },\n    {\n      \"datasource\": {\n        \"type\"\
+    : \"prometheus\",\n        \"uid\": \"prometheus\"\n      },\n      \"fieldConfig\"\
+    : {\n        \"defaults\": {\n          \"color\": {\n            \"mode\": \"\
+    palette-classic\"\n          },\n          \"custom\": {\n            \"axisCenteredZero\"\
+    : false,\n            \"axisColorMode\": \"text\",\n            \"axisLabel\"\
+    : \"\",\n            \"axisPlacement\": \"auto\",\n            \"barAlignment\"\
+    : 0,\n            \"drawStyle\": \"line\",\n            \"fillOpacity\": 10,\n\
+    \            \"gradientMode\": \"none\",\n            \"hideFrom\": {\n      \
+    \        \"tooltip\": false,\n              \"viz\": false,\n              \"\
+    legend\": false\n            },\n            \"lineInterpolation\": \"linear\"\
+    ,\n            \"lineWidth\": 1,\n            \"pointSize\": 5,\n            \"\
+    scaleDistribution\": {\n              \"type\": \"linear\"\n            },\n \
+    \           \"showPoints\": \"never\",\n            \"spanNulls\": false,\n  \
+    \          \"stacking\": {\n              \"group\": \"A\",\n              \"\
+    mode\": \"none\"\n            },\n            \"thresholdsStyle\": {\n       \
+    \       \"mode\": \"off\"\n            }\n          },\n          \"mappings\"\
+    : [],\n          \"thresholds\": {\n            \"mode\": \"absolute\",\n    \
+    \        \"steps\": [\n              {\n                \"color\": \"green\",\n\
+    \                \"value\": null\n              }\n            ]\n          },\n\
+    \          \"unit\": \"short\",\n          \"decimals\": 3\n        }\n      },\n\
+    \      \"gridPos\": {\n        \"h\": 8,\n        \"w\": 12,\n        \"x\": 0,\n\
+    \        \"y\": 23\n      },\n      \"id\": 9,\n      \"options\": {\n       \
+    \ \"legend\": {\n          \"calcs\": [\"mean\", \"max\"],\n          \"displayMode\"\
+    : \"list\",\n          \"placement\": \"bottom\",\n          \"showLegend\": true\n\
+    \        },\n        \"tooltip\": {\n          \"mode\": \"multi\",\n        \
+    \  \"sort\": \"none\"\n        }\n      },\n      \"pluginVersion\": \"10.0.0\"\
+    ,\n      \"targets\": [\n        {\n          \"datasource\": {\n            \"\
+    type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n          },\n \
+    \         \"expr\": \"sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=~\\\
+    \"$namespace\\\", pod=~\\\".*parser.*|.*lambda.*\\\", container=\\\"user-container\\\
+    \"}[5m]))\",\n          \"legendFormat\": \"{{pod}}\",\n          \"refId\": \"\
+    A\"\n        }\n      ],\n      \"title\": \"CPU Usage (5m rate) by Pod\",\n \
+    \     \"type\": \"timeseries\"\n    },\n    {\n      \"datasource\": {\n     \
+    \   \"type\": \"prometheus\",\n        \"uid\": \"prometheus\"\n      },\n   \
+    \   \"fieldConfig\": {\n        \"defaults\": {\n          \"color\": {\n    \
+    \        \"mode\": \"palette-classic\"\n          },\n          \"custom\": {\n\
+    \            \"axisCenteredZero\": false,\n            \"axisColorMode\": \"text\"\
+    ,\n            \"axisLabel\": \"\",\n            \"axisPlacement\": \"auto\",\n\
+    \            \"barAlignment\": 0,\n            \"drawStyle\": \"line\",\n    \
+    \        \"fillOpacity\": 10,\n            \"gradientMode\": \"none\",\n     \
+    \       \"hideFrom\": {\n              \"tooltip\": false,\n              \"viz\"\
+    : false,\n              \"legend\": false\n            },\n            \"lineInterpolation\"\
+    : \"linear\",\n            \"lineWidth\": 1,\n            \"pointSize\": 5,\n\
+    \            \"scaleDistribution\": {\n              \"type\": \"linear\"\n  \
+    \          },\n            \"showPoints\": \"never\",\n            \"spanNulls\"\
+    : false,\n            \"stacking\": {\n              \"group\": \"A\",\n     \
+    \         \"mode\": \"none\"\n            },\n            \"thresholdsStyle\"\
+    : {\n              \"mode\": \"off\"\n            }\n          },\n          \"\
+    mappings\": [],\n          \"thresholds\": {\n            \"mode\": \"absolute\"\
+    ,\n            \"steps\": [\n              {\n                \"color\": \"green\"\
+    ,\n                \"value\": null\n              }\n            ]\n         \
+    \ },\n          \"unit\": \"mbytes\",\n          \"decimals\": 2\n        }\n\
+    \      },\n      \"gridPos\": {\n        \"h\": 8,\n        \"w\": 12,\n     \
+    \   \"x\": 12,\n        \"y\": 23\n      },\n      \"id\": 10,\n      \"options\"\
+    : {\n        \"legend\": {\n          \"calcs\": [\"mean\", \"max\"],\n      \
+    \    \"displayMode\": \"list\",\n          \"placement\": \"bottom\",\n      \
+    \    \"showLegend\": true\n        },\n        \"tooltip\": {\n          \"mode\"\
+    : \"multi\",\n          \"sort\": \"none\"\n        }\n      },\n      \"pluginVersion\"\
+    : \"10.0.0\",\n      \"targets\": [\n        {\n          \"datasource\": {\n\
+    \            \"type\": \"prometheus\",\n            \"uid\": \"prometheus\"\n\
+    \          },\n          \"expr\": \"sum by (pod) (container_memory_usage_bytes{namespace=~\\\
+    \"$namespace\\\", pod=~\\\".*parser.*|.*lambda.*\\\", container=\\\"user-container\\\
+    \"}) / 1024 / 1024\",\n          \"legendFormat\": \"{{pod}}\",\n          \"\
+    refId\": \"A\"\n        }\n      ],\n      \"title\": \"Memory Usage (MB) by Pod\"\
+    ,\n      \"type\": \"timeseries\"\n    },\n    {\n      \"collapsed\": false,\n\
+    \      \"gridPos\": {\n        \"h\": 1,\n        \"w\": 24,\n        \"x\": 0,\n\
+    \        \"y\": 31\n      },\n      \"id\": 103,\n      \"panels\": [],\n    \
+    \  \"title\": \"Autoscaling\",\n      \"type\": \"row\"\n    },\n    {\n     \
+    \ \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\": \"prometheus\"\
+    \n      },\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"color\"\
+    : {\n            \"mode\": \"palette-classic\"\n          },\n          \"custom\"\
+    : {\n            \"axisCenteredZero\": false,\n            \"axisColorMode\":\
+    \ \"text\",\n            \"axisLabel\": \"\",\n            \"axisPlacement\":\
+    \ \"auto\",\n            \"barAlignment\": 0,\n            \"drawStyle\": \"line\"\
+    ,\n            \"fillOpacity\": 10,\n            \"gradientMode\": \"none\",\n\
+    \            \"hideFrom\": {\n              \"tooltip\": false,\n            \
+    \  \"viz\": false,\n              \"legend\": false\n            },\n        \
+    \    \"lineInterpolation\": \"linear\",\n            \"lineWidth\": 1,\n     \
+    \       \"pointSize\": 5,\n            \"scaleDistribution\": {\n            \
+    \  \"type\": \"linear\"\n            },\n            \"showPoints\": \"never\"\
+    ,\n            \"spanNulls\": false,\n            \"stacking\": {\n          \
+    \    \"group\": \"A\",\n              \"mode\": \"none\"\n            },\n   \
+    \         \"thresholdsStyle\": {\n              \"mode\": \"off\"\n          \
+    \  }\n          },\n          \"mappings\": [],\n          \"thresholds\": {\n\
+    \            \"mode\": \"absolute\",\n            \"steps\": [\n             \
+    \ {\n                \"color\": \"green\",\n                \"value\": null\n\
+    \              }\n            ]\n          },\n          \"unit\": \"short\"\n\
+    \        }\n      },\n      \"gridPos\": {\n        \"h\": 8,\n        \"w\":\
+    \ 24,\n        \"x\": 0,\n        \"y\": 32\n      },\n      \"id\": 11,\n   \
+    \   \"options\": {\n        \"legend\": {\n          \"calcs\": [\"mean\", \"\
+    max\"],\n          \"displayMode\": \"list\",\n          \"placement\": \"bottom\"\
+    ,\n          \"showLegend\": true\n        },\n        \"tooltip\": {\n      \
+    \    \"mode\": \"multi\",\n          \"sort\": \"none\"\n        }\n      },\n\
+    \      \"pluginVersion\": \"10.0.0\",\n      \"targets\": [\n        {\n     \
+    \     \"datasource\": {\n            \"type\": \"prometheus\",\n            \"\
+    uid\": \"prometheus\"\n          },\n          \"expr\": \"count by (deployment)\
+    \ (kube_pod_status_phase{namespace=~\\\"$namespace\\\", phase=\\\"Running\\\"\
+    , pod=~\\\".*parser.*|.*lambda.*\\\"})\",\n          \"legendFormat\": \"{{deployment}}\"\
+    ,\n          \"refId\": \"A\"\n        }\n      ],\n      \"title\": \"Running\
+    \ Pods by Deployment\",\n      \"type\": \"timeseries\"\n    }\n  ],\n  \"time\"\
+    : {\n    \"from\": \"now-15m\",\n    \"to\": \"now\"\n  },\n  \"timepicker\":\
+    \ {}\n}\n"

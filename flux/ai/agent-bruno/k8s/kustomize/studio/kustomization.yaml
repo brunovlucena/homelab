@@ -1,0 +1,27 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+namespace: ai
+
+kind: Kustomization
+
+resources:
+  - ../base
+
+# 📝 Studio environment - using localhost:5001 for pre-built images (faster development)
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+patches:
+  - target:
+      kind: LambdaAgent
+      name: agent-bruno
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-bruno
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.5.6"
+
+# 📝 Studio-specific labels
+commonLabels:
+  environment: studio

@@ -1,0 +1,379 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 AGENT RBAC - Role-Based Access Control for Lambda Agents
+#
+#  Purpose: Predefined ClusterRoles for agent ServiceAccounts
+#  
+#  Capability Tiers:
+#    - agent-viewer: Read-only, can invoke tools via events
+#    - agent-developer: CRUD LambdaFunctions, create Triggers (no Brokers)
+#    - agent-orchestrator: Full CRUD on LambdaFunctions, Brokers, Triggers
+#    - agent-admin: Unrestricted access to all Lambda resources
+#    - agent-restricted: Minimal read-only access
+#    - agent-security-tester: Full access but only in test namespaces
+#
+#  Usage:
+#    Bind these ClusterRoles to agent ServiceAccounts via RoleBinding
+#    (namespace-scoped) or ClusterRoleBinding (cluster-wide).
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+---
+# ════════════════════════════════════════════════════════════════════════════
+# AGENT-VIEWER: Read-only access, can view resources
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lambda-agent-viewer
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: agent-rbac
+    rbac.lambda.knative.io/tier: viewer
+rules:
+  # Read LambdaFunctions
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions", "lambdaagents"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read Knative Serving
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["services", "revisions"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read Knative Eventing
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers", "triggers"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read pods for status checking
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read events for monitoring
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ════════════════════════════════════════════════════════════════════════════
+# AGENT-DEVELOPER: CRUD LambdaFunctions, Triggers (NO Broker creation)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lambda-agent-developer
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: agent-rbac
+    rbac.lambda.knative.io/tier: developer
+rules:
+  # Full CRUD on LambdaFunctions
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions/status"]
+    verbs: ["get"]
+  
+  # Read LambdaAgents (cannot create/modify)
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdaagents"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read Knative Serving (operator manages these)
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["services", "revisions"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read Brokers only (NO create/update/delete)
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers"]
+    verbs: ["get", "list", "watch"]
+  
+  # Full CRUD on Triggers (can wire up events to functions)
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["triggers"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  
+  # Read pods and events
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+  
+  # Create events for CloudEvent emission
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  
+  # Manage ConfigMaps for function configs
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+
+---
+# ════════════════════════════════════════════════════════════════════════════
+# AGENT-ORCHESTRATOR: Full CRUD on Functions, Brokers, Triggers
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lambda-agent-orchestrator
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: agent-rbac
+    rbac.lambda.knative.io/tier: orchestrator
+rules:
+  # Full CRUD on LambdaFunctions
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions/status"]
+    verbs: ["get", "patch", "update"]
+  
+  # Read LambdaAgents
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdaagents"]
+    verbs: ["get", "list", "watch"]
+  
+  # Read Knative Serving
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["services", "revisions", "configurations", "routes"]
+    verbs: ["get", "list", "watch"]
+  
+  # Full CRUD on Brokers
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  
+  # Full CRUD on Triggers
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["triggers"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  
+  # RabbitMQ broker config (for custom broker setup)
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["rabbitmqbrokerconfigs"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  
+  # Read RabbitMQ resources
+  - apiGroups: ["rabbitmq.com"]
+    resources: ["rabbitmqclusters", "queues", "exchanges", "bindings"]
+    verbs: ["get", "list", "watch"]
+  
+  # Pods, events, logs
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  
+  # ConfigMaps and Secrets (read-only for secrets)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ════════════════════════════════════════════════════════════════════════════
+# AGENT-ADMIN: Full unrestricted access to Lambda resources
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lambda-agent-admin
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: agent-rbac
+    rbac.lambda.knative.io/tier: admin
+rules:
+  # Full access to all Lambda resources
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["*"]
+    verbs: ["*"]
+  
+  # Full access to Knative Serving
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["*"]
+    verbs: ["*"]
+  
+  # Full access to Knative Eventing
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["*"]
+    verbs: ["*"]
+  
+  # Full access to Knative Sources
+  - apiGroups: ["sources.knative.dev"]
+    resources: ["*"]
+    verbs: ["*"]
+  
+  # Full access to RabbitMQ
+  - apiGroups: ["rabbitmq.com"]
+    resources: ["*"]
+    verbs: ["*"]
+  
+  # Core resources
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets", "serviceaccounts", "pods", "pods/log", "events"]
+    verbs: ["*"]
+  
+  # Jobs for builds
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["*"]
+
+---
+# ════════════════════════════════════════════════════════════════════════════
+# AGENT-RESTRICTED: Minimal read-only access (no infrastructure changes)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lambda-agent-restricted
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: agent-rbac
+    rbac.lambda.knative.io/tier: restricted
+rules:
+  # Read-only LambdaFunctions (no status)
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions", "lambdaagents"]
+    verbs: ["get", "list"]
+  
+  # No Knative Serving access
+  
+  # No Knative Eventing access (cannot see brokers/triggers)
+  
+  # Read pods only
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+
+---
+# ════════════════════════════════════════════════════════════════════════════
+# AGENT-SECURITY-TESTER: Full access for security testing (use with RoleBinding)
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lambda-agent-security-tester
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: agent-rbac
+    rbac.lambda.knative.io/tier: security
+  annotations:
+    description: "Full access for security testing - bind with RoleBinding to restrict to test namespaces"
+rules:
+  # Full CRUD on LambdaFunctions
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions/status"]
+    verbs: ["get", "patch", "update"]
+  
+  # Full CRUD on LambdaAgents (for testing)
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdaagents"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  
+  # Full Knative Serving
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["services", "revisions", "configurations", "routes"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  
+  # Full Knative Eventing
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers", "triggers", "rabbitmqbrokerconfigs"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  
+  # K6 TestRuns for test execution
+  - apiGroups: ["k6.io"]
+    resources: ["testruns"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  
+  # Jobs
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  
+  # Core resources
+  - apiGroups: [""]
+    resources: ["configmaps", "pods", "pods/log", "events"]
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ════════════════════════════════════════════════════════════════════════════
+# NO-BROKER-CREATION: Aggregate role to explicitly deny broker creation
+# Use: Combine with other roles via aggregation labels
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lambda-agent-no-broker
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: agent-rbac
+    rbac.lambda.knative.io/restriction: no-broker
+  annotations:
+    description: "Explicitly grants only read access to brokers - use RoleBinding to override orchestrator/admin in specific namespaces"
+rules:
+  # Read-only access to Brokers
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["rabbitmqbrokerconfigs"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ════════════════════════════════════════════════════════════════════════════
+# NO-TRIGGER-CREATION: Aggregate role to explicitly deny trigger creation
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lambda-agent-no-trigger
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: agent-rbac
+    rbac.lambda.knative.io/restriction: no-trigger
+  annotations:
+    description: "Explicitly grants only read access to triggers - use RoleBinding to override in specific namespaces"
+rules:
+  # Read-only access to Triggers
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["triggers"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ════════════════════════════════════════════════════════════════════════════
+# NO-INFRASTRUCTURE: Combines no-broker and no-trigger restrictions
+# ════════════════════════════════════════════════════════════════════════════
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lambda-agent-no-infrastructure
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: agent-rbac
+    rbac.lambda.knative.io/restriction: no-infrastructure
+  annotations:
+    description: "Read-only access to brokers and triggers - blocks infrastructure creation"
+rules:
+  # Read-only Brokers
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers", "rabbitmqbrokerconfigs"]
+    verbs: ["get", "list", "watch"]
+  # Read-only Triggers
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["triggers"]
+    verbs: ["get", "list", "watch"]

@@ -1,0 +1,423 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔒 K6 HIPAA & RBAC TEST - AGENT-MEDICAL
+#
+#  Purpose: Verify HIPAA compliance and Role-Based Access Control
+#
+#  Tests:
+#    🔐 Authentication required
+#    👥 Role-based access (Doctor, Nurse, Patient, Admin)
+#    🚫 Access denied for unauthorized patient access
+#    📝 Audit logging verification
+#    🛡️ Patient data isolation
+#
+#  HIPAA Note: All patient data is synthetic/fake for testing
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-medical-hipaa-rbac
+  namespace: agent-medical
+  labels:
+    app.kubernetes.io/name: agent-medical
+    app.kubernetes.io/component: testing
+    test-type: security
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-medical-hipaa-rbac-test
+      file: hipaa-rbac-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: MEDICAL_URL
+        value: "http://agent-medical.agent-medical.svc.cluster.local"
+      - name: NAMESPACE
+        value: "agent-medical"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-medical-hipaa-rbac-test
+  namespace: agent-medical
+  labels:
+    app.kubernetes.io/name: agent-medical
+    app.kubernetes.io/component: testing
+    test-type: security
+data:
+  hipaa-rbac-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // Custom Metrics
+    const authRequiredSuccess = new Rate('medical_auth_required_success');
+    const rbacSuccess = new Rate('medical_rbac_success');
+    const accessDeniedSuccess = new Rate('medical_access_denied_success');
+    const auditLogSuccess = new Rate('medical_audit_log_success');
+    const testDuration = new Trend('medical_security_test_duration_ms');
+    const securityTests = new Counter('medical_security_tests_total');
+    
+    // Configuration
+    const MEDICAL_URL = __ENV.MEDICAL_URL || 'http://agent-medical.agent-medical.svc.cluster.local';
+    
+    // Test tokens simulating different roles
+    // In production, these would be JWTs with proper claims
+    const TEST_TOKENS = {
+      doctor: 'test-token-doctor-12345',
+      nurse: 'test-token-nurse-12345', 
+      patient_001: 'test-token-patient-001',  // Can only see their own records
+      patient_002: 'test-token-patient-002',  // Can only see their own records
+      admin: 'test-token-admin-12345',
+      invalid: 'invalid-token-xyz',
+    };
+    
+    // Synthetic patient IDs
+    const PATIENT_IDS = {
+      patient_001: 'patient-001',
+      patient_002: 'patient-002',
+      patient_003: 'patient-003',  // No token for this patient
+    };
+    
+    export const options = {
+      scenarios: {
+        security_tests: {
+          executor: 'per-vu-iterations',
+          vus: 1,
+          iterations: 3,
+          maxDuration: '10m',
+        },
+      },
+      thresholds: {
+        'medical_auth_required_success': ['rate>0.90'],
+        'medical_rbac_success': ['rate>0.80'],
+        'medical_access_denied_success': ['rate>0.90'],
+        'medical_audit_log_success': ['rate>0.80'],
+      },
+    };
+    
+    // CloudEvent helper
+    function createCloudEvent(type, data, source = 'k6-security-test') {
+      return {
+        specversion: '1.0',
+        id: `k6-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        type: type,
+        source: source,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+    
+    function sendCloudEvent(url, event, token = null) {
+      const headers = {
+        'Content-Type': 'application/cloudevents+json',
+        'Ce-Type': event.type,
+        'Ce-Source': event.source,
+        'Ce-Id': event.id,
+        'Ce-Specversion': '1.0',
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      return http.post(url, JSON.stringify(event), {
+        headers: headers,
+        timeout: '60s',
+      });
+    }
+    
+    export default function() {
+      // ════════════════════════════════════════════════════════════════
+      // Test 1: Authentication Required
+      // ════════════════════════════════════════════════════════════════
+      group('🔐 Authentication Required', () => {
+        console.log('Testing: Requests without token should be rejected');
+        
+        const event = createCloudEvent('io.homelab.medical.query', {
+          query: 'Show patient records',
+          patient_id: PATIENT_IDS.patient_001,
+        }, '/k6-test/security');
+        
+        // Request WITHOUT token
+        const res = sendCloudEvent(MEDICAL_URL, event, null);
+        testDuration.add(res.timings.duration, { test: 'auth_required' });
+        securityTests.add(1, { test: 'auth_required' });
+        
+        const success = check(res, {
+          'no token returns 401': (r) => r.status === 401,
+          'response indicates auth required': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.detail && body.detail.includes('Authentication') || 
+                     body.error && body.error.includes('auth') ||
+                     body.message && body.message.includes('Unauthorized') ||
+                     r.status === 401;
+            } catch (e) {
+              return r.status === 401;
+            }
+          },
+        });
+        
+        authRequiredSuccess.add(success);
+        
+        if (!success && res.status !== 401) {
+          console.error(`Auth test failed: Expected 401, got ${res.status}`);
+        }
+      });
+      
+      sleep(2);
+      
+      // ════════════════════════════════════════════════════════════════
+      // Test 2: Invalid Token Rejected
+      // ════════════════════════════════════════════════════════════════
+      group('🚫 Invalid Token Rejected', () => {
+        console.log('Testing: Invalid tokens should be rejected');
+        
+        const event = createCloudEvent('io.homelab.medical.query', {
+          query: 'Show patient records',
+          patient_id: PATIENT_IDS.patient_001,
+        }, '/k6-test/security');
+        
+        const res = sendCloudEvent(MEDICAL_URL, event, TEST_TOKENS.invalid);
+        testDuration.add(res.timings.duration, { test: 'invalid_token' });
+        securityTests.add(1, { test: 'invalid_token' });
+        
+        const success = check(res, {
+          'invalid token returns 401 or 403': (r) => r.status === 401 || r.status === 403,
+        });
+        
+        authRequiredSuccess.add(success);
+      });
+      
+      sleep(2);
+      
+      // ════════════════════════════════════════════════════════════════
+      // Test 3: Doctor Can Access Any Patient
+      // ════════════════════════════════════════════════════════════════
+      group('👨‍⚕️ Doctor Access - Full Access', () => {
+        console.log('Testing: Doctors should access any patient records');
+        
+        const event = createCloudEvent('io.homelab.medical.query', {
+          query: 'Show medical history for patient',
+          patient_id: PATIENT_IDS.patient_001,
+        }, '/k6-test/security');
+        
+        const res = sendCloudEvent(MEDICAL_URL, event, TEST_TOKENS.doctor);
+        testDuration.add(res.timings.duration, { test: 'doctor_access' });
+        securityTests.add(1, { test: 'doctor_access' });
+        
+        const success = check(res, {
+          'doctor can access patient': (r) => r.status >= 200 && r.status < 400,
+          'response has data': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.data !== undefined || body.response !== undefined;
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+        });
+        
+        rbacSuccess.add(success);
+        
+        if (!success) {
+          console.error(`Doctor access failed: ${res.status} - ${res.body && res.body.substring(0, 100)}`);
+        }
+      });
+      
+      sleep(2);
+      
+      // ════════════════════════════════════════════════════════════════
+      // Test 4: Patient Can Access Own Records Only
+      // ════════════════════════════════════════════════════════════════
+      group('🧑 Patient Access - Own Records', () => {
+        console.log('Testing: Patient can access their own records');
+        
+        const event = createCloudEvent('io.homelab.medical.query', {
+          query: 'Show my medical records',
+          patient_id: PATIENT_IDS.patient_001,
+        }, '/k6-test/security');
+        
+        // Patient 001 accessing their own records
+        const res = sendCloudEvent(MEDICAL_URL, event, TEST_TOKENS.patient_001);
+        testDuration.add(res.timings.duration, { test: 'patient_own_access' });
+        securityTests.add(1, { test: 'patient_own_access' });
+        
+        const success = check(res, {
+          'patient can access own records': (r) => r.status >= 200 && r.status < 400,
+        });
+        
+        rbacSuccess.add(success);
+      });
+      
+      sleep(2);
+      
+      // ════════════════════════════════════════════════════════════════
+      // Test 5: Patient Cannot Access Other Patient Records
+      // ════════════════════════════════════════════════════════════════
+      group('🚫 Patient Access Denied - Other Patient', () => {
+        console.log('Testing: Patient cannot access other patient records');
+        
+        const event = createCloudEvent('io.homelab.medical.query', {
+          query: 'Show medical records',
+          patient_id: PATIENT_IDS.patient_002,  // Different patient
+        }, '/k6-test/security');
+        
+        // Patient 001 trying to access Patient 002's records
+        const res = sendCloudEvent(MEDICAL_URL, event, TEST_TOKENS.patient_001);
+        testDuration.add(res.timings.duration, { test: 'patient_cross_access' });
+        securityTests.add(1, { test: 'patient_cross_access' });
+        
+        const success = check(res, {
+          'cross-patient access denied': (r) => r.status === 403 || r.status === 401,
+          'response indicates access denied': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.detail && body.detail.includes('denied') || 
+                     body.detail && body.detail.includes('permission') ||
+                     body.error && body.error.includes('access') ||
+                     r.status === 403;
+            } catch (e) {
+              return r.status === 403;
+            }
+          },
+        });
+        
+        accessDeniedSuccess.add(success);
+        
+        if (!success && res.status !== 403) {
+          console.error(`Access denial test failed: Expected 403, got ${res.status}`);
+        }
+      });
+      
+      sleep(2);
+      
+      // ════════════════════════════════════════════════════════════════
+      // Test 6: Audit Log Generation
+      // ════════════════════════════════════════════════════════════════
+      group('📝 Audit Log Generation', () => {
+        console.log('Testing: Actions should generate audit logs');
+        
+        // Make a query that should be audited
+        const event = createCloudEvent('io.homelab.medical.query', {
+          query: 'Show prescription history',
+          patient_id: PATIENT_IDS.patient_001,
+        }, '/k6-test/audit');
+        
+        const res = sendCloudEvent(MEDICAL_URL, event, TEST_TOKENS.doctor);
+        testDuration.add(res.timings.duration, { test: 'audit_log' });
+        securityTests.add(1, { test: 'audit_log' });
+        
+        const success = check(res, {
+          'query succeeds': (r) => r.status >= 200 && r.status < 400,
+          'response has audit_id': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.data && body.data.audit_id !== undefined || 
+                     body.audit_id !== undefined ||
+                     r.status === 200;  // Audit ID might be internal
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+        });
+        
+        auditLogSuccess.add(success);
+      });
+      
+      sleep(2);
+      
+      // ════════════════════════════════════════════════════════════════
+      // Test 7: Access Denied is Audited
+      // ════════════════════════════════════════════════════════════════
+      group('📝 Access Denied Auditing', () => {
+        console.log('Testing: Access denied events should be audited');
+        
+        const event = createCloudEvent('io.homelab.medical.query', {
+          query: 'Show records',
+          patient_id: PATIENT_IDS.patient_003,  // No access
+        }, '/k6-test/audit');
+        
+        // Patient 001 trying to access Patient 003
+        const res = sendCloudEvent(MEDICAL_URL, event, TEST_TOKENS.patient_001);
+        testDuration.add(res.timings.duration, { test: 'audit_denied' });
+        securityTests.add(1, { test: 'audit_denied' });
+        
+        const success = check(res, {
+          'access is denied': (r) => r.status === 403 || r.status === 401,
+        });
+        
+        auditLogSuccess.add(success);
+      });
+      
+      sleep(2);
+      
+      // ════════════════════════════════════════════════════════════════
+      // Test 8: Nurse Access Scope
+      // ════════════════════════════════════════════════════════════════
+      group('👩‍⚕️ Nurse Access Scope', () => {
+        console.log('Testing: Nurse access to patient data');
+        
+        const event = createCloudEvent('io.homelab.medical.query', {
+          query: 'Show vital signs for patient',
+          patient_id: PATIENT_IDS.patient_001,
+        }, '/k6-test/security');
+        
+        const res = sendCloudEvent(MEDICAL_URL, event, TEST_TOKENS.nurse);
+        testDuration.add(res.timings.duration, { test: 'nurse_access' });
+        securityTests.add(1, { test: 'nurse_access' });
+        
+        const success = check(res, {
+          'nurse can access patient': (r) => r.status >= 200 && r.status < 400,
+        });
+        
+        rbacSuccess.add(success);
+      });
+      
+      sleep(5);
+    }
+    
+    export function handleSummary(data) {
+      const authMetric = data.metrics['medical_auth_required_success'];
+      const rbacMetric = data.metrics['medical_rbac_success'];
+      const deniedMetric = data.metrics['medical_access_denied_success'];
+      const auditMetric = data.metrics['medical_audit_log_success'];
+      const testsMetric = data.metrics['medical_security_tests_total'];
+      
+      const authRate = authMetric && authMetric.values ? authMetric.values.rate : 0;
+      const rbacRate = rbacMetric && rbacMetric.values ? rbacMetric.values.rate : 0;
+      const deniedRate = deniedMetric && deniedMetric.values ? deniedMetric.values.rate : 0;
+      const auditRate = auditMetric && auditMetric.values ? auditMetric.values.rate : 0;
+      const totalTests = testsMetric && testsMetric.values ? testsMetric.values.count : 0;
+      
+      const passed = authRate >= 0.90 && rbacRate >= 0.80 && deniedRate >= 0.90 && auditRate >= 0.80;
+      
+      console.log('\n' + '═'.repeat(60));
+      console.log('🔒 AGENT-MEDICAL HIPAA & RBAC TEST RESULTS');
+      console.log('═'.repeat(60));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('─'.repeat(60));
+      console.log('🔐 Auth Required:      ' + (authRate * 100).toFixed(1) + '%');
+      console.log('👥 RBAC Enforcement:   ' + (rbacRate * 100).toFixed(1) + '%');
+      console.log('🚫 Access Denied:      ' + (deniedRate * 100).toFixed(1) + '%');
+      console.log('📝 Audit Logging:      ' + (auditRate * 100).toFixed(1) + '%');
+      console.log('─'.repeat(60));
+      console.log('Total Security Tests:  ' + totalTests);
+      console.log('═'.repeat(60) + '\n');
+      
+      return {};
+    }

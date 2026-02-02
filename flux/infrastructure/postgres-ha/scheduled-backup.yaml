@@ -1,0 +1,38 @@
+---
+# Scheduled Backup - Every 6 hours to YOUR LOCAL MinIO
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: homepage-postgres-backup
+  namespace: postgres-ha
+spec:
+  # Every 6 hours: 00:00, 06:00, 12:00, 18:00
+  schedule: "0 */6 * * *"
+  
+  # Backup immediately on creation
+  immediate: true
+  
+  # Reference to the cluster
+  cluster:
+    name: homepage-postgres
+  
+  # Backup method
+  backupOwnerReference: self
+  
+  # Suspend if needed
+  suspend: false
+---
+# On-demand backup template (for manual backups before risky operations)
+apiVersion: postgresql.cnpg.io/v1
+kind: Backup
+metadata:
+  name: homepage-postgres-manual-backup
+  namespace: postgres-ha
+  annotations:
+    # Don't auto-apply, use: kubectl apply -f this-file.yaml
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  cluster:
+    name: homepage-postgres
+  method: barmanObjectStore
+

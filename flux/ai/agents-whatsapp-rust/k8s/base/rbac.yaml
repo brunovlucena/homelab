@@ -1,0 +1,73 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agents-whatsapp-rust-secret-sync
+  namespace: homelab-services
+  labels:
+    app: agents-whatsapp-rust
+    component: secret-sync
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agents-whatsapp-rust-agent-sa
+  namespace: homelab-services
+  labels:
+    app: agents-whatsapp-rust
+    component: agent
+    rbac.lambda.knative.io/tier: developer
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# Bind to lambda-agent-developer ClusterRole for LambdaAgent permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agents-whatsapp-rust-agent-developer
+  namespace: homelab-services
+  labels:
+    app: agents-whatsapp-rust
+    component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-developer
+subjects:
+  - kind: ServiceAccount
+    name: agents-whatsapp-rust-agent-sa
+    namespace: homelab-services
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agents-whatsapp-rust-secret-sync
+  labels:
+    app: agents-whatsapp-rust
+    component: secret-sync
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "update", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["services"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agents-whatsapp-rust-secret-sync
+  labels:
+    app: agents-whatsapp-rust
+    component: secret-sync
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agents-whatsapp-rust-secret-sync
+subjects:
+  - kind: ServiceAccount
+    name: agents-whatsapp-rust-secret-sync
+    namespace: homelab-services

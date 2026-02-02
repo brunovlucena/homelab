@@ -1,0 +1,114 @@
+# Security Configuration for Bruno API
+# This file contains security-related configuration settings
+
+security:
+  # Metrics endpoint authentication
+  metrics:
+    enabled: true
+    username: "${METRICS_USERNAME:-admin}"
+    password: "${METRICS_PASSWORD:-secure_password_change_me}"  # Set via environment variable
+    
+  # CORS (Cross-Origin Resource Sharing) settings
+  cors:
+    allowed_origins:
+      - "*"  # In production, specify exact domains
+    allowed_methods:
+      - "GET"
+      - "POST"
+      - "PUT"
+      - "DELETE"
+      - "OPTIONS"
+    allowed_headers:
+      - "Origin"
+      - "Content-Type"
+      - "Accept"
+      - "Authorization"
+    expose_headers:
+      - "Content-Length"
+    allow_credentials: true
+    max_age: "12h"
+    
+  # Content Security Policy
+  csp:
+    enabled: true
+    policy: |
+      default-src 'self';
+      script-src 'self' 'unsafe-inline';
+      style-src 'self' 'unsafe-inline';
+      img-src 'self' data: https:;
+      font-src 'self' data:;
+      connect-src 'self';
+      frame-ancestors 'none';
+      base-uri 'self';
+      form-action 'self';
+      
+  # Rate limiting
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 100
+    requests_per_hour: 1000
+    burst_size: 20
+    
+  # Input validation
+  validation:
+    max_title_length: 255
+    max_description_length: 5000
+    max_url_length: 2048
+    max_email_length: 254
+    
+  # SQL injection protection
+  sql_injection:
+    enabled: true
+    block_patterns:
+      - "union select"
+      - "union all select"
+      - "drop table"
+      - "delete from"
+      - "insert into"
+      - "update set"
+      - "alter table"
+      - "create table"
+      - "exec("
+      - "execute("
+      - "xp_"
+      - "sp_"
+      - "--"
+      - "/*"
+      - "*/"
+      - "waitfor delay"
+      - "benchmark("
+      - "sleep("
+      - "load_file("
+      - "into outfile"
+      - "into dumpfile"
+      - "information_schema"
+      
+  # XSS protection
+  xss:
+    enabled: true
+    block_patterns:
+      - "<script"
+      - "javascript:"
+      - "onload="
+      - "onerror="
+      - "onclick="
+      - "<iframe"
+      - "<object"
+      - "<embed"
+      - "data:text/html"
+      
+  # Security headers
+  headers:
+    x_content_type_options: "nosniff"
+    x_frame_options: "DENY"
+    x_xss_protection: "1; mode=block"
+    referrer_policy: "strict-origin-when-cross-origin"
+    permissions_policy: "geolocation=(), microphone=(), camera=()"
+    strict_transport_security: "max-age=31536000; includeSubDomains; preload"
+    
+  # Logging
+  logging:
+    security_events: true
+    failed_attempts: true
+    sql_injection_attempts: true
+    xss_attempts: true

@@ -1,0 +1,116 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flyte
+  namespace: flyte
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: flyte-core
+      version: ">=1.0.0 <2.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: flyteorg
+        namespace: flux-system
+      interval: 12h
+  install:
+    crds: Create
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  valuesFrom:
+    # Database password from secret created by secret-init-job
+    # Note: Order matters - inject admin password first
+    - kind: Secret
+      name: flyte-postgres
+      valuesKey: password
+      targetPath: db.admin.database.password
+    - kind: Secret
+      name: flyte-postgres
+      valuesKey: password
+      targetPath: db.datacatalog.database.password
+    # MinIO access key from secret created by secret-init-job
+    - kind: Secret
+      name: minio-credentials
+      valuesKey: access-key
+      targetPath: userSettings.storage.minio.accessKey
+    # MinIO secret key from secret created by secret-init-job
+    - kind: Secret
+      name: minio-credentials
+      valuesKey: secret-key
+      targetPath: userSettings.storage.minio.secretKey
+  values:
+    # Database configuration for Flyte components
+    # Chart uses db.datacatalog.database and db.admin.database (NOT userSettings.dbHost)
+    # Note: password is injected via valuesFrom - do not set it here
+    db:
+      datacatalog:
+        database:
+          host: postgres.postgres.svc.cluster.local
+          port: 5432
+          username: postgres
+          dbname: datacatalog
+      admin:
+        database:
+          host: postgres.postgres.svc.cluster.local
+          port: 5432
+          username: postgres
+          dbname: flyteadmin
+          password: ""  # Required for valuesFrom to inject - will be overridden
+    
+    # User settings - main configuration for Flyte
+    userSettings:
+      # Storage configuration - using MinIO
+      # Force correct values using stow format (what Helm chart actually uses)
+      storage:
+        type: minio
+        container: flyte-data
+        stow:
+          kind: s3
+          config:
+            access_key_id: minioadmin
+            auth_type: accesskey
+            secret_key: b4ZFZKu8muq70UUWvyUQEmCZ
+            disable_ssl: true
+            endpoint: http://minio.minio.svc.cluster.local:9000
+            region: us-east-1
+        signedUrl:
+          stowConfigOverride:
+            endpoint: http://minio.minio.svc.cluster.local:9000
+        minio:
+          endpoint: minio.minio.svc.cluster.local:9000
+          bucketName: flyte-data
+          secure: false
+          accessKey: minioadmin
+          secretKey: b4ZFZKu8muq70UUWvyUQEmCZ
+    # Console configuration
+    console:
+      adminAPIURL: "http://flyteadmin.flyte.svc.cluster.local:80"
+    
+    # Propeller configuration - controls workflow execution
+    propeller:
+      # Configure execution namespace - use 'flyte' namespace instead of project-domain
+      defaultNamespace: "flyte"
+      # ServiceAccount for execution pods (with imagePullSecrets)
+      serviceAccount:
+        create: false
+        name: flyte-execution
+      # Add imagePullSecrets to all execution pods
+      config:
+        defaultNamespace: "flyte"
+        # Pod template configuration for execution pods
+        podTemplate:
+          imagePullSecrets:
+            - name: ghcr-secret
+          serviceAccountName: flyte-execution
+      # Also set at top level for compatibility
+      imagePullSecrets:
+        - name: ghcr-secret
+    
+    # Note: flyteadmin service remains as ClusterIP (default)
+    # Additional NodePort service is created via flyteadmin-nodeport.yaml for external access

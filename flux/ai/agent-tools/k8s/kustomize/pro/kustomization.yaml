@@ -1,0 +1,25 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+namespace: ai
+
+kind: Kustomization
+
+resources:
+  - ../base
+
+# 📝 Pro environment - using localhost:5001 for local registry
+patches:
+  - target:
+      kind: LambdaAgent
+      name: agent-tools
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-tools/k8s-tools
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.2.0"
+
+# 📝 Pro-specific labels
+commonLabels:
+  environment: pro

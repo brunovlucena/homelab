@@ -1,0 +1,102 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 Agent-POS-Edge RBAC
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pos-agent-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: pos-agent-sa
+    app.kubernetes.io/part-of: agent-pos-edge
+imagePullSecrets:
+  - name: ghcr-secret
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pos-agent-role
+  namespace: ai
+rules:
+  # ConfigMaps for configuration
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  # Secrets for credentials
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  # Events for auditing
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  # Eventing resources
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers", "triggers"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pos-agent-rolebinding
+  namespace: ai
+subjects:
+  - kind: ServiceAccount
+    name: pos-agent-sa
+    namespace: ai
+roleRef:
+  kind: Role
+  name: pos-agent-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Command Center needs extra permissions for fleet management
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pos-edge-command-center-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: pos-edge-command-center-sa
+    app.kubernetes.io/part-of: agent-pos-edge
+imagePullSecrets:
+  - name: ghcr-secret
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: command-center-role
+  namespace: ai
+rules:
+  # Full ConfigMap access for fleet config
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # Secrets for credentials
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+  # Events for auditing
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  # Eventing resources
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers", "triggers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: command-center-rolebinding
+  namespace: ai
+subjects:
+  - kind: ServiceAccount
+    name: pos-edge-command-center-sa
+    namespace: ai
+roleRef:
+  kind: Role
+  name: command-center-role
+  apiGroup: rbac.authorization.k8s.io

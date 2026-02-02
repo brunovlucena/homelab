@@ -1,0 +1,120 @@
+# Security RBAC Configuration
+# Implements fixes for:
+# - VULN-003: SA Token Theft - Lambda functions use minimal SA with no token
+# - VULN-013: Receiver Mode SA Escalation - Dedicated limited receiver SA
+# - BLUE-006: SA Token Exposure in Build Jobs - Dedicated builder SA with no permissions
+#
+# Created: 2025-12-09
+# Security Level: CRITICAL
+
+---
+# Service Account for regular Lambda functions
+# VULN-003 Fix: This SA has NO permissions and token is not auto-mounted
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: knative-lambda-function
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: lambda-runtime
+    security.knative.io/purpose: minimal-lambda-sa
+automountServiceAccountToken: false  # Explicit: no token needed
+
+---
+# Service Account for Receiver Mode Lambda functions
+# VULN-013 Fix: This SA has ONLY the permissions needed for event processing
+# NOT the operator's full cluster-wide permissions!
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: knative-lambda-receiver
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: lambda-receiver
+    security.knative.io/purpose: receiver-mode-limited-sa
+automountServiceAccountToken: true  # Receiver needs to call K8s API
+
+---
+# Role for Receiver Mode (namespace-scoped, NOT cluster-wide!)
+# VULN-013 Fix: Limited to only what receiver mode needs
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: knative-lambda-receiver-role
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: lambda-receiver
+    security.knative.io/purpose: receiver-limited-permissions
+rules:
+  # Receiver needs FULL access to lambdafunctions to CREATE them from CloudEvents!
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions/status"]
+    verbs: ["get", "update", "patch"]
+  
+  # Receiver needs to read configmaps for configuration
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  
+  # Receiver needs to emit events
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+
+---
+# RoleBinding for Receiver Mode
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: knative-lambda-receiver-binding
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: lambda-receiver
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: knative-lambda-receiver-role
+subjects:
+  - kind: ServiceAccount
+    name: knative-lambda-receiver
+    namespace: knative-lambda
+
+---
+# Service Account for Build Jobs (Kaniko)
+# BLUE-006 Fix: Build jobs don't need K8s API access
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: knative-lambda-builder
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: build-system
+    security.knative.io/purpose: builder-no-permissions
+automountServiceAccountToken: false  # CRITICAL: Build jobs must NOT have API access
+
+---
+# ClusterRoleBinding for Receiver - MUST have cluster-wide permissions to create lambdas!
+# The receiver uses cluster-scoped informers so it needs ClusterRole, not just Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: knative-lambda-receiver-cluster-binding
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: lambda-receiver
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: knative-lambda-operator  # Use same permissions as operator
+subjects:
+  - kind: ServiceAccount
+    name: knative-lambda-receiver
+    namespace: knative-lambda

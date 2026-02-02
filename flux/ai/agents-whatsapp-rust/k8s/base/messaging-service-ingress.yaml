@@ -1,0 +1,65 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Messaging Service - Ingress (Optional: For SSL/TLS Termination)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Optional: Use this Ingress if you want SSL/TLS termination at the ingress
+# level instead of handling it at the application level.
+# 
+# ⚠️ NOTE: This adds Layer 7 overhead. For optimal WebSocket performance,
+# consider handling SSL/TLS at the application level and using the LoadBalancer
+# service directly (TCP passthrough).
+# 
+# If using this Ingress:
+# - Remove or disable the LoadBalancer service
+# - Use Traefik/nginx Ingress with WebSocket support
+# - SSL/TLS termination happens at Ingress
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: messaging-service-ingress
+  namespace: homelab-services
+  labels:
+    app.kubernetes.io/name: messaging-service
+    app.kubernetes.io/part-of: agents-whatsapp-rust
+    app.kubernetes.io/component: ingress
+  annotations:
+    # SSL/TLS certificate management
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Traefik-specific annotations for WebSocket support
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    # WebSocket-specific timeouts (important for long-lived connections)
+    traefik.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    traefik.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Session affinity for WebSocket connections
+    traefik.ingress.kubernetes.io/affinity: "true"
+    traefik.ingress.kubernetes.io/affinity-mode: "persistent"
+    traefik.ingress.kubernetes.io/session-cookie-name: "messaging-session"
+    traefik.ingress.kubernetes.io/session-cookie-expires: "3600"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - messaging.lucena.cloud
+      secretName: messaging-service-tls
+  rules:
+    - host: messaging.lucena.cloud
+      http:
+        paths:
+          # WebSocket endpoint
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: messaging-service
+                port:
+                  number: 80  # Knative service port
+          # Health check endpoints
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: messaging-service
+                port:
+                  number: 80

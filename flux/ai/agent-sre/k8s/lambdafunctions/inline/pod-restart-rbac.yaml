@@ -1,0 +1,54 @@
+---
+# RBAC for pod-restart LambdaFunction
+# Allows the function to delete pods and restart deployments
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pod-restart
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: pod-restart
+    app.kubernetes.io/component: remediation
+    app.kubernetes.io/part-of: agent-sre
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-restart
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: pod-restart
+    app.kubernetes.io/component: remediation
+    app.kubernetes.io/part-of: agent-sre
+rules:
+  # Delete pods
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete", "get", "list"]
+  # Restart deployments
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch"]
+  # Read deployment status
+  - apiGroups: ["apps"]
+    resources: ["deployments/status"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-restart
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: pod-restart
+    app.kubernetes.io/component: remediation
+    app.kubernetes.io/part-of: agent-sre
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-restart
+subjects:
+  - kind: ServiceAccount
+    name: pod-restart
+    namespace: ai
+

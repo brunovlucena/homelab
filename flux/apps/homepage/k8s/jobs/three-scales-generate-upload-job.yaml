@@ -1,0 +1,266 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 THREE SCALES FRAMEWORK - Generate + Upload Job (Best Practice)
+#
+#  Purpose: Generate three-scales-framework.png from Python script and upload to MinIO
+#  
+#  Architecture:
+#    1. Init Container 1: Sync MinIO credentials from minio namespace
+#    2. Init Container 2: Generate image from Python script (stored in ConfigMap)
+#    3. Upload Container: Upload generated image to MinIO
+#
+#  Usage:
+#    # 1. Create ConfigMap with generation script
+#    kubectl create configmap three-scales-generator \
+#      --from-file=generate-three-scales-diagram.py=../../src/frontend/public/blog-posts/generate-three-scales-diagram.py \
+#      --from-file=requirements.txt=<(echo -e "matplotlib\nnumpy") \
+#      --namespace=homepage \
+#      --dry-run=client -o yaml | kubectl apply -f -
+#    
+#    # 2. Apply job
+#    kubectl apply -f three-scales-generate-upload-job.yaml
+#    
+#    # 3. Check logs
+#    kubectl logs -f job/three-scales-generate-upload -n homepage
+#
+#  Benefits:
+#    ✅ No ConfigMap size limits (script is small, image generated at runtime)
+#    ✅ Always generates latest version
+#    ✅ Fully automated and repeatable
+#    ✅ GitOps-friendly (script versioned in git)
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ServiceAccount and RBAC permissions
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: three-scales-generate-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: three-scales-generate-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: three-scales-generate-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: three-scales-generate-upload
+subjects:
+- kind: ServiceAccount
+  name: three-scales-generate-upload
+  namespace: homepage
+---
+# ClusterRole to read secrets from minio namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: minio-secret-reader-three-scales
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+  resourceNames: ["minio-credentials"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: three-scales-minio-secret-reader
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: minio-secret-reader-three-scales
+subjects:
+- kind: ServiceAccount
+  name: three-scales-generate-upload
+  namespace: homepage
+---
+# Job to generate and upload image to MinIO
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: three-scales-generate-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: three-scales-generate-upload
+      initContainers:
+        # Init Container 1: Sync MinIO credentials
+        - name: ensure-minio-secret
+          image: localhost:5001/kubectl:v1.34.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "🔐 Syncing minio-credentials secret from minio namespace..."
+              
+              # Wait for secret in minio namespace (source)
+              MAX_WAIT=60
+              WAITED=0
+              while ! kubectl get secret minio-credentials -n minio &>/dev/null; do
+                if [ $WAITED -ge $MAX_WAIT ]; then
+                  echo "❌ Timeout waiting for minio-credentials in minio namespace"
+                  exit 1
+                fi
+                echo "⏳ Waiting for minio-credentials in minio namespace... (${WAITED}s/${MAX_WAIT}s)"
+                sleep 2
+                WAITED=$((WAITED + 2))
+              done
+              
+              echo "📋 Found secret in minio namespace, syncing to homepage..."
+              
+              # Extract credentials from minio namespace
+              ACCESS_KEY=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.access-key}' | base64 -d)
+              SECRET_KEY=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.secret-key}' | base64 -d)
+              ROOT_USER=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.root-user}' | base64 -d || echo "$ACCESS_KEY")
+              ROOT_PASSWORD=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.root-password}' | base64 -d || echo "$SECRET_KEY")
+              
+              # Always sync/update secret in homepage namespace (ensures it's up-to-date)
+              kubectl create secret generic minio-credentials \
+                --from-literal=access-key="${ACCESS_KEY}" \
+                --from-literal=secret-key="${SECRET_KEY}" \
+                --from-literal=root-user="${ROOT_USER}" \
+                --from-literal=root-password="${ROOT_PASSWORD}" \
+                --namespace=homepage \
+                --dry-run=client -o yaml | kubectl apply -f -
+              
+              echo "✅ Secret minio-credentials synced to homepage namespace"
+        # Init Container 2: Generate image from Python script
+        - name: generate-image
+          image: python:3.11-slim
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "📦 Installing dependencies..."
+              pip install --no-cache-dir -q matplotlib numpy
+              
+              echo "📊 Generating three-scales-framework diagram..."
+              python3 /scripts/generate-three-scales-diagram.py
+              
+              echo "📁 Generated files:"
+              ls -lh /output/ || echo "No output directory"
+              
+              # Verify PNG was created
+              if [ -f "/output/three-scales-framework.png" ]; then
+                echo "✅ Image generated: three-scales-framework.png ($(du -h /output/three-scales-framework.png | cut -f1))"
+              else
+                echo "❌ Image not found in /output/"
+                ls -la /output/ || true
+                exit 1
+              fi
+              
+              # Also check for SVG if generated
+              if [ -f "/output/three-scales-framework.svg" ]; then
+                echo "✅ SVG generated: three-scales-framework.svg"
+              fi
+              
+              echo "🎉 Image generation complete!"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: output
+              mountPath: /output
+      containers:
+        # Upload Container: Upload generated image to MinIO
+        - name: upload-to-minio
+          image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "📤 Uploading three-scales-framework images to MinIO..."
+              
+              # Configure MinIO client
+              mc alias set minio http://minio.minio.svc.cluster.local:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
+              
+              # Create bucket if not exists
+              mc mb -p minio/homepage-blog || true
+              
+              # Set public read policy on blog images
+              mc anonymous set download minio/homepage-blog/images/
+              
+              # Upload PNG
+              if [ -f "/output/three-scales-framework.png" ]; then
+                echo "📤 Uploading three-scales-framework.png..."
+                mc cp /output/three-scales-framework.png minio/homepage-blog/images/graphs/three-scales-framework.png
+                echo "✅ Uploaded: three-scales-framework.png"
+              else
+                echo "❌ PNG file not found in /output/"
+                ls -la /output/ || true
+                exit 1
+              fi
+              
+              # Upload SVG if exists
+              if [ -f "/output/three-scales-framework.svg" ]; then
+                echo "📤 Uploading three-scales-framework.svg..."
+                mc cp /output/three-scales-framework.svg minio/homepage-blog/images/graphs/three-scales-framework.svg
+                echo "✅ Uploaded: three-scales-framework.svg"
+              fi
+              
+              # Verify upload
+              echo "📋 Verifying upload..."
+              mc ls minio/homepage-blog/images/graphs/three-scales-framework.* || echo "⚠️  Files not found in MinIO"
+              
+              echo "🌐 Images available at:"
+              echo "   http://minio.minio.svc.cluster.local:9000/homepage-blog/images/graphs/three-scales-framework.png"
+              echo "   Blog path: /storage/homepage-blog/images/graphs/three-scales-framework.png"
+              
+              echo "🎉 Upload complete!"
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+          volumeMounts:
+            - name: output
+              mountPath: /output
+      volumes:
+        - name: scripts
+          configMap:
+            name: three-scales-generator
+            defaultMode: 0755
+        - name: output
+          emptyDir: {}
+

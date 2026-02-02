@@ -1,0 +1,250 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔥 K6 SMOKE TEST - AGENT-TOOLS
+#
+#  Purpose: Quick validation that K8s API agent is healthy and responding
+#  Coverage:
+#    - Health endpoints
+#    - CloudEvent K8s operations (list namespaces, pods, deployments)
+#    - Lambda operations
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-tools-smoke
+  namespace: agent-tools
+  labels:
+    app.kubernetes.io/name: agent-tools
+    app.kubernetes.io/component: testing
+    test-type: smoke
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-tools-smoke-test
+      file: smoke-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: AGENT_TOOLS_URL
+        value: "http://agent-tools.agent-tools.svc.cluster.local"
+      - name: NAMESPACE
+        value: "agent-tools"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-tools-smoke-test
+  namespace: agent-tools
+  labels:
+    app.kubernetes.io/name: agent-tools
+    app.kubernetes.io/component: testing
+    test-type: smoke
+data:
+  smoke-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+    
+    // Custom Metrics
+    const healthCheckSuccess = new Rate('smoke_health_check_success');
+    const cloudEventSuccess = new Rate('smoke_cloudevent_success');
+    const responseTime = new Trend('smoke_response_time_ms');
+    const k8sOperationErrors = new Counter('smoke_k8s_operation_errors');
+    
+    // Configuration
+    const AGENT_URL = __ENV.AGENT_TOOLS_URL || 'http://agent-tools.agent-tools.svc.cluster.local';
+    const MAX_SETUP_RETRIES = 30;
+    const SETUP_RETRY_INTERVAL = 10; // seconds
+    
+    export const options = {
+      scenarios: {
+        smoke: {
+          executor: 'constant-vus',
+          vus: 1,
+          duration: '30s',
+        },
+      },
+      thresholds: {
+        'smoke_health_check_success': ['rate>0.95'],
+        'smoke_cloudevent_success': ['rate>0.80'],
+        'smoke_response_time_ms': ['p(95)<5000'],
+        'http_req_failed': ['rate<0.2'],
+      },
+    };
+    
+    // Wait for service to be ready with retries
+    function waitForService(url, maxRetries, retryInterval) {
+      console.log(`⏳ Waiting for service at ${url}...`);
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          const res = http.get(`${url}/health`, { timeout: '10s' });
+          if (res.status === 200) {
+            console.log(`✅ Service ready after ${i + 1} attempt(s)`);
+            return true;
+          }
+          console.log(`  Attempt ${i + 1}/${maxRetries}: status=${res.status}, retrying in ${retryInterval}s...`);
+        } catch (e) {
+          console.log(`  Attempt ${i + 1}/${maxRetries}: ${e.message}, retrying in ${retryInterval}s...`);
+        }
+        sleep(retryInterval);
+      }
+      return false;
+    }
+    
+    export function setup() {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🛠️  AGENT-TOOLS SMOKE TEST SETUP');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      if (!waitForService(AGENT_URL, MAX_SETUP_RETRIES, SETUP_RETRY_INTERVAL)) {
+        console.error(`❌ Service not ready after ${MAX_SETUP_RETRIES * SETUP_RETRY_INTERVAL}s, aborting test`);
+        return { ready: false };
+      }
+      
+      return { ready: true, startTime: new Date().toISOString() };
+    }
+    
+    function createCloudEvent(eventType, data) {
+      const eventId = `k6-smoke-${randomString(8)}`;
+      return {
+        specversion: '1.0',
+        type: eventType,
+        source: '/k6/smoke-test',
+        id: eventId,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+    
+    function sendCloudEvent(eventType, data) {
+      const event = createCloudEvent(eventType, data);
+      
+      const res = http.post(AGENT_URL, JSON.stringify(event), {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Specversion': event.specversion,
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+        },
+        timeout: '30s',
+      });
+      
+      responseTime.add(res.timings.duration, { operation: eventType });
+      
+      const success = check(res, {
+        'CloudEvent accepted (2xx)': (r) => r.status >= 200 && r.status < 300,
+        'Response has success': (r) => {
+          try {
+            const body = JSON.parse(r.body);
+            return (body.data && body.data.success === true) || body.success === true;
+          } catch (e) {
+            return r.status >= 200 && r.status < 300;
+          }
+        },
+      });
+      
+      cloudEventSuccess.add(success);
+      if (!success) {
+        k8sOperationErrors.add(1, { operation: eventType });
+        console.error(`${eventType} failed: ${res.status} - ${res.body}`);
+      }
+      
+      return success;
+    }
+    
+    export default function(data) {
+      // Skip if setup failed
+      if (!data || !data.ready) {
+        console.log('⏭️  Skipping iteration - service not ready');
+        sleep(1);
+        return;
+      }
+      
+      // Health Check
+      group('Health Check', () => {
+        const healthRes = http.get(`${AGENT_URL}/health`, { timeout: '10s' });
+        
+        const healthy = check(healthRes, {
+          'health check passes': (r) => r.status === 200,
+        });
+        
+        healthCheckSuccess.add(healthy);
+        responseTime.add(healthRes.timings.duration, { endpoint: 'health' });
+      });
+      
+      sleep(1);
+      
+      // K8s Operations via CloudEvents
+      group('List Namespaces', () => {
+        sendCloudEvent('io.homelab.k8s.namespaces.list', {});
+      });
+      
+      sleep(0.5);
+      
+      group('List Pods', () => {
+        sendCloudEvent('io.homelab.k8s.pods.list', {
+          namespace: 'agent-tools',
+          limit: 10,
+        });
+      });
+      
+      sleep(0.5);
+      
+      group('List Deployments', () => {
+        sendCloudEvent('io.homelab.k8s.deployments.list', {
+          namespace: 'knative-lambda',
+        });
+      });
+      
+      sleep(0.5);
+      
+      group('List LambdaAgents', () => {
+        sendCloudEvent('io.homelab.lambda.agents.list', {});
+      });
+      
+      sleep(0.5);
+      
+      group('List Knative Services', () => {
+        sendCloudEvent('io.homelab.knative.services.list', {});
+      });
+      
+      sleep(1);
+    }
+    
+    export function handleSummary(data) {
+      const healthMetric = data.metrics['smoke_health_check_success'];
+      const cloudEventMetric = data.metrics['smoke_cloudevent_success'];
+      const responseMetric = data.metrics['smoke_response_time_ms'];
+      
+      const healthRate = healthMetric && healthMetric.values ? healthMetric.values.rate : 0;
+      const cloudEventRate = cloudEventMetric && cloudEventMetric.values ? cloudEventMetric.values.rate : 0;
+      const p95Response = responseMetric && responseMetric.values ? responseMetric.values['p(95)'] : 0;
+      
+      const passed = healthRate >= 0.95 && cloudEventRate >= 0.80;
+      
+      console.log('\n' + '═'.repeat(60));
+      console.log('🛠️  AGENT-TOOLS SMOKE TEST RESULTS');
+      console.log('═'.repeat(60));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('Health Check Rate: ' + (healthRate * 100).toFixed(1) + '%');
+      console.log('CloudEvent Success Rate: ' + (cloudEventRate * 100).toFixed(1) + '%');
+      console.log('P95 Response Time: ' + (p95Response || 0).toFixed(0) + 'ms');
+      console.log('═'.repeat(60) + '\n');
+      
+      return {};
+    }

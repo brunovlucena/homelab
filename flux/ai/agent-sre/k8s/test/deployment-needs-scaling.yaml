@@ -1,0 +1,33 @@
+---
+# Test Deployment: Needs Scaling
+# Purpose: Test scale-deployment LambdaFunction
+# Expected: LambdaFunction should scale deployment to specified replicas
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-needs-scaling
+  namespace: ai
+  labels:
+    app: test-needs-scaling
+    test.agent-sre.io/scenario: needs-scaling
+    test.agent-sre.io/lambda-function: scale-deployment
+spec:
+  replicas: 1  # Start with 1 replica
+  selector:
+    matchLabels:
+      app: test-needs-scaling
+  template:
+    metadata:
+      labels:
+        app: test-needs-scaling
+    spec:
+      containers:
+      - name: test-container
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+

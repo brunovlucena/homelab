@@ -1,0 +1,144 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: loki
+  namespace: loki
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: loki
+      version: "6.44.0"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+      interval: 12h
+  install:
+    crds: Create
+    remediation:
+      retries: 3
+  upgrade:
+    crds: Skip
+    remediation:
+      retries: 3
+  values:
+    # Loki deployment mode
+    deploymentMode: SingleBinary
+    
+    # Loki configuration
+    loki:
+      image:
+        registry: localhost:5001
+        repository: loki
+        # Fallback: docker.io/grafana/loki
+        tag: "3.5.7"
+      auth_enabled: false
+      commonConfig:
+        replication_factor: 1
+      storage:
+        type: 'filesystem'
+      schemaConfig:
+        configs:
+          - from: "2024-01-01"
+            store: tsdb
+            object_store: filesystem
+            schema: v13
+            index:
+              prefix: loki_index_
+              period: 24h
+      
+      # Limits configuration
+      limits_config:
+        retention_period: 168h  # 7 days
+        max_query_lookback: 168h
+        ingestion_rate_mb: 10
+        ingestion_burst_size_mb: 20
+    
+    # Memcached disabled (rate limit on Docker Hub)
+    chunksCache:
+      enabled: false
+    resultsCache:
+      enabled: false
+    
+    # Single binary pod configuration
+    singleBinary:
+      replicas: 1
+      persistence:
+        enabled: true
+        size: 10Gi
+        storageClass: standard
+      resources:
+        # requests:
+        #   cpu: 100m
+        #   memory: 256Mi
+        limits:
+          # cpu: 500m
+          memory: 1Gi
+      # Disable anti-affinity for single-node cluster
+      affinity: {}
+    
+    # Disable components not needed in single binary mode
+    backend:
+      replicas: 0
+    read:
+      replicas: 0
+    write:
+      replicas: 0
+    
+    # Loki canary
+    lokiCanary:
+      enabled: true
+      image:
+        registry: localhost:5001
+        repository: loki-canary
+        # Fallback: docker.io/grafana/loki-canary
+        tag: "3.5.7"
+    
+    # Gateway configuration
+    gateway:
+      enabled: true
+      replicas: 1
+      image:
+        registry: localhost:5001
+        repository: nginx-unprivileged
+        # Fallback: docker.io/nginxinc/nginx-unprivileged
+        tag: "1.29-alpine"
+      # Expose Loki via NodePort for Cursor access
+      service:
+        type: NodePort
+        nodePort: 30042
+        port: 80
+      resources:
+        # requests:
+        #   cpu: 50m
+        #   memory: 64Mi
+        limits:
+          # cpu: 200m
+          memory: 128Mi
+      # Disable anti-affinity for single-node cluster
+      affinity: {}
+    
+    # Monitoring
+    monitoring:
+      serviceMonitor:
+        enabled: true
+        labels:
+          release: kube-prometheus-stack
+      selfMonitoring:
+        enabled: false
+        grafanaAgent:
+          installOperator: false
+    
+    # Loki rule sidecar configuration
+    sidecar:
+      image:
+        repository: localhost:5001/k8s-sidecar
+        # Fallback: docker.io/kiwigrid/k8s-sidecar
+        tag: "1.30.10"
+    
+    # Test configuration
+    test:
+      enabled: false
+

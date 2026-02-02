@@ -1,0 +1,160 @@
+---
+# PostgreSQL HA Cluster for Homepage - Runs 100% LOCAL
+# 
+# Features:
+# - 2 instances (1 primary + 1 standby) for automatic failover
+# - Streaming replication with synchronous commit
+# - Automatic WAL archiving to YOUR LOCAL MinIO
+# - Point-in-time recovery (PITR) capability
+# - Automatic backup every 6 hours
+# - Connection pooling with PgBouncer
+# - Prometheus metrics
+#
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: homepage-postgres
+  namespace: postgres-ha
+  labels:
+    app.kubernetes.io/name: homepage-postgres
+    app.kubernetes.io/component: database
+spec:
+  # 2 instances: 1 primary + 1 hot standby for HA
+  # On single-node Kind: provides crash recovery, not node failure protection
+  instances: 2
+  
+  # PostgreSQL version
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.4
+  
+  # Primary update strategy
+  primaryUpdateStrategy: unsupervised
+  primaryUpdateMethod: switchover
+  
+  # Storage configuration - uses your local storage class
+  storage:
+    size: 10Gi
+    storageClass: standard  # Kind's default storage class
+  
+  # Resource management
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+  
+  # PostgreSQL configuration for reliability
+  postgresql:
+    parameters:
+      # Memory settings (tuned for 1GB limit)
+      shared_buffers: "256MB"
+      effective_cache_size: "512MB"
+      work_mem: "16MB"
+      maintenance_work_mem: "64MB"
+      
+      # WAL settings for durability
+      wal_level: "replica"
+      max_wal_senders: "10"
+      max_replication_slots: "10"
+      wal_keep_size: "512MB"
+      
+      # Checkpointing
+      checkpoint_completion_target: "0.9"
+      checkpoint_timeout: "10min"
+      
+      # Logging
+      log_statement: "ddl"
+      log_min_duration_statement: "1000"  # Log queries > 1s
+      
+      # Connection settings
+      max_connections: "100"
+    
+    # Enable pg_stat_statements for query analysis
+    pg_hba:
+      - host all all 10.0.0.0/8 md5
+      - host all all 172.16.0.0/12 md5
+      - host all all 192.168.0.0/16 md5
+  
+  # Synchronous replication for zero data loss
+  # (only effective with 2+ instances)
+  minSyncReplicas: 0
+  maxSyncReplicas: 1
+  
+  # Backup configuration - to YOUR LOCAL MinIO
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://postgres-backups/homepage
+      endpointURL: http://minio.minio.svc.cluster.local:9000
+      s3Credentials:
+        accessKeyId:
+          name: minio-backup-credentials
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: minio-backup-credentials
+          key: SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+        maxParallel: 2
+      data:
+        compression: gzip
+        jobs: 2
+    retentionPolicy: "7d"
+  
+  # Monitoring
+  monitoring:
+    enablePodMonitor: true
+    customQueriesConfigMap:
+      - name: homepage-postgres-queries
+        key: queries
+  
+  # Bootstrap - create the homepage database
+  bootstrap:
+    initdb:
+      database: homepage
+      owner: postgres
+      secret:
+        name: homepage-postgres-credentials
+      postInitSQL:
+        - CREATE EXTENSION IF NOT EXISTS pg_stat_statements
+        - CREATE EXTENSION IF NOT EXISTS pgcrypto
+
+---
+# Database credentials secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: homepage-postgres-credentials
+  namespace: postgres-ha
+type: kubernetes.io/basic-auth
+stringData:
+  username: postgres
+  password: homepage-super-secret-2024
+---
+# Custom Prometheus queries for monitoring
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homepage-postgres-queries
+  namespace: postgres-ha
+data:
+  queries: |
+    pg_replication:
+      query: "SELECT CASE WHEN NOT pg_is_in_recovery() THEN 0 ELSE GREATEST (0, EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))) END AS lag"
+      master: true
+      metrics:
+        - lag:
+            usage: "GAUGE"
+            description: "Replication lag in seconds"
+    
+    pg_database_size:
+      query: "SELECT pg_database.datname, pg_database_size(pg_database.datname) as size FROM pg_database"
+      master: true
+      metrics:
+        - datname:
+            usage: "LABEL"
+            description: "Database name"
+        - size:
+            usage: "GAUGE"
+            description: "Database size in bytes"
+

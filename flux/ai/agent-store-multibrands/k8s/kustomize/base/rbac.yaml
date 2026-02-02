@@ -1,0 +1,84 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 RBAC for Agent Store MultiBrands
+#
+#  Defines permissions for all store agents
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: store-agent-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: store-agent-sa
+    app.kubernetes.io/part-of: agent-store-multibrands
+imagePullSecrets:
+  - name: ghcr-secret
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: store-agent-role
+  namespace: ai
+rules:
+  # ConfigMaps for product catalog and configuration
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  
+  # Secrets for WhatsApp credentials
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+    resourceNames: ["whatsapp-credentials", "ai-credentials"]
+  
+  # Service discovery
+  - apiGroups: [""]
+    resources: ["services", "endpoints"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: store-agent-binding
+  namespace: ai
+subjects:
+  - kind: ServiceAccount
+    name: store-agent-sa
+    namespace: ai
+roleRef:
+  kind: Role
+  name: store-agent-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Cross-namespace access to knative-lambda for eventing
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: store-agent-eventing
+rules:
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers", "triggers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["messaging.knative.dev"]
+    resources: ["channels", "subscriptions"]
+    verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: store-agent-eventing-binding
+subjects:
+  - kind: ServiceAccount
+    name: store-agent-sa
+    namespace: ai
+roleRef:
+  kind: ClusterRole
+  name: store-agent-eventing
+  apiGroup: rbac.authorization.k8s.io

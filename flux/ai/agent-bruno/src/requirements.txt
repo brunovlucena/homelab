@@ -1,0 +1,31 @@
+# === LLM Integration ===
+httpx>=0.28.1
+
+# === Web Framework ===
+fastapi>=0.115.6  # Fixed CVE-2024-24762
+uvicorn>=0.32.1
+pydantic>=2.12.5  # Latest stable
+python-dotenv>=1.0.0
+
+# === CloudEvents & Messaging ===
+cloudevents>=1.12.0  # Latest secure version
+aio-pika>=9.0.0
+
+# === Observability ===
+# OpenTelemetry dependencies are included via shared-lib[otel]
+prometheus-client>=0.21.0
+structlog>=24.4.0
+
+# === Utilities ===
+tenacity>=8.3.0
+pyyaml>=6.0.0
+uuid7>=0.1.0
+
+# === Domain Memory (Nate B. Jones pattern) ===
+redis>=5.0.0
+asyncpg>=0.29.0
+
+# === Agent Optimization & Memory Libraries ===
+# Installed from local shared-lib during Docker build
+# Includes observability module with OpenTelemetry support
+# -e /app/shared-lib[otel]

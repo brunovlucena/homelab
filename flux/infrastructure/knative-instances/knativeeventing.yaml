@@ -1,0 +1,26 @@
+---
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeEventing
+metadata:
+  name: knative-eventing
+  namespace: knative-eventing
+spec:
+  # Use local registry for Knative images
+  registry:
+    override:
+      # Deployments where container name matches deployment name
+      eventing-controller: localhost:5001/knative-eventing-controller:v1.16.5
+      eventing-webhook: localhost:5001/knative-eventing-webhook:v1.16.5
+      mt-broker-controller: localhost:5001/knative-eventing-mt-broker-controller:v1.16.5
+      job-sink: localhost:5001/knative-eventing-job-sink:v1.16.5
+      # Deployments/Jobs where container name differs - use resource/container format
+      imc-controller/controller: localhost:5001/knative-eventing-imc-controller:v1.16.5
+      imc-dispatcher/dispatcher: localhost:5001/knative-eventing-imc-dispatcher:v1.16.5
+      mt-broker-filter/filter: localhost:5001/knative-eventing-mt-broker-filter:v1.16.5
+      mt-broker-ingress/ingress: localhost:5001/knative-eventing-mt-broker-ingress:v1.16.5
+      storage-version-migration/migrate: localhost:5001/knative-migrate:v1.16.3
+  config:
+    features:
+      "kubernetes.podspec-tolerations": "enabled"
+      "kubernetes.podspec-nodeselector": "enabled"
+

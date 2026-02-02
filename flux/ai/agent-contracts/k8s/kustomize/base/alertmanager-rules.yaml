@@ -1,0 +1,260 @@
+# PrometheusRule for agent-contracts
+# These rules are evaluated by Prometheus and fire alerts to Alertmanager
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: agent-contracts-alerts
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-contracts
+    app.kubernetes.io/component: alerting
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+    # ==========================================================================
+    # CRITICAL ALERTS - Immediate notification via all channels
+    # ==========================================================================
+    - name: agent-contracts.critical
+      interval: 30s
+      rules:
+        # Validated exploit - HIGHEST PRIORITY
+        - alert: ExploitValidated
+          expr: increase(agent_contracts_exploits_validated_total[5m]) > 0
+          for: 0m
+          labels:
+            severity: critical
+            team: security
+          annotations:
+            summary: "🚨 Validated Exploit Detected"
+            description: |
+              A vulnerability exploit has been validated on Anvil fork.
+              Chain: {{ $labels.chain }}
+              Contract: {{ $labels.contract_address }}
+              Type: {{ $labels.vuln_type }}
+              Profit Potential: {{ $labels.profit_potential }}
+            runbook_url: "https://wiki.homelab.local/runbooks/agent-contracts/exploit-validated"
+
+        # Critical vulnerability found
+        - alert: CriticalVulnerabilityFound
+          expr: increase(agent_contracts_critical_vulns_total[5m]) > 0
+          for: 0m
+          labels:
+            severity: critical
+            team: security
+          annotations:
+            summary: "🚨 Critical Vulnerability Detected"
+            description: |
+              A critical severity vulnerability has been detected.
+              Chain: {{ $labels.chain }}
+              Contract: {{ $labels.contract_address }}
+              Type: {{ $labels.vuln_type }}
+            runbook_url: "https://wiki.homelab.local/runbooks/agent-contracts/critical-vuln"
+
+    # ==========================================================================
+    # HIGH ALERTS - Telegram + Discord
+    # ==========================================================================
+    - name: agent-contracts.high
+      interval: 1m
+      rules:
+        # High severity vulnerability
+        - alert: HighVulnerabilityFound
+          expr: increase(agent_contracts_high_vulns_total[5m]) > 0
+          for: 0m
+          labels:
+            severity: high
+            team: security
+          annotations:
+            summary: "⚠️ High Severity Vulnerability Found"
+            description: |
+              A high severity vulnerability has been detected.
+              Chain: {{ $labels.chain }}
+              Contract: {{ $labels.contract_address }}
+              Type: {{ $labels.vuln_type }}
+
+        # Multiple vulnerabilities in single contract
+        - alert: MultipleVulnerabilitiesDetected
+          expr: |
+            count by (chain, contract_address) (
+              increase(agent_contracts_vulnerabilities_total[10m]) > 0
+            ) > 3
+          for: 0m
+          labels:
+            severity: high
+            team: security
+          annotations:
+            summary: "⚠️ Multiple Vulnerabilities in Contract"
+            description: |
+              Multiple vulnerabilities detected in a single contract.
+              Chain: {{ $labels.chain }}
+              This may indicate a high-risk contract.
+
+    # ==========================================================================
+    # WARNING ALERTS - Discord only
+    # ==========================================================================
+    - name: agent-contracts.warning
+      interval: 2m
+      rules:
+        # Scan failure rate high
+        - alert: ScanFailureRateHigh
+          expr: |
+            sum(rate(agent_contracts_scanned_total{status="error"}[5m])) 
+            / sum(rate(agent_contracts_scanned_total[5m])) > 0.2
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "🟡 High Scan Failure Rate"
+            description: |
+              More than 20% of contract scans are failing.
+              Current failure rate: {{ $value | humanizePercentage }}
+
+        # LLM inference slow
+        - alert: LLMInferenceSlow
+          expr: |
+            histogram_quantile(0.95, 
+              sum(rate(agent_contracts_llm_inference_seconds_bucket[5m])) by (le, model)
+            ) > 120
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "🟡 LLM Inference Slow"
+            description: |
+              LLM inference p95 latency is above 2 minutes.
+              Model: {{ $labels.model }}
+              Current p95: {{ $value | humanizeDuration }}
+
+        # Exploit generation failing
+        - alert: ExploitGenerationFailures
+          expr: |
+            sum(rate(agent_contracts_exploits_generated_total{status="failed"}[15m])) 
+            / sum(rate(agent_contracts_exploits_generated_total[15m])) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "🟡 High Exploit Generation Failure Rate"
+            description: |
+              More than 50% of exploit generations are failing.
+              This may indicate LLM issues or invalid vulnerability reports.
+
+    # ==========================================================================
+    # INFO ALERTS - Logging/Grafana only
+    # ==========================================================================
+    - name: agent-contracts.info
+      interval: 5m
+      rules:
+        # Daily scan summary
+        - alert: DailyScanSummary
+          expr: |
+            sum(increase(agent_contracts_scanned_total{status="success"}[24h])) > 0
+          for: 0m
+          labels:
+            severity: info
+            team: security
+            daily_summary: "true"
+          annotations:
+            summary: "ℹ️ Daily Scan Summary"
+            description: |
+              Contracts scanned in last 24h: {{ $value }}
+              
+        # No scans in 1 hour
+        - alert: NoScansRunning
+          expr: |
+            sum(increase(agent_contracts_scanned_total[1h])) == 0
+          for: 1h
+          labels:
+            severity: info
+            team: platform
+          annotations:
+            summary: "ℹ️ No Scans Running"
+            description: |
+              No contract scans have been performed in the last hour.
+              This may be expected during low-activity periods.
+---
+# AlertmanagerConfig for routing agent-contracts alerts to notifi-adapter
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: agent-contracts-routing
+  namespace: ai
+  labels:
+    alertmanagerConfig: agent-contracts
+spec:
+  route:
+    groupBy: ['alertname', 'chain', 'contract_address']
+    groupWait: 10s
+    groupInterval: 5m
+    repeatInterval: 4h
+    receiver: 'notifi-critical'
+    routes:
+      # Critical alerts -> immediate notification
+      - matchers:
+          - name: severity
+            value: critical
+            matchType: =
+        receiver: 'notifi-critical'
+        groupWait: 0s
+        groupInterval: 1m
+        repeatInterval: 1h
+        continue: true
+        
+      # High alerts
+      - matchers:
+          - name: severity
+            value: high
+            matchType: =
+        receiver: 'notifi-high'
+        groupWait: 30s
+        groupInterval: 5m
+        repeatInterval: 2h
+        
+      # Warning alerts
+      - matchers:
+          - name: severity
+            value: warning
+            matchType: =
+        receiver: 'notifi-warning'
+        groupWait: 1m
+        groupInterval: 10m
+        repeatInterval: 4h
+        
+      # Info alerts - only to Grafana
+      - matchers:
+          - name: severity
+            value: info
+            matchType: =
+        receiver: 'grafana-only'
+        groupWait: 5m
+        groupInterval: 30m
+        repeatInterval: 24h
+
+  receivers:
+    - name: 'notifi-critical'
+      webhookConfigs:
+        - url: 'http://notifi-adapter.agent-contracts.svc.cluster.local/webhook/alertmanager'
+          sendResolved: true
+          httpConfig:
+            followRedirects: true
+            
+    - name: 'notifi-high'
+      webhookConfigs:
+        - url: 'http://notifi-adapter.agent-contracts.svc.cluster.local/webhook/alertmanager'
+          sendResolved: true
+          
+    - name: 'notifi-warning'
+      webhookConfigs:
+        - url: 'http://notifi-adapter.agent-contracts.svc.cluster.local/webhook/alertmanager'
+          sendResolved: false
+          
+    - name: 'grafana-only'
+      # No webhook - just creates annotations in Grafana via Prometheus
+      webhookConfigs: []
+
+  # inhibitRules disabled due to AlertmanagerConfig CRD version differences
+  # Can be re-enabled when using a compatible Alertmanager operator version
+

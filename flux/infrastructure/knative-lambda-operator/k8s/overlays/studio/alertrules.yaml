@@ -1,0 +1,333 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚨 PROMETHEUS ALERT RULES - Studio
+#
+#  Purpose: Alert on canary failures and operator issues
+#  Integration: Alertmanager → notification channels
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: knative-lambda-alerts
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: alerting
+    environment: studio
+    # Required for prometheus-operator to pick up
+    # NOTE: Codebase convention uses `prometheus: kube-prometheus-stack`, NOT `release: prometheus`
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+    - name: knative-lambda.canary
+      rules:
+        # 🐦 Canary deployment failed
+        - alert: KnativeLambdaCanaryFailed
+          expr: |
+            flagger_canary_status{
+              namespace="knative-lambda",
+              name="knative-lambda-operator",
+              status="Failed"
+            } == 1
+          for: 1m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Knative Lambda canary deployment failed"
+            description: "Canary deployment for knative-lambda-operator has failed and will be rolled back."
+            runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/canary-failed.md"
+        
+        # 🔄 Canary stuck in progressing
+        - alert: KnativeLambdaCanaryStuck
+          expr: |
+            flagger_canary_status{
+              namespace="knative-lambda",
+              name="knative-lambda-operator",
+              status="Progressing"
+            } == 1
+          for: 30m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Knative Lambda canary deployment stuck"
+            description: "Canary deployment has been progressing for over 30 minutes."
+    
+    - name: knative-lambda.operator
+      rules:
+        # 🔥 Operator not ready
+        - alert: KnativeLambdaOperatorNotReady
+          expr: |
+            kube_deployment_status_replicas_ready{
+              namespace="knative-lambda",
+              deployment="knative-lambda-operator"
+            } 
+            < 
+            kube_deployment_spec_replicas{
+              namespace="knative-lambda",
+              deployment="knative-lambda-operator"
+            }
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Knative Lambda operator replicas not ready"
+            description: "{{ $value }} of {{ $labels.deployment }} replicas are not ready."
+        
+        # 🔥 Operator down
+        - alert: KnativeLambdaOperatorDown
+          expr: |
+            kube_deployment_status_replicas_available{
+              namespace="knative-lambda",
+              deployment="knative-lambda-operator"
+            } == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "Knative Lambda operator is down"
+            description: "All replicas of knative-lambda-operator are unavailable."
+        
+        # 📊 High error rate
+        - alert: KnativeLambdaHighErrorRate
+          expr: |
+            (
+              sum(rate(knative_lambda_operator_errors_total[5m]))
+              /
+              clamp_min(sum(rate(knative_lambda_operator_reconcile_total[5m])), 1)
+            ) * 100 > 1
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High error rate for Knative Lambda operator"
+            description: "Error rate is {{ $value | printf \"%.2f\" }}% (threshold: 1%)."
+        
+        # ⏱️ High latency
+        - alert: KnativeLambdaHighLatency
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le) (
+                rate(knative_lambda_operator_reconcile_duration_seconds_bucket{phase="total"}[5m])
+              )
+            ) > 5
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High P99 latency for Knative Lambda operator"
+            description: "P99 reconcile latency is {{ $value | humanizeDuration }} (threshold: 5s)."
+        
+        # 📉 Reconcile success rate low
+        - alert: KnativeLambdaReconcileSuccessRateLow
+          expr: |
+            (
+              sum(rate(knative_lambda_operator_reconcile_total{result="success"}[5m]))
+              /
+              clamp_min(sum(rate(knative_lambda_operator_reconcile_total[5m])), 1)
+            ) < 0.99
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Operator reconcile success rate below 99%"
+            description: "Reconcile success rate is {{ $value | printf \"%.2f\" }}% (threshold: 99%)"
+        
+        # ⏱️ Reconcile duration high
+        - alert: KnativeLambdaReconcileDurationHigh
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (
+                rate(knative_lambda_operator_reconcile_duration_seconds_bucket{phase="total"}[5m])
+              )
+            ) > 1
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Operator reconcile P95 duration exceeds 1s"
+            description: "P95 reconcile duration is {{ $value | humanizeDuration }} (threshold: 1s)"
+        
+        # 🔥 Operator errors high
+        - alert: KnativeLambdaOperatorErrorsHigh
+          expr: |
+            sum(increase(knative_lambda_operator_errors_total[5m])) > 5
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High operator error count"
+            description: "{{ $value }} operator errors in the last 5 minutes (threshold: 5)"
+    
+    - name: knative-lambda.lambdafunctions
+      rules:
+        # 🏗️ Build failures
+        - alert: KnativeLambdaBuildFailed
+          expr: |
+            sum(increase(
+              knative_lambda_operator_build_duration_seconds_count{result="failure"}[10m]
+            )) > 3
+          for: 1m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Multiple Lambda build failures"
+            description: "{{ $value }} build failures in the last 10 minutes."
+        
+        # 🏗️ Build success rate low
+        - alert: KnativeLambdaBuildSuccessRateLow
+          expr: |
+            (
+              sum(rate(knative_lambda_operator_build_duration_seconds_count{result="success"}[1h]))
+              /
+              clamp_min(sum(rate(knative_lambda_operator_build_duration_seconds_count[1h])), 1)
+            ) < 0.98
+          for: 15m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Build success rate below 98%"
+            description: "Build success rate is {{ $value | printf \"%.1f\" }}% (threshold: 98%)"
+        
+        # 🚀 Lambda function not ready
+        - alert: KnativeLambdaFunctionNotReady
+          expr: |
+            (
+              sum(knative_lambda_operator_lambdafunctions_total{phase!="Ready", phase!="deleted"})
+              /
+              clamp_min(sum(knative_lambda_operator_lambdafunctions_total{phase!="deleted"}), 1)
+            ) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High percentage of Lambda functions not ready"
+            description: "{{ $value | printf \"%.1f\" }}% of functions are not ready (threshold: 10%)"
+        
+        # 📊 Lambda function high error rate (aligned with SLO: 1%)
+        - alert: KnativeLambdaFunctionHighErrorRate
+          expr: |
+            (
+              sum by (function, namespace) (
+                rate(knative_lambda_function_invocations_total{status="error"}[5m])
+              )
+              /
+              clamp_min(sum by (function, namespace) (
+                rate(knative_lambda_function_invocations_total[5m])
+              ), 1)
+            ) * 100 > 1
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Lambda function {{ $labels.function }} has high error rate"
+            description: "Error rate is {{ $value | printf \"%.2f\" }}% (threshold: 1% SLO) for function {{ $labels.function }} in namespace {{ $labels.namespace }}."
+            runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/lambda-high-error-rate.md"
+        
+        # 🏗️ Build duration too long (aligned with dashboard: 120s)
+        - alert: KnativeLambdaBuildDurationHigh
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le, runtime) (
+                rate(knative_lambda_operator_build_duration_seconds_bucket[5m])
+              )
+            ) > 120
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Lambda builds taking too long"
+            description: "P95 build duration is {{ $value | humanizeDuration }} (threshold: 2 minutes) for {{ $labels.runtime }} runtime."
+            runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/build-slow.md"
+        
+        # 📥 Workqueue depth high (aligned with dashboard: 10)
+        - alert: KnativeLambdaWorkqueueDepthHigh
+          expr: |
+            sum(knative_lambda_operator_workqueue_depth) > 10
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Operator workqueue depth is high"
+            description: "Workqueue depth is {{ $value }} (threshold: 10). The operator may be falling behind on reconciliations."
+            runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/workqueue-backlog.md"
+        
+        # 🥶 High cold start rate (aligned with SLO: 5%)
+        - alert: KnativeLambdaHighColdStartRate
+          expr: |
+            (
+              sum by (function, namespace) (
+                rate(knative_lambda_function_cold_starts_total[5m])
+              )
+              /
+              clamp_min(sum by (function, namespace) (
+                rate(knative_lambda_function_invocations_total[5m])
+              ), 1)
+            ) * 100 > 5
+          for: 10m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Lambda function {{ $labels.function }} has high cold start rate"
+            description: "Cold start rate is {{ $value | printf \"%.2f\" }}% (threshold: 5% SLO) for function {{ $labels.function }}."
+        
+        # ⏱️ Lambda function high latency (aligned with SLO: 1s P95)
+        - alert: KnativeLambdaFunctionHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le, function, namespace) (
+                rate(knative_lambda_function_duration_seconds_bucket[5m])
+              )
+            ) > 1
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "Lambda function {{ $labels.function }} has high latency"
+            description: "P95 latency is {{ $value | humanizeDuration }} (threshold: 1s SLO) for function {{ $labels.function }}."
+    
+    - name: knative-lambda.eventing
+      rules:
+        # ⚠️ DLQ messages high
+        - alert: KnativeLambdaDLQMessagesHigh
+          expr: |
+            sum(rabbitmq_queue_messages{queue=~".*dlq.*"}) > 100
+          for: 5m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "DLQ has excessive messages"
+            description: "DLQ contains {{ $value }} messages (threshold: 100). Immediate investigation required."
+        
+        # ⚠️ DLQ ingest rate high
+        - alert: KnativeLambdaDLQIngestRateHigh
+          expr: |
+            sum(rate(rabbitmq_queue_messages_published_total{queue=~".*dlq.*"}[5m])) > 1
+          for: 5m
+          labels:
+            severity: warning
+            team: platform
+          annotations:
+            summary: "High rate of messages entering DLQ"
+            description: "DLQ ingest rate is {{ $value | printf \"%.2f\" }} msg/s (threshold: 1 msg/s)"
+

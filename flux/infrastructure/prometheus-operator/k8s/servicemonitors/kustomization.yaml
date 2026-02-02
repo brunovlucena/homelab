@@ -1,0 +1,18 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 📊 ServiceMonitors for Prometheus scraping
+# Enables metrics collection from various components
+# NOTE: These ServiceMonitors are deployed AFTER kube-prometheus-stack HelmRelease
+# to ensure ServiceMonitor CRDs are available
+
+resources:
+  - knative-serving-servicemonitor.yaml
+  - rabbitmq-servicemonitor.yaml
+  # ServiceMonitors moved from level 1 infrastructure components
+  - cloudflare-tunnel-servicemonitor.yaml
+  - cloudflare-exporter-servicemonitor.yaml
+  - homepage-servicemonitor.yaml
+  - homepage-frontend-servicemonitor.yaml
+  - knative-lambda-operator-servicemonitor.yaml

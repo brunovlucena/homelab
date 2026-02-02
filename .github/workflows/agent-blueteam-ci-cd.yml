@@ -1,0 +1,41 @@
+# ============================================================================
+# 🛡️ Agent-BlueTeam - CI/CD
+# ============================================================================
+# Defensive security agent.
+# Uses reusable workflow for standardized CI/CD.
+# ============================================================================
+
+name: 🛡️ Agent-BlueTeam - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-blueteam/**'
+      - '.github/workflows/agent-blueteam-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agent-blueteam/**'
+      - '.github/workflows/agent-blueteam-ci-cd.yml'
+    tags:
+      - 'agent-blueteam-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-cd:
+    name: 🛡️ Agent-BlueTeam
+    uses: ./.github/workflows/_reusable-agent-cicd.yml
+    with:
+      agent-name: agent-blueteam
+      working-directory: flux/ai/agent-blueteam
+      image-name: agent-blueteam/defense-runner
+      dockerfile: src/defense_runner/Dockerfile
+      python-version: '3.12'
+      run-tests: true
+      run-lint: true
+      copy-shared-lib: true
+    secrets: inherit

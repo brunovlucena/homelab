@@ -1,0 +1,897 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🍽️ K6 RESTAURANT FULL SERVICE - ALL AGENTS ORCHESTRATION
+#
+#  Purpose: End-to-end restaurant experience across all agents
+#
+#  Agents Tested:
+#    • 🎩 Host Maximilian - Guest greeting & seating
+#    • 👔 Waiter Pierre - Menu presentation & orders
+#    • 🍷 Sommelier Isabella - Wine recommendations
+#    • 👨‍🍳 Chef Marco - Kitchen preparation
+#
+#  Scenarios:
+#    1. VIP Anniversary Dinner - Premium personalized experience
+#    2. Friday Night Rush - High volume concurrent tables
+#    3. Large Party - 8+ guest coordination
+#    4. Special Dietary - Allergen handling
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: restaurant-full-service
+  namespace: agent-restaurant
+  labels:
+    app.kubernetes.io/name: agent-restaurant
+    app.kubernetes.io/component: testing
+    test-type: full-service
+    test-scenario: all-agents
+spec:
+  parallelism: 3
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: restaurant-full-service-script
+      file: full-service.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: NAMESPACE
+        value: "agent-restaurant"
+      - name: HOST_URL
+        value: "http://host-maximilian.agent-restaurant.svc.cluster.local"
+      - name: WAITER_URL
+        value: "http://waiter-pierre.agent-restaurant.svc.cluster.local"
+      - name: SOMMELIER_URL
+        value: "http://sommelier-isabella.agent-restaurant.svc.cluster.local"
+      - name: CHEF_URL
+        value: "http://chef-marco.agent-restaurant.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: restaurant-full-service-script
+  namespace: agent-restaurant
+  labels:
+    app.kubernetes.io/name: agent-restaurant
+    app.kubernetes.io/component: testing
+data:
+  full-service.js: |
+    import http from 'k6/http';
+    import { check, group, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CUSTOM METRICS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Service Metrics
+    const guestsServed = new Counter('restaurant_guests_served');
+    const ordersCompleted = new Counter('restaurant_orders_completed');
+    const winePairingsServed = new Counter('restaurant_wine_pairings_served');
+    const dishesCooked = new Counter('restaurant_dishes_cooked');
+    const tablesActive = new Gauge('restaurant_tables_active');
+    const revenueTotal = new Counter('restaurant_revenue_total');
+
+    // Per-Agent Metrics
+    const hostResponseTime = new Trend('restaurant_host_response_ms');
+    const waiterResponseTime = new Trend('restaurant_waiter_response_ms');
+    const sommelierResponseTime = new Trend('restaurant_sommelier_response_ms');
+    const chefResponseTime = new Trend('restaurant_chef_response_ms');
+
+    // Quality Metrics
+    const serviceSuccess = new Rate('restaurant_service_success');
+    const guestSatisfaction = new Gauge('restaurant_guest_satisfaction');
+    const kitchenTimingAccuracy = new Rate('restaurant_kitchen_timing_accuracy');
+
+    // Flow Metrics
+    const flowCompletionRate = new Rate('restaurant_flow_completion');
+    const stageLatency = new Trend('restaurant_stage_latency_ms');
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONFIGURATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    const HOST_URL = __ENV.HOST_URL || 'http://host-maximilian.agent-restaurant.svc.cluster.local';
+    const WAITER_URL = __ENV.WAITER_URL || 'http://waiter-pierre.agent-restaurant.svc.cluster.local';
+    const SOMMELIER_URL = __ENV.SOMMELIER_URL || 'http://sommelier-isabella.agent-restaurant.svc.cluster.local';
+    const CHEF_URL = __ENV.CHEF_URL || 'http://chef-marco.agent-restaurant.svc.cluster.local';
+
+    // Restaurant Menu
+    const MENU = {
+      starters: [
+        { name: 'Burrata with Heirloom Tomatoes', price: 22, prepTime: 5 },
+        { name: 'Caprese Salad', price: 18, prepTime: 4 },
+        { name: 'Beef Carpaccio', price: 26, prepTime: 6 },
+        { name: 'Tuna Tartare', price: 28, prepTime: 7 },
+      ],
+      mains: [
+        { name: 'Risotto ai Porcini', price: 34, prepTime: 18 },
+        { name: 'Beef Tenderloin', price: 52, prepTime: 15 },
+        { name: 'Grilled Sea Bass', price: 45, prepTime: 12 },
+        { name: 'Truffle Pasta', price: 42, prepTime: 14 },
+        { name: 'Lamb Rack', price: 58, prepTime: 20 },
+        { name: 'Duck Breast', price: 48, prepTime: 16 },
+      ],
+      desserts: [
+        { name: 'Tiramisu', price: 14, prepTime: 2 },
+        { name: 'Panna Cotta', price: 12, prepTime: 2 },
+        { name: 'Chocolate Fondant', price: 16, prepTime: 8 },
+        { name: 'Limoncello Sorbet', price: 10, prepTime: 1 },
+      ],
+    };
+
+    const WINES = [
+      { name: 'Barolo 2019', price: 120, type: 'red', region: 'Piedmont' },
+      { name: 'Brunello di Montalcino 2018', price: 95, type: 'red', region: 'Tuscany' },
+      { name: 'Gavi di Gavi 2022', price: 55, type: 'white', region: 'Piedmont' },
+      { name: 'Prosecco Superiore', price: 45, type: 'sparkling', region: 'Veneto' },
+      { name: 'Amarone della Valpolicella', price: 140, type: 'red', region: 'Veneto' },
+    ];
+
+    const OCCASIONS = ['Anniversary', 'Birthday', 'Business Dinner', 'Date Night', 'Celebration', 'Regular Dining'];
+    const DIETARY = ['None', 'Vegetarian', 'Vegan', 'Gluten-Free', 'Dairy-Free', 'Nut Allergy'];
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TEST OPTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export const options = {
+      scenarios: {
+        // Scenario 1: VIP Anniversary Dinners (detailed flow)
+        vip_dinners: {
+          executor: 'per-vu-iterations',
+          vus: 2,
+          iterations: 3,
+          maxDuration: '15m',
+          tags: { service_type: 'vip' },
+          exec: 'vipAnniversaryDinner',
+        },
+        // Scenario 2: Friday Night Rush (high volume)
+        friday_rush: {
+          executor: 'ramping-vus',
+          startVUs: 0,
+          stages: [
+            { duration: '1m', target: 5 },    // Early arrivals
+            { duration: '2m', target: 15 },   // Peak hours
+            { duration: '3m', target: 25 },   // Full house
+            { duration: '2m', target: 15 },   // Cooling down
+            { duration: '1m', target: 0 },    // Closing
+          ],
+          startTime: '5m',
+          tags: { service_type: 'rush' },
+          exec: 'fridayNightRush',
+        },
+        // Scenario 3: Large Party Coordination
+        large_party: {
+          executor: 'per-vu-iterations',
+          vus: 1,
+          iterations: 2,
+          maxDuration: '10m',
+          startTime: '15m',
+          tags: { service_type: 'large_party' },
+          exec: 'largePartyDinner',
+        },
+        // Scenario 4: Special Dietary Requirements
+        dietary_special: {
+          executor: 'constant-vus',
+          vus: 3,
+          duration: '5m',
+          startTime: '20m',
+          tags: { service_type: 'dietary' },
+          exec: 'dietarySpecialHandling',
+        },
+      },
+      thresholds: {
+        'restaurant_service_success': ['rate>0.70'],
+        'restaurant_flow_completion': ['rate>0.60'],
+        'restaurant_host_response_ms': ['p(95)<60000'],
+        'restaurant_waiter_response_ms': ['p(95)<60000'],
+        'restaurant_sommelier_response_ms': ['p(95)<60000'],
+        'restaurant_chef_response_ms': ['p(95)<60000'],
+        'http_req_failed': ['rate<0.30'],
+      },
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HELPER FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function createCloudEvent(type, data, source) {
+      return {
+        specversion: '1.0',
+        id: `k6-restaurant-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        type: type,
+        source: source || '/k6-restaurant-test',
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+
+    function sendCloudEvent(url, event, timeout = '120s') {
+      return http.post(url, JSON.stringify(event), {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+          'Ce-Specversion': '1.0',
+        },
+        timeout: timeout,
+      });
+    }
+
+    function randomItem(array) {
+      return array[Math.floor(Math.random() * array.length)];
+    }
+
+    function randomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function generateOrder(partySize, dietary = 'None') {
+      const items = [];
+      let total = 0;
+
+      // Each guest gets starter, main, dessert
+      for (let i = 0; i < partySize; i++) {
+        const starter = randomItem(MENU.starters);
+        const main = randomItem(MENU.mains);
+        const dessert = randomItem(MENU.desserts);
+
+        items.push(
+          { ...starter, course: 'starter', guestIndex: i, notes: dietary !== 'None' ? dietary : '' },
+          { ...main, course: 'main', guestIndex: i, notes: '' },
+          { ...dessert, course: 'dessert', guestIndex: i, notes: '' }
+        );
+
+        total += starter.price + main.price + dessert.price;
+      }
+
+      return { items, total };
+    }
+
+    class DiningSession {
+      constructor(type, partySize) {
+        this.sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        this.guestId = `guest-${this.sessionId}`;
+        this.tableId = `table-${randomInt(1, 20)}`;
+        this.partySize = partySize;
+        this.type = type;
+        this.startTime = Date.now();
+        this.stages = [];
+        this.order = null;
+        this.wine = null;
+        this.totalBill = 0;
+      }
+
+      recordStage(name, success, duration) {
+        this.stages.push({ name, success, duration, timestamp: Date.now() });
+        stageLatency.add(duration, { stage: name, type: this.type });
+      }
+
+      complete() {
+        return this.stages.length >= 5 && this.stages.every(s => s.success);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 1: VIP ANNIVERSARY DINNER
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function vipAnniversaryDinner() {
+      const session = new DiningSession('vip', 2);
+      let flowSuccess = true;
+
+      console.log(`\n🌟 VIP Anniversary Dinner Starting (${session.sessionId})`);
+      console.log('═'.repeat(60));
+
+      tablesActive.add(1);
+
+      // Stage 1: VIP Arrival - Host Recognition
+      group('🎩 Stage 1: VIP Arrival', () => {
+        console.log('  → VIP guests arriving for anniversary celebration...');
+
+        const event = createCloudEvent('restaurant.guest.arriving', {
+          guestId: session.guestId,
+          partySize: session.partySize,
+          reservationId: `res-vip-${session.sessionId}`,
+          name: 'Mr. & Mrs. K6 Test',
+          preferences: ['Window seat', 'Anniversary setup', 'Candles'],
+          isVip: true,
+          occasion: 'Anniversary',
+          previousVisits: 12,
+          membershipTier: 'Gold',
+        }, '/k6-vip-dinner');
+
+        const start = Date.now();
+        const res = sendCloudEvent(HOST_URL, event);
+        const duration = Date.now() - start;
+
+        hostResponseTime.add(duration);
+
+        const success = check(res, {
+          'VIP guest recognized': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        session.recordStage('vip_arrival', success, duration);
+        serviceSuccess.add(success);
+
+        if (success) {
+          console.log(`  ✓ ${duration}ms - Maximilian warmly greets VIP guests`);
+        } else {
+          console.log(`  ✗ VIP arrival failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+
+      sleep(2);
+
+      // Stage 2: Premium Seating & Menu Presentation
+      group('👔 Stage 2: Premium Seating', () => {
+        console.log('  → Seating at premium table with anniversary setup...');
+
+        const event = createCloudEvent('restaurant.guest.seated', {
+          tableId: session.tableId,
+          guestId: session.guestId,
+          partySize: session.partySize,
+          occasion: 'Anniversary',
+          request: 'Please present the tasting menu and share the story of tonights special dishes. We are celebrating 10 years together!',
+          setupComplete: true,
+          champagneWaiting: true,
+        }, '/k6-vip-dinner');
+
+        const start = Date.now();
+        const res = sendCloudEvent(WAITER_URL, event);
+        const duration = Date.now() - start;
+
+        waiterResponseTime.add(duration);
+
+        const success = check(res, {
+          'menu presented elegantly': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        session.recordStage('menu_presentation', success, duration);
+        serviceSuccess.add(success);
+
+        if (success) {
+          console.log(`  ✓ ${duration}ms - Pierre presents menu with theatrical flair`);
+        } else {
+          console.log(`  ✗ Menu presentation failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+
+      sleep(3);
+
+      // Stage 3: Premium Wine Pairing
+      group('🍷 Stage 3: Wine Pairing Consultation', () => {
+        console.log('  → Sommelier consultation for perfect pairing...');
+
+        session.wine = randomItem(WINES.filter(w => w.type === 'red'));
+
+        const event = createCloudEvent('restaurant.service.wine.request', {
+          tableId: session.tableId,
+          guestId: session.guestId,
+          occasion: 'Anniversary',
+          preferences: {
+            style: 'Romantic evening',
+            priceRange: '$100-200',
+            notes: 'Full-bodied reds preferred, open to recommendations for this special night',
+          },
+          anticipatedCourses: ['Beef Tenderloin', 'Risotto ai Porcini', 'Tiramisu'],
+          wantsPairing: true,
+        }, '/k6-vip-dinner');
+
+        const start = Date.now();
+        const res = sendCloudEvent(SOMMELIER_URL, event);
+        const duration = Date.now() - start;
+
+        sommelierResponseTime.add(duration);
+
+        const success = check(res, {
+          'sommelier provides consultation': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        session.recordStage('wine_consultation', success, duration);
+        winePairingsServed.add(1);
+        serviceSuccess.add(success);
+
+        if (success) {
+          console.log(`  ✓ ${duration}ms - Isabella recommends ${session.wine.name}`);
+          session.totalBill += session.wine.price;
+        } else {
+          console.log(`  ✗ Wine consultation failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+
+      sleep(2);
+
+      // Stage 4: Order Placement
+      group('📝 Stage 4: Anniversary Order', () => {
+        console.log('  → Placing special anniversary dinner order...');
+
+        session.order = {
+          items: [
+            { dish: 'Burrata with Heirloom Tomatoes', course: 'starter', notes: 'Extra truffle oil' },
+            { dish: 'Beef Carpaccio', course: 'starter', notes: 'Light seasoning' },
+            { dish: 'Beef Tenderloin', course: 'main', notes: 'Medium-rare, truffle butter' },
+            { dish: 'Risotto ai Porcini', course: 'main', notes: 'Extra parmesan on side' },
+            { dish: 'Tiramisu for Two', course: 'dessert', notes: 'Anniversary candle with HAPPY 10 YEARS' },
+          ],
+          total: 22 + 26 + 52 + 34 + 14,
+        };
+
+        const event = createCloudEvent('restaurant.order.created', {
+          tableId: session.tableId,
+          orderId: `order-${session.sessionId}`,
+          guestId: session.guestId,
+          items: session.order.items,
+          specialRequests: '10th Anniversary celebration - please make it unforgettable',
+          wineSelection: session.wine.name,
+          courseTiming: 'Traditional with pauses for wine appreciation',
+        }, '/k6-vip-dinner');
+
+        const start = Date.now();
+        const res = sendCloudEvent(WAITER_URL, event);
+        const duration = Date.now() - start;
+
+        waiterResponseTime.add(duration);
+
+        const success = check(res, {
+          'order confirmed': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        session.recordStage('order_placement', success, duration);
+        ordersCompleted.add(1);
+        session.totalBill += session.order.total;
+        serviceSuccess.add(success);
+
+        if (success) {
+          console.log(`  ✓ ${duration}ms - Pierre confirms anniversary order`);
+        } else {
+          console.log(`  ✗ Order placement failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+
+      sleep(2);
+
+      // Stage 5: Kitchen Preparation
+      group('👨‍🍳 Stage 5: Kitchen Excellence', () => {
+        console.log('  → Chef Marco preparing anniversary feast...');
+
+        const event = createCloudEvent('restaurant.order.created', {
+          ticketId: `ticket-${session.sessionId}`,
+          tableId: session.tableId,
+          orderId: `order-${session.sessionId}`,
+          items: session.order.items.map(item => ({
+            ...item,
+            station: item.course === 'starter' ? 'cold' : item.course === 'dessert' ? 'pastry' : 'hot',
+          })),
+          specialInstructions: 'VIP Anniversary - 10 years celebration. Perfect presentation required.',
+          priority: 'vip',
+          courseTiming: 'traditional',
+        }, '/k6-vip-dinner');
+
+        const start = Date.now();
+        const res = sendCloudEvent(CHEF_URL, event);
+        const duration = Date.now() - start;
+
+        chefResponseTime.add(duration);
+
+        const success = check(res, {
+          'chef acknowledges VIP order': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        session.recordStage('kitchen_prep', success, duration);
+        dishesCooked.add(session.order.items.length);
+        kitchenTimingAccuracy.add(success);
+        serviceSuccess.add(success);
+
+        if (success) {
+          console.log(`  ✓ ${duration}ms - Marco begins anniversary preparation`);
+        } else {
+          console.log(`  ✗ Kitchen preparation failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+
+      sleep(3);
+
+      // Stage 6: Departure with Farewell
+      group('🎩 Stage 6: VIP Farewell', () => {
+        console.log('  → VIP guests departing...');
+
+        const event = createCloudEvent('restaurant.guest.departed', {
+          guestId: session.guestId,
+          tableId: session.tableId,
+          totalSpent: session.totalBill + session.wine.price,
+          tipPercentage: 25,
+          rating: 5,
+          feedback: 'Absolutely magical anniversary dinner! Pierre made it so special, and Chef Marco outdid himself. We will be back!',
+          returnIntent: 'definitely',
+          membershipPointsEarned: Math.round((session.totalBill + session.wine.price) * 0.1),
+        }, '/k6-vip-dinner');
+
+        const start = Date.now();
+        const res = sendCloudEvent(HOST_URL, event);
+        const duration = Date.now() - start;
+
+        hostResponseTime.add(duration);
+
+        const success = check(res, {
+          'VIP farewell complete': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        session.recordStage('departure', success, duration);
+        guestsServed.add(session.partySize);
+        revenueTotal.add(session.totalBill + session.wine.price);
+        guestSatisfaction.add(5);
+        serviceSuccess.add(success);
+
+        if (success) {
+          console.log(`  ✓ ${duration}ms - Maximilian bids warm farewell`);
+        } else {
+          console.log(`  ✗ Departure handling failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+
+      tablesActive.add(-1);
+      flowCompletionRate.add(flowSuccess);
+
+      const totalDuration = Date.now() - session.startTime;
+      console.log(`\n${'═'.repeat(60)}`);
+      console.log(`${flowSuccess ? '✅' : '❌'} VIP Dinner completed in ${(totalDuration/1000).toFixed(1)}s`);
+      console.log(`   Bill: $${session.totalBill + session.wine.price}`);
+      console.log(`${'═'.repeat(60)}\n`);
+
+      sleep(5);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 2: FRIDAY NIGHT RUSH
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function fridayNightRush() {
+      const partySize = randomInt(2, 4);
+      const session = new DiningSession('rush', partySize);
+
+      tablesActive.add(1);
+
+      // Quick service flow for busy night
+      group('🍽️ Quick Service Flow', () => {
+        // Arrival
+        const arrivalEvent = createCloudEvent('restaurant.guest.arriving', {
+          guestId: session.guestId,
+          partySize: partySize,
+          reservationId: Math.random() > 0.5 ? `res-${Date.now()}` : null,
+          isVip: false,
+          occasion: 'Regular Dining',
+        }, '/k6-rush');
+
+        let start = Date.now();
+        let res = sendCloudEvent(HOST_URL, arrivalEvent);
+        hostResponseTime.add(Date.now() - start);
+
+        check(res, { 'rush arrival ok': (r) => r.status >= 200 && r.status < 300 });
+        sleep(1);
+
+        // Menu & Order combined
+        const order = generateOrder(partySize);
+        const orderEvent = createCloudEvent('restaurant.order.created', {
+          tableId: session.tableId,
+          guestId: session.guestId,
+          orderId: `order-${session.sessionId}`,
+          items: order.items,
+        }, '/k6-rush');
+
+        start = Date.now();
+        res = sendCloudEvent(WAITER_URL, orderEvent);
+        waiterResponseTime.add(Date.now() - start);
+
+        const orderOk = check(res, { 'rush order ok': (r) => r.status >= 200 && r.status < 300 });
+        if (orderOk) {
+          ordersCompleted.add(1);
+          revenueTotal.add(order.total);
+        }
+        sleep(1);
+
+        // Quick wine selection
+        if (Math.random() > 0.3) {
+          const wine = randomItem(WINES);
+          const wineEvent = createCloudEvent('restaurant.order.created', {
+            tableId: session.tableId,
+            items: [{ name: wine.name, course: 'wine' }],
+            request: 'Quick wine recommendation',
+          }, '/k6-rush');
+
+          start = Date.now();
+          res = sendCloudEvent(SOMMELIER_URL, wineEvent);
+          sommelierResponseTime.add(Date.now() - start);
+
+          if (res.status >= 200 && res.status < 300) {
+            winePairingsServed.add(1);
+          }
+        }
+        sleep(1);
+
+        // Kitchen
+        const kitchenEvent = createCloudEvent('restaurant.order.created', {
+          ticketId: `ticket-${session.sessionId}`,
+          tableId: session.tableId,
+          items: order.items,
+          priority: 'normal',
+        }, '/k6-rush');
+
+        start = Date.now();
+        res = sendCloudEvent(CHEF_URL, kitchenEvent);
+        chefResponseTime.add(Date.now() - start);
+
+        const kitchenOk = check(res, { 'rush kitchen ok': (r) => r.status >= 200 && r.status < 300 });
+        if (kitchenOk) {
+          dishesCooked.add(order.items.length);
+        }
+
+        guestsServed.add(partySize);
+        serviceSuccess.add(orderOk && kitchenOk);
+      });
+
+      tablesActive.add(-1);
+      sleep(randomInt(2, 4));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 3: LARGE PARTY DINNER
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function largePartyDinner() {
+      const partySize = randomInt(8, 12);
+      const session = new DiningSession('large_party', partySize);
+
+      console.log(`\n👥 Large Party Dinner (${partySize} guests)`);
+      tablesActive.add(1);
+
+      // Detailed flow for large party coordination
+      group('Large Party Coordination', () => {
+        // Stage 1: Large group arrival
+        const arrivalEvent = createCloudEvent('restaurant.guest.arriving', {
+          guestId: session.guestId,
+          partySize: partySize,
+          reservationId: `res-party-${session.sessionId}`,
+          name: 'K6 Corporate Event',
+          isVip: true,
+          occasion: 'Corporate Dinner',
+          specialNeeds: ['Combined tables', 'Separate checks option', 'Dietary mix'],
+        }, '/k6-large-party');
+
+        let start = Date.now();
+        let res = sendCloudEvent(HOST_URL, arrivalEvent);
+        hostResponseTime.add(Date.now() - start);
+
+        const arrivalOk = check(res, { 'large party seated': (r) => r.status >= 200 && r.status < 300 });
+        serviceSuccess.add(arrivalOk);
+        sleep(2);
+
+        // Stage 2: Group menu presentation
+        const menuEvent = createCloudEvent('restaurant.guest.seated', {
+          tableId: session.tableId,
+          guestId: session.guestId,
+          partySize: partySize,
+          request: `Please present the menu to our group of ${partySize}. We have various dietary requirements.`,
+          dietaryMix: ['3 vegetarian', '1 gluten-free', '2 pescatarian'],
+        }, '/k6-large-party');
+
+        start = Date.now();
+        res = sendCloudEvent(WAITER_URL, menuEvent);
+        waiterResponseTime.add(Date.now() - start);
+
+        check(res, { 'group menu ok': (r) => r.status >= 200 && r.status < 300 });
+        sleep(2);
+
+        // Stage 3: Wine for group
+        const wineEvent = createCloudEvent('restaurant.service.wine.request', {
+          tableId: session.tableId,
+          partySize: partySize,
+          occasion: 'Corporate Dinner',
+          preferences: {
+            budget: '$500-800 total',
+            variety: 'Mix of red, white, and sparkling',
+            style: 'Crowd-pleasing selections',
+          },
+        }, '/k6-large-party');
+
+        start = Date.now();
+        res = sendCloudEvent(SOMMELIER_URL, wineEvent);
+        sommelierResponseTime.add(Date.now() - start);
+
+        if (res.status >= 200 && res.status < 300) {
+          winePairingsServed.add(partySize);
+        }
+        sleep(2);
+
+        // Stage 4: Large order
+        const order = generateOrder(partySize);
+
+        const orderEvent = createCloudEvent('restaurant.order.created', {
+          tableId: session.tableId,
+          orderId: `order-${session.sessionId}`,
+          guestId: session.guestId,
+          items: order.items,
+          specialRequests: 'Corporate dinner - synchronized course timing for all guests',
+          courseTiming: 'synchronized',
+        }, '/k6-large-party');
+
+        start = Date.now();
+        res = sendCloudEvent(WAITER_URL, orderEvent);
+        waiterResponseTime.add(Date.now() - start);
+
+        const orderOk = check(res, { 'large order confirmed': (r) => r.status >= 200 && r.status < 300 });
+        if (orderOk) {
+          ordersCompleted.add(1);
+          revenueTotal.add(order.total);
+        }
+        sleep(2);
+
+        // Stage 5: Kitchen coordination for large party
+        const kitchenEvent = createCloudEvent('restaurant.order.created', {
+          ticketId: `ticket-${session.sessionId}`,
+          tableId: session.tableId,
+          items: order.items,
+          priority: 'large_party',
+          specialInstructions: `SYNCHRONIZED SERVICE for ${partySize} guests. Fire all courses together.`,
+        }, '/k6-large-party');
+
+        start = Date.now();
+        res = sendCloudEvent(CHEF_URL, kitchenEvent);
+        chefResponseTime.add(Date.now() - start);
+
+        const kitchenOk = check(res, { 'large kitchen ok': (r) => r.status >= 200 && r.status < 300 });
+        if (kitchenOk) {
+          dishesCooked.add(order.items.length);
+          kitchenTimingAccuracy.add(true);
+        }
+
+        guestsServed.add(partySize);
+        flowCompletionRate.add(arrivalOk && orderOk && kitchenOk);
+      });
+
+      tablesActive.add(-1);
+
+      console.log(`✅ Large party service completed (${partySize} guests)\n`);
+      sleep(5);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 4: DIETARY SPECIAL HANDLING
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function dietarySpecialHandling() {
+      const dietary = randomItem(DIETARY.filter(d => d !== 'None'));
+      const partySize = randomInt(2, 4);
+      const session = new DiningSession('dietary', partySize);
+
+      tablesActive.add(1);
+
+      group(`Dietary: ${dietary}`, () => {
+        // Order with dietary requirements
+        const order = generateOrder(partySize, dietary);
+
+        const orderEvent = createCloudEvent('restaurant.order.created', {
+          tableId: session.tableId,
+          orderId: `order-${session.sessionId}`,
+          guestId: session.guestId,
+          items: order.items.map(item => ({
+            ...item,
+            dietaryRequirement: dietary,
+            allergenAlert: dietary.includes('Allergy'),
+          })),
+          dietaryRequirements: [dietary],
+          allergenProtocol: dietary.includes('Allergy') ? 'STRICT' : 'standard',
+        }, '/k6-dietary');
+
+        const start = Date.now();
+        const res = sendCloudEvent(WAITER_URL, orderEvent);
+        waiterResponseTime.add(Date.now() - start);
+
+        const success = check(res, {
+          'dietary order handled': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        if (success) {
+          ordersCompleted.add(1);
+        }
+        serviceSuccess.add(success);
+
+        // Kitchen with allergen awareness
+        const kitchenEvent = createCloudEvent('restaurant.order.created', {
+          ticketId: `ticket-${session.sessionId}`,
+          tableId: session.tableId,
+          items: order.items,
+          dietaryRequirements: [dietary],
+          allergenAlert: dietary.includes('Allergy'),
+          specialInstructions: `⚠️ ${dietary} - Separate preparation required`,
+        }, '/k6-dietary');
+
+        const kitchenRes = sendCloudEvent(CHEF_URL, kitchenEvent);
+        chefResponseTime.add(Date.now() - start);
+
+        check(kitchenRes, { 'dietary kitchen ok': (r) => r.status >= 200 && r.status < 300 });
+
+        guestsServed.add(partySize);
+      });
+
+      tablesActive.add(-1);
+      sleep(randomInt(2, 4));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SUMMARY
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function handleSummary(data) {
+      const guests = data.metrics['restaurant_guests_served'];
+      const orders = data.metrics['restaurant_orders_completed'];
+      const wines = data.metrics['restaurant_wine_pairings_served'];
+      const dishes = data.metrics['restaurant_dishes_cooked'];
+      const revenue = data.metrics['restaurant_revenue_total'];
+      const success = data.metrics['restaurant_service_success'];
+      const completion = data.metrics['restaurant_flow_completion'];
+      const hostTime = data.metrics['restaurant_host_response_ms'];
+      const waiterTime = data.metrics['restaurant_waiter_response_ms'];
+      const sommelierTime = data.metrics['restaurant_sommelier_response_ms'];
+      const chefTime = data.metrics['restaurant_chef_response_ms'];
+
+      const guestsCount = guests && guests.values ? guests.values.count : 0;
+      const ordersCount = orders && orders.values ? orders.values.count : 0;
+      const winesCount = wines && wines.values ? wines.values.count : 0;
+      const dishesCount = dishes && dishes.values ? dishes.values.count : 0;
+      const revenueTotal = revenue && revenue.values ? revenue.values.count : 0;
+      const successRate = success && success.values ? success.values.rate : 0;
+      const completionRate = completion && completion.values ? completion.values.rate : 0;
+
+      const hostP95 = hostTime && hostTime.values ? hostTime.values['p(95)'] : 0;
+      const waiterP95 = waiterTime && waiterTime.values ? waiterTime.values['p(95)'] : 0;
+      const sommelierP95 = sommelierTime && sommelierTime.values ? sommelierTime.values['p(95)'] : 0;
+      const chefP95 = chefTime && chefTime.values ? chefTime.values['p(95)'] : 0;
+
+      const passed = successRate >= 0.70 && completionRate >= 0.60;
+
+      console.log('\n' + '═'.repeat(70));
+      console.log('🍽️ RESTAURANT FULL SERVICE TEST RESULTS');
+      console.log('═'.repeat(70));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('─'.repeat(70));
+      console.log('📊 SERVICE STATISTICS');
+      console.log('   Guests Served:      ' + guestsCount);
+      console.log('   Orders Completed:   ' + ordersCount);
+      console.log('   Wine Pairings:      ' + winesCount);
+      console.log('   Dishes Prepared:    ' + dishesCount);
+      console.log('   Total Revenue:      $' + revenueTotal);
+      console.log('─'.repeat(70));
+      console.log('⏱️ AGENT RESPONSE TIMES (P95)');
+      console.log('   🎩 Host Maximilian:     ' + (hostP95 || 0).toFixed(0) + 'ms');
+      console.log('   👔 Waiter Pierre:       ' + (waiterP95 || 0).toFixed(0) + 'ms');
+      console.log('   🍷 Sommelier Isabella:  ' + (sommelierP95 || 0).toFixed(0) + 'ms');
+      console.log('   👨‍🍳 Chef Marco:          ' + (chefP95 || 0).toFixed(0) + 'ms');
+      console.log('─'.repeat(70));
+      console.log('📈 QUALITY METRICS');
+      console.log('   Service Success:    ' + (successRate * 100).toFixed(1) + '%');
+      console.log('   Flow Completion:    ' + (completionRate * 100).toFixed(1) + '%');
+      console.log('═'.repeat(70) + '\n');
+
+      return {};
+    }

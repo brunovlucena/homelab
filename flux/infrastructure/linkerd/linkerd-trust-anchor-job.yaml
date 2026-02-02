@@ -1,0 +1,199 @@
+---
+# 🔐 Job to generate Linkerd Trust Anchor and Identity Certificates
+# This job generates the trust anchor CA and identity issuer certificates,
+# then creates the required secrets for Linkerd installation
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: linkerd-trust-anchor-setup
+  namespace: linkerd
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  template:
+    metadata:
+      labels:
+        app: linkerd-trust-anchor-setup
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: linkerd-installer
+      containers:
+      - name: setup-trust-anchor
+        image: localhost:5001/kubectl:v1.34.0
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+          set -x
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🔐 Setting up Linkerd shared trust anchor"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
+          echo "🔍 Step 1: Checking service account token..."
+          if [ ! -f /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
+            echo "❌ Service account token not found!"
+            exit 1
+          fi
+          echo "✅ Service account token found"
+          echo ""
+          
+          echo "🔍 Step 2: Configuring kubectl..."
+          mkdir -p /root/.kube
+          cat > /root/.kube/config <<EOF
+          apiVersion: v1
+          kind: Config
+          clusters:
+          - cluster:
+              server: https://kubernetes.default.svc
+              insecure-skip-tls-verify: true
+            name: default
+          contexts:
+          - context:
+              cluster: default
+              user: default
+            name: default
+          current-context: default
+          users:
+          - name: default
+            user:
+              tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+          EOF
+          echo "✅ kubectl config created"
+          echo ""
+          
+          echo "🔍 Step 3: Testing kubectl connection..."
+          kubectl version --client || echo "⚠️  kubectl version check failed (non-fatal)"
+          kubectl get nodes || echo "⚠️  kubectl get nodes failed (non-fatal)"
+          echo ""
+          
+          # Setup working directory
+          echo "🔍 Step 4: Setting up working directory..."
+          WORK_DIR="/tmp/linkerd-trust"
+          TRUST_ANCHOR_DIR="/linkerd/trust-anchor"
+          mkdir -p "$WORK_DIR"
+          echo "✅ Working directory: $WORK_DIR"
+          echo "✅ Trust anchor dir: $TRUST_ANCHOR_DIR"
+          echo ""
+          
+          # Use trust-anchor directory if mounted, otherwise use work dir
+          echo "🔍 Step 5: Checking for existing trust anchor..."
+          if [ -d "$TRUST_ANCHOR_DIR" ] && [ -f "$TRUST_ANCHOR_DIR/ca.crt" ] && [ -f "$TRUST_ANCHOR_DIR/ca.key" ]; then
+            echo "✅ Using existing trust anchor from mounted volume"
+            CA_CRT="$TRUST_ANCHOR_DIR/ca.crt"
+            CA_KEY="$TRUST_ANCHOR_DIR/ca.key"
+          else
+            CA_CRT="$WORK_DIR/ca.crt"
+            CA_KEY="$WORK_DIR/ca.key"
+            echo "✅ Will use work directory for trust anchor"
+          fi
+          echo ""
+          
+          # Detect cluster name from node name (e.g., kind-studio-control-plane -> studio)
+          echo "🔍 Step 6: Detecting cluster name..."
+          NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [ -z "$NODE_NAME" ]; then
+            echo "❌ Could not detect node name"
+            exit 1
+          fi
+          CLUSTER_NAME=$(echo "$NODE_NAME" | sed 's/kind-//; s/-control-plane//; s/-master//')
+          echo "✅ Detected node name: $NODE_NAME"
+          
+          echo "🛠️  Processing cluster: $CLUSTER_NAME"
+          echo ""
+          
+          # Generate trust anchor if it doesn't exist
+          if [ ! -f "$CA_CRT" ] || [ ! -f "$CA_KEY" ]; then
+            echo "🔧 Generating shared Linkerd trust anchor..."
+            step certificate create root.linkerd.cluster.local \
+              "$CA_CRT" "$CA_KEY" \
+              --profile root-ca \
+              --no-password \
+              --insecure \
+              --not-after 87600h
+            echo "✅ Trust anchor generated"
+          else
+            echo "✅ Trust anchor found, reusing existing"
+          fi
+          echo ""
+          
+          # Generate identity certificate
+          if [ -d "$TRUST_ANCHOR_DIR" ] && [ -f "$TRUST_ANCHOR_DIR/identity-${CLUSTER_NAME}.crt" ] && [ -f "$TRUST_ANCHOR_DIR/identity-${CLUSTER_NAME}.key" ]; then
+            echo "✅ Using existing identity certificate from mounted volume"
+            IDENTITY_CRT="$TRUST_ANCHOR_DIR/identity-${CLUSTER_NAME}.crt"
+            IDENTITY_KEY="$TRUST_ANCHOR_DIR/identity-${CLUSTER_NAME}.key"
+          else
+            IDENTITY_CRT="$WORK_DIR/identity-${CLUSTER_NAME}.crt"
+            IDENTITY_KEY="$WORK_DIR/identity-${CLUSTER_NAME}.key"
+            
+            if [ ! -f "$IDENTITY_CRT" ] || [ ! -f "$IDENTITY_KEY" ]; then
+              echo "   ↳ Generating identity issuer for $CLUSTER_NAME"
+              step certificate create identity.linkerd.cluster.local \
+                "$IDENTITY_CRT" "$IDENTITY_KEY" \
+                --ca "$CA_CRT" \
+                --ca-key "$CA_KEY" \
+                --profile intermediate-ca \
+                --not-after 8760h \
+                --no-password \
+                --insecure
+              echo "   ✅ Identity certificate generated"
+            else
+              echo "   ✅ Identity certificate found, reusing existing"
+            fi
+          fi
+          echo ""
+          
+          # Ensure namespace exists
+          echo "📦 Creating linkerd namespace if needed..."
+          kubectl create namespace linkerd --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+          echo ""
+          
+          # Create trust anchor secret
+          echo "📦 Creating linkerd-trust-anchor secret..."
+          kubectl create secret generic linkerd-trust-anchor \
+            --from-file=ca.crt="$CA_CRT" \
+            --namespace=linkerd \
+            --dry-run=client -o yaml | kubectl apply -f -
+          echo "   ✅ Trust anchor secret created"
+          echo ""
+          
+          # Create identity issuer secret
+          if [ -f "$IDENTITY_CRT" ] && [ -f "$IDENTITY_KEY" ]; then
+            echo "📦 Creating linkerd-identity-issuer secret..."
+            kubectl create secret generic linkerd-identity-issuer \
+              --from-file=tls.crt="$IDENTITY_CRT" \
+              --from-file=tls.key="$IDENTITY_KEY" \
+              --from-file=ca.crt="$CA_CRT" \
+              --namespace=linkerd \
+              --dry-run=client -o yaml | kubectl apply -f -
+            echo "   ✅ Identity issuer secret created"
+          else
+            echo "   ⚠️  Identity certificate missing; skipped issuer secret."
+          fi
+          echo ""
+          
+          # Force control plane job rollout
+          echo "🚀 Forcing control plane job rollout..."
+          if kubectl get job linkerd-control-plane-install -n linkerd >/dev/null 2>&1; then
+            kubectl annotate job linkerd-control-plane-install -n linkerd \
+              fluxcd.io/reconcile-at="$(date +%s)" \
+              --overwrite >/dev/null 2>&1 || true
+            echo "   ✅ Control plane job rollout triggered"
+          else
+            echo "   ℹ️  Control plane job not found, will be created by Flux"
+          fi
+          echo ""
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ Linkerd trust anchor workflow completed"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        volumeMounts:
+        - name: trust-anchor
+          mountPath: /linkerd/trust-anchor
+          readOnly: true
+      volumes:
+      - name: trust-anchor
+        emptyDir: {}
+

@@ -1,0 +1,156 @@
+---
+# Agent-Bruno - AI Chatbot for Homepage
+# LambdaAgent with pre-built Docker image
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: agent-bruno
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-bruno
+    app.kubernetes.io/component: chatbot
+    app.kubernetes.io/part-of: homelab-ai
+spec:
+  # ServiceAccount for K8s API access (lambda-agent-developer role)
+  serviceAccountName: agent-bruno-sa
+  
+  # Pre-built Docker image
+  image:
+    repository: localhost:5001/agent-bruno
+    tag: "v1.5.6"
+    port: 8080
+
+  # AI/LLM configuration
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 2048
+    temperature: "0.7"
+
+  # Operation mode: agentic (autonomous) or supervised (requires approval)
+  operationMode: agentic  # Default: autonomous execution
+
+  # Agent behavior
+  behavior:
+    maxContextMessages: 10
+    emitEvents: true
+
+  # Domain Memory - Stateful agent (Nate B. Jones pattern)
+  # Enables persistent, structured memory for agents that don't forget
+  memory:
+    enabled: true
+    schema: chat
+    shortTerm:
+      enabled: true
+      backend: redis
+      redisSecretRef:
+        name: agent-bruno-redis
+        key: url
+      ttlSeconds: 86400  # 24 hours
+    longTerm:
+      enabled: true
+      backend: postgres
+      postgresSecretRef:
+        name: agent-bruno-postgres
+        key: url
+    userMemory:
+      enabled: true
+      storePreferences: true
+      storeFacts: true
+    workingMemory:
+      enabled: true
+      trackDecisions: true
+      trackProgress: true
+    defaultConstraints:
+      - description: "Maintain helpful, accurate, and respectful communication"
+        hard: true
+        category: behavior
+      - description: "Protect user privacy - don't share sensitive information"
+        hard: true
+        category: privacy
+
+  # Scaling - keep warm for responsiveness
+  scaling:
+    minReplicas: 1
+    maxReplicas: 5
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: 60s
+
+  # Resources
+  resources:
+    requests:
+      memory: "256Mi"
+    limits:
+      memory: "512Mi"
+
+  # Eventing - operator creates Broker, Triggers, and Forwards automatically
+  eventing:
+    enabled: true
+    eventSource: "/agent-bruno/chatbot"
+    
+    # Events this agent EMITS
+    intents:
+      - chat.message
+      - chat.intent.projects
+      - chat.intent.skills
+      - chat.intent.contact
+    
+    # Events this agent RECEIVES (operator creates Triggers)
+    subscriptions:
+      # From agent-contracts
+      - eventType: io.homelab.vuln.found
+        description: "Vulnerability findings from agent-contracts"
+      - eventType: io.homelab.exploit.validated
+        description: "Validated exploits from agent-contracts"
+      - eventType: io.homelab.contracts.status
+        description: "Status updates from agent-contracts"
+      # Cross-agent responses
+      - eventType: io.homelab.agent.response
+        description: "Responses from other agents"
+      # System alerts
+      - eventType: io.homelab.alert.fired
+        description: "System alerts from Alertmanager"
+    
+    # Forward events to other agents (operator creates Triggers with URI subscribers)
+    forwards:
+      - eventTypes:
+          - io.homelab.chat.intent.projects
+          - io.homelab.agent.query
+        targetAgent: contract-fetcher
+        targetNamespace: agent-contracts
+        description: "Forward project queries to agent-contracts"
+    
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  # Observability
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  # RBAC Permissions (works with K8s RBAC via ServiceAccount)
+  permissions:
+    disableBrokerCreation: true    # Developer role - no broker creation
+    disableTriggerCreation: false  # Can create triggers
+    disableFunctionCreation: false # Can create functions
+    allowedTargetNamespaces:
+      - agent-bruno
+      - agent-contracts  # Can interact with contracts
+    eventControls:
+      allowEventDisable: true
+      controlEventTypes:
+        - io.homelab.rbac.disable
+        - io.homelab.rbac.enable

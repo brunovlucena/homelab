@@ -1,0 +1,11 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flagger-system
+  labels:
+    linkerd.io/inject: enabled
+    linkerd.io/is-control-plane: "false"
+  annotations:
+    linkerd.io/inject: enabled
+

@@ -1,0 +1,63 @@
+---
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeServing
+metadata:
+  name: knative-serving
+  namespace: knative-serving
+spec:
+  # Use local registry for Knative images
+  registry:
+    override:
+      # Deployments where container name matches deployment name
+      activator: localhost:5001/knative-serving-activator:v1.16.3
+      autoscaler: localhost:5001/knative-serving-autoscaler:v1.16.3
+      autoscaler-hpa: localhost:5001/knative-serving-autoscaler-hpa:v1.16.3
+      controller: localhost:5001/knative-serving-controller:v1.16.3
+      webhook: localhost:5001/knative-serving-webhook:v1.16.3
+      default-domain: localhost:5001/knative-serving-default-domain:v1.16.3
+      cleanup: localhost:5001/knative-serving-cleanup:v1.16.3
+      # Jobs/Deployments where container name differs - use resource/container format
+      storage-version-migration/migrate: localhost:5001/knative-migrate:v1.16.3
+      net-kourier-controller/controller: localhost:5001/knative-net-kourier-controller:v1.16.0
+      # Kourier gateway - operator override doesn't work, patched via kustomize
+      3scale-kourier-gateway/kourier-gateway: localhost:5001/envoyproxy-envoy:v1.31-latest
+  ingress:
+    kourier:
+      enabled: true
+  config:
+    deployment:
+      registries-skipping-tag-resolving: "kind.local,ko.local,dev.local,kind-registry:5000,localhost:5001,ghcr.io"
+    features:
+      "kubernetes.podspec-tolerations": "enabled"
+      "kubernetes.podspec-nodeselector": "enabled"
+    network:
+      ingress-class: "kourier.ingress.networking.knative.dev"
+    observability:
+      metrics.request-metrics-backend-destination: "prometheus"
+    autoscaler:
+      # Enable scale to zero functionality
+      enable-scale-to-zero: "true"
+      allow-zero-initial-scale: "true"
+      # Scale to zero timing
+      scale-to-zero-grace-period: "30s"
+      scale-to-zero-pod-retention-period: "0s"
+      # Scaling window
+      stable-window: "60s"
+      scale-down-delay: "0s"
+      # Panic mode
+      panic-window-percentage: "10.0"
+      panic-threshold-percentage: "200.0"
+      # Concurrency
+      container-concurrency-target-default: "100"
+      container-concurrency-target-percentage: "70"
+      requests-per-second-target-default: "200"
+      # Scale rate limits
+      max-scale-up-rate: "1000.0"
+      max-scale-down-rate: "2.0"
+      # Initial scale
+      initial-scale: "1"
+      max-scale-limit: "0"
+      # Capacity
+      target-burst-capacity: "211"
+      activator-capacity: "100.0"
+

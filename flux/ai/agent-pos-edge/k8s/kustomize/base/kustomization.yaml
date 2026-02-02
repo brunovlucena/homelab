@@ -1,0 +1,29 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🏪 Agent-POS-Edge - Base Kustomization
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: agent-pos-edge
+      app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - rbac.yaml
+  - configmap-locations.yaml
+  - secrets.yaml
+  
+  # Web Command Centers
+  - ../../../web-gas-station/k8s/kustomize/base
+  - ../../../web-mcdonalds/k8s/kustomize/base
+  
+  # LambdaAgents
+  - lambdaagent-command-center.yaml
+  - lambdaagent-pos-edge.yaml
+  - lambdaagent-kitchen.yaml
+  - lambdaagent-pump.yaml

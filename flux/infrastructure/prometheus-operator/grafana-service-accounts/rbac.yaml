@@ -1,0 +1,58 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 RBAC for Grafana Service Account Job
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: grafana-sa-manager
+  namespace: prometheus
+  labels:
+    app: grafana-service-accounts
+    component: job
+    gitops.homelab.io/managed-by: flux
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: grafana-sa-manager
+  namespace: prometheus
+  labels:
+    app: grafana-service-accounts
+    component: job
+    gitops.homelab.io/managed-by: flux
+rules:
+  # Read Grafana admin credentials
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["prometheus"]
+    verbs: ["get"]
+  # Create/update secrets for service account tokens
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "create", "update", "patch"]
+  # Read configmap with service account definitions
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["grafana-service-accounts-config"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: grafana-sa-manager
+  namespace: prometheus
+  labels:
+    app: grafana-service-accounts
+    component: job
+    gitops.homelab.io/managed-by: flux
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: grafana-sa-manager
+subjects:
+  - kind: ServiceAccount
+    name: grafana-sa-manager
+    namespace: prometheus

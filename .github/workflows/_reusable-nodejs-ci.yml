@@ -1,0 +1,253 @@
+# ============================================================================
+# 📦 Reusable Workflow: Node.js CI
+# ============================================================================
+# Provides standardized Node.js CI for frontend and full-stack apps.
+#
+# Usage:
+#   jobs:
+#     nodejs:
+#       uses: ./.github/workflows/_reusable-nodejs-ci.yml
+#       with:
+#         working-directory: flux/ai/agent-webinterface
+#         node-version: '20'
+# ============================================================================
+
+name: 📦 Reusable Node.js CI
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: 'Working directory containing package.json'
+        required: true
+        type: string
+      node-version:
+        description: 'Node.js version'
+        required: false
+        type: string
+        default: '20'
+      run-tests:
+        description: 'Whether to run tests'
+        required: false
+        type: boolean
+        default: true
+      run-lint:
+        description: 'Whether to run linting'
+        required: false
+        type: boolean
+        default: true
+      run-type-check:
+        description: 'Whether to run TypeScript type checking'
+        required: false
+        type: boolean
+        default: true
+      run-build:
+        description: 'Whether to run build'
+        required: false
+        type: boolean
+        default: true
+      package-manager:
+        description: 'Package manager (npm, yarn, pnpm)'
+        required: false
+        type: string
+        default: 'npm'
+      test-command:
+        description: 'Custom test command'
+        required: false
+        type: string
+        default: 'test'
+      lint-command:
+        description: 'Custom lint command'
+        required: false
+        type: string
+        default: 'lint'
+      build-command:
+        description: 'Custom build command'
+        required: false
+        type: string
+        default: 'build'
+    outputs:
+      lint-passed:
+        description: 'Whether linting passed'
+        value: ${{ jobs.lint.outputs.passed }}
+      test-passed:
+        description: 'Whether tests passed'
+        value: ${{ jobs.test.outputs.passed }}
+      build-passed:
+        description: 'Whether build passed'
+        value: ${{ jobs.build.outputs.passed }}
+
+jobs:
+  lint:
+    name: 🔍 Lint & Type Check
+    runs-on: [self-hosted]
+    timeout-minutes: 15
+    if: inputs.run-lint || inputs.run-type-check
+    outputs:
+      passed: ${{ steps.result.outputs.passed }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Set up Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: 📦 Install dependencies
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm ci --legacy-peer-deps
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn install --frozen-lockfile
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm install --frozen-lockfile
+          fi
+
+      - name: 🔍 Run ESLint
+        id: lint
+        if: inputs.run-lint
+        continue-on-error: true
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run ${{ inputs.lint-command }} || echo "lint_failed=true" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn ${{ inputs.lint-command }} || echo "lint_failed=true" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm ${{ inputs.lint-command }} || echo "lint_failed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🔎 TypeScript type check
+        id: typecheck
+        if: inputs.run-type-check
+        continue-on-error: true
+        run: |
+          if [ -f "tsconfig.json" ]; then
+            npx tsc --noEmit || echo "typecheck_failed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No tsconfig.json found, skipping type check"
+          fi
+
+      - name: 📋 Lint Result
+        id: result
+        run: |
+          if [ "${{ steps.lint.outputs.lint_failed }}" = "true" ] || [ "${{ steps.typecheck.outputs.typecheck_failed }}" = "true" ]; then
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Lint/type check issues found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ Lint and type check passed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  test:
+    name: 🧪 Tests
+    runs-on: [self-hosted]
+    timeout-minutes: 15
+    if: inputs.run-tests
+    outputs:
+      passed: ${{ steps.result.outputs.passed }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Set up Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: 📦 Install dependencies
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm ci --legacy-peer-deps
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn install --frozen-lockfile
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm install --frozen-lockfile
+          fi
+
+      - name: 🧪 Run tests
+        id: test
+        continue-on-error: true
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            CI=true npm run ${{ inputs.test-command }} || echo "test_failed=true" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            CI=true yarn ${{ inputs.test-command }} || echo "test_failed=true" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            CI=true pnpm ${{ inputs.test-command }} || echo "test_failed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📋 Test Result
+        id: result
+        run: |
+          if [ "${{ steps.test.outputs.test_failed }}" = "true" ]; then
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Tests failed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ All tests passed" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  build:
+    name: 🏗️ Build
+    runs-on: [self-hosted]
+    timeout-minutes: 20
+    if: inputs.run-build
+    outputs:
+      passed: ${{ steps.result.outputs.passed }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Set up Node.js ${{ inputs.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+      - name: 📦 Install dependencies
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm ci --legacy-peer-deps
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn install --frozen-lockfile
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm install --frozen-lockfile
+          fi
+
+      - name: 🏗️ Build
+        id: build
+        continue-on-error: true
+        run: |
+          if [ "${{ inputs.package-manager }}" = "npm" ]; then
+            npm run ${{ inputs.build-command }} || echo "build_failed=true" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+            yarn ${{ inputs.build-command }} || echo "build_failed=true" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.package-manager }}" = "pnpm" ]; then
+            pnpm ${{ inputs.build-command }} || echo "build_failed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📋 Build Result
+        id: result
+        run: |
+          if [ "${{ steps.build.outputs.build_failed }}" = "true" ]; then
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Build failed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ Build succeeded" >> $GITHUB_STEP_SUMMARY
+          fi

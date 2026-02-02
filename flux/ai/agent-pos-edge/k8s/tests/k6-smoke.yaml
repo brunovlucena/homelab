@@ -1,0 +1,117 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🧪 K6 Smoke Test - Agent-POS-Edge
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-pos-smoke-test
+  namespace: agent-pos-edge
+data:
+  smoke-test.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+
+    const COMMAND_CENTER_URL = __ENV.COMMAND_CENTER_URL || 'http://command-center.agent-pos-edge.svc.cluster.local';
+    const POS_EDGE_URL = __ENV.POS_EDGE_URL || 'http://pos-edge.agent-pos-edge.svc.cluster.local';
+
+    export const options = {
+      stages: [
+        { duration: '30s', target: 5 },  // Ramp up
+        { duration: '1m', target: 5 },   // Stay
+        { duration: '30s', target: 0 },  // Ramp down
+      ],
+      thresholds: {
+        http_req_duration: ['p(95)<500'],
+        http_req_failed: ['rate<0.01'],
+      },
+    };
+
+    function sendCloudEvent(url, eventType, data) {
+      const eventId = `test-${randomString(8)}`;
+      
+      const payload = JSON.stringify({
+        specversion: '1.0',
+        type: eventType,
+        source: '/k6-test/pos-edge',
+        id: eventId,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      });
+
+      return http.post(url, payload, {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+        },
+      });
+    }
+
+    export default function () {
+      // Test 1: Health checks
+      let healthRes = http.get(`${COMMAND_CENTER_URL}/health`);
+      check(healthRes, {
+        'command-center health is 200': (r) => r.status === 200,
+        'command-center is healthy': (r) => r.json('status') === 'healthy',
+      });
+
+      // Test 2: Send heartbeat
+      let heartbeatRes = sendCloudEvent(
+        `${COMMAND_CENTER_URL}/`,
+        'pos.location.heartbeat',
+        {
+          location_id: `k6-test-location-${__VU}`,
+          location_type: 'gas_station',
+          status: 'healthy',
+          pos_count: 2,
+          pump_count: 4,
+          timestamp: new Date().toISOString(),
+        }
+      );
+      check(heartbeatRes, {
+        'heartbeat accepted': (r) => r.status === 200,
+      });
+
+      // Test 3: Send transaction
+      let txnRes = sendCloudEvent(
+        `${COMMAND_CENTER_URL}/`,
+        'pos.transaction.completed',
+        {
+          transaction_id: `TXN-${randomString(8)}`,
+          pos_id: 'pos-01',
+          location_id: `k6-test-location-${__VU}`,
+          total: Math.random() * 100,
+          payment_type: 'card',
+          items: [
+            { name: 'Fuel - Regular', quantity: 30, unit: 'liters' },
+          ],
+        }
+      );
+      check(txnRes, {
+        'transaction accepted': (r) => r.status === 200,
+      });
+
+      sleep(1);
+    }
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: pos-edge-smoke-test
+  namespace: agent-pos-edge
+spec:
+  parallelism: 1
+  script:
+    configMap:
+      name: k6-pos-smoke-test
+      file: smoke-test.js
+  arguments: --out experimental-prometheus-rw
+  runner:
+    env:
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: http://prometheus-k8s.observability.svc:9090/api/v1/write
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"

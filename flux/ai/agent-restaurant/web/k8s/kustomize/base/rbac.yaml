@@ -1,0 +1,42 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Restaurant Command Center - RBAC
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Allows the command center to read LambdaAgents and pod metrics
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: restaurant-command-center-reader
+  labels:
+    app.kubernetes.io/name: restaurant-command-center
+    app.kubernetes.io/part-of: agent-restaurant
+rules:
+  # Read LambdaAgents across namespaces
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdaagents"]
+    verbs: ["get", "list", "watch"]
+  # Read pods for metrics
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+  # Read Knative services
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["services", "revisions", "configurations"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: restaurant-command-center-reader-binding
+  labels:
+    app.kubernetes.io/name: restaurant-command-center
+    app.kubernetes.io/part-of: agent-restaurant
+subjects:
+  - kind: ServiceAccount
+    name: restaurant-agent-sa
+    namespace: agent-restaurant
+roleRef:
+  kind: ClusterRole
+  name: restaurant-command-center-reader
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,144 @@
+{{- /* DLQ Resources Template */ -}}
+{{- if .DLQ.Enabled }}
+---
+# DLQ Exchange for failed messages
+apiVersion: rabbitmq.com/v1beta1
+kind: Exchange
+metadata:
+  name: {{ .Name }}-dlq-exchange
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: dlq-exchange
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+spec:
+  name: {{ .DLQ.ExchangeName | default "lambda-dlq-exchange" }}
+  type: topic
+  durable: true
+  autoDelete: false
+  rabbitmqClusterReference:
+    name: {{ .RabbitMQ.ClusterName }}
+    namespace: {{ .RabbitMQ.Namespace }}
+
+---
+# DLQ Queue for storing failed messages
+apiVersion: rabbitmq.com/v1beta1
+kind: Queue
+metadata:
+  name: {{ .Name }}-dlq-queue
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: dlq-queue
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+spec:
+  name: {{ .DLQ.QueueName | default "lambda-dlq-queue" }}
+  type: quorum
+  durable: true
+  autoDelete: false
+  arguments:
+    x-message-ttl: {{ .DLQ.MessageTTL | default 604800000 }}
+    x-max-length: {{ .DLQ.MaxLength | default 50000 }}
+    x-overflow: {{ .DLQ.OverflowPolicy | default "reject-publish" }}
+    x-queue-type: quorum
+  rabbitmqClusterReference:
+    name: {{ .RabbitMQ.ClusterName }}
+    namespace: {{ .RabbitMQ.Namespace }}
+
+---
+# DLQ Binding - Route failed messages to DLQ queue
+apiVersion: rabbitmq.com/v1beta1
+kind: Binding
+metadata:
+  name: {{ .Name }}-dlq-binding
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: dlq-binding
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+spec:
+  source: {{ .DLQ.ExchangeName | default "lambda-dlq-exchange" }}
+  destination: {{ .DLQ.QueueName | default "lambda-dlq-queue" }}
+  destinationType: queue
+  routingKey: "{{ .DLQ.RoutingKeyPrefix | default "lambda.dlq" }}.#"
+  rabbitmqClusterReference:
+    name: {{ .RabbitMQ.ClusterName }}
+    namespace: {{ .RabbitMQ.Namespace }}
+
+---
+# ConfigMap for DLQ Handler Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Name }}-dlq-config
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: dlq-config
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+data:
+  config.yaml: |
+    dlq:
+      enabled: {{ .DLQ.Enabled }}
+      queueName: {{ .DLQ.QueueName | default "lambda-dlq-queue" }}
+      exchangeName: {{ .DLQ.ExchangeName | default "lambda-dlq-exchange" }}
+      alertThreshold: {{ .DLQ.AlertThreshold | default 100 }}
+      depthThreshold: {{ .DLQ.DepthThreshold | default 1000 }}
+      ageThreshold: {{ .DLQ.AgeThreshold | default "24h" }}
+      cleanupEnabled: {{ .DLQ.Cleanup.Enabled | default false }}
+      cleanupInterval: {{ .DLQ.Cleanup.Interval | default "1h" }}
+      cleanupRetention: {{ .DLQ.Cleanup.Retention | default "168h" }}
+      
+    categories:
+      permanent:
+        - broker_auth
+        - broker_misconfigured
+        - queue_not_found
+        - trigger_filter_mismatch
+        - s3_access_denied
+        - dependency_error
+        - service_misconfigured
+      
+      transient:
+        - broker_connection
+        - queue_full
+        - subscriber_down
+        - image_pull_error
+        - build_timeout
+        - ecr_push_failed
+    
+    retry:
+      maxAttempts: {{ .DLQ.RetryMaxAttempts | default 5 }}
+      backoffDelay: {{ .DLQ.RetryBackoffDelay | default "PT1S" }}
+      backoffMultiplier: {{ .DLQ.RetryBackoffMultiplier | default 2 }}
+
+{{- if .Monitoring.Enabled }}
+---
+# ServiceMonitor for DLQ metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Name }}-dlq-handler
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: dlq-servicemonitor
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Name }}
+      app.kubernetes.io/component: dlq-handler
+  endpoints:
+    - port: http1
+      path: /metrics
+      interval: 30s
+{{- end }}
+{{- end }}
+

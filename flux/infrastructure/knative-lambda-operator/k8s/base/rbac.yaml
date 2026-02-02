@@ -1,0 +1,334 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 RBAC - Role-Based Access Control
+#
+#  Components: ServiceAccount, ClusterRole, ClusterRoleBinding, Role, RoleBinding
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: knative-lambda-operator
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: knative-lambda-operator
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: operator
+rules:
+  # LambdaFunction resources
+  - apiGroups:
+      - lambda.knative.io
+    resources:
+      - lambdafunctions
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - lambda.knative.io
+    resources:
+      - lambdafunctions/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - lambda.knative.io
+    resources:
+      - lambdafunctions/finalizers
+    verbs:
+      - update
+
+  # LambdaAgent resources
+  - apiGroups:
+      - lambda.knative.io
+    resources:
+      - lambdaagents
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - lambda.knative.io
+    resources:
+      - lambdaagents/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - lambda.knative.io
+    resources:
+      - lambdaagents/finalizers
+    verbs:
+      - update
+
+  # Jobs for Kaniko builds
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Core resources
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - secrets
+      - serviceaccounts
+      - namespaces
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - pods/log
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+
+  # Knative Serving resources
+  - apiGroups:
+      - serving.knative.dev
+    resources:
+      - services
+      - configurations
+      - routes
+      - revisions
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Knative Eventing resources
+  - apiGroups:
+      - eventing.knative.dev
+    resources:
+      - brokers
+      - triggers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Knative Eventing RabbitMQ broker config
+  - apiGroups:
+      - eventing.knative.dev
+    resources:
+      - rabbitmqbrokerconfigs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # Knative Sources (ApiServerSource)
+  - apiGroups:
+      - sources.knative.dev
+    resources:
+      - apiserversources
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # RabbitMQ resources (full CRUD for DLQ)
+  - apiGroups:
+      - rabbitmq.com
+    resources:
+      - rabbitmqclusters
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - rabbitmq.com
+    resources:
+      - queues
+      - exchanges
+      - bindings
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # RBAC resources for job watcher service accounts
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - clusterroles
+      - clusterrolebindings
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  # ServiceMonitors for monitoring
+  - apiGroups:
+      - monitoring.coreos.com
+    resources:
+      - servicemonitors
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: knative-lambda-operator
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: knative-lambda-operator
+subjects:
+  - kind: ServiceAccount
+    name: knative-lambda-operator
+    namespace: knative-lambda
+---
+# Role for leader election (namespace-scoped)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: knative-lambda-operator-leader-election
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: operator
+rules:
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: knative-lambda-operator-leader-election
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: knative-lambda-operator-leader-election
+subjects:
+  - kind: ServiceAccount
+    name: knative-lambda-operator
+    namespace: knative-lambda
+---
+# Role to read secrets from minio namespace (for lambda-samples-init job)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: knative-lambda-minio-secret-reader
+  namespace: minio
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: operator
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: knative-lambda-minio-secret-reader
+  namespace: minio
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: knative-lambda-minio-secret-reader
+subjects:
+  - kind: ServiceAccount
+    name: knative-lambda-operator
+    namespace: knative-lambda
+

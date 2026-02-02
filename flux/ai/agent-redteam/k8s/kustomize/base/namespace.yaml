@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/part-of: homelab-ai
+    # Security label - indicates this namespace contains security testing tools
+    security.homelab.io/redteam: "true"

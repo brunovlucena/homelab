@@ -1,0 +1,530 @@
+# ⚠️ IMPORTANT: This file is processed by KUSTOMIZE, NOT HELM!
+# 
+# DO NOT use Helm template syntax like {{ .Release.Namespace }} or {{ .Release.Name }}
+# Kustomize does not understand Helm templates and will fail with:
+#   "yaml: invalid map key: map[string]interface {}{\".Release.Namespace\":\"\"}"
+#
+# Use actual values instead:
+#   - namespace: prometheus  (NOT {{ .Release.Namespace }})
+#   - app.kubernetes.io/instance: homepage-rules  (NOT {{ .Release.Name }})
+#
+# This file is included via kustomization.yaml and deployed by Flux kustomize-controller.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homepage-rules
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/instance: homepage-rules
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  # =============================================================================
+  # 🚨 CRITICAL ALERTS - IMMEDIATE ATTENTION REQUIRED
+  # =============================================================================
+  - name: homepage.critical
+    rules:
+    # Complete service unavailability - most critical
+    - alert: BrunoSiteCompletelyDown
+      expr: |
+        (
+          # Namespace doesn't exist
+          absent(kube_namespace_labels{namespace="homepage"}) or
+          # No frontend pods available
+          (absent(up{job="homepage-frontend"}) and absent(kube_deployment_status_replicas_available{deployment="homepage-frontend",namespace="homepage"})) or
+          # Frontend deployment has 0 available replicas
+          (kube_deployment_status_replicas_available{deployment="homepage-frontend",namespace="homepage"} == 0)
+        )
+      for: 2m
+      labels:
+        severity: critical
+        service: homepage
+        component: homepage
+      annotations:
+        summary: "Homepage service is completely down"
+        description: "Homepage service is completely unavailable. Either namespace doesn't exist, no frontend pods are running, or frontend deployment has 0 available replicas."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/service-down.md"
+        
+    - alert: BrunoSiteFrontendDown
+      expr: up{job="homepage-frontend"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: frontend
+        component: homepage
+      annotations:
+        summary: "Homepage Frontend is down"
+        description: "Homepage frontend has been down for more than 1 minute. The website is not accessible."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/frontend-down.md"
+        
+    - alert: BrunoSiteAPIDown
+      expr: up{job="homepage-api"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: api
+        component: homepage
+      annotations:
+        summary: "Homepage API is down"
+        description: "Homepage API has been down for more than 1 minute. This affects all site functionality."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/api-down.md"
+        
+    - alert: BrunoSiteDatabaseDown
+      expr: up{job="homepage-postgres"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        service: database
+        component: homepage
+      annotations:
+        summary: "Homepage Database is down"
+        description: "PostgreSQL database has been down for more than 1 minute. All data operations are failing."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/database-down.md"
+        
+    - alert: BrunoSiteRedisDown
+      expr: up{job="homepage-redis"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        service: redis
+        component: homepage
+      annotations:
+        summary: "Homepage Redis is down"
+        description: "Redis cache has been down for more than 2 minutes. Session management and caching are affected."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/redis-down.md"
+        
+    - alert: BrunoSiteCloudflareTunnelDown
+      expr: |
+        # Check if frontend service has no endpoints (proxy for tunnel not working)
+        # If service exists but has no endpoints, tunnel ingress is likely not ready
+        (
+          kube_service_info{service="homepage-frontend",namespace="homepage"} == 1 and
+          kube_endpoint_address_available{endpoint="homepage-frontend",namespace="homepage"} == 0
+        ) or
+        # Service doesn't exist at all
+        absent(kube_service_info{service="homepage-frontend",namespace="homepage"})
+      for: 3m
+      labels:
+        severity: critical
+        service: ingress
+        component: homepage
+      annotations:
+        summary: "Homepage Cloudflare Tunnel ingress is not ready"
+        description: "Homepage frontend service has no endpoints or doesn't exist. Cloudflare Tunnel ingress may not be ready, making the website inaccessible from the internet."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/cloudflare-tunnel-down.md"
+        
+    - alert: BrunoSiteDeploymentNotReady
+      expr: |
+        kube_deployment_status_replicas_available{deployment=~"homepage-.*",namespace="homepage"} < 
+        kube_deployment_spec_replicas{deployment=~"homepage-.*",namespace="homepage"}
+      for: 5m
+      labels:
+        severity: critical
+        service: kubernetes
+        component: homepage
+      annotations:
+        summary: "Homepage deployment has unavailable replicas"
+        description: "Deployment {{ $labels.deployment }} has {{ $value }} available replicas but expects {{ $labels.replicas }}. Service may be degraded."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/deployment-not-ready.md"
+
+    - alert: BrunoSiteHighErrorRate
+      expr: rate(http_requests_total{job="homepage-api",code=~"5.."}[5m]) / rate(http_requests_total{job="homepage-api"}[5m]) > 0.05
+      for: 2m
+      labels:
+        severity: critical
+        service: api
+        component: homepage
+      annotations:
+        summary: "Homepage API high error rate"
+        description: "Homepage API error rate is {{`{{ $value }}`}} for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/high-error-rate.md"
+
+    - alert: BrunoSiteDatabaseConnectionFailure
+      expr: increase(pg_stat_database_deadlocks{job="homepage-postgres"}[5m]) > 10
+      for: 1m
+      labels:
+        severity: critical
+        service: database
+        component: homepage
+      annotations:
+        summary: "Homepage Database connection issues"
+        description: "PostgreSQL database has {{`{{ $value }}`}} deadlocks in the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/database-connection-issues.md"
+
+  # =============================================================================
+  # ⚠️ WARNING ALERTS - ATTENTION NEEDED SOON
+  # =============================================================================
+  - name: homepage.warning
+    rules:
+    - alert: BrunoSiteHighResponseTime
+      expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="homepage-api"}[5m])) > 1
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+      annotations:
+        summary: "Homepage API high response time"
+        description: "Homepage API 95th percentile response time is {{`{{ $value }}`}}s for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/high-response-time.md"
+
+    - alert: BrunoSiteHighCPUUsage
+      expr: rate(container_cpu_usage_seconds_total{pod=~"homepage-api-.*"}[5m]) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+      annotations:
+        summary: "Homepage API high CPU usage"
+        description: "Homepage API CPU usage is {{`{{ $value }}`}} for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/high-cpu-usage.md"
+
+    - alert: BrunoSiteHighMemoryUsage
+      expr: container_memory_usage_bytes{pod=~"homepage-api-.*"} / container_spec_memory_limit_bytes{pod=~"homepage-api-.*"} > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+      annotations:
+        summary: "Homepage API high memory usage"
+        description: "Homepage API memory usage is {{`{{ $value }}`}} of limit for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/high-memory-usage.md"
+
+    - alert: BrunoSiteDatabaseSlowQueries
+      expr: rate(pg_stat_database_tup_returned{job="homepage-postgres"}[5m]) / rate(pg_stat_database_tup_fetched{job="homepage-postgres"}[5m]) < 0.1
+      for: 10m
+      labels:
+        severity: warning
+        service: database
+        component: homepage
+      annotations:
+        summary: "Homepage Database slow queries detected"
+        description: "PostgreSQL database shows inefficient query patterns with low tuple return ratio."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/database-slow-queries.md"
+
+    - alert: BrunoSiteRedisHighMemoryUsage
+      expr: redis_memory_used_bytes{job="homepage-redis"} / redis_config_maxmemory_bytes{job="homepage-redis"} > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        service: redis
+        component: homepage
+      annotations:
+        summary: "Homepage Redis high memory usage"
+        description: "Redis memory usage is {{`{{ $value }}`}} of max memory for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/redis-high-memory.md"
+
+    - alert: BrunoSiteLLMServiceDown
+      expr: up{job="homepage-ollama"} == 0
+      for: 5m
+      labels:
+        severity: warning
+        service: llm
+        component: homepage
+      annotations:
+        summary: "Homepage LLM service is down"
+        description: "Ollama LLM service has been down for more than 5 minutes. AI chat functionality is affected."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/llm-service-down.md"
+
+  # =============================================================================
+  # 📊 BUSINESS LOGIC ALERTS - APPLICATION SPECIFIC
+  # =============================================================================
+  - name: homepage.business
+    rules:
+    - alert: BrunoSiteHighProjectViewErrors
+      expr: rate(http_requests_total{job="homepage-api",handler="/api/projects",code=~"4..|5.."}[10m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+        feature: projects
+      annotations:
+        summary: "Homepage high project view errors"
+        description: "Project viewing functionality has {{`{{ $value }}`}} errors per second for the last 10 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/project-errors.md"
+
+    - alert: BrunoSiteChatAPIErrors
+      expr: rate(http_requests_total{job="homepage-api",handler="/api/chat",code=~"4..|5.."}[10m]) > 0.05
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+        feature: chat
+      annotations:
+        summary: "Homepage chat API errors"
+        description: "AI chat functionality has {{`{{ $value }}`}} errors per second for the last 10 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/chat-errors.md"
+
+    - alert: BrunoSiteHighAnalyticsLoad
+      expr: rate(http_requests_total{job="homepage-api",handler="/api/analytics/track"}[5m]) > 10
+      for: 10m
+      labels:
+        severity: info
+        service: api
+        component: homepage
+        feature: analytics
+      annotations:
+        summary: "Homepage high analytics load"
+        description: "Analytics tracking is receiving {{`{{ $value }}`}} requests per second for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/high-analytics-load.md"
+
+  # =============================================================================
+  # 🔧 INFRASTRUCTURE ALERTS - KUBERNETES & RESOURCES
+  # =============================================================================
+  - name: homepage.infrastructure
+    rules:
+    - alert: BrunoSitePodCrashLooping
+      expr: rate(kube_pod_container_status_restarts_total{pod=~"homepage-.*"}[15m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        service: kubernetes
+        component: homepage
+      annotations:
+        summary: "Homepage pod is crash looping"
+        description: "Pod {{`{{ $labels.pod }}`}} in namespace {{`{{ $labels.namespace }}`}} is crash looping with {{`{{ $value }}`}} restarts in the last 15 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/pod-crash-loop.md"
+
+    - alert: BrunoSitePodNotReady
+      expr: kube_pod_status_phase{pod=~"homepage-.*",phase!="Running"} == 1
+      for: 5m
+      labels:
+        severity: warning
+        service: kubernetes
+        component: homepage
+      annotations:
+        summary: "Homepage pod is not ready"
+        description: "Pod {{`{{ $labels.pod }}`}} in namespace {{`{{ $labels.namespace }}`}} is in {{`{{ $labels.phase }}`}} state for more than 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/pod-not-ready.md"
+
+    - alert: BrunoSiteHPAHighReplicas
+      expr: kube_horizontalpodautoscaler_status_current_replicas{horizontalpodautoscaler=~"homepage-.*"} > 8
+      for: 10m
+      labels:
+        severity: warning
+        service: kubernetes
+        component: homepage
+      annotations:
+        summary: "Homepage HPA scaling to high replica count"
+        description: "HPA {{`{{ $labels.horizontalpodautoscaler }}`}} has scaled to {{`{{ $value }}`}} replicas for more than 10 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/hpa-high-replicas.md"
+
+    - alert: BrunoSiteStorageSpaceLow
+      expr: (kubelet_volume_stats_available_bytes{pod=~"homepage-.*"} / kubelet_volume_stats_capacity_bytes{pod=~"homepage-.*"}) < 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: storage
+        component: homepage
+      annotations:
+        summary: "Homepage storage space is low"
+        description: "Pod {{`{{ $labels.pod }}`}} has only {{`{{ $value }}`}} storage space remaining."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/storage-space-low.md"
+
+  # =============================================================================
+  # 🔒 SECURITY ALERTS - SECURITY MONITORING
+  # =============================================================================
+  - name: homepage.security
+    rules:
+    - alert: BrunoSiteHighRateLimitHits
+      expr: rate(http_requests_total{job="homepage-api",code="429"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+        security: rate-limiting
+      annotations:
+        summary: "Homepage high rate limit hits"
+        description: "Homepage API is hitting rate limits with {{`{{ $value }}`}} requests per second for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/rate-limit-hits.md"
+
+    - alert: BrunoSiteSuspiciousActivity
+      expr: rate(http_requests_total{job="homepage-api",code=~"4.."}[5m]) > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+        security: suspicious-activity
+      annotations:
+        summary: "Homepage suspicious activity detected"
+        description: "Homepage API is receiving {{`{{ $value }}`}} 4xx errors per second for the last 5 minutes, indicating potential suspicious activity."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/suspicious-activity.md"
+
+    - alert: BrunoSiteSQLInjectionAttempts
+      expr: increase(http_requests_total{job="homepage-api",handler="/api",code="400"}[10m]) > 20
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+        security: sql-injection
+      annotations:
+        summary: "Homepage potential SQL injection attempts"
+        description: "Homepage API has received {{`{{ $value }}`}} 400 errors in the last 10 minutes, potentially indicating SQL injection attempts."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/sql-injection-attempts.md"
+
+  # =============================================================================
+  # 📈 PERFORMANCE ALERTS - PERFORMANCE MONITORING
+  # =============================================================================
+  - name: homepage.performance
+    rules:
+    - alert: BrunoSiteSlowDatabaseQueries
+      expr: histogram_quantile(0.95, rate(pg_stat_database_tup_fetched{job="homepage-postgres"}[5m])) > 1000
+      for: 10m
+      labels:
+        severity: warning
+        service: database
+        component: homepage
+        performance: slow-queries
+      annotations:
+        summary: "Homepage slow database queries"
+        description: "PostgreSQL database 95th percentile query performance is {{`{{ $value }}`}} tuples fetched per second for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/slow-database-queries.md"
+
+    - alert: BrunoSiteHighConnectionPoolUsage
+      expr: pg_stat_database_numbackends{job="homepage-postgres"} / pg_settings_max_connections{job="homepage-postgres"} > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        service: database
+        component: homepage
+        performance: connection-pool
+      annotations:
+        summary: "Homepage high database connection pool usage"
+        description: "PostgreSQL connection pool usage is {{`{{ $value }}`}} for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/high-connection-pool-usage.md"
+
+    # ==========================================================================
+    # 🔌 APPLICATION CONNECTION POOL ALERTS (SRE-003)
+    # ==========================================================================
+    - alert: BrunoSiteAppPoolHighUtilization
+      expr: db_pool_utilization_ratio{job="homepage-api"} > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+        performance: app-connection-pool
+      annotations:
+        summary: "Homepage API connection pool utilization high"
+        description: "Application connection pool utilization is at {{`{{ $value | humanizePercentage }}`}}. Consider increasing DB_MAX_OPEN_CONNS."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/app-pool-high-utilization.md"
+
+    - alert: BrunoSiteAppPoolNearExhaustion
+      expr: db_pool_utilization_ratio{job="homepage-api"} > 0.95
+      for: 2m
+      labels:
+        severity: critical
+        service: api
+        component: homepage
+        performance: app-connection-pool
+      annotations:
+        summary: "Homepage API connection pool near exhaustion"
+        description: "Application connection pool is at {{`{{ $value | humanizePercentage }}`}} utilization. Pool exhaustion imminent!"
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/app-pool-exhaustion.md"
+
+    - alert: BrunoSiteAppPoolHighWaitTime
+      expr: histogram_quantile(0.95, sum(rate(db_connection_wait_duration_seconds_bucket{job="homepage-api"}[5m])) by (le)) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+        performance: app-connection-pool
+      annotations:
+        summary: "Homepage API high connection wait time"
+        description: "P95 connection wait time is {{`{{ $value | humanizeDuration }}`}}. Requests are waiting too long for connections."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/app-pool-high-wait-time.md"
+
+    - alert: BrunoSiteAppPoolConnectionErrors
+      expr: rate(db_connection_errors_total{job="homepage-api"}[5m]) > 0.1
+      for: 2m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+        performance: app-connection-pool
+      annotations:
+        summary: "Homepage API connection errors detected"
+        description: "Connection errors of type {{`{{ $labels.error_type }}`}} are occurring at {{`{{ $value }}`}}/sec."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/app-pool-connection-errors.md"
+
+    - alert: BrunoSiteAppPoolExcessiveWaiting
+      expr: rate(db_pool_wait_count_total{job="homepage-api"}[5m]) > 5
+      for: 5m
+      labels:
+        severity: warning
+        service: api
+        component: homepage
+        performance: app-connection-pool
+      annotations:
+        summary: "Homepage API excessive connection pool waiting"
+        description: "Connection wait count rate is {{`{{ $value }}`}}/sec. Pool may be undersized for current load."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/app-pool-excessive-waiting.md"
+
+    - alert: BrunoSiteAppPoolHighChurn
+      expr: (rate(db_pool_max_lifetime_closed_total{job="homepage-api"}[5m]) + rate(db_pool_max_idle_time_closed_total{job="homepage-api"}[5m])) > 1
+      for: 10m
+      labels:
+        severity: info
+        service: api
+        component: homepage
+        performance: app-connection-pool
+      annotations:
+        summary: "Homepage API high connection churn"
+        description: "Connections are being closed at {{`{{ $value }}`}}/sec. Consider increasing DB_CONN_MAX_LIFETIME or DB_CONN_MAX_IDLE_TIME."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/app-pool-high-churn.md"
+
+    - alert: BrunoSiteRedisSlowOperations
+      expr: rate(redis_commands_duration_seconds_total{job="homepage-redis"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: redis
+        component: homepage
+        performance: slow-operations
+      annotations:
+        summary: "Homepage Redis slow operations"
+        description: "Redis operations are taking {{`{{ $value }}`}} seconds on average for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/redis-slow-operations.md"
+
+  # =============================================================================
+  # 🎯 AVAILABILITY ALERTS - UPTIME MONITORING
+  # =============================================================================
+  - name: homepage.availability
+    rules:
+    - alert: BrunoSiteLowAvailability
+      expr: (rate(http_requests_total{job="homepage-api",code=~"2.."}[1h]) / rate(http_requests_total{job="homepage-api"}[1h])) < 0.99
+      for: 15m
+      labels:
+        severity: critical
+        service: api
+        component: homepage
+        availability: uptime
+      annotations:
+        summary: "Homepage low availability"
+        description: "Homepage API availability is {{`{{ $value }}`}} for the last hour, below 99% threshold."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/low-availability.md"
+
+    - alert: BrunoSiteHealthCheckFailures
+      expr: rate(http_requests_total{job="homepage-api",handler="/health",code!="200"}[5m]) > 0
+      for: 2m
+      labels:
+        severity: critical
+        service: api
+        component: homepage
+        availability: health-checks
+      annotations:
+        summary: "Homepage health check failures"
+        description: "Homepage API health checks are failing with {{`{{ $value }}`}} failures per second for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/health-check-failures.md"

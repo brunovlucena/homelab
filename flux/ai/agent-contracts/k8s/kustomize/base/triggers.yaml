@@ -1,0 +1,126 @@
+# Knative Eventing Broker
+apiVersion: eventing.knative.dev/v1
+kind: Broker
+metadata:
+  name: agent-contracts-broker
+  namespace: ai
+  annotations:
+    eventing.knative.dev/broker.class: RabbitMQBroker
+spec:
+  config:
+    apiVersion: v1
+    kind: ConfigMap
+    name: agent-contracts-broker-config
+---
+# Broker Config for RabbitMQ
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-contracts-broker-config
+  namespace: ai
+data:
+  rabbitmqClusterReference.name: rabbitmq-cluster
+  rabbitmqClusterReference.namespace: rabbitmq
+---
+# Trigger: contract.created → vuln-scanner
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: contract-created-to-scanner
+  namespace: ai
+spec:
+  broker: agent-contracts-broker
+  filter:
+    attributes:
+      type: io.homelab.contract.created
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: vuln-scanner
+---
+# Trigger: vuln.found → exploit-generator (only high+ severity)
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: vuln-found-to-exploit-gen
+  namespace: ai
+spec:
+  broker: agent-contracts-broker
+  filter:
+    attributes:
+      type: io.homelab.vuln.found
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: exploit-generator
+---
+# NOTE: alert-dispatcher triggers removed
+# Alerting is now handled by:
+#   1. Prometheus scraping metrics from vuln-scanner and exploit-generator
+#   2. PrometheusRule evaluating alerting conditions
+#   3. Alertmanager routing alerts via webhook to notifi-adapter
+#   4. notifi-adapter forwarding to notifi-services for multi-channel delivery
+#
+# The CloudEvents io.homelab.alert.sent and io.homelab.exploit.validated
+# are still emitted for audit logging to Loki, but not routed to a dispatcher.
+#
+# =============================================================================
+# CROSS-AGENT COMMUNICATION
+# =============================================================================
+# Cross-agent subscriptions are now managed by the knative-lambda-operator
+# via the LambdaAgent CRD spec.eventing.subscriptions field.
+#
+# Each LambdaAgent declares what events it wants to receive, and the operator
+# creates the necessary Triggers automatically.
+---
+# =============================================================================
+# FLUX CDEVENTS INTEGRATION
+# =============================================================================
+# These triggers forward CloudEvents to Flux Notification Controller
+# for GitOps-triggered responses to security events.
+#
+# See: infrastructure/flux/cdevents-receivers.yaml
+# Docs: docs/04-architecture/CLOUDEVENTS_SPECIFICATION.md#flux-cd-integration-cdevents
+# =============================================================================
+#
+# NOTE: Uncomment when Flux receivers are configured with webhook secrets
+#
+# ---
+# # Trigger: exploit.validated → Flux security-alert-receiver
+# apiVersion: eventing.knative.dev/v1
+# kind: Trigger
+# metadata:
+#   name: exploit-to-flux
+#   namespace: ai
+#   labels:
+#     app.kubernetes.io/name: exploit-to-flux
+#     app.kubernetes.io/component: flux-integration
+# spec:
+#   broker: agent-contracts-broker
+#   filter:
+#     attributes:
+#       type: io.homelab.exploit.validated
+#   subscriber:
+#     # Flux Receiver webhook URL
+#     # Get webhook path: kubectl get receiver security-alert-receiver -n flux-system -o jsonpath='{.status.webhookPath}'
+#     uri: http://notification-controller.flux-system.svc.cluster.local/hook/WEBHOOK_PATH_HERE
+# ---
+# # Trigger: vuln.found (critical) → Flux security-alert-receiver
+# apiVersion: eventing.knative.dev/v1
+# kind: Trigger
+# metadata:
+#   name: vuln-critical-to-flux
+#   namespace: ai
+#   labels:
+#     app.kubernetes.io/name: vuln-critical-to-flux
+#     app.kubernetes.io/component: flux-integration
+# spec:
+#   broker: agent-contracts-broker
+#   filter:
+#     attributes:
+#       type: io.homelab.vuln.found
+#       # Note: Additional filtering by severity is done by Flux Receiver's CEL resourceFilter
+#   subscriber:
+#     uri: http://notification-controller.flux-system.svc.cluster.local/hook/WEBHOOK_PATH_HERE

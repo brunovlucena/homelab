@@ -1,0 +1,90 @@
+---
+# Service Account for Game Master
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: game-master-sa
+  namespace: ai
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# Service Account for Character Agents
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: character-agent-sa
+  namespace: ai
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# Role for Game Master - can manage game state
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: game-master-role
+  namespace: ai
+rules:
+  # Knative Eventing - full control
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers", "triggers", "eventtypes"]
+    verbs: ["*"]
+  # Lambda resources
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions", "lambdaagents"]
+    verbs: ["get", "list", "watch", "create", "update"]
+  # ConfigMaps for game state
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  # Pods for monitoring
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+# Role for Character Agents - limited access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: character-agent-role
+  namespace: ai
+rules:
+  # Knative Eventing - read + publish
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers"]
+    verbs: ["get", "list"]
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["triggers"]
+    verbs: ["get", "list", "watch"]
+  # ConfigMaps for reading game state
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+# Role Bindings
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: game-master-binding
+  namespace: ai
+subjects:
+  - kind: ServiceAccount
+    name: game-master-sa
+    namespace: ai
+roleRef:
+  kind: Role
+  name: game-master-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: character-agent-binding
+  namespace: ai
+subjects:
+  - kind: ServiceAccount
+    name: character-agent-sa
+    namespace: ai
+roleRef:
+  kind: Role
+  name: character-agent-role
+  apiGroup: rbac.authorization.k8s.io

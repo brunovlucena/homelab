@@ -1,0 +1,140 @@
+---
+# Prometheus Alerts for PostgreSQL HA
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homepage-postgres-alerts
+  namespace: postgres-ha
+  labels:
+    app.kubernetes.io/name: postgres-ha
+    app.kubernetes.io/component: alerting
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+    - name: postgres-ha.availability
+      rules:
+        # Critical: PostgreSQL cluster is down
+        - alert: PostgresClusterDown
+          expr: |
+            cnpg_collector_up{cluster="homepage-postgres"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            service: homepage
+          annotations:
+            summary: "PostgreSQL cluster is down"
+            description: "The homepage-postgres cluster has been unreachable for more than 1 minute."
+
+        # Critical: No primary available
+        - alert: PostgresNoPrimary
+          expr: |
+            count(cnpg_pg_replication_is_replica{cluster="homepage-postgres"} == 0) == 0
+          for: 30s
+          labels:
+            severity: critical
+            service: homepage
+          annotations:
+            summary: "PostgreSQL has no primary"
+            description: "The homepage-postgres cluster has no primary instance."
+
+        # Warning: Replication lag too high
+        - alert: PostgresReplicationLag
+          expr: |
+            cnpg_pg_replication_lag{cluster="homepage-postgres"} > 30
+          for: 5m
+          labels:
+            severity: warning
+            service: homepage
+          annotations:
+            summary: "PostgreSQL replication lag is high"
+            description: "Replication lag is {{ $value }}s, which exceeds 30s threshold."
+
+        # Warning: Instance count below desired
+        - alert: PostgresInstancesUnhealthy
+          expr: |
+            cnpg_pg_replication_slots_active{cluster="homepage-postgres"} < 1
+          for: 5m
+          labels:
+            severity: warning
+            service: homepage
+          annotations:
+            summary: "PostgreSQL instances unhealthy"
+            description: "Less than expected replicas are active."
+
+    - name: postgres-ha.backups
+      rules:
+        # Critical: Backup failed
+        - alert: PostgresBackupFailed
+          expr: |
+            cnpg_pg_last_backup_status{cluster="homepage-postgres"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            service: homepage
+          annotations:
+            summary: "PostgreSQL backup failed"
+            description: "The last backup for homepage-postgres failed."
+
+        # Warning: Backup too old (>12 hours)
+        - alert: PostgresBackupTooOld
+          expr: |
+            time() - cnpg_pg_last_backup_timestamp{cluster="homepage-postgres"} > 43200
+          for: 5m
+          labels:
+            severity: warning
+            service: homepage
+          annotations:
+            summary: "PostgreSQL backup is too old"
+            description: "Last successful backup was {{ $value | humanizeDuration }} ago."
+
+        # Warning: WAL archiving behind
+        - alert: PostgresWALArchivingBehind
+          expr: |
+            cnpg_pg_wal_files_count{cluster="homepage-postgres"} > 100
+          for: 10m
+          labels:
+            severity: warning
+            service: homepage
+          annotations:
+            summary: "PostgreSQL WAL archiving is behind"
+            description: "{{ $value }} WAL files pending archival."
+
+    - name: postgres-ha.resources
+      rules:
+        # Warning: Connection pool exhausted
+        - alert: PostgresConnectionPoolExhausted
+          expr: |
+            cnpg_pgbouncer_pools_server_active_connections / cnpg_pgbouncer_pools_server_maxconnections > 0.8
+          for: 5m
+          labels:
+            severity: warning
+            service: homepage
+          annotations:
+            summary: "PostgreSQL connection pool near exhaustion"
+            description: "Connection pool is {{ $value | humanizePercentage }} utilized."
+
+        # Warning: High CPU usage
+        - alert: PostgresHighCPU
+          expr: |
+            rate(container_cpu_usage_seconds_total{container="postgres", namespace="postgres-ha"}[5m]) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            service: homepage
+          annotations:
+            summary: "PostgreSQL high CPU usage"
+            description: "PostgreSQL CPU usage is {{ $value | humanizePercentage }}."
+
+        # Warning: Disk space low
+        - alert: PostgresDiskSpaceLow
+          expr: |
+            cnpg_pg_database_size_bytes{datname="homepage"} / (10 * 1024 * 1024 * 1024) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+            service: homepage
+          annotations:
+            summary: "PostgreSQL disk space low"
+            description: "Database is using {{ $value | humanizePercentage }} of allocated storage."
+

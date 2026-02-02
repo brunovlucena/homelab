@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: knative-lambda-c2
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - minio-secret-init.yaml
+  - backend-deployment.yaml
+  - backend-service.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - ingress.yaml
+
+images:
+  - name: localhost:5001/knative-lambda-c2-backend
+    newTag: v1.0.1
+  - name: localhost:5001/knative-lambda-c2-frontend
+    newTag: v1.0.1
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: knative-lambda-c2
+      app.kubernetes.io/part-of: knative-lambda-operator
+    includeSelectors: true

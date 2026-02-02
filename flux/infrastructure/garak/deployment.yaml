@@ -1,0 +1,60 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: garak
+  namespace: garak
+  labels:
+    app: garak
+    component: security-testing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: garak
+  template:
+    metadata:
+      labels:
+        app: garak
+        component: security-testing
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: garak
+        image: ghcr.io/brunovlucena/garak:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "8080"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          # requests:
+          #   cpu: 50m
+          #   memory: 64Mi
+          limits:
+            # cpu: 100m      # Actual usage: 1.2m (homelab optimized)
+            memory: 128Mi  # Actual usage: 36Mi (homelab optimized)
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 3
+      restartPolicy: Always
+

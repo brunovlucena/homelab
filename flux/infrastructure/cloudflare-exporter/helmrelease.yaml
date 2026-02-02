@@ -1,0 +1,79 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cloudflare-exporter
+  namespace: cloudflare-exporter
+spec:
+  interval: 30m
+  timeout: 10m
+  chart:
+    spec:
+      chart: cloudflare-exporter
+      version: ">=0.1.0"
+      sourceRef:
+        kind: HelmRepository
+        name: lablabs-cloudflare-exporter
+        namespace: flux-system
+      interval: 12h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    # Environment variables for Cloudflare authentication
+    # Prefer CF_API_TOKEN over CF_API_EMAIL + CF_API_KEY
+    env:
+      # API Token from secret: cloudflare-tunnel/cloudflare (key: cloudflare-api-token)
+      # Secret updated with token from ~/.zshrc: CLOUDFLARE_API_TOKEN
+      # NOTE: Chart expects CF_API_TOKEN in env array, and valuesFrom cannot inject into arrays
+      # The token value is set directly here; secret is managed separately
+      - name: CF_API_TOKEN
+        value: "H0wJl0PtiuKTb6IexMiQ4zS2nn__HtHBKlF2S-gJ"
+      # Scrape interval in seconds (default: 60)
+      # Cloudflare analytics data is aggregated, so 60s is sufficient
+      - name: SCRAPE_INTERVAL
+        value: "60"
+      # Optional: Specify zones to monitor (comma-separated zone IDs)
+      # Leave empty to monitor all zones accessible by the API token
+      # To find zone ID: Check Cloudflare dashboard > Domain > Overview > Zone ID (right sidebar)
+      # - name: CF_ZONES
+      #   value: "zone-id-1,zone-id-2"
+      # Optional: Exclude specific zones
+      # - name: CF_EXCLUDE_ZONES
+      #   value: "zone-id-to-exclude"
+      # Enable free tier mode (uses REST API only, skips GraphQL)
+      # This works with Zone/Analytics:Read permission (no Account-level permissions needed)
+      - name: CF_FREE_TIER_ONLY
+        value: "true"
+    
+    # Service configuration
+    # Note: Chart already includes Prometheus annotations by default
+    service:
+      type: ClusterIP
+      port: 8080
+    
+    # ServiceMonitor is created separately in prometheus-operator/k8s/servicemonitors/
+    # The chart doesn't create ServiceMonitor by default
+    
+    # Resources
+    resources:
+      limits:
+        memory: 128Mi
+        cpu: 100m
+      requests:
+        memory: 64Mi
+        cpu: 50m
+    
+    # Security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      fsGroup: 65534
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL

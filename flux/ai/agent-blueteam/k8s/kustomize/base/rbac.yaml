@@ -1,0 +1,86 @@
+---
+# Service Account for agent-blueteam
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-blueteam
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-blueteam
+    app.kubernetes.io/component: security-defense
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# Role for monitoring and defensive operations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: blueteam-defense-role
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-blueteam
+rules:
+  # Read access to pods, events, and logs for monitoring
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "services", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  # Read access to deployments and replicasets
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  # Read access to LambdaFunctions and LambdaAgents
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions", "lambdaagents"]
+    verbs: ["get", "list", "watch"]
+  # Read/Update for NetworkPolicies (to block threats)
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: blueteam-defense-binding
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-blueteam
+subjects:
+  - kind: ServiceAccount
+    name: agent-blueteam
+    namespace: ai
+roleRef:
+  kind: Role
+  name: blueteam-defense-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# ClusterRole for cross-namespace monitoring (read-only)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: blueteam-monitor-role
+  labels:
+    app.kubernetes.io/name: agent-blueteam
+rules:
+  # Monitor events cluster-wide
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  # Monitor LambdaFunctions and exploits
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdafunctions"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: blueteam-monitor-binding
+  labels:
+    app.kubernetes.io/name: agent-blueteam
+subjects:
+  - kind: ServiceAccount
+    name: agent-blueteam
+    namespace: ai
+roleRef:
+  kind: ClusterRole
+  name: blueteam-monitor-role
+  apiGroup: rbac.authorization.k8s.io

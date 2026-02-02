@@ -1,0 +1,502 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔴🛡️ K6 SECURITY BATTLE ARENA - REDTEAM VS BLUETEAM
+#
+#  Purpose: Simulate security attack/defense cycles between agents
+#
+#  Scenario: Redteam launches exploits, Blueteam detects and blocks,
+#            MAG7 dragon takes damage when defense succeeds
+#
+#  This tests cross-agent communication and security event handling
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: security-battle-arena
+  namespace: agent-redteam
+  labels:
+    app.kubernetes.io/name: security-battle
+    app.kubernetes.io/component: testing
+    test-type: cross-agent
+    test-scenario: battle-arena
+spec:
+  parallelism: 2
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: security-battle-arena-script
+      file: battle-arena.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: REDTEAM_URL
+        value: "http://agent-redteam.agent-redteam.svc.cluster.local"
+      - name: BLUETEAM_URL
+        value: "http://agent-blueteam.agent-blueteam.svc.cluster.local"
+      - name: DEMO_BROKER_URL
+        value: "http://kafka-broker-ingress.demo-mag7-battle.svc.cluster.local"
+      - name: TARGET_NAMESPACE
+        value: "redteam-test"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-battle-arena-script
+  namespace: agent-redteam
+  labels:
+    app.kubernetes.io/name: security-battle
+    app.kubernetes.io/component: testing
+data:
+  battle-arena.js: |
+    import http from 'k6/http';
+    import { check, group, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CUSTOM METRICS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Battle Metrics
+    const battleRounds = new Counter('battle_rounds_total');
+    const attacksLaunched = new Counter('battle_attacks_launched');
+    const attacksBlocked = new Counter('battle_attacks_blocked');
+    const attacksSucceeded = new Counter('battle_attacks_succeeded');
+    const defensesActivated = new Counter('battle_defenses_activated');
+
+    // MAG7 Metrics
+    const mag7Health = new Gauge('battle_mag7_health');
+    const mag7DamageDealt = new Counter('battle_mag7_damage_dealt');
+    const mag7HeadsDefeated = new Counter('battle_mag7_heads_defeated');
+
+    // Performance Metrics
+    const attackLatency = new Trend('battle_attack_latency_ms');
+    const defenseLatency = new Trend('battle_defense_latency_ms');
+    const roundLatency = new Trend('battle_round_latency_ms');
+    const battleSuccess = new Rate('battle_success_rate');
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONFIGURATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    const REDTEAM_URL = __ENV.REDTEAM_URL || 'http://agent-redteam.agent-redteam.svc.cluster.local';
+    const BLUETEAM_URL = __ENV.BLUETEAM_URL || 'http://agent-blueteam.agent-blueteam.svc.cluster.local';
+    const DEMO_BROKER_URL = __ENV.DEMO_BROKER_URL || 'http://kafka-broker-ingress.demo-mag7-battle.svc.cluster.local';
+    const TARGET_NAMESPACE = __ENV.TARGET_NAMESPACE || 'redteam-test';
+
+    // Exploit catalog - ordered by severity
+    const EXPLOITS = [
+      { id: 'vuln-001', name: 'Command Injection Git', severity: 'critical', damage: 50 },
+      { id: 'vuln-002', name: 'Command Injection MinIO', severity: 'critical', damage: 50 },
+      { id: 'vuln-003', name: 'Inline Code Execution', severity: 'critical', damage: 50 },
+      { id: 'blue-001', name: 'SSRF via go-git', severity: 'critical', damage: 50 },
+      { id: 'blue-002', name: 'Template Injection', severity: 'critical', damage: 50 },
+      { id: 'blue-005', name: 'Path Traversal', severity: 'high', damage: 35 },
+      { id: 'blue-006', name: 'SA Token Exposure', severity: 'high', damage: 35 },
+      { id: 'vuln-004', name: 'RBAC Escalation', severity: 'high', damage: 35 },
+      { id: 'vuln-013', name: 'Receiver SA Escalation', severity: 'medium', damage: 20 },
+    ];
+
+    // MAG7 Dragon Heads
+    const MAG7_HEADS = [
+      { name: 'Apple', emoji: '🍎', attack: 'Walled Garden', hp: 100 },
+      { name: 'Microsoft', emoji: '🪟', attack: 'Blue Screen', hp: 100 },
+      { name: 'Google', emoji: '🔍', attack: 'Data Harvest', hp: 100 },
+      { name: 'Amazon', emoji: '📦', attack: 'Cloud Lock', hp: 100 },
+      { name: 'Meta', emoji: '👓', attack: 'Privacy Void', hp: 100 },
+      { name: 'Tesla', emoji: '⚡', attack: 'Self-Drive', hp: 100 },
+      { name: 'Nvidia', emoji: '🎮', attack: 'GPU Meltdown', hp: 100 },
+    ];
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TEST OPTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export const options = {
+      scenarios: {
+        // Scenario 1: Sequential attack wave
+        sequential_battle: {
+          executor: 'per-vu-iterations',
+          vus: 1,
+          iterations: 3,
+          maxDuration: '15m',
+          tags: { attack_type: 'sequential' },
+          exec: 'sequentialBattle',
+        },
+        // Scenario 2: Parallel attack wave (stress test)
+        parallel_assault: {
+          executor: 'constant-vus',
+          vus: 3,
+          duration: '5m',
+          startTime: '5m',
+          tags: { attack_type: 'parallel' },
+          exec: 'parallelAssault',
+        },
+        // Scenario 3: Full MAG7 boss battle
+        mag7_boss_battle: {
+          executor: 'per-vu-iterations',
+          vus: 2,
+          iterations: 1,
+          maxDuration: '10m',
+          startTime: '10m',
+          tags: { attack_type: 'boss_battle' },
+          exec: 'mag7BossBattle',
+        },
+      },
+      thresholds: {
+        'battle_success_rate': ['rate>0.60'],
+        'battle_attack_latency_ms': ['p(95)<30000'],
+        'battle_defense_latency_ms': ['p(95)<15000'],
+        'http_req_failed': ['rate<0.30'],
+      },
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HELPER FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function createCloudEvent(type, data, source) {
+      return {
+        specversion: '1.0',
+        id: `k6-battle-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        type: type,
+        source: source || '/k6-security-battle',
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+
+    function sendCloudEvent(url, event, timeout = '60s') {
+      return http.post(url, JSON.stringify(event), {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+          'Ce-Specversion': '1.0',
+        },
+        timeout: timeout,
+      });
+    }
+
+    function launchExploit(exploit) {
+      const start = Date.now();
+
+      const res = http.post(
+        `${REDTEAM_URL}/exploit/run`,
+        JSON.stringify({
+          exploit_id: exploit.id,
+          namespace: TARGET_NAMESPACE,
+        }),
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: '60s',
+          tags: { exploit_id: exploit.id, severity: exploit.severity },
+        }
+      );
+
+      const duration = Date.now() - start;
+      attackLatency.add(duration, { exploit_id: exploit.id });
+      attacksLaunched.add(1);
+
+      return { res, duration };
+    }
+
+    function checkDefense(exploit, attackResult) {
+      const start = Date.now();
+
+      // Send exploit event to blueteam
+      const event = createCloudEvent('io.homelab.exploit.executed', {
+        exploit_id: exploit.id,
+        exploit_name: exploit.name,
+        severity: exploit.severity,
+        status: attackResult.status || 'unknown',
+        timestamp: new Date().toISOString(),
+      }, '/k6-redteam');
+
+      const res = sendCloudEvent(BLUETEAM_URL, event, '30s');
+      const duration = Date.now() - start;
+      defenseLatency.add(duration, { exploit_id: exploit.id });
+      defensesActivated.add(1);
+
+      return { res, duration };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 1: SEQUENTIAL BATTLE
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function sequentialBattle() {
+      const roundStart = Date.now();
+      let roundSuccess = true;
+
+      console.log(`\n🔴 Starting Sequential Battle Round (VU: ${__VU}, Iter: ${__ITER})`);
+      console.log('═'.repeat(60));
+
+      battleRounds.add(1, { type: 'sequential' });
+
+      EXPLOITS.forEach((exploit, index) => {
+        group(`Attack ${index + 1}: ${exploit.name}`, () => {
+          console.log(`\n  🎯 Launching: ${exploit.name} (${exploit.severity.toUpperCase()})`);
+
+          // Phase 1: Launch attack
+          const attack = launchExploit(exploit);
+          let attackSuccess = false;
+          let attackStatus = 'unknown';
+
+          const attackOk = check(attack.res, {
+            'attack request succeeds': (r) => r.status >= 200 && r.status < 300,
+          });
+
+          if (attackOk) {
+            try {
+              const body = JSON.parse(attack.res.body);
+              attackStatus = body.status || 'unknown';
+
+              if (attackStatus === 'success') {
+                attacksSucceeded.add(1);
+                console.log(`     ❌ VULNERABILITY EXPLOITED! (${attack.duration}ms)`);
+              } else if (attackStatus === 'blocked') {
+                attacksBlocked.add(1);
+                console.log(`     ✅ Attack blocked by defenses (${attack.duration}ms)`);
+                attackSuccess = true;
+              } else {
+                console.log(`     ⚠️ Attack result: ${attackStatus} (${attack.duration}ms)`);
+              }
+            } catch (e) {
+              console.log(`     ⚠️ Could not parse attack result`);
+            }
+          } else {
+            console.log(`     ❌ Attack request failed: ${attack.res.status}`);
+            roundSuccess = false;
+          }
+
+          sleep(1);
+
+          // Phase 2: Check defense response
+          const defense = checkDefense(exploit, { status: attackStatus });
+
+          const defenseOk = check(defense.res, {
+            'defense response received': (r) => r.status >= 200 && r.status < 300,
+          });
+
+          if (defenseOk) {
+            console.log(`     🛡️ Defense processed (${defense.duration}ms)`);
+
+            // If blocked, deal damage to MAG7
+            if (attackStatus === 'blocked') {
+              mag7DamageDealt.add(exploit.damage);
+              console.log(`     💥 MAG7 takes ${exploit.damage} damage!`);
+            }
+          }
+
+          battleSuccess.add(attackOk && defenseOk);
+        });
+
+        sleep(2);
+      });
+
+      const roundDuration = Date.now() - roundStart;
+      roundLatency.add(roundDuration);
+
+      console.log(`\n${'═'.repeat(60)}`);
+      console.log(`🏁 Round completed in ${(roundDuration / 1000).toFixed(1)}s`);
+      console.log(`${'═'.repeat(60)}\n`);
+
+      sleep(5);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 2: PARALLEL ASSAULT
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function parallelAssault() {
+      // Each VU picks a random exploit and launches it
+      const exploit = EXPLOITS[Math.floor(Math.random() * EXPLOITS.length)];
+
+      console.log(`\n⚡ Parallel Assault: ${exploit.name} (VU: ${__VU})`);
+
+      battleRounds.add(1, { type: 'parallel' });
+
+      group(`Parallel Attack: ${exploit.id}`, () => {
+        // Launch attack
+        const attack = launchExploit(exploit);
+
+        const attackOk = check(attack.res, {
+          'parallel attack succeeds': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        let attackStatus = 'unknown';
+        if (attackOk) {
+          try {
+            const body = JSON.parse(attack.res.body);
+            attackStatus = body.status || 'unknown';
+
+            if (attackStatus === 'blocked') {
+              attacksBlocked.add(1);
+              mag7DamageDealt.add(exploit.damage);
+            } else if (attackStatus === 'success') {
+              attacksSucceeded.add(1);
+            }
+          } catch (e) {}
+        }
+
+        // Check defense
+        const defense = checkDefense(exploit, { status: attackStatus });
+
+        const defenseOk = check(defense.res, {
+          'defense responds': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        battleSuccess.add(attackOk && defenseOk);
+      });
+
+      sleep(randomIntBetween(2, 5));
+    }
+
+    function randomIntBetween(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 3: MAG7 BOSS BATTLE
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function mag7BossBattle() {
+      console.log('\n' + '🐉'.repeat(30));
+      console.log('     MAG7 DRAGON BOSS BATTLE BEGINS!');
+      console.log('🐉'.repeat(30) + '\n');
+
+      // Initialize MAG7 health
+      let totalHealth = MAG7_HEADS.reduce((sum, head) => sum + head.hp, 0);
+      mag7Health.add(totalHealth);
+
+      const battleStart = Date.now();
+      let headsDefeated = 0;
+      let currentHeadIndex = 0;
+
+      // Battle until all heads defeated or time runs out
+      while (headsDefeated < MAG7_HEADS.length && (Date.now() - battleStart) < 8 * 60 * 1000) {
+        const currentHead = MAG7_HEADS[currentHeadIndex];
+
+        console.log(`\n🎯 Targeting: ${currentHead.emoji} ${currentHead.name} Head`);
+        console.log(`   HP: ${currentHead.hp}/100`);
+
+        group(`Battle ${currentHead.name}`, () => {
+          // Player (Blueteam) turn - Block exploit
+          const exploit = EXPLOITS[Math.floor(Math.random() * EXPLOITS.length)];
+
+          console.log(`   🔴 Redteam attacks with: ${exploit.name}`);
+          const attack = launchExploit(exploit);
+
+          let blocked = false;
+          if (attack.res.status >= 200 && attack.res.status < 300) {
+            try {
+              const body = JSON.parse(attack.res.body);
+              blocked = body.status === 'blocked';
+            } catch (e) {}
+          }
+
+          if (blocked) {
+            // Defense successful - deal damage
+            attacksBlocked.add(1);
+            const damage = exploit.damage;
+            currentHead.hp -= damage;
+            totalHealth -= damage;
+
+            mag7DamageDealt.add(damage);
+            mag7Health.add(totalHealth);
+
+            console.log(`   🛡️ BLOCKED! ${currentHead.emoji} takes ${damage} damage!`);
+            console.log(`   ${currentHead.name} HP: ${Math.max(0, currentHead.hp)}/100`);
+
+            if (currentHead.hp <= 0) {
+              console.log(`   💀 ${currentHead.emoji} ${currentHead.name} HEAD DEFEATED!`);
+              headsDefeated++;
+              mag7HeadsDefeated.add(1);
+              currentHeadIndex++;
+            }
+          } else {
+            // MAG7 counter-attacks
+            attacksSucceeded.add(1);
+            console.log(`   ❌ Attack succeeded! ${currentHead.emoji} uses ${currentHead.attack}!`);
+          }
+
+          battleSuccess.add(blocked);
+        });
+
+        sleep(3);
+      }
+
+      const battleDuration = Date.now() - battleStart;
+
+      console.log('\n' + '═'.repeat(60));
+      if (headsDefeated >= MAG7_HEADS.length) {
+        console.log('🎉 VICTORY! MAG7 DRAGON DEFEATED!');
+      } else {
+        console.log(`⚔️ Battle ended - ${headsDefeated}/7 heads defeated`);
+      }
+      console.log(`Duration: ${(battleDuration / 1000).toFixed(1)}s`);
+      console.log('═'.repeat(60) + '\n');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SUMMARY
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function handleSummary(data) {
+      const rounds = data.metrics['battle_rounds_total'];
+      const launched = data.metrics['battle_attacks_launched'];
+      const blocked = data.metrics['battle_attacks_blocked'];
+      const succeeded = data.metrics['battle_attacks_succeeded'];
+      const damage = data.metrics['battle_mag7_damage_dealt'];
+      const heads = data.metrics['battle_mag7_heads_defeated'];
+      const successRate = data.metrics['battle_success_rate'];
+      const attackTime = data.metrics['battle_attack_latency_ms'];
+      const defenseTime = data.metrics['battle_defense_latency_ms'];
+
+      const roundsCount = rounds && rounds.values ? rounds.values.count : 0;
+      const launchedCount = launched && launched.values ? launched.values.count : 0;
+      const blockedCount = blocked && blocked.values ? blocked.values.count : 0;
+      const succeededCount = succeeded && succeeded.values ? succeeded.values.count : 0;
+      const damageCount = damage && damage.values ? damage.values.count : 0;
+      const headsCount = heads && heads.values ? heads.values.count : 0;
+      const successRateVal = successRate && successRate.values ? successRate.values.rate : 0;
+      const attackP95 = attackTime && attackTime.values ? attackTime.values['p(95)'] : 0;
+      const defenseP95 = defenseTime && defenseTime.values ? defenseTime.values['p(95)'] : 0;
+
+      const passed = successRateVal >= 0.60;
+
+      console.log('\n' + '═'.repeat(70));
+      console.log('🔴🛡️ SECURITY BATTLE ARENA - TEST RESULTS');
+      console.log('═'.repeat(70));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('─'.repeat(70));
+      console.log('⚔️ BATTLE STATISTICS');
+      console.log('   Battle Rounds:      ' + roundsCount);
+      console.log('   Attacks Launched:   ' + launchedCount);
+      console.log('   Attacks Blocked:    ' + blockedCount + ' (' + (launchedCount > 0 ? ((blockedCount/launchedCount)*100).toFixed(1) : 0) + '%)');
+      console.log('   Attacks Succeeded:  ' + succeededCount);
+      console.log('─'.repeat(70));
+      console.log('🐉 MAG7 DRAGON');
+      console.log('   Total Damage Dealt: ' + damageCount);
+      console.log('   Heads Defeated:     ' + headsCount + '/7');
+      console.log('─'.repeat(70));
+      console.log('⏱️ PERFORMANCE');
+      console.log('   Success Rate:       ' + (successRateVal * 100).toFixed(1) + '%');
+      console.log('   Attack P95:         ' + (attackP95 || 0).toFixed(0) + 'ms');
+      console.log('   Defense P95:        ' + (defenseP95 || 0).toFixed(0) + 'ms');
+      console.log('═'.repeat(70) + '\n');
+
+      return {};
+    }

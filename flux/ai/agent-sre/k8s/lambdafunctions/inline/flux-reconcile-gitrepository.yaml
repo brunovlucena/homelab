@@ -1,0 +1,75 @@
+---
+# LambdaFunction: Flux Reconcile GitRepository
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: flux-reconcile-gitrepository
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: flux-reconcile-gitrepository
+    app.kubernetes.io/component: remediation
+    app.kubernetes.io/part-of: agent-sre
+    remediation.agent-sre.io/alert: FluxReconciliationFailure
+    remediation.agent-sre.io/kind: GitRepository
+spec:
+  source:
+    type: inline
+    inline:
+      code: |
+        import os
+        import subprocess
+        from typing import Dict, Any
+        
+        def handler(event: Dict[str, Any]) -> Dict[str, Any]:
+            name = event.get('name')
+            namespace = event.get('namespace', 'flux-system')
+            
+            if not name:
+                return {'status': 'error', 'message': 'name parameter is required'}
+            
+            try:
+                result = subprocess.run(
+                    ['flux', 'reconcile', 'source', 'git', name, '-n', namespace],
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                
+                if result.returncode == 0:
+                    return {
+                        'status': 'success',
+                        'message': f'GitRepository {name} reconciled successfully',
+                        'output': result.stdout
+                    }
+                else:
+                    return {
+                        'status': 'error',
+                        'message': f'Reconciliation failed: {result.stderr}',
+                        'output': result.stdout
+                    }
+            except Exception as e:
+                return {'status': 'error', 'message': f'Error: {str(e)}'}
+      dependencies: |
+        {}
+  runtime:
+    language: python
+    version: "3.11"
+    handler: main.handler
+  scaling:
+    minReplicas: 0
+    maxReplicas: 10
+    targetConcurrency: 5
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  build:
+    timeout: "10m"
+    registry: localhost:5001
+    insecure: true
+  eventing:
+    enabled: false
+

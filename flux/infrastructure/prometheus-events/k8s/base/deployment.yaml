@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-events
+  namespace: prometheus
+  labels:
+    app: prometheus-events
+    component: cloudevents-converter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-events
+  template:
+    metadata:
+      labels:
+        app: prometheus-events
+        component: cloudevents-converter
+    spec:
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: prometheus-events
+        image: localhost:5001/prometheus-events
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: K_SINK
+          value: "http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+

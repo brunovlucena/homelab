@@ -1,0 +1,331 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔍 K6 SCAN LOAD TEST - AGENT-DEVSECOPS
+#
+#  Purpose: Test vulnerability scanning under load
+#
+#  Scenarios:
+#    📦 Build completed events (image scanning)
+#    🚀 Deploy request events (security gate)
+#    🔎 LambdaFunction scanning
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-devsecops-scan-load
+  namespace: agent-devsecops
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: testing
+    test-type: load
+spec:
+  parallelism: 2
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-devsecops-scan-load-test
+      file: scan-load-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: DEVSECOPS_URL
+        value: "http://agent-devsecops.agent-devsecops.svc.cluster.local"
+      - name: NAMESPACE
+        value: "agent-devsecops"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-devsecops-scan-load-test
+  namespace: agent-devsecops
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: testing
+    test-type: load
+data:
+  scan-load-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // Custom Metrics
+    const buildScanSuccess = new Rate('devsecops_build_scan_success');
+    const deployGateSuccess = new Rate('devsecops_deploy_gate_success');
+    const lambdaScanSuccess = new Rate('devsecops_lambda_scan_success');
+    const scanDuration = new Trend('devsecops_scan_duration_ms');
+    const scansTotal = new Counter('devsecops_scans_total');
+    const vulnerabilitiesFound = new Counter('devsecops_vulnerabilities_found');
+    
+    // Configuration
+    const DEVSECOPS_URL = __ENV.DEVSECOPS_URL || 'http://agent-devsecops.agent-devsecops.svc.cluster.local';
+    
+    // Sample images to scan
+    const SAMPLE_IMAGES = [
+      'nginx:1.25',
+      'python:3.11-slim',
+      'node:20-alpine',
+      'golang:1.21',
+      'redis:7-alpine',
+      'postgres:16',
+      'ubuntu:22.04',
+      'alpine:3.18',
+    ];
+    
+    // Sample namespaces
+    const NAMESPACES = [
+      'agent-restaurant',
+      'agent-chat',
+      'agent-tools',
+      'agent-contracts',
+      'default',
+    ];
+    
+    export const options = {
+      scenarios: {
+        // Simulate CI/CD build events
+        build_scans: {
+          executor: 'ramping-vus',
+          startVUs: 0,
+          stages: [
+            { duration: '30s', target: 5 },
+            { duration: '2m', target: 10 },
+            { duration: '1m', target: 5 },
+            { duration: '30s', target: 0 },
+          ],
+          exec: 'buildScan',
+        },
+        // Simulate deployment gates
+        deploy_gates: {
+          executor: 'constant-vus',
+          vus: 3,
+          duration: '4m',
+          exec: 'deployGate',
+          startTime: '30s',
+        },
+        // Lambda function scanning
+        lambda_scans: {
+          executor: 'per-vu-iterations',
+          vus: 2,
+          iterations: 5,
+          exec: 'lambdaScan',
+          startTime: '1m',
+        },
+      },
+      thresholds: {
+        'devsecops_build_scan_success': ['rate>0.90'],
+        'devsecops_deploy_gate_success': ['rate>0.90'],
+        'devsecops_lambda_scan_success': ['rate>0.80'],
+        'devsecops_scan_duration_ms': ['p(95)<10000'],
+        'http_req_failed': ['rate<0.1'],
+      },
+    };
+    
+    // CloudEvent helper
+    function createCloudEvent(type, data, source = 'k6-scan-load') {
+      return {
+        specversion: '1.0',
+        id: `k6-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        type: type,
+        source: source,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+    
+    function sendCloudEvent(url, event) {
+      return http.post(url, JSON.stringify(event), {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+          'Ce-Specversion': '1.0',
+        },
+        timeout: '60s',
+      });
+    }
+    
+    function randomElement(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+    
+    // Scenario 1: Build Completed - Trigger image scan
+    export function buildScan() {
+      const image = randomElement(SAMPLE_IMAGES);
+      const releaseName = `release-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      
+      group('📦 Build Scan', () => {
+        const event = createCloudEvent('io.homelab.build.completed', {
+          image: image,
+          release_name: releaseName,
+          commit_sha: Math.random().toString(36).substring(2, 10),
+          branch: 'main',
+          build_id: `build-${Date.now()}`,
+        }, '/k6-test/ci-pipeline');
+        
+        const res = sendCloudEvent(DEVSECOPS_URL, event);
+        scanDuration.add(res.timings.duration, { type: 'build_scan' });
+        scansTotal.add(1, { type: 'build_scan' });
+        
+        const success = check(res, {
+          'build scan returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'build scan has result': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.status === 'scanned' || body.vulnerabilities !== undefined;
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+        });
+        
+        buildScanSuccess.add(success);
+        
+        // Track vulnerabilities found
+        try {
+          const body = JSON.parse(res.body);
+          if (body.vulnerabilities) {
+            const total = (body.vulnerabilities.critical || 0) + 
+                         (body.vulnerabilities.high || 0) +
+                         (body.vulnerabilities.medium || 0) +
+                         (body.vulnerabilities.low || 0);
+            vulnerabilitiesFound.add(total);
+          }
+        } catch (e) {}
+        
+        if (!success) {
+          console.error(`Build scan failed for ${image}: ${res.status} - ${res.body}`);
+        }
+      });
+      
+      sleep(Math.random() * 2 + 1);
+    }
+    
+    // Scenario 2: Deploy Request - Security Gate
+    export function deployGate() {
+      const namespace = randomElement(NAMESPACES);
+      const image = randomElement(SAMPLE_IMAGES);
+      
+      group('🚀 Deploy Security Gate', () => {
+        const event = createCloudEvent('io.homelab.deploy.requested', {
+          namespace: namespace,
+          name: `deployment-${Date.now()}`,
+          image: image,
+          replicas: Math.floor(Math.random() * 3) + 1,
+          resources: {
+            requests: { memory: '128Mi', cpu: '100m' },
+            limits: { memory: '256Mi', cpu: '200m' },
+          },
+          securityContext: {
+            runAsNonRoot: Math.random() > 0.3, // 70% compliant
+            readOnlyRootFilesystem: Math.random() > 0.5,
+          },
+        }, '/k6-test/gitops');
+        
+        const res = sendCloudEvent(DEVSECOPS_URL, event);
+        scanDuration.add(res.timings.duration, { type: 'deploy_gate' });
+        scansTotal.add(1, { type: 'deploy_gate' });
+        
+        const success = check(res, {
+          'deploy gate returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'deploy gate has decision': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.approved !== undefined || body.checks !== undefined;
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+        });
+        
+        deployGateSuccess.add(success);
+        
+        if (!success) {
+          console.error(`Deploy gate failed for ${namespace}: ${res.status} - ${res.body}`);
+        }
+      });
+      
+      sleep(Math.random() * 3 + 2);
+    }
+    
+    // Scenario 3: Scan LambdaFunctions
+    export function lambdaScan() {
+      const namespace = randomElement(NAMESPACES);
+      
+      group('🔎 LambdaFunction Scan', () => {
+        const event = createCloudEvent('io.homelab.scan.lambdafunctions', {
+          namespace: namespace,
+          include_images: true,
+          check_outdated: true,
+        }, '/k6-test/scheduler');
+        
+        const res = sendCloudEvent(DEVSECOPS_URL, event);
+        scanDuration.add(res.timings.duration, { type: 'lambda_scan' });
+        scansTotal.add(1, { type: 'lambda_scan' });
+        
+        const success = check(res, {
+          'lambda scan returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'lambda scan has results': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.total_scanned !== undefined || body.status !== undefined;
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+        });
+        
+        lambdaScanSuccess.add(success);
+        
+        if (!success) {
+          console.error(`Lambda scan failed for ${namespace}: ${res.status} - ${res.body}`);
+        }
+      });
+      
+      sleep(5);
+    }
+    
+    export function handleSummary(data) {
+      const buildMetric = data.metrics['devsecops_build_scan_success'];
+      const deployMetric = data.metrics['devsecops_deploy_gate_success'];
+      const lambdaMetric = data.metrics['devsecops_lambda_scan_success'];
+      const durationMetric = data.metrics['devsecops_scan_duration_ms'];
+      const scansMetric = data.metrics['devsecops_scans_total'];
+      const vulnsMetric = data.metrics['devsecops_vulnerabilities_found'];
+      
+      const buildRate = buildMetric && buildMetric.values ? buildMetric.values.rate : 0;
+      const deployRate = deployMetric && deployMetric.values ? deployMetric.values.rate : 0;
+      const lambdaRate = lambdaMetric && lambdaMetric.values ? lambdaMetric.values.rate : 0;
+      const p95Duration = durationMetric && durationMetric.values ? durationMetric.values['p(95)'] : 0;
+      const totalScans = scansMetric && scansMetric.values ? scansMetric.values.count : 0;
+      const totalVulns = vulnsMetric && vulnsMetric.values ? vulnsMetric.values.count : 0;
+      
+      const passed = buildRate >= 0.90 && deployRate >= 0.90 && lambdaRate >= 0.80;
+      
+      console.log('\n' + '═'.repeat(60));
+      console.log('🔍 AGENT-DEVSECOPS SCAN LOAD TEST RESULTS');
+      console.log('═'.repeat(60));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('─'.repeat(60));
+      console.log('📦 Build Scans:        ' + (buildRate * 100).toFixed(1) + '%');
+      console.log('🚀 Deploy Gates:       ' + (deployRate * 100).toFixed(1) + '%');
+      console.log('🔎 Lambda Scans:       ' + (lambdaRate * 100).toFixed(1) + '%');
+      console.log('─'.repeat(60));
+      console.log('Total Scans:           ' + totalScans);
+      console.log('Vulnerabilities Found: ' + totalVulns);
+      console.log('P95 Scan Duration:     ' + (p95Duration || 0).toFixed(0) + 'ms');
+      console.log('═'.repeat(60) + '\n');
+      
+      return {};
+    }

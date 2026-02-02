@@ -1,0 +1,77 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  - ../base
+
+# Studio environment patches - using localhost:5001 for local development
+# NOTE: GHCR images don't exist yet - use local registry for studio
+# For production, update to use ghcr.io images after they're built/pushed
+# Images must be built and pushed to localhost:5001 first:
+#   make build REGISTRY=localhost:5001/agent-store-multibrands
+#   docker push localhost:5001/agent-store-multibrands/{agent}:0.3.0
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-store-multibrands/whatsapp_gateway
+      - op: replace
+        path: /spec/image/tag
+        value: "0.3.0"
+    target:
+      kind: LambdaAgent
+      name: whatsapp-gateway
+  
+  - patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-store-multibrands/ai_seller
+      - op: replace
+        path: /spec/image/tag
+        value: "0.3.0"
+    target:
+      kind: LambdaAgent
+      labelSelector: store.agent.role=seller
+  
+  - patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-store-multibrands/sales_assistant
+      - op: replace
+        path: /spec/image/tag
+        value: "0.3.0"
+    target:
+      kind: LambdaAgent
+      name: sales-assistant
+  
+  - patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-store-multibrands/product_catalog
+      - op: replace
+        path: /spec/image/tag
+        value: "0.3.0"
+    target:
+      kind: LambdaAgent
+      name: product-catalog
+  
+  - patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: localhost:5001/agent-store-multibrands/order_processor
+      - op: replace
+        path: /spec/image/tag
+        value: "0.3.0"
+    target:
+      kind: LambdaAgent
+      name: order-processor
+  
+  # Enable debug logging
+  - patch: |-
+      - op: replace
+        path: /spec/observability/logging/level
+        value: debug
+    target:
+      kind: LambdaAgent

@@ -1,0 +1,434 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚫 K6 RBAC DISABLE TEST - Broker/Trigger Disable via CRD and Events
+#
+#  Purpose: Test that broker/trigger creation can be disabled via:
+#    1. CRD spec.permissions.disableBrokerCreation
+#    2. CRD spec.permissions.disableTriggerCreation
+#    3. CloudEvents (io.homelab.rbac.disable/enable)
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: lambda-rbac-disable-test
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: testing
+    test-type: rbac-disable
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: lambda-rbac-disable-test
+      file: rbac-disable-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    serviceAccountName: lambda-rbac-test-runner
+    env:
+      - name: K8S_API_SERVER
+        value: "https://kubernetes.default.svc"
+      - name: TEST_NAMESPACE
+        value: "rbac-test"
+      - name: BROKER_URL
+        value: "http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lambda-rbac-disable-test
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: testing
+    test-type: rbac-disable
+data:
+  rbac-disable-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Custom Metrics
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const testSuccess = new Rate('rbac_disable_test_success');
+    const crdDisableSuccess = new Rate('rbac_crd_disable_success');
+    const eventDisableSuccess = new Rate('rbac_event_disable_success');
+    const testLatency = new Trend('rbac_disable_test_latency_ms');
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Configuration
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const K8S_API = __ENV.K8S_API_SERVER || 'https://kubernetes.default.svc';
+    const TEST_NS = __ENV.TEST_NAMESPACE || 'rbac-test';
+    const BROKER_URL = __ENV.BROKER_URL || 'http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local';
+    
+    const SA_TOKEN = open('/var/run/secrets/kubernetes.io/serviceaccount/token');
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test Options
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export const options = {
+      insecureSkipTLSVerify: true,
+      scenarios: {
+        disable_tests: {
+          executor: 'per-vu-iterations',
+          vus: 1,
+          iterations: 3,
+          maxDuration: '5m',
+        },
+      },
+      thresholds: {
+        'rbac_disable_test_success': ['rate>0.95'],
+        'rbac_crd_disable_success': ['rate>0.95'],
+        'rbac_event_disable_success': ['rate>0.90'],
+      },
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Helper Functions
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function k8sRequest(method, path, body) {
+      const headers = {
+        'Authorization': `Bearer ${SA_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      
+      const url = `${K8S_API}${path}`;
+      let res;
+      
+      // Use insecureSkipTLSVerify for in-cluster k8s API calls
+      const params = { headers, timeout: '30s', insecureSkipTLSVerify: true };
+      
+      switch (method.toUpperCase()) {
+        case 'GET':
+          res = http.get(url, params);
+          break;
+        case 'POST':
+          res = http.post(url, JSON.stringify(body), params);
+          break;
+        case 'PUT':
+          res = http.put(url, JSON.stringify(body), params);
+          break;
+        case 'PATCH':
+          params.headers = Object.assign({}, headers, { 'Content-Type': 'application/merge-patch+json' });
+          res = http.patch(url, JSON.stringify(body), params);
+          break;
+        case 'DELETE':
+          res = http.del(url, null, params);
+          break;
+      }
+      
+      return res;
+    }
+    
+    function generateTestId() {
+      return `disable-test-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    }
+    
+    function sendCloudEvent(eventType, data) {
+      const eventId = generateTestId();
+      
+      const headers = {
+        'Content-Type': 'application/json',
+        'ce-specversion': '1.0',
+        'ce-type': eventType,
+        'ce-source': '/k6/rbac-disable-test',
+        'ce-id': eventId,
+        'ce-time': new Date().toISOString(),
+      };
+      
+      return http.post(BROKER_URL, JSON.stringify(data), {
+        headers,
+        timeout: '10s',
+      });
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test: CRD-based Disable
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function testCRDDisable() {
+      const testId = generateTestId();
+      const agentPath = `/apis/lambda.knative.io/v1alpha1/namespaces/${TEST_NS}/lambdaagents`;
+      
+      // Create agent with broker/trigger creation disabled
+      const agent = {
+        apiVersion: 'lambda.knative.io/v1alpha1',
+        kind: 'LambdaAgent',
+        metadata: {
+          name: `test-agent-disabled-${testId}`,
+          namespace: TEST_NS,
+        },
+        spec: {
+          image: {
+            repository: 'localhost:5001/test-agent',
+            tag: 'latest',
+            port: 8080,
+          },
+          permissions: {
+            disableBrokerCreation: true,
+            disableTriggerCreation: true,
+            disableFunctionCreation: false,
+            eventControls: {
+              allowEventDisable: true,
+            },
+          },
+        },
+      };
+      
+      const start = Date.now();
+      
+      // Create agent
+      const createRes = k8sRequest('POST', agentPath, agent);
+      const createOk = check(createRes, {
+        'Agent with disabled perms created': (r) => r.status === 201,
+      });
+      
+      if (!createOk) {
+        console.error(`Failed to create agent: ${createRes.status} - ${createRes.body}`);
+        return false;
+      }
+      
+      sleep(1);
+      
+      // Verify status reflects disabled state
+      const getRes = k8sRequest('GET', `${agentPath}/${agent.metadata.name}`);
+      const statusOk = check(getRes, {
+        'Agent status retrieved': (r) => r.status === 200,
+      });
+      
+      if (statusOk) {
+        try {
+          const agentData = JSON.parse(getRes.body);
+          const perms = (agentData.spec && agentData.spec.permissions) || {};
+          
+          check(perms, {
+            'Broker creation disabled in spec': (p) => p.disableBrokerCreation === true,
+            'Trigger creation disabled in spec': (p) => p.disableTriggerCreation === true,
+            'Function creation NOT disabled': (p) => p.disableFunctionCreation === false || p.disableFunctionCreation === undefined,
+          });
+        } catch (e) {
+          console.error(`Failed to parse agent status: ${e}`);
+        }
+      }
+      
+      // Cleanup
+      k8sRequest('DELETE', `${agentPath}/${agent.metadata.name}`);
+      
+      testLatency.add(Date.now() - start, { test: 'crd_disable' });
+      
+      return createOk && statusOk;
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test: Event-based Disable
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function testEventDisable() {
+      const testId = generateTestId();
+      const start = Date.now();
+      
+      // Test 1: Send disable event
+      console.log('  📨 Sending RBAC disable event...');
+      
+      const disableRes = sendCloudEvent('io.homelab.rbac.disable', {
+        agentName: 'test-agent-event',
+        agentNamespace: TEST_NS,
+        capabilities: ['brokers.create', 'triggers.create'],
+        reason: 'k6 disable test',
+        duration: '5m',
+      });
+      
+      const disableOk = check(disableRes, {
+        'RBAC disable event sent': (r) => r.status >= 200 && r.status < 300,
+      });
+      
+      if (!disableOk) {
+        console.error(`Disable event failed: ${disableRes.status}`);
+      }
+      
+      sleep(1);
+      
+      // Test 2: Send enable event
+      console.log('  📨 Sending RBAC enable event...');
+      
+      const enableRes = sendCloudEvent('io.homelab.rbac.enable', {
+        agentName: 'test-agent-event',
+        agentNamespace: TEST_NS,
+        capabilities: ['brokers.create', 'triggers.create'],
+        reason: 'k6 re-enable test',
+      });
+      
+      const enableOk = check(enableRes, {
+        'RBAC enable event sent': (r) => r.status >= 200 && r.status < 300,
+      });
+      
+      if (!enableOk) {
+        console.error(`Enable event failed: ${enableRes.status}`);
+      }
+      
+      testLatency.add(Date.now() - start, { test: 'event_disable' });
+      
+      return disableOk && enableOk;
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test: Namespace Restrictions
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function testNamespaceRestrictions() {
+      const testId = generateTestId();
+      const agentPath = `/apis/lambda.knative.io/v1alpha1/namespaces/${TEST_NS}/lambdaagents`;
+      
+      const start = Date.now();
+      
+      // Create agent with namespace restrictions
+      const agent = {
+        apiVersion: 'lambda.knative.io/v1alpha1',
+        kind: 'LambdaAgent',
+        metadata: {
+          name: `test-agent-ns-${testId}`,
+          namespace: TEST_NS,
+        },
+        spec: {
+          image: {
+            repository: 'localhost:5001/test-agent',
+            tag: 'latest',
+            port: 8080,
+          },
+          permissions: {
+            allowedTargetNamespaces: ['rbac-test', 'rbac-test-secondary'],
+            disableBrokerCreation: false,
+            disableTriggerCreation: false,
+          },
+        },
+      };
+      
+      const createRes = k8sRequest('POST', agentPath, agent);
+      const createOk = check(createRes, {
+        'Agent with namespace restrictions created': (r) => r.status === 201,
+      });
+      
+      if (createOk) {
+        // Verify restrictions in spec
+        const getRes = k8sRequest('GET', `${agentPath}/${agent.metadata.name}`);
+        
+        if (getRes.status === 200) {
+          try {
+            const agentData = JSON.parse(getRes.body);
+            const allowedNs = (agentData.spec && agentData.spec.permissions && agentData.spec.permissions.allowedTargetNamespaces) || [];
+            
+            check(allowedNs, {
+              'Namespace restrictions saved': (ns) => ns.length === 2,
+              'Contains rbac-test': (ns) => ns.includes('rbac-test'),
+              'Contains rbac-test-secondary': (ns) => ns.includes('rbac-test-secondary'),
+            });
+          } catch (e) {
+            console.error(`Failed to parse: ${e}`);
+          }
+        }
+        
+        // Cleanup
+        k8sRequest('DELETE', `${agentPath}/${agent.metadata.name}`);
+      }
+      
+      testLatency.add(Date.now() - start, { test: 'namespace_restrictions' });
+      
+      return createOk;
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Main Test
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export default function() {
+      const tests = ['crd', 'event', 'namespace'];
+      const testType = tests[__ITER % tests.length];
+      
+      let passed = false;
+      
+      console.log(`\n🚫 Running RBAC disable test: ${testType}`);
+      
+      switch (testType) {
+        case 'crd':
+          group('CRD-based Permission Disable', () => {
+            passed = testCRDDisable();
+            crdDisableSuccess.add(passed);
+          });
+          break;
+        
+        case 'event':
+          group('Event-based Permission Disable', () => {
+            passed = testEventDisable();
+            eventDisableSuccess.add(passed);
+          });
+          break;
+        
+        case 'namespace':
+          group('Namespace Restrictions', () => {
+            passed = testNamespaceRestrictions();
+            crdDisableSuccess.add(passed);
+          });
+          break;
+      }
+      
+      testSuccess.add(passed);
+      
+      console.log(`${passed ? '✅' : '❌'} Test ${testType}: ${passed ? 'PASSED' : 'FAILED'}\n`);
+      
+      sleep(1);
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Summary
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function getMetricValue(data, metricName, path) {
+      const metric = data.metrics[metricName];
+      if (!metric || !metric.values) return 0;
+      return path ? metric.values[path] || 0 : metric.values.rate || 0;
+    }
+    
+    export function handleSummary(data) {
+      const successRate = getMetricValue(data, 'rbac_disable_test_success');
+      const crdRate = getMetricValue(data, 'rbac_crd_disable_success');
+      const eventRate = getMetricValue(data, 'rbac_event_disable_success');
+      const p95Latency = getMetricValue(data, 'rbac_disable_test_latency_ms', 'p(95)');
+      
+      const passed = successRate >= 0.95;
+      
+      console.log('\n' + '═'.repeat(60));
+      console.log('🚫 RBAC DISABLE TEST RESULTS');
+      console.log('═'.repeat(60));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('');
+      console.log('┌────────────────────────────────────────────────────────────┐');
+      console.log('│  TEST RESULTS                                              │');
+      console.log('├────────────────────────────────────────────────────────────┤');
+      console.log('│  Overall Success:      ' + (successRate * 100).toFixed(1) + '%                           │');
+      console.log('│  CRD Disable Success:  ' + (crdRate * 100).toFixed(1) + '%                           │');
+      console.log('│  Event Disable Success: ' + (eventRate * 100).toFixed(1) + '%                          │');
+      console.log('│  P95 Latency:          ' + p95Latency.toFixed(0) + 'ms                             │');
+      console.log('└────────────────────────────────────────────────────────────┘');
+      console.log('═'.repeat(60) + '\n');
+      
+      return {};
+    }

@@ -1,0 +1,111 @@
+---
+# Redis service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: mitmproxy
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
+      protocol: TCP
+
+---
+# Audio Analyzer service
+apiVersion: v1
+kind: Service
+metadata:
+  name: audio-analyzer
+  namespace: mitmproxy
+  labels:
+    app: audio-analyzer
+spec:
+  type: ClusterIP
+  selector:
+    app: audio-analyzer
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
+
+---
+# ClusterIP service for internal proxy access
+apiVersion: v1
+kind: Service
+metadata:
+  name: mitmproxy
+  namespace: mitmproxy
+  labels:
+    app: mitmproxy
+spec:
+  type: ClusterIP
+  selector:
+    app: mitmproxy
+  ports:
+    - name: proxy
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+    - name: web
+      port: 8081
+      targetPort: 8081
+      protocol: TCP
+
+---
+# NodePort service for external proxy access
+apiVersion: v1
+kind: Service
+metadata:
+  name: mitmproxy-external
+  namespace: mitmproxy
+  labels:
+    app: mitmproxy
+  annotations:
+    description: "Main proxy and web UI access"
+spec:
+  type: NodePort
+  selector:
+    app: mitmproxy
+  ports:
+    # Proxy port - configure your devices to use this
+    - name: proxy
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080
+      protocol: TCP
+    # Web interface - view traffic and manage mitmproxy
+    - name: web
+      port: 8081
+      targetPort: 8081
+      nodePort: 30081
+      protocol: TCP
+
+---
+# NodePort service for audio analyzer API (optional external access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: audio-analyzer-external
+  namespace: mitmproxy
+  labels:
+    app: audio-analyzer
+  annotations:
+    description: "Audio analyzer API for ad signature management"
+spec:
+  type: NodePort
+  selector:
+    app: audio-analyzer
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      nodePort: 30083
+      protocol: TCP

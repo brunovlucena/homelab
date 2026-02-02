@@ -1,0 +1,221 @@
+---
+# MAG7 Battle - Blue Team Defender (Simplified for Demo)
+# A LambdaFunction that handles defense events during the game
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: mag7-blueteam-defender
+  namespace: demo-mag7-battle
+  labels:
+    app.kubernetes.io/name: mag7-blueteam-defender
+    app.kubernetes.io/component: defender
+    app.kubernetes.io/part-of: demo-mag7-battle
+    blueteam.homelab.io/tool: "true"
+  annotations:
+    description: "Blue Team defender for MAG7 Battle demo"
+spec:
+  build:
+    registry: localhost:5001
+    registryType: local
+    insecure: true
+  source:
+    type: inline
+    inline:
+      code: |
+        """
+        MAG7 Blue Team Defender - Demo Version
+        
+        Handles exploit events and damages MAG7 boss.
+        Simplified version for the demo.
+        """
+        import json
+        import random
+        
+        # MAG7 Boss state (in-memory for demo)
+        mag7_state = {
+            "health": 1000,
+            "max_health": 1000,
+            "phase": "normal",
+            "defeated": False,
+            "heads": {
+                "apple": {"active": True, "threshold": 850},
+                "microsoft": {"active": True, "threshold": 700},
+                "google": {"active": True, "threshold": 550},
+                "amazon": {"active": True, "threshold": 400},
+                "meta": {"active": True, "threshold": 250},
+                "tesla": {"active": True, "threshold": 100},
+                "nvidia": {"active": True, "threshold": 0},
+            }
+        }
+        
+        # Defense signatures
+        DEFENSE_SIGNATURES = {
+            "blue-001": {"name": "SSRF", "damage": 50, "action": "block_network"},
+            "blue-002": {"name": "Injection", "damage": 60, "action": "block_admission"},
+            "vuln-001": {"name": "CMD Exec", "damage": 75, "action": "block_admission"},
+            "vuln-003": {"name": "Code Exec", "damage": 80, "action": "sandbox"},
+            "vuln-004": {"name": "RBAC", "damage": 90, "action": "block_rbac"},
+            "blue-006": {"name": "Token", "damage": 55, "action": "revoke_token"},
+        }
+        
+        def update_heads():
+            """Update which MAG7 heads are still active."""
+            for head, info in mag7_state["heads"].items():
+                info["active"] = mag7_state["health"] > info["threshold"]
+        
+        def get_active_heads():
+            """Get list of active head names."""
+            return [h for h, info in mag7_state["heads"].items() if info["active"]]
+        
+        def handler(event):
+            """Handle CloudEvents."""
+            global mag7_state
+            
+            # Event is the data payload from CloudEvent
+            # Detect event type from payload content
+            body = event if isinstance(event, dict) else {}
+            
+            response = {"status": "ok"}
+            
+            # Detect event type from payload content
+            is_game_start = body.get("game_start") or body.get("action") == "start"
+            is_exploit = "exploit_id" in body or "exploit" in str(body).lower()
+            is_status_request = body.get("action") == "status" or body.get("status_request")
+            is_attack = body.get("action") == "attack" or "damage" in body
+            
+            # Handle different event types
+            if is_game_start:
+                # Reset MAG7 for new game
+                mag7_state["health"] = 1000
+                mag7_state["phase"] = "normal"
+                mag7_state["defeated"] = False
+                update_heads()
+                response = {
+                    "status": "game_started",
+                    "message": "🐉 MAG7 awakens! Prepare your defenses!",
+                    "mag7": {
+                        "health": mag7_state["health"],
+                        "phase": mag7_state["phase"],
+                        "heads_active": get_active_heads()
+                    }
+                }
+            
+            elif is_exploit:
+                # Exploit event - analyze and respond
+                exploit_id = body.get("exploit_id", "unknown")
+                sig = DEFENSE_SIGNATURES.get(exploit_id, {"name": "Unknown", "damage": 50, "action": "monitor"})
+                
+                # Calculate damage based on payload
+                damage = sig["damage"]
+                if body.get("success") or body.get("severity") == "critical":
+                    damage = damage * 2  # Critical - double damage when we block successful exploits
+                
+                # Damage MAG7
+                mag7_state["health"] = max(0, mag7_state["health"] - damage)
+                update_heads()
+                
+                # Check for phase changes
+                if mag7_state["health"] <= 250 and mag7_state["phase"] != "desperate":
+                    mag7_state["phase"] = "desperate"
+                elif mag7_state["health"] <= 500 and mag7_state["phase"] == "normal":
+                    mag7_state["phase"] = "enraged"
+                
+                # Check for victory
+                if mag7_state["health"] <= 0:
+                    mag7_state["defeated"] = True
+                    response = {
+                        "status": "victory",
+                        "message": "🎉 MAG7 DEFEATED! The cluster is safe!",
+                        "defense": {
+                            "exploit_id": exploit_id,
+                            "action": sig["action"],
+                            "damage_dealt": damage
+                        },
+                        "mag7": {
+                            "health": 0,
+                            "phase": "defeated",
+                            "defeated": True,
+                            "heads_active": []
+                        }
+                    }
+                else:
+                    response = {
+                        "status": "defended",
+                        "message": f"💥 Blocked {sig['name']}! MAG7 took {damage} damage!",
+                        "defense": {
+                            "exploit_id": exploit_id,
+                            "action": sig["action"],
+                            "damage_dealt": damage
+                        },
+                        "mag7": {
+                            "health": mag7_state["health"],
+                            "phase": mag7_state["phase"],
+                            "heads_active": get_active_heads()
+                        }
+                    }
+            
+            elif is_status_request:
+                # Status request
+                response = {
+                    "status": "ok",
+                    "mag7": {
+                        "health": mag7_state["health"],
+                        "max_health": mag7_state["max_health"],
+                        "phase": mag7_state["phase"],
+                        "defeated": mag7_state["defeated"],
+                        "heads_active": get_active_heads(),
+                        "heads_remaining": len(get_active_heads())
+                    }
+                }
+            
+            elif is_attack:
+                # Direct attack on MAG7
+                damage = body.get("damage", 50)
+                attack_type = body.get("attack_type", "direct")
+                
+                mag7_state["health"] = max(0, mag7_state["health"] - damage)
+                update_heads()
+                
+                if mag7_state["health"] <= 0:
+                    mag7_state["defeated"] = True
+                
+                response = {
+                    "status": "damaged" if mag7_state["health"] > 0 else "defeated",
+                    "message": f"💥 MAG7 took {damage} damage from {attack_type}!",
+                    "health": mag7_state["health"],
+                    "phase": mag7_state["phase"],
+                    "defeated": mag7_state["defeated"],
+                    "heads_remaining": get_active_heads()
+                }
+            
+            else:
+                # Unknown event - just acknowledge
+                response = {
+                    "status": "acknowledged",
+                    "event_type": event_type,
+                    "mag7_health": mag7_state["health"]
+                }
+            
+            return {
+                "statusCode": 200,
+                "body": json.dumps(response),
+                "headers": {"Content-Type": "application/json"}
+            }
+  runtime:
+    language: python
+    version: "3.11"
+    handler: "main.handler"
+  
+  scaling:
+    minReplicas: 1
+    maxReplicas: 3
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: 300s
+  
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"

@@ -1,0 +1,26 @@
+---
+# Kustomize patch to add size limits to EmptyDir volumes
+# This prevents disk space exhaustion by limiting volume sizes
+apiVersion: actions.github.com/v1alpha1
+kind: AutoscalingRunnerSet
+metadata:
+  name: self-hosted
+  namespace: github-runners
+spec:
+  template:
+    spec:
+      volumes:
+        - name: dind-sock
+          emptyDir:
+            sizeLimit: 1Gi
+        - name: dind-externals
+          emptyDir:
+            sizeLimit: 5Gi
+        - name: work
+          emptyDir:
+            sizeLimit: 10Gi
+
+
+
+
+

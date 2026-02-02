@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homelab-services
+  labels:
+    app.kubernetes.io/name: agents-whatsapp-rust
+    app.kubernetes.io/part-of: agents-whatsapp-rust

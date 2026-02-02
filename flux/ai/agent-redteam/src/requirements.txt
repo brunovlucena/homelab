@@ -1,0 +1,27 @@
+# === Web Framework ===
+fastapi>=0.115.6  # Fixed CVE-2024-24762
+uvicorn>=0.32.1
+pydantic>=2.12.5  # Latest stable
+python-dotenv>=1.0.0
+
+# === CloudEvents & Messaging ===
+cloudevents>=1.12.0  # Latest secure version
+
+# === Observability ===
+opentelemetry-api>=1.30.0
+opentelemetry-sdk>=1.30.0
+prometheus-client>=0.21.0
+structlog>=24.4.0
+
+# === Utilities ===
+pyyaml>=6.0.1
+httpx>=0.28.1
+tenacity>=8.3.0
+uuid7>=0.1.0
+
+# === Kubernetes API ===
+kubernetes>=34.1.0  # Latest version
+
+# === Agent Optimization (Queueing, Game, Control Theory) ===
+# Installed from local shared-lib during Docker build
+# -e /app/shared-lib

@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spotify-p2p-server
+  namespace: spotify-p2p
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: spotify-p2p-server
+  template:
+    metadata:
+      labels:
+        app: spotify-p2p-server
+    spec:
+      containers:
+      - name: server
+        image: localhost:5001/spotify-p2p-server:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: spotify-p2p-secrets
+              key: mongodb-uri
+        - name: REDIS_URI
+          valueFrom:
+            secretKeyRef:
+              name: spotify-p2p-secrets
+              key: redis-uri
+        - name: IPFS_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: spotify-p2p-config
+              key: ipfs.api.url
+        - name: PORT
+          value: "8080"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spotify-p2p-server
+  namespace: spotify-p2p
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: spotify-p2p-server

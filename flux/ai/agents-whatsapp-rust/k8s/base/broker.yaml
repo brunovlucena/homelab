@@ -1,0 +1,42 @@
+---
+# RabbitMQ Broker Configuration (must be created before Broker)
+apiVersion: eventing.knative.dev/v1alpha1
+kind: RabbitmqBrokerConfig
+metadata:
+  name: default-broker-config
+  namespace: homelab-services
+  labels:
+    app.kubernetes.io/name: default-broker-config
+    app.kubernetes.io/part-of: agents-whatsapp-rust
+spec:
+  rabbitmqClusterReference:
+    name: rabbitmq-cluster-knative-lambda
+    namespace: knative-lambda
+  queueType: quorum
+---
+# Default Broker for agents-whatsapp-rust CloudEvents
+apiVersion: eventing.knative.dev/v1
+kind: Broker
+metadata:
+  name: default
+  namespace: homelab-services
+  labels:
+    app.kubernetes.io/name: default-broker
+    app.kubernetes.io/part-of: agents-whatsapp-rust
+  annotations:
+    eventing.knative.dev/broker.class: RabbitMQBroker
+    eventing.knative.dev/enable-dead-letter-queue: "true"
+    eventing.knative.dev/retry-policy: "exponential"
+    eventing.knative.dev/retry-max-attempts: "5"
+    eventing.knative.dev/retry-backoff-delay: "PT1S"
+    eventing.knative.dev/retry-backoff-multiplier: "2.0"
+spec:
+  config:
+    apiVersion: eventing.knative.dev/v1alpha1
+    kind: RabbitmqBrokerConfig
+    name: default-broker-config
+    namespace: homelab-services
+  delivery:
+    retry: 5
+    backoffPolicy: exponential
+    backoffDelay: "PT1S"

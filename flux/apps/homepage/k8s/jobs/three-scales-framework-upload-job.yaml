@@ -1,0 +1,207 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 THREE SCALES FRAMEWORK IMAGE UPLOAD JOB - Upload to MinIO
+#
+#  Purpose: Upload three-scales-framework.png to MinIO for blog post serving
+#  
+#  Usage:
+#    # 1. Create ConfigMap from image file
+#    kubectl create configmap three-scales-framework-image \
+#      --from-file=three-scales-framework.png=../../storage/homepage-blog/images/graphs/three-scales-framework.png \
+#      --namespace=homepage \
+#      --dry-run=client -o yaml | kubectl apply -f -
+#    
+#    # 2. Apply job
+#    kubectl apply -f three-scales-framework-upload-job.yaml
+#    
+#    # 3. Check logs
+#    kubectl logs -f job/three-scales-framework-upload -n homepage
+#
+#  Note: Init container syncs secret from minio namespace if needed
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ServiceAccount and RBAC permissions (reuse existing if available)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: three-scales-framework-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: three-scales-framework-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: three-scales-framework-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: three-scales-framework-upload
+subjects:
+- kind: ServiceAccount
+  name: three-scales-framework-upload
+  namespace: homepage
+---
+# ClusterRole to read secrets from minio namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: minio-secret-reader-three-scales
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+  resourceNames: ["minio-credentials"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: three-scales-framework-minio-secret-reader
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: minio-secret-reader-three-scales
+subjects:
+- kind: ServiceAccount
+  name: three-scales-framework-upload
+  namespace: homepage
+---
+# Job to upload image to MinIO
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: three-scales-framework-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: three-scales-framework-upload
+      initContainers:
+        - name: ensure-minio-secret
+          image: localhost:5001/kubectl:v1.34.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "🔐 Syncing minio-credentials secret from minio namespace..."
+              
+              # Wait for secret in minio namespace (source)
+              MAX_WAIT=60
+              WAITED=0
+              while ! kubectl get secret minio-credentials -n minio &>/dev/null; do
+                if [ $WAITED -ge $MAX_WAIT ]; then
+                  echo "❌ Timeout waiting for minio-credentials in minio namespace"
+                  exit 1
+                fi
+                echo "⏳ Waiting for minio-credentials in minio namespace... (${WAITED}s/${MAX_WAIT}s)"
+                sleep 2
+                WAITED=$((WAITED + 2))
+              done
+              
+              echo "📋 Found secret in minio namespace, syncing to homepage..."
+              
+              # Extract credentials from minio namespace
+              ACCESS_KEY=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.access-key}' | base64 -d)
+              SECRET_KEY=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.secret-key}' | base64 -d)
+              ROOT_USER=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.root-user}' | base64 -d || echo "$ACCESS_KEY")
+              ROOT_PASSWORD=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.root-password}' | base64 -d || echo "$SECRET_KEY")
+              
+              # Always sync/update secret in homepage namespace (ensures it's up-to-date)
+              kubectl create secret generic minio-credentials \
+                --from-literal=access-key="${ACCESS_KEY}" \
+                --from-literal=secret-key="${SECRET_KEY}" \
+                --from-literal=root-user="${ROOT_USER}" \
+                --from-literal=root-password="${ROOT_PASSWORD}" \
+                --namespace=homepage \
+                --dry-run=client -o yaml | kubectl apply -f -
+              
+              echo "✅ Secret minio-credentials synced to homepage namespace"
+      containers:
+        - name: upload
+          image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "📤 Uploading three-scales-framework.png to MinIO..."
+              
+              # Configure MinIO client
+              mc alias set minio http://minio.minio.svc.cluster.local:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
+              
+              # Create bucket if not exists
+              mc mb -p minio/homepage-blog || true
+              
+              # Set public read policy on blog images
+              mc anonymous set download minio/homepage-blog/images/
+              
+              # Upload the specific image to graphs subdirectory
+              if [ -f "/image/three-scales-framework.png" ]; then
+                echo "📤 Uploading three-scales-framework.png..."
+                mc cp /image/three-scales-framework.png minio/homepage-blog/images/graphs/three-scales-framework.png
+                echo "✅ Uploaded: three-scales-framework.png"
+                
+                # Verify upload
+                echo "📋 Verifying upload..."
+                mc ls minio/homepage-blog/images/graphs/three-scales-framework.png
+                
+                echo "🌐 Image available at: http://minio.minio.svc.cluster.local:9000/homepage-blog/images/graphs/three-scales-framework.png"
+              else
+                echo "❌ Image file not found at /image/three-scales-framework.png"
+                echo "📋 Contents of /image:"
+                ls -la /image/ || echo "Directory does not exist"
+                exit 1
+              fi
+              
+              echo "🎉 Upload complete!"
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+          volumeMounts:
+            - name: image
+              mountPath: /image
+      volumes:
+        - name: image
+          configMap:
+            name: three-scales-framework-image
+            defaultMode: 0444
+

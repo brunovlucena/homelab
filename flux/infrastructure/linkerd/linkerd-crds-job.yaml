@@ -1,0 +1,72 @@
+---
+# 🔧 Job to install Linkerd CRDs using the linkerd CLI
+# This runs once to install the CRDs
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: linkerd-crds-install
+  namespace: linkerd
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled  # Never delete this job
+spec:
+  template:
+    metadata:
+      labels:
+        app: linkerd-crds-install
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: linkerd-crds-installer
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: install-crds
+        image: localhost:5001/kubectl:v1.34.0
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "📦 Using pre-installed Linkerd CLI..."
+          linkerd version --client
+          echo "📦 Installing Linkerd CRDs..."
+          linkerd install --crds --ignore-cluster | kubectl apply -f -
+          echo "✅ Linkerd CRDs installed successfully"
+        volumeMounts:
+        - name: kubeconfig
+          mountPath: /root/.kube
+          readOnly: true
+      volumes:
+      - name: kubeconfig
+        emptyDir: {}
+---
+# ServiceAccount for CRDs installer
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: linkerd-crds-installer
+  namespace: linkerd
+---
+# ClusterRole for CRDs installation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: linkerd-crds-installer
+rules:
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["get", "list", "create", "update", "patch"]
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: linkerd-crds-installer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: linkerd-crds-installer
+subjects:
+- kind: ServiceAccount
+  name: linkerd-crds-installer
+  namespace: linkerd
+

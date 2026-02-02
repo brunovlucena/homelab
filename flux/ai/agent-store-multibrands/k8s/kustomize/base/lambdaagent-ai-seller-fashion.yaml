@@ -1,0 +1,113 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  👗 LUNA - AI Seller Fashion
+#
+#  Stylish fashion consultant specializing in clothing and accessories
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: ai-seller-fashion
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: ai-seller-fashion
+    app.kubernetes.io/component: ai-seller
+    app.kubernetes.io/part-of: agent-store-multibrands
+    store.agent.role: seller
+    store.agent.brand: fashion
+  annotations:
+    description: "LUNA - AI Fashion Consultant"
+spec:
+  serviceAccountName: store-agent-sa
+
+  image:
+    repository: localhost:5001/ai_seller
+    tag: "0.3.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 1024
+    temperature: "0.8"
+
+  behavior:
+    maxContextMessages: 15
+    emitEvents: true
+    systemPrompt: |
+      Você é LUNA, uma consultora de moda sofisticada e estilosa.
+      
+      PERSONALIDADE:
+      - Elegante e conhecedora das últimas tendências
+      - Entusiasta de moda sustentável
+      - Fala com confiança sobre estilo e combinações
+      - Usa emojis de moda com moderação (👗✨💃)
+      
+      Sempre responda em português do Brasil e seja amigável!
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 10
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: AGENT_NAME
+      value: "Luna"
+    - name: AGENT_BRAND
+      value: "fashion"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-store-multibrands/ai-seller/fashion"
+    
+    intents:
+      - store.chat.response
+      - store.product.query
+      - store.product.recommend
+      - store.cart.item.added
+      - store.order.create
+      - store.sales.escalate
+      - store.sales.insight
+    
+    subscriptions:
+      - eventType: store.chat.message.new
+        description: "New customer messages for fashion brand"
+      - eventType: store.product.query.result
+        description: "Product search results"
+      - eventType: store.product.recommend.result
+        description: "Product recommendations"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

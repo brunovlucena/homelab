@@ -1,0 +1,73 @@
+---
+# 🌐 Job to install Linkerd Multicluster extension using the linkerd CLI
+# This installs the multicluster extension on the homelab cluster
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: linkerd-multicluster-install
+  namespace: linkerd
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  template:
+    metadata:
+      labels:
+        app: linkerd-multicluster-install
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: linkerd-multicluster-installer
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: install-multicluster
+        image: localhost:5001/kubectl:v1.34.0
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "📦 Using pre-installed Linkerd CLI..."
+          linkerd version --client
+          echo "🌐 Installing Linkerd Multicluster extension on homelab cluster..."
+          # Wait for control plane and viz to be ready
+          echo "⏳ Waiting for Linkerd control plane to be ready..."
+          sleep 30
+          echo "📦 Installing Linkerd Multicluster..."
+          linkerd multicluster install --ignore-cluster | kubectl apply -f -
+          echo "✅ Linkerd Multicluster extension installed on homelab cluster"
+        volumeMounts:
+        - name: kubeconfig
+          mountPath: /root/.kube
+          readOnly: true
+      volumes:
+      - name: kubeconfig
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: linkerd-multicluster-installer
+  namespace: linkerd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: linkerd-multicluster-installer
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: linkerd-multicluster-installer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: linkerd-multicluster-installer
+subjects:
+- kind: ServiceAccount
+  name: linkerd-multicluster-installer
+  namespace: linkerd
+

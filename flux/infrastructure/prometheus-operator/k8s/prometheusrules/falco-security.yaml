@@ -1,0 +1,126 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: falco-security-alerts
+  namespace: prometheus
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+    app: kube-prometheus-stack
+spec:
+  groups:
+    - name: falco.security.rules
+      rules:
+        - alert: FalcoCriticalSecurityEvent
+          expr: increase(falco_events_total{priority="Critical"}[5m]) > 0
+          for: 0m
+          labels:
+            severity: critical
+            category: security
+            source: falco
+          annotations:
+            summary: "Critical security event detected by Falco"
+            description: "Falco has detected {{ $value }} critical security event(s) in the last 5 minutes"
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/security/falco-critical-events.md"
+
+        - alert: FalcoWarningSecurityEvent
+          expr: increase(falco_events_total{priority="Warning"}[5m]) > 5
+          for: 1m
+          labels:
+            severity: warning
+            category: security
+            source: falco
+          annotations:
+            summary: "Multiple warning security events detected by Falco"
+            description: "Falco has detected {{ $value }} warning security event(s) in the last 5 minutes"
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/security/falco-warning-events.md"
+
+        - alert: WordPressScannerDetected
+          expr: increase(falco_events_total{rule="WordPress Scanner Detected"}[5m]) > 0
+          for: 0m
+          labels:
+            severity: warning
+            category: security
+            source: falco
+            threat: wordpress-scanning
+          annotations:
+            summary: "WordPress vulnerability scanner detected"
+            description: "Falco has detected WordPress scanning activity - investigate for potential attack"
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/security/wordpress-scanning.md"
+
+        - alert: ContainerEscapeAttempt
+          expr: increase(falco_events_total{rule="Container Escape via Mount"}[5m]) > 0
+          for: 0m
+          labels:
+            severity: critical
+            category: security
+            source: falco
+            threat: container-escape
+          annotations:
+            summary: "Container escape attempt detected"
+            description: "Falco has detected a container escape attempt - immediate response required"
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/security/container-escape.md"
+
+        - alert: PrivilegeEscalationAttempt
+          expr: increase(falco_events_total{rule="Privilege Escalation via Sudo"}[5m]) > 0
+          for: 0m
+          labels:
+            severity: critical
+            category: security
+            source: falco
+            threat: privilege-escalation
+          annotations:
+            summary: "Privilege escalation attempt detected"
+            description: "Falco has detected a privilege escalation attempt - immediate response required"
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/security/privilege-escalation.md"
+
+        - alert: ReverseShellDetected
+          expr: increase(falco_events_total{rule="Reverse Shell Detection"}[5m]) > 0
+          for: 0m
+          labels:
+            severity: critical
+            category: security
+            source: falco
+            threat: reverse-shell
+          annotations:
+            summary: "Potential reverse shell detected"
+            description: "Falco has detected potential reverse shell activity - immediate response required"
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/security/reverse-shell.md"
+
+        - alert: FalcoDown
+          expr: up{job="falco"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            category: security
+            source: falco
+          annotations:
+            summary: "Falco is down"
+            description: "Falco security monitoring is not responding - security events may be missed"
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/security/falco-down.md"
+
+        - alert: HighSecurityEventRate
+          expr: rate(falco_events_total[5m]) > 10
+          for: 2m
+          labels:
+            severity: warning
+            category: security
+            source: falco
+          annotations:
+            summary: "High security event rate detected"
+            description: "Security event rate is {{ $value }} events/second - investigate for potential attack"
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/security/high-event-rate.md"
+
+        - alert: SecurityEventVolume
+          expr: increase(falco_events_total[1h]) > 1000
+          for: 5m
+          labels:
+            severity: warning
+            category: security
+            source: falco
+          annotations:
+            summary: "High security event volume in the last hour"
+            description: "{{ $value }} security events detected in the last hour - review for patterns"
+            runbook_url: "https://github.com/your-org/runbooks/blob/main/security/event-volume.md"
+

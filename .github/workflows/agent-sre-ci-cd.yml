@@ -1,0 +1,52 @@
+# ============================================================================
+# 🤖 Agent-SRE - CI/CD
+# ============================================================================
+# AI-powered SRE agent for automated remediation.
+# Uses reusable workflow for standardized CI/CD.
+# ============================================================================
+
+name: 🤖 Agent-SRE - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-sre/**'
+      - '.github/workflows/agent-sre-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agent-sre/**'
+      - '.github/workflows/agent-sre-ci-cd.yml'
+    tags:
+      - 'agent-sre-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+
+jobs:
+  ci-cd:
+    name: 🤖 Agent-SRE
+    uses: ./.github/workflows/_reusable-agent-cicd.yml
+    with:
+      agent-name: agent-sre
+      working-directory: flux/ai/agent-sre
+      image-name: agent-sre
+      build-context: .
+      dockerfile: Dockerfile
+      python-version: '3.11'
+      run-tests: true
+      run-lint: true
+      copy-shared-lib: false
+      push-to-local: true
+      platforms: linux/amd64,linux/arm64
+    secrets: inherit
+

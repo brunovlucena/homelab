@@ -1,0 +1,49 @@
+# Training Configuration for Flyte Sandbox
+
+# Default training parameters
+training:
+  learning_rate: 1e-4
+  batch_size: 4
+  iters: 1000
+  lora_layers: 16
+  lora_rank: 8
+  lora_alpha: 16
+
+# Agent-specific configurations
+agents:
+  agent-sre:
+    learning_rate: 1e-4
+    batch_size: 4
+    iters: 1000
+    lora_layers: 16
+  
+  # agent-bruno:
+  #   learning_rate: 2e-4
+  #   batch_size: 8
+  #   iters: 2000
+  #   lora_layers: 32
+  
+  # agent-auditor:
+  #   learning_rate: 1e-4
+  #   batch_size: 4
+  #   iters: 1500
+  #   lora_layers: 16
+
+# Model configuration
+model:
+  base_model: "google/functiongemma-270m-it"
+  max_tokens: 512
+  temperature: 0.1  # For evaluation
+
+# Data configuration
+data:
+  train_split: 0.8
+  val_split: 0.1
+  test_split: 0.1
+  format: "instruction"  # or "function_calling"
+
+# Infrastructure endpoints
+infrastructure:
+  mlflow_uri: "http://mlflow.ml-platform.svc.forge.remote:5000"
+  minio_endpoint: "minio.data-ml.svc.forge.remote:30063"
+  minio_bucket: "ml-models"

@@ -1,0 +1,93 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📦 Product Catalog Agent
+#
+#  Manages product inventory, search, and recommendations
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: product-catalog
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: product-catalog
+    app.kubernetes.io/component: catalog
+    app.kubernetes.io/part-of: agent-store-multibrands
+    store.agent.role: catalog
+  annotations:
+    description: "Product inventory and recommendation service"
+spec:
+  serviceAccountName: store-agent-sa
+
+  image:
+    repository: localhost:5001/product_catalog
+    tag: "0.3.0"
+    port: 8080
+
+  ai:
+    provider: none  # Catalog doesn't need AI directly
+
+  behavior:
+    maxContextMessages: 5
+    emitEvents: true
+    systemPrompt: ""
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 5
+    targetConcurrency: 50
+    scaleToZeroGracePeriod: 0s  # Always running
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: AGENT_NAME
+      value: "product-catalog"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-store-multibrands/product-catalog"
+    
+    intents:
+      - store.product.query.result
+      - store.product.recommend.result
+      - store.product.stock.low
+    
+    subscriptions:
+      - eventType: store.product.query
+        description: "Product search requests"
+      - eventType: store.product.recommend
+        description: "Product recommendation requests"
+      - eventType: store.cart.item.added
+        description: "Cart updates for stock tracking"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

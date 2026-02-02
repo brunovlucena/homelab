@@ -1,0 +1,175 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 RBAC - Agent Contracts
+#
+#  Role: lambda-agent-orchestrator
+#  Capabilities:
+#    - Full CRUD on LambdaFunctions
+#    - Full CRUD on Brokers
+#    - Full CRUD on Triggers
+#    - Read RabbitMQ resources
+#    - Create ConfigMaps/Secrets
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-contracts-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-contracts
+    app.kubernetes.io/component: security-pipeline
+    rbac.lambda.knative.io/tier: orchestrator
+imagePullSecrets:
+  - name: ghcr-secret
+
+---
+# Bind to lambda-agent-orchestrator ClusterRole (namespace-scoped)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-contracts-orchestrator
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-contracts
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-orchestrator
+subjects:
+  - kind: ServiceAccount
+    name: agent-contracts-sa
+    namespace: ai
+
+---
+# Allow agent-contracts to create triggers in agent-bruno namespace (cross-agent communication)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-contracts-developer-bruno
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-contracts
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-developer
+subjects:
+  - kind: ServiceAccount
+    name: agent-contracts-sa
+    namespace: ai
+
+---
+# Shared ServiceAccount for all contract agents (contract-fetcher, vuln-scanner, etc.)
+# They all use the same orchestrator role
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: contract-fetcher-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: contract-fetcher
+    rbac.lambda.knative.io/tier: orchestrator
+imagePullSecrets:
+  - name: ghcr-secret
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vuln-scanner-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: vuln-scanner
+    rbac.lambda.knative.io/tier: orchestrator
+imagePullSecrets:
+  - name: ghcr-secret
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: exploit-generator-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: exploit-generator
+    rbac.lambda.knative.io/tier: orchestrator
+imagePullSecrets:
+  - name: ghcr-secret
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: notifi-adapter-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: notifi-adapter
+    rbac.lambda.knative.io/tier: developer
+imagePullSecrets:
+  - name: ghcr-secret
+
+---
+# RoleBindings for each sub-agent
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: contract-fetcher-orchestrator
+  namespace: ai
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-orchestrator
+subjects:
+  - kind: ServiceAccount
+    name: contract-fetcher-sa
+    namespace: ai
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vuln-scanner-orchestrator
+  namespace: ai
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-orchestrator
+subjects:
+  - kind: ServiceAccount
+    name: vuln-scanner-sa
+    namespace: ai
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: exploit-generator-orchestrator
+  namespace: ai
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-orchestrator
+subjects:
+  - kind: ServiceAccount
+    name: exploit-generator-sa
+    namespace: ai
+
+---
+# notifi-adapter only needs developer (no broker creation)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: notifi-adapter-developer
+  namespace: ai
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-developer
+subjects:
+  - kind: ServiceAccount
+    name: notifi-adapter-sa
+    namespace: ai

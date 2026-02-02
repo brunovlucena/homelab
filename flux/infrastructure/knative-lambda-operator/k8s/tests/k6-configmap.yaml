@@ -1,0 +1,894 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📊 K6 LOAD TEST SCRIPTS
+#
+#  Purpose: Comprehensive load test scripts for knative-lambda
+#  Tests: Smoke, Load, Stress, Soak
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knative-lambda-k6-tests
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: testing
+data:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 🔥 SMOKE TEST - Quick validation
+  # ────────────────────────────────────────────────────────────────────────────
+  smoke.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate } from 'k6/metrics';
+    
+    const errorRate = new Rate('errors');
+    
+    export const options = {
+      vus: 1,
+      duration: '30s',
+      thresholds: {
+        'http_req_duration': ['p(99)<1500'],
+        'errors': ['rate<0.1'],
+      },
+    };
+    
+    // Metrics on port 8080, health probes on port 8081
+    const METRICS_URL = __ENV.METRICS_URL || 'http://knative-lambda-operator.knative-lambda.svc.cluster.local:8080';
+    const HEALTH_URL = __ENV.HEALTH_URL || 'http://knative-lambda-operator.knative-lambda.svc.cluster.local:8081';
+    
+    export default function () {
+      const endpoints = [
+        { url: `${HEALTH_URL}/healthz`, name: 'healthz' },
+        { url: `${HEALTH_URL}/readyz`, name: 'readyz' },
+        { url: `${METRICS_URL}/metrics`, name: 'metrics' },
+      ];
+      const target = endpoints[Math.floor(Math.random() * endpoints.length)];
+      
+      const res = http.get(target.url);
+      const success = check(res, {
+        'status is 200': (r) => r.status === 200,
+        'response time < 500ms': (r) => r.timings.duration < 500,
+      });
+      
+      errorRate.add(!success);
+      sleep(1);
+    }
+  
+  # ────────────────────────────────────────────────────────────────────────────
+  # 📈 LOAD TEST - Normal traffic simulation
+  # ────────────────────────────────────────────────────────────────────────────
+  load.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    const errorRate = new Rate('errors');
+    const requests = new Counter('requests');
+    const latency = new Trend('latency');
+    
+    export const options = {
+      stages: [
+        { duration: '2m', target: 10 },   // Ramp up
+        { duration: '5m', target: 20 },   // Hold
+        { duration: '2m', target: 50 },   // Peak
+        { duration: '3m', target: 20 },   // Scale down
+        { duration: '1m', target: 0 },    // Ramp down
+      ],
+      thresholds: {
+        'http_req_duration': ['p(95)<1000', 'p(99)<2000'],
+        'errors': ['rate<0.01'],
+        'latency': ['p(95)<800'],
+      },
+    };
+    
+    // Metrics on port 8080, health probes on port 8081
+    const METRICS_URL = __ENV.METRICS_URL || 'http://knative-lambda-operator.knative-lambda.svc.cluster.local:8080';
+    const HEALTH_URL = __ENV.HEALTH_URL || 'http://knative-lambda-operator.knative-lambda.svc.cluster.local:8081';
+    const NAMESPACE = __ENV.NAMESPACE || 'knative-lambda';
+    const LAMBDA_COUNT = parseInt(__ENV.LAMBDA_COUNT || '8');  // k6-lambda-0 to k6-lambda-7
+    
+    // Get lambda URL for index (round-robin through k6-lambda-*)
+    function getLambdaUrl() {
+      const index = __ITER % LAMBDA_COUNT;
+      return `http://k6-lambda-${index}.${NAMESPACE}.svc.cluster.local`;
+    }
+    
+    export default function () {
+      const targets = [
+        { url: `${HEALTH_URL}/healthz`, weight: 30 },
+        { url: `${METRICS_URL}/metrics`, weight: 20 },
+        { url: getLambdaUrl(), weight: 50 },
+      ];
+      
+      // Weighted random selection
+      const rand = Math.random() * 100;
+      let cumulative = 0;
+      let target = targets[0];
+      for (const t of targets) {
+        cumulative += t.weight;
+        if (rand < cumulative) {
+          target = t;
+          break;
+        }
+      }
+      
+      const start = Date.now();
+      const res = http.get(target.url, { timeout: '10s' });
+      latency.add(Date.now() - start);
+      
+      const success = check(res, {
+        'status is 2xx': (r) => r.status >= 200 && r.status < 300,
+        'response time < 1s': (r) => r.timings.duration < 1000,
+      });
+      
+      requests.add(1);
+      errorRate.add(!success);
+      sleep(Math.random() * 0.5);
+    }
+  
+  # ────────────────────────────────────────────────────────────────────────────
+  # 💪 STRESS TEST - Find breaking points
+  # ────────────────────────────────────────────────────────────────────────────
+  stress.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    const errorRate = new Rate('errors');
+    const requests = new Counter('requests');
+    const latency = new Trend('latency');
+    
+    export const options = {
+      stages: [
+        { duration: '2m', target: 20 },    // Warm up
+        { duration: '5m', target: 50 },    // Normal load
+        { duration: '5m', target: 100 },   // Stress
+        { duration: '5m', target: 200 },   // Breaking point
+        { duration: '5m', target: 100 },   // Recovery
+        { duration: '2m', target: 0 },     // Ramp down
+      ],
+      thresholds: {
+        'http_req_duration': ['p(95)<2000', 'p(99)<5000'],
+        'errors': ['rate<0.1'],  // Allow 10% errors during stress
+      },
+    };
+    
+    const BASE_URL = __ENV.BASE_URL || 'http://knative-lambda-operator.knative-lambda.svc.cluster.local:8080';
+    const OPERATOR_HEALTH_URL = __ENV.OPERATOR_HEALTH_URL || 'http://knative-lambda-operator.knative-lambda.svc.cluster.local:8081';
+    const NAMESPACE = __ENV.NAMESPACE || 'knative-lambda';
+    const LAMBDA_COUNT = parseInt(__ENV.LAMBDA_COUNT || '8');  // k6-lambda-0 to k6-lambda-7
+    
+    // Get lambda URL for index (round-robin through k6-lambda-*)
+    function getLambdaUrl() {
+      const index = __ITER % LAMBDA_COUNT;
+      return `http://k6-lambda-${index}.${NAMESPACE}.svc.cluster.local`;
+    }
+    
+    export default function () {
+      const payload = JSON.stringify({
+        message: 'Stress test payload',
+        timestamp: new Date().toISOString(),
+        iteration: __ITER,
+      });
+      
+      const lambdaIndex = __ITER % LAMBDA_COUNT;
+      const lambdaUrl = getLambdaUrl();
+      
+      const params = {
+        headers: {
+          'Content-Type': 'application/json',
+          'Ce-Type': 'lambda.stress.test',
+          'Ce-Source': 'k6-stress-test',
+          'Ce-Id': `stress-${__VU}-${__ITER}`,
+          'Ce-Specversion': '1.0',
+          'Ce-Subject': `k6-lambda-${lambdaIndex}`,
+        },
+        timeout: '30s',
+      };
+      
+      // Alternate between operator health (port 8081) and lambda
+      const url = __ITER % 2 === 0 ? `${OPERATOR_HEALTH_URL}/healthz` : lambdaUrl;
+      
+      const start = Date.now();
+      const res = url !== `${OPERATOR_HEALTH_URL}/healthz`
+        ? http.post(url, payload, params) 
+        : http.get(url);
+      latency.add(Date.now() - start);
+      
+      const success = check(res, {
+        'status is 2xx': (r) => r.status >= 200 && r.status < 300,
+      });
+      
+      requests.add(1);
+      errorRate.add(!success);
+      sleep(Math.random() * 0.2);
+    }
+    
+    export function handleSummary(data) {
+      console.log('Stress test complete');
+      console.log(`Total requests: ${data.metrics.requests.values.count}`);
+      console.log(`Error rate: ${(data.metrics.errors.values.rate * 100).toFixed(2)}%`);
+      console.log(`P95 latency: ${data.metrics.latency.values['p(95)'].toFixed(2)}ms`);
+      return {};
+    }
+  
+  # ────────────────────────────────────────────────────────────────────────────
+  # 🧪 CANARY VALIDATION TEST - For Flagger webhooks
+  # ────────────────────────────────────────────────────────────────────────────
+  canary.js: |
+    import http from 'k6/http';
+    import { check } from 'k6';
+    import { Rate } from 'k6/metrics';
+    
+    const errorRate = new Rate('errors');
+    
+    export const options = {
+      vus: 5,
+      duration: '2m',
+      thresholds: {
+        'http_req_duration': ['p(99)<500'],
+        'errors': ['rate<0.01'],  // 99% success required
+      },
+    };
+    
+    const CANARY_URL = __ENV.CANARY_URL || 'http://knative-lambda-operator-canary.knative-lambda.svc.cluster.local:8080';
+    
+    export default function () {
+      const res = http.get(`${CANARY_URL}/healthz`);
+      const success = check(res, {
+        'canary healthy': (r) => r.status === 200,
+        'fast response': (r) => r.timings.duration < 200,
+      });
+      errorRate.add(!success);
+    }
+  
+  # ────────────────────────────────────────────────────────────────────────────
+  # 🚀 CREATE LAMBDAS TEST - Create 50 lambda functions via CloudEvents
+  # ────────────────────────────────────────────────────────────────────────────
+  # This test sends CloudEvents to the broker, which triggers the receiver
+  # to create LambdaFunction CRDs (just like the operator would)
+  # Lambda names: k6-lambda-{0-49} (deterministic for execute test)
+  # ────────────────────────────────────────────────────────────────────────────
+  create-lambdas.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    import { SharedArray } from 'k6/data';
+    import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
+    
+    const errorRate = new Rate('lambda_create_error_rate');
+    const createCounter = new Counter('lambda_creates_total');
+    const createDuration = new Trend('lambda_create_duration');
+    const successCounter = new Counter('lambda_creates_success');
+    
+    // Pre-generate 13 lambda indices for deterministic naming (k6-lambda-0 to k6-lambda-12)
+    const lambdaIndices = new SharedArray('lambdaIndices', function() {
+      return Array.from({ length: 13 }, (_, i) => i);
+    });
+    
+    export const options = {
+      insecureSkipTLSVerify: true,
+      scenarios: {
+        create_lambdas: {
+          executor: 'constant-arrival-rate',
+          rate: 3,
+          timeUnit: '1s',
+          duration: '5s',
+          preAllocatedVUs: 3,
+          maxVUs: 10,
+          tags: { scenario: 'create_lambdas' },
+        },
+      },
+      thresholds: {
+        'http_req_duration': ['p(95)<5000'],
+        'http_req_failed': ['rate<0.20'],
+        'lambda_create_error_rate': ['rate<0.20'],
+        'lambda_create_duration': ['p(95)<5000'],
+        // With rate=3/s for 5s = 15 iterations, but parallelism=2 splits this
+        'lambda_creates_total': ['count>=6'],
+        'lambda_creates_success': ['count>=5'],
+      },
+    };
+    
+    const BROKER_URL = __ENV.BROKER_URL || 'http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local';
+    const NAMESPACE = __ENV.NAMESPACE || 'knative-lambda';
+    
+    function createLambdaFunctionSpec(index) {
+      const runtime = index % 2 === 0 ? 'python' : 'nodejs';
+      const version = runtime === 'python' ? '3.11' : '20';
+      const handler = runtime === 'python' ? 'main.handler' : 'index.handler';
+      const sourceKey = runtime === 'python' ? 'hello-python/' : 'hello-nodejs/';
+      
+      return {
+        source: {
+          type: 'minio',
+          minio: {
+            endpoint: 'minio.minio.svc.cluster.local:9000',
+            bucket: 'lambda-functions',
+            key: sourceKey,
+            secretRef: {
+              name: 'minio-credentials',
+            },
+          },
+        },
+        runtime: {
+          language: runtime,
+          version: version,
+          handler: handler,
+        },
+        scaling: {
+          minReplicas: 0,
+          maxReplicas: 10,
+          targetConcurrency: 5,
+          scaleToZeroGracePeriod: '30s',
+        },
+        resources: {
+          limits: { memory: '128Mi', cpu: '100m' },
+        },
+        build: {
+          timeout: '15m',
+          registry: 'localhost:5001',
+          insecure: true,
+        },
+      };
+    }
+    
+    function createCloudEvent(lambdaName, lambdaIndex, spec) {
+      const eventId = `k6-create-${lambdaName}-${Date.now()}`;
+      const source = `k6-load-test/${__VU}`;
+      
+      return {
+        specversion: '1.0',
+        type: 'io.knative.lambda.command.function.deploy',
+        source: source,
+        id: eventId,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: {
+          metadata: {
+            name: lambdaName,
+            namespace: NAMESPACE,
+            labels: {
+              'test': 'k6-load-test',
+              'index': lambdaIndex.toString(),
+            },
+          },
+          spec: spec,
+        },
+      };
+    }
+    
+    export default function () {
+      // Use deterministic index based on iteration (0-12)
+      const lambdaIndex = __ITER % 13;
+      const lambdaName = `k6-lambda-${lambdaIndex}`;
+      const spec = createLambdaFunctionSpec(lambdaIndex);
+      const cloudEvent = createCloudEvent(lambdaName, lambdaIndex, spec);
+      
+      const startTime = Date.now();
+      
+      const params = {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Specversion': cloudEvent.specversion,
+          'Ce-Type': cloudEvent.type,
+          'Ce-Source': cloudEvent.source,
+          'Ce-Id': cloudEvent.id,
+        },
+        timeout: '30s',
+      };
+      
+      const response = http.post(
+        BROKER_URL,
+        JSON.stringify(cloudEvent),
+        params
+      );
+      const duration = Date.now() - startTime;
+      
+      createDuration.add(duration);
+      createCounter.add(1);
+      
+      const success = check(response, {
+        'event accepted by broker': (r) => r.status === 202 || r.status === 200,
+        'response time < 5s': (r) => r.timings.duration < 5000,
+      });
+      
+      if (success) {
+        successCounter.add(1);
+        console.log(`✅ Created lambda: ${lambdaName}`);
+      } else {
+        errorRate.add(1);
+        if (response.status !== 409 && response.status !== 429) {
+          console.error(`❌ Failed to create ${lambdaName}: ${response.status} - ${response.body}`);
+        }
+      }
+      
+      sleep(Math.random() * 0.1);
+    }
+    
+    export function handleSummary(data) {
+      const timestamp = Date.now();
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📊 Lambda Creation Test Summary');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`Total Creates: ${data.metrics.lambda_creates_total.values.count}`);
+      console.log(`Successful: ${data.metrics.lambda_creates_success.values.count}`);
+      console.log(`Lambda Names: k6-lambda-0 through k6-lambda-12`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      return {
+        'stdout': textSummary(data, { indent: ' ', enableColors: true }),
+        [`/tmp/k6-create-lambdas-${timestamp}.json`]: JSON.stringify(data),
+      };
+    }
+  
+  # ────────────────────────────────────────────────────────────────────────────
+  # 🚀 EXECUTE LAMBDA TEST - Execute k6-created lambdas (k6-lambda-0 to k6-lambda-12)
+  # ────────────────────────────────────────────────────────────────────────────
+  # This test executes lambdas created by create-lambdas.js
+  # Targets: k6-lambda-{0-12} alternating between python (even) and nodejs (odd)
+  # Higher load to trigger autoscaling (targetConcurrency=5, so need >5 concurrent)
+  # ────────────────────────────────────────────────────────────────────────────
+  execute-lambda.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+    import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
+    
+    const errorRate = new Rate('lambda_exec_error_rate');
+    const execCounter = new Counter('lambda_execs_total');
+    const execDuration = new Trend('lambda_exec_duration');
+    const successCounter = new Counter('lambda_execs_success');
+    const lambdaHits = new Counter('lambda_hits');
+    
+    export const options = {
+      scenarios: {
+        // Phase 1: Warm up lambdas (wake from scale-to-zero)
+        warmup: {
+          executor: 'constant-arrival-rate',
+          rate: 2,
+          timeUnit: '1s',
+          duration: '15s',
+          preAllocatedVUs: 5,
+          maxVUs: 10,
+          tags: { phase: 'warmup' },
+        },
+        // Phase 2: Sustained load to trigger autoscaling
+        autoscale: {
+          executor: 'ramping-arrival-rate',
+          startRate: 10,
+          stages: [
+            { duration: '10s', target: 30 },   // Ramp up to trigger scaling
+            { duration: '20s', target: 50 },   // Sustained high load
+            { duration: '10s', target: 20 },   // Scale down
+          ],
+          preAllocatedVUs: 30,
+          maxVUs: 100,
+          startTime: '15s',
+          tags: { phase: 'autoscale' },
+        },
+      },
+      thresholds: {
+        'http_req_duration': ['p(95)<10000', 'p(99)<15000'],
+        'http_req_failed': ['rate<0.30'],  // Allow 30% failures during cold starts
+        'lambda_exec_error_rate': ['rate<0.30'],
+        'lambda_exec_duration': ['p(95)<10000'],
+        // Thresholds per pod (with parallelism=4, each gets ~1/4 of total)
+        'lambda_execs_total': ['count>=50'],
+        'lambda_execs_success': ['count>=35'],
+      },
+    };
+    
+    const NAMESPACE = __ENV.NAMESPACE || 'knative-lambda';
+    const LAMBDA_COUNT = parseInt(__ENV.LAMBDA_COUNT || '13');  // k6-lambda-0 to k6-lambda-12
+    
+    // Generate lambda URLs for k6-lambda-0 through k6-lambda-12
+    function getLambdaUrl(index) {
+      return `http://k6-lambda-${index}.${NAMESPACE}.svc.cluster.local`;
+    }
+    
+    function createTestPayload(iteration, lambdaName) {
+      return JSON.stringify({
+        message: `Test execution #${iteration} for ${lambdaName}`,
+        timestamp: new Date().toISOString(),
+        iteration: iteration,
+        vu: __VU,
+        lambdaName: lambdaName,
+        testId: randomString(16),
+        data: {
+          value: Math.random() * 1000,
+          array: Array.from({ length: 5 }, () => Math.random()),
+        },
+      });
+    }
+    
+    export default function () {
+      // Round-robin through available lambdas
+      const lambdaIndex = __ITER % LAMBDA_COUNT;
+      const lambdaName = `k6-lambda-${lambdaIndex}`;
+      const lambdaUrl = getLambdaUrl(lambdaIndex);
+      
+      const payload = createTestPayload(__ITER, lambdaName);
+      const params = {
+        headers: {
+          'Content-Type': 'application/json',
+          'Ce-Type': 'io.knative.lambda.invoke.sync',
+          'Ce-Source': 'k6-execute-test',
+          'Ce-Id': `exec-${lambdaName}-${__VU}-${__ITER}-${randomString(8)}`,
+          'Ce-Specversion': '1.0',
+          'Ce-Subject': lambdaName,
+        },
+        timeout: '30s',
+      };
+      
+      const startTime = Date.now();
+      const response = http.post(lambdaUrl, payload, params);
+      const duration = Date.now() - startTime;
+      
+      execDuration.add(duration);
+      execCounter.add(1);
+      lambdaHits.add(1, { lambda: lambdaName });
+      
+      const success = check(response, {
+        'lambda executed successfully': (r) => r.status >= 200 && r.status < 300,
+        'response time < 10s': (r) => r.timings.duration < 10000,
+        'response has body': (r) => r.body && r.body.length > 0,
+      });
+      
+      if (success) {
+        successCounter.add(1);
+      } else {
+        errorRate.add(1);
+        // 503 = service unavailable (lambda scaling up), 502 = bad gateway
+        if (response.status !== 503 && response.status !== 502 && response.status !== 0) {
+          console.error(`❌ ${lambdaName}: ${response.status} - ${response.body ? response.body.substring(0, 100) : 'no body'}`);
+        }
+      }
+      
+      // No sleep - maximize concurrent load for autoscaling
+    }
+    
+    export function handleSummary(data) {
+      const timestamp = Date.now();
+      const summary = {
+        'stdout': textSummary(data, { indent: ' ', enableColors: true }),
+        [`/tmp/k6-execute-lambda-${timestamp}.json`]: JSON.stringify(data),
+      };
+      
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📊 K6 Lambda Execution Test Summary');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`Target Lambdas: k6-lambda-0 through k6-lambda-12`);
+      if (data.metrics.lambda_execs_total) {
+        console.log(`Total Executions: ${data.metrics.lambda_execs_total.values.count}`);
+      }
+      if (data.metrics.lambda_execs_success) {
+        console.log(`Successful: ${data.metrics.lambda_execs_success.values.count}`);
+      }
+      if (data.metrics.lambda_exec_error_rate) {
+        console.log(`Error Rate: ${(data.metrics.lambda_exec_error_rate.values.rate * 100).toFixed(2)}%`);
+      }
+      if (data.metrics.lambda_exec_duration && data.metrics.lambda_exec_duration.values['p(95)']) {
+        console.log(`P95 Duration: ${data.metrics.lambda_exec_duration.values['p(95)'].toFixed(2)}ms`);
+      }
+      if (data.metrics.lambda_exec_duration && data.metrics.lambda_exec_duration.values['p(99)']) {
+        console.log(`P99 Duration: ${data.metrics.lambda_exec_duration.values['p(99)'].toFixed(2)}ms`);
+      }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      
+      return summary;
+    }
+  
+  # ────────────────────────────────────────────────────────────────────────────
+  # 🚀 BUILDER LOAD TEST - Builder events load test
+  # ────────────────────────────────────────────────────────────────────────────
+  builder-load.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+    import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
+    
+    const errorRate = new Rate('builder_error_rate');
+    const eventCounter = new Counter('builder_events_total');
+    const publishDuration = new Trend('builder_publish_duration');
+    
+    export const options = {
+      scenarios: {
+        baseline: {
+          executor: 'constant-arrival-rate',
+          rate: 10,
+          timeUnit: '1s',
+          duration: '5m',
+          preAllocatedVUs: 10,
+          maxVUs: 50,
+          tags: { scenario: 'baseline' },
+        },
+        rampup: {
+          executor: 'ramping-arrival-rate',
+          startRate: 10,
+          stages: [
+            { duration: '3m', target: 50 },
+            { duration: '3m', target: 100 },
+            { duration: '3m', target: 200 },
+            { duration: '3m', target: 100 },
+            { duration: '2m', target: 10 },
+          ],
+          preAllocatedVUs: 100,
+          maxVUs: 300,
+          tags: { scenario: 'rampup' },
+          startTime: '5m',
+        },
+        spike: {
+          executor: 'ramping-arrival-rate',
+          startRate: 100,
+          stages: [
+            { duration: '1m', target: 500 },
+            { duration: '2m', target: 500 },
+            { duration: '1m', target: 100 },
+          ],
+          preAllocatedVUs: 200,
+          maxVUs: 600,
+          tags: { scenario: 'spike' },
+          startTime: '20m',
+        },
+        sustained: {
+          executor: 'constant-arrival-rate',
+          rate: 100,
+          timeUnit: '1s',
+          duration: '30m',
+          preAllocatedVUs: 100,
+          maxVUs: 200,
+          tags: { scenario: 'sustained' },
+          startTime: '25m',
+        },
+      },
+      thresholds: {
+        'http_req_duration': ['p(95)<5000'],
+        'http_req_duration{scenario:baseline}': ['p(95)<2000'],
+        'http_req_failed': ['rate<0.01'],
+        'builder_error_rate': ['rate<0.01'],
+        'builder_publish_duration': ['p(95)<3000'],
+        'builder_events_total': ['count>10000'],
+      },
+    };
+    
+    const testEvents = [
+      { third_party_id: "0307ea43639b4616b044d190310a26bd", parser_id: "0197ad6c10b973b2b854a0e652155b7e" },
+      { third_party_id: "0307ea43639b4616b044d190310a26bd", parser_id: "c42d2e6ca3214f4b8d28a2cab47beecf" },
+      { third_party_id: "0307ea43639b4616b044d190310a26bd", parser_id: "e0a711bde5d748009a995432acbf590b" },
+      { third_party_id: "1234567890abcdef1234567890abcdef", parser_id: "enterprise-parser-001" },
+      { third_party_id: "fedcba0987654321fedcba0987654321", parser_id: "trading-bot-alpha" },
+    ];
+    
+    const RABBITMQ_URL = __ENV.RABBITMQ_URL || 'http://notifi:notifi@rabbitmq-cluster-dev.rabbitmq-dev:15672';
+    const EXCHANGE_NAME = 'cloud-events';
+    const ROUTING_KEY = 'network.notifi.lambda.build.start';
+    
+    function createCloudEvent(thirdPartyId, parserId) {
+      return {
+        specversion: "1.0",
+        id: randomString(32),
+        source: `network.notifi.parsers.${thirdPartyId}.${parserId}`,
+        type: "network.notifi.lambda.build.start",
+        time: new Date().toISOString(),
+        data: {
+          third_party_id: thirdPartyId,
+          parser_id: parserId,
+        },
+        datacontenttype: "application/json"
+      };
+    }
+    
+    export default function () {
+      const testEvent = testEvents[Math.floor(Math.random() * testEvents.length)];
+      const cloudEvent = createCloudEvent(testEvent.third_party_id, testEvent.parser_id);
+      
+      const publishUrl = `${RABBITMQ_URL}/api/exchanges/%2F/${EXCHANGE_NAME}/publish`;
+      const publishPayload = {
+        properties: {
+          content_type: "application/cloudevents+json",
+          delivery_mode: 2
+        },
+        routing_key: ROUTING_KEY,
+        payload: JSON.stringify(cloudEvent),
+        payload_encoding: "string"
+      };
+      
+      const startTime = Date.now();
+      const response = http.post(publishUrl, JSON.stringify(publishPayload), {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: '10s',
+      });
+      const duration = Date.now() - startTime;
+      
+      publishDuration.add(duration);
+      
+      const success = check(response, {
+        'event published successfully': (r) => r.status === 200,
+        'response time < 3s': (r) => r.timings.duration < 3000,
+      });
+      
+      if (success) {
+        eventCounter.add(1);
+      } else {
+        errorRate.add(1);
+        console.error(`Failed: ${response.status} - ${response.body}`);
+      }
+      
+      sleep(Math.random() * 0.3);
+    }
+    
+    export function handleSummary(data) {
+      const timestamp = Date.now();
+      return {
+        'stdout': textSummary(data, { indent: ' ', enableColors: true }),
+        [`/tmp/k6-builder-load-${timestamp}.json`]: JSON.stringify(data),
+      };
+    }
+  
+  # ────────────────────────────────────────────────────────────────────────────
+  # 🚀 PARSER LOAD TEST - Parser events load test
+  # ────────────────────────────────────────────────────────────────────────────
+  parser-load.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+    import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
+    
+    const errorRate = new Rate('parser_error_rate');
+    const eventCounter = new Counter('parser_events_total');
+    const publishDuration = new Trend('parser_publish_duration');
+    
+    export const options = {
+      scenarios: {
+        blockchain_burst: {
+          executor: 'ramping-arrival-rate',
+          startRate: 200,
+          stages: [
+            { duration: '2m', target: 800 },
+            { duration: '5m', target: 800 },
+            { duration: '2m', target: 200 },
+          ],
+          preAllocatedVUs: 300,
+          maxVUs: 900,
+          tags: { scenario: 'blockchain_burst' },
+        },
+        trading_events: {
+          executor: 'constant-arrival-rate',
+          rate: 1200,
+          timeUnit: '1s',
+          duration: '10m',
+          preAllocatedVUs: 400,
+          maxVUs: 1500,
+          tags: { scenario: 'trading_events' },
+          startTime: '9m',
+        },
+        multi_parser: {
+          executor: 'constant-arrival-rate',
+          rate: 1500,
+          timeUnit: '1s',
+          duration: '15m',
+          preAllocatedVUs: 500,
+          maxVUs: 2000,
+          tags: { scenario: 'multi_parser' },
+          startTime: '19m',
+        },
+        spike_test: {
+          executor: 'ramping-arrival-rate',
+          startRate: 500,
+          stages: [
+            { duration: '1m', target: 1500 },
+            { duration: '3m', target: 1500 },
+            { duration: '1m', target: 500 },
+          ],
+          preAllocatedVUs: 600,
+          maxVUs: 2000,
+          tags: { scenario: 'spike_test' },
+          startTime: '34m',
+        },
+      },
+      thresholds: {
+        'http_req_duration': ['p(95)<3000'],
+        'http_req_failed': ['rate<0.01'],
+        'parser_error_rate': ['rate<0.01'],
+        'parser_publish_duration': ['p(95)<3000'],
+        'parser_events_total': ['count>50000'],
+      },
+    };
+    
+    const testEvents = [
+      { third_party_id: "0307ea43639b4616b044d190310a26bd", parser_id: "0197ad6c10b973b2b854a0e652155b7e" },
+      { third_party_id: "0307ea43639b4616b044d190310a26bd", parser_id: "c42d2e6ca3214f4b8d28a2cab47beecf" },
+      { third_party_id: "0307ea43639b4616b044d190310a26bd", parser_id: "e0a711bde5d748009a995432acbf590b" },
+    ];
+    
+    const contextData = [
+      "1FV29-cJHSIOOuk-gJPFHrnAhhEBFA36Rs90PlyvrlcEvke0ZHvoDP90c117FEgYPH1699JMgv2soU0Vz49qH-ZK_EFvwMD_wo_u0KQo5PYNV1F9UG1Wjb0nynbAyS1bIH-w7b--TGYLYZHo1rLAsl4EeRAl2OZYRWDhwJy7",
+      "fLk7FvaIsE-bhBvyf7M3u2eOC-tCiUonUwTlpjK6MtGfQm4chBNTdY7dS6z3hVr8C0NBX5bCsPxgosJUKJUnaEtI_fFh1tDxTnUMJNkBwda_yqqgV0fh6XzAeq5FvZoP7ThPGRZhpKVeF0rotd6wfkhx-ZBl7IM_ZgQeY5wE",
+      "j1LbXVXBHnvT574YvpHcB6pJfQWJAr0YBdU7NVhFgDLOVyKC3LfvYDPwTJJRFb9VpddeF4p9HbYIrKJ995YQaUkr23ymIpVRsRw1yVjidPYbgRrQvP9o7a8iScI5SxJd0Ey7vZRtbhI1Ep9soCpIqzwWiKJFqiOYY5tSBVvP"
+    ];
+    
+    const RABBITMQ_URL = __ENV.RABBITMQ_URL || 'http://notifi:notifi@rabbitmq-cluster-dev.rabbitmq-dev:15672';
+    const EXCHANGE_NAME = 'cloud-events';
+    const ROUTING_KEY = 'network.notifi.lambda.parser.start';
+    
+    function createCloudEvent(thirdPartyId, parserId, contextId, blockId) {
+      return {
+        specversion: "1.0",
+        id: randomString(32),
+        source: `network.notifi.parsers.${thirdPartyId}`,
+        subject: parserId,
+        type: "network.notifi.lambda.parser.start",
+        time: new Date().toISOString(),
+        data: {
+          contextId: contextId,
+          parameters: {
+            blockId: blockId,
+            blockchainType: 52,
+            urlForBlob: "redis://ephemeralblock/Botanix/659780",
+            logIndices: [0]
+          },
+        },
+        datacontenttype: "application/json"
+      };
+    }
+    
+    export default function () {
+      const testEvent = testEvents[Math.floor(Math.random() * testEvents.length)];
+      const contextId = contextData[Math.floor(Math.random() * contextData.length)];
+      const baseBlockId = 659780 + Math.floor(Math.random() * 1000);
+      
+      const cloudEvent = createCloudEvent(
+        testEvent.third_party_id,
+        testEvent.parser_id,
+        contextId,
+        baseBlockId.toString()
+      );
+      
+      const publishUrl = `${RABBITMQ_URL}/api/exchanges/%2F/${EXCHANGE_NAME}/publish`;
+      const publishPayload = {
+        properties: {
+          content_type: "application/cloudevents+json",
+          delivery_mode: 2
+        },
+        routing_key: ROUTING_KEY,
+        payload: JSON.stringify(cloudEvent),
+        payload_encoding: "string"
+      };
+      
+      const startTime = Date.now();
+      const response = http.post(publishUrl, JSON.stringify(publishPayload), {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: '10s',
+      });
+      const duration = Date.now() - startTime;
+      
+      publishDuration.add(duration);
+      
+      const success = check(response, {
+        'parser event published successfully': (r) => r.status === 200,
+        'response time < 3s': (r) => r.timings.duration < 3000,
+      });
+      
+      if (success) {
+        eventCounter.add(1);
+      } else {
+        errorRate.add(1);
+      }
+      
+      sleep(Math.random() * 0.2);
+    }
+    
+    export function handleSummary(data) {
+      const timestamp = Date.now();
+      return {
+        'stdout': textSummary(data, { indent: ' ', enableColors: true }),
+        [`/tmp/k6-parser-load-${timestamp}.json`]: JSON.stringify(data),
+      };
+    }
+

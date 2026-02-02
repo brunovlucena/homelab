@@ -1,0 +1,38 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: contract-fetcher
+  namespace: agent-contracts
+  labels:
+    app.kubernetes.io/name: contract-fetcher
+    app.kubernetes.io/component: fetcher
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/min-scale: "0"
+        autoscaling.knative.dev/max-scale: "5"
+        autoscaling.knative.dev/target: "10"
+    spec:
+      containerConcurrency: 10
+      timeoutSeconds: 60
+      containers:
+        - image: agent-contracts/contract-fetcher:v1.0.0
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              memory: "128Mi"
+              # cpu: "100m"
+            limits:
+              memory: "256Mi"
+              # cpu: "500m"
+          envFrom:
+            - configMapRef:
+                name: agent-contracts-config
+            - secretRef:
+                name: agent-contracts-secrets
+          env:
+            - name: K_SINK
+              value: "http://broker-ingress.knative-eventing.svc.cluster.local/agent-contracts/agent-contracts-broker"
+

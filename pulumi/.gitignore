@@ -1,0 +1,44 @@
+# Pulumi State and Backend Files
+.pulumi/
+Pulumi.*.yaml
+!Pulumi.yaml
+
+# Pulumi binaries
+mac-sync/.pulumi-bin
+
+# Go Build Artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Go Test Files
+*.test
+*.out
+coverage.*
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+*.bak
+

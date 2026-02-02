@@ -1,0 +1,59 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🏪 Agent-POS-Edge - Production Environment
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: kustomize.config.k8s.io/v1beta1
+namespace: ai
+
+kind: Kustomization
+
+resources:
+  - ../base
+
+labels:
+  - pairs:
+      environment: production
+
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+patches:
+  # Update image tags for all LambdaAgents
+  - target:
+      kind: LambdaAgent
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v0.3.0"
+  
+  # Higher resources for production
+  - target:
+      kind: LambdaAgent
+      name: pos-edge-command-center
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/resources/requests/memory
+        value: "1Gi"
+      - op: replace
+        path: /spec/resources/limits/cpu
+        value: "2000m"
+      - op: replace
+        path: /spec/resources/limits/memory
+        value: "2Gi"
+      - op: replace
+        path: /spec/scaling/minReplicas
+        value: 2
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 10
+  
+  # Production logging level
+  - target:
+      kind: LambdaAgent
+    patch: |-
+      - op: replace
+        path: /spec/observability/logging/level
+        value: warn

@@ -1,0 +1,94 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📋 Order Processor Agent
+#
+#  Handles order creation, payment, and fulfillment
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: order-processor
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: order-processor
+    app.kubernetes.io/component: orders
+    app.kubernetes.io/part-of: agent-store-multibrands
+    store.agent.role: processor
+  annotations:
+    description: "Order management and fulfillment service"
+spec:
+  serviceAccountName: store-agent-sa
+
+  image:
+    repository: localhost:5001/order_processor
+    tag: "0.3.0"
+    port: 8080
+
+  ai:
+    provider: none  # Order processor doesn't need AI
+
+  behavior:
+    maxContextMessages: 5
+    emitEvents: true
+    systemPrompt: ""
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 5
+    targetConcurrency: 20
+    scaleToZeroGracePeriod: 0s  # Always running
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: AGENT_NAME
+      value: "order-processor"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-store-multibrands/order-processor"
+    
+    intents:
+      - store.order.created
+      - store.order.confirmed
+      - store.order.shipped
+      - store.order.delivered
+      - store.order.cancelled
+      - store.order.status.update
+    
+    subscriptions:
+      - eventType: store.order.create
+        description: "Order creation requests"
+      - eventType: store.cart.updated
+        description: "Cart updates"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 5  # More retries for orders
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

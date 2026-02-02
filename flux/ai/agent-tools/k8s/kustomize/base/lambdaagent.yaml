@@ -1,0 +1,393 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🛠️ Agent Tools - Kubernetes API Operations via CloudEvents
+#
+#  Single agent with access to ALL K8s APIs for managing cluster resources
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: agent-tools
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-tools
+    app.kubernetes.io/component: k8s-api-tools
+    app.kubernetes.io/part-of: homelab-ai
+spec:
+  serviceAccountName: agent-tools-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/k8s-tools
+    tag: "v1.0.0"
+    port: 8080
+
+  ai:
+    provider: none
+
+  # Operation mode: agentic (autonomous) or supervised (requires approval)
+  operationMode: agentic  # Default: autonomous execution
+
+  behavior:
+    emitEvents: true
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 10
+    targetConcurrency: 50
+    scaleToZeroGracePeriod: 300s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "1"
+      memory: "512Mi"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-tools/k8s"
+    intents:
+      # ═══════════════════════════════════════════════════════════════════════
+      # CORE K8S (v1)
+      # ═══════════════════════════════════════════════════════════════════════
+      # Pods
+      - k8s.pods.list
+      - k8s.pods.get
+      - k8s.pods.create
+      - k8s.pods.delete
+      - k8s.pods.logs
+      # Services
+      - k8s.services.list
+      - k8s.services.get
+      - k8s.services.create
+      - k8s.services.update
+      - k8s.services.delete
+      # ConfigMaps
+      - k8s.configmaps.list
+      - k8s.configmaps.get
+      - k8s.configmaps.create
+      - k8s.configmaps.update
+      - k8s.configmaps.delete
+      # Secrets
+      - k8s.secrets.list
+      - k8s.secrets.get
+      - k8s.secrets.create
+      - k8s.secrets.update
+      - k8s.secrets.delete
+      # Namespaces
+      - k8s.namespaces.list
+      - k8s.namespaces.get
+      - k8s.namespaces.create
+      - k8s.namespaces.delete
+      # ServiceAccounts
+      - k8s.serviceaccounts.list
+      - k8s.serviceaccounts.get
+      - k8s.serviceaccounts.create
+      - k8s.serviceaccounts.delete
+      # PVCs
+      - k8s.pvcs.list
+      - k8s.pvcs.get
+      - k8s.pvcs.create
+      - k8s.pvcs.delete
+      # Events
+      - k8s.events.list
+      - k8s.events.get
+      # Endpoints
+      - k8s.endpoints.list
+      - k8s.endpoints.get
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # APPS (apps/v1)
+      # ═══════════════════════════════════════════════════════════════════════
+      # Deployments
+      - k8s.deployments.list
+      - k8s.deployments.get
+      - k8s.deployments.create
+      - k8s.deployments.update
+      - k8s.deployments.delete
+      - k8s.deployments.scale
+      - k8s.deployments.restart
+      # StatefulSets
+      - k8s.statefulsets.list
+      - k8s.statefulsets.get
+      - k8s.statefulsets.create
+      - k8s.statefulsets.update
+      - k8s.statefulsets.delete
+      - k8s.statefulsets.scale
+      # DaemonSets
+      - k8s.daemonsets.list
+      - k8s.daemonsets.get
+      - k8s.daemonsets.create
+      - k8s.daemonsets.update
+      - k8s.daemonsets.delete
+      # ReplicaSets
+      - k8s.replicasets.list
+      - k8s.replicasets.get
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # BATCH (batch/v1)
+      # ═══════════════════════════════════════════════════════════════════════
+      # Jobs
+      - k8s.jobs.list
+      - k8s.jobs.get
+      - k8s.jobs.create
+      - k8s.jobs.delete
+      # CronJobs
+      - k8s.cronjobs.list
+      - k8s.cronjobs.get
+      - k8s.cronjobs.create
+      - k8s.cronjobs.update
+      - k8s.cronjobs.delete
+      - k8s.cronjobs.trigger
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # AUTOSCALING (autoscaling/v2)
+      # ═══════════════════════════════════════════════════════════════════════
+      - k8s.hpa.list
+      - k8s.hpa.get
+      - k8s.hpa.create
+      - k8s.hpa.update
+      - k8s.hpa.delete
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # NETWORKING (networking.k8s.io/v1)
+      # ═══════════════════════════════════════════════════════════════════════
+      # Ingresses
+      - k8s.ingresses.list
+      - k8s.ingresses.get
+      - k8s.ingresses.create
+      - k8s.ingresses.update
+      - k8s.ingresses.delete
+      # NetworkPolicies
+      - k8s.networkpolicies.list
+      - k8s.networkpolicies.get
+      - k8s.networkpolicies.create
+      - k8s.networkpolicies.delete
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # KNATIVE SERVING (serving.knative.dev/v1)
+      # ═══════════════════════════════════════════════════════════════════════
+      - knative.services.list
+      - knative.services.get
+      - knative.services.create
+      - knative.services.update
+      - knative.services.delete
+      - knative.revisions.list
+      - knative.revisions.get
+      - knative.routes.list
+      - knative.routes.get
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # KNATIVE EVENTING (eventing.knative.dev/v1)
+      # ═══════════════════════════════════════════════════════════════════════
+      - knative.brokers.list
+      - knative.brokers.get
+      - knative.brokers.create
+      - knative.brokers.delete
+      - knative.triggers.list
+      - knative.triggers.get
+      - knative.triggers.create
+      - knative.triggers.update
+      - knative.triggers.delete
+      - knative.eventtypes.list
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # LAMBDA (lambda.knative.io/v1alpha1)
+      # ═══════════════════════════════════════════════════════════════════════
+      - lambda.functions.list
+      - lambda.functions.get
+      - lambda.functions.create
+      - lambda.functions.update
+      - lambda.functions.delete
+      - lambda.agents.list
+      - lambda.agents.get
+      - lambda.agents.create
+      - lambda.agents.update
+      - lambda.agents.delete
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # FLUX (kustomize.toolkit.fluxcd.io, helm.toolkit.fluxcd.io, source.toolkit.fluxcd.io)
+      # ═══════════════════════════════════════════════════════════════════════
+      # Kustomizations
+      - flux.kustomizations.list
+      - flux.kustomizations.get
+      - flux.kustomizations.create
+      - flux.kustomizations.update
+      - flux.kustomizations.delete
+      - flux.kustomizations.reconcile
+      - flux.kustomizations.suspend
+      - flux.kustomizations.resume
+      # HelmReleases
+      - flux.helmreleases.list
+      - flux.helmreleases.get
+      - flux.helmreleases.create
+      - flux.helmreleases.update
+      - flux.helmreleases.delete
+      - flux.helmreleases.reconcile
+      - flux.helmreleases.suspend
+      - flux.helmreleases.resume
+      # GitRepositories
+      - flux.gitrepositories.list
+      - flux.gitrepositories.get
+      - flux.gitrepositories.create
+      - flux.gitrepositories.delete
+      - flux.gitrepositories.reconcile
+      # HelmRepositories
+      - flux.helmrepositories.list
+      - flux.helmrepositories.get
+      - flux.helmrepositories.create
+      - flux.helmrepositories.delete
+      # OCIRepositories
+      - flux.ocirepositories.list
+      - flux.ocirepositories.get
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # CERT-MANAGER (cert-manager.io/v1)
+      # ═══════════════════════════════════════════════════════════════════════
+      - certmanager.certificates.list
+      - certmanager.certificates.get
+      - certmanager.certificates.create
+      - certmanager.certificates.update
+      - certmanager.certificates.delete
+      - certmanager.certificaterequests.list
+      - certmanager.certificaterequests.get
+      - certmanager.issuers.list
+      - certmanager.issuers.get
+      - certmanager.issuers.create
+      - certmanager.issuers.delete
+      - certmanager.clusterissuers.list
+      - certmanager.clusterissuers.get
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # MONITORING (monitoring.coreos.com/v1)
+      # ═══════════════════════════════════════════════════════════════════════
+      - monitoring.prometheusrules.list
+      - monitoring.prometheusrules.get
+      - monitoring.prometheusrules.create
+      - monitoring.prometheusrules.update
+      - monitoring.prometheusrules.delete
+      - monitoring.servicemonitors.list
+      - monitoring.servicemonitors.get
+      - monitoring.servicemonitors.create
+      - monitoring.servicemonitors.update
+      - monitoring.servicemonitors.delete
+      - monitoring.podmonitors.list
+      - monitoring.podmonitors.get
+      - monitoring.podmonitors.create
+      - monitoring.podmonitors.delete
+      - monitoring.alertmanagerconfigs.list
+      - monitoring.alertmanagerconfigs.get
+      - monitoring.alertmanagerconfigs.create
+      - monitoring.alertmanagerconfigs.delete
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # RABBITMQ (rabbitmq.com/v1beta1)
+      # ═══════════════════════════════════════════════════════════════════════
+      - rabbitmq.clusters.list
+      - rabbitmq.clusters.get
+      - rabbitmq.queues.list
+      - rabbitmq.queues.get
+      - rabbitmq.queues.create
+      - rabbitmq.queues.delete
+      - rabbitmq.exchanges.list
+      - rabbitmq.exchanges.get
+      - rabbitmq.exchanges.create
+      - rabbitmq.exchanges.delete
+      - rabbitmq.bindings.list
+      - rabbitmq.bindings.get
+      - rabbitmq.bindings.create
+      - rabbitmq.bindings.delete
+      - rabbitmq.policies.list
+      - rabbitmq.policies.get
+      - rabbitmq.policies.create
+      - rabbitmq.policies.delete
+      - rabbitmq.users.list
+      - rabbitmq.users.get
+      - rabbitmq.users.create
+      - rabbitmq.users.delete
+      - rabbitmq.vhosts.list
+      - rabbitmq.vhosts.get
+      - rabbitmq.permissions.list
+      - rabbitmq.permissions.create
+      - rabbitmq.permissions.delete
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # EXTERNAL SECRETS (external-secrets.io/v1beta1)
+      # ═══════════════════════════════════════════════════════════════════════
+      - secrets.externalsecrets.list
+      - secrets.externalsecrets.get
+      - secrets.externalsecrets.create
+      - secrets.externalsecrets.update
+      - secrets.externalsecrets.delete
+      - secrets.externalsecrets.refresh
+      - secrets.secretstores.list
+      - secrets.secretstores.get
+      - secrets.secretstores.create
+      - secrets.secretstores.delete
+      - secrets.clustersecretstores.list
+      - secrets.clustersecretstores.get
+      - secrets.sealedsecrets.list
+      - secrets.sealedsecrets.get
+      - secrets.sealedsecrets.create
+      - secrets.sealedsecrets.delete
+
+      # ═══════════════════════════════════════════════════════════════════════
+      # K6 TESTING (k6.io/v1alpha1)
+      # ═══════════════════════════════════════════════════════════════════════
+      - k6.testruns.list
+      - k6.testruns.get
+      - k6.testruns.create
+      - k6.testruns.delete
+      - k6.testruns.stop
+      - k6.privateloadzones.list
+      - k6.privateloadzones.get
+
+    subscriptions:
+      - eventType: io.homelab.k8s.*
+        description: "All K8s core operations"
+      - eventType: io.homelab.knative.*
+        description: "All Knative operations"
+      - eventType: io.homelab.lambda.*
+        description: "All Lambda operations"
+      - eventType: io.homelab.flux.*
+        description: "All Flux operations"
+      - eventType: io.homelab.certmanager.*
+        description: "All cert-manager operations"
+      - eventType: io.homelab.monitoring.*
+        description: "All monitoring operations"
+      - eventType: io.homelab.rabbitmq.*
+        description: "All RabbitMQ operations"
+      - eventType: io.homelab.secrets.*
+        description: "All secrets operations"
+      - eventType: io.homelab.k6.*
+        description: "All K6 operations"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: false
+    disableTriggerCreation: false
+    disableFunctionCreation: false
+    allowedTargetNamespaces:
+      - "*"
+    eventControls:
+      allowEventDisable: true

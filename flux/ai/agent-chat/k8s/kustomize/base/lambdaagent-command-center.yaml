@@ -1,0 +1,189 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🎛️ Command & Control Center - Admin Dashboard Backend
+#
+#  Central monitoring, user management, and agent orchestration
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: command-center
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: command-center
+    app.kubernetes.io/component: admin
+    app.kubernetes.io/part-of: agent-chat
+    agentchat.role: orchestrator
+  annotations:
+    description: "Command & Control Center for AgentChat platform"
+spec:
+  serviceAccountName: command-center-sa
+
+  image:
+    repository: localhost:5001/command-center
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 2048
+    temperature: "0.3"  # More deterministic for admin tasks
+
+  behavior:
+    maxContextMessages: 20
+    emitEvents: true
+    systemPrompt: |
+      You are the COMMAND CENTER for AgentChat platform.
+      
+      YOUR ROLE:
+      - Monitor all agents (messaging-hub, voice, media, location, assistants)
+      - Manage user accounts and permissions
+      - Aggregate health metrics and analytics
+      - Detect anomalies and raise alerts
+      - Deploy and scale agent-assistants for users
+      
+      CAPABILITIES:
+      - Fleet-wide visibility across all agents
+      - Real-time alerting on critical issues
+      - User onboarding automation
+      - Performance analytics and reporting
+      - Security monitoring and audit
+      
+      ALERT PRIORITIES:
+      - CRITICAL: System outage, security breach, data loss
+      - HIGH: Agent failures, performance degradation
+      - MEDIUM: Capacity warnings, unusual patterns
+      - LOW: Informational, maintenance reminders
+      
+      WHEN MANAGING USERS:
+      1. Validate user registration data
+      2. Create user record in PostgreSQL
+      3. Deploy agent-assistant for new user
+      4. Initialize voice clone setup flow
+      5. Send welcome notification
+      
+      WHEN MONITORING AGENTS:
+      - Check health every 30 seconds
+      - Alert if response time > 5s
+      - Alert if error rate > 1%
+      - Auto-scale based on queue depth
+      
+      RESPONSE FORMAT:
+      {
+        "action": "acknowledge|alert|deploy|scale|investigate",
+        "target": "agent_name or 'all'",
+        "priority": "critical|high|medium|low",
+        "message": "Human-readable description",
+        "data": {}
+      }
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 3
+    targetConcurrency: 50
+    scaleToZeroGracePeriod: 0s  # Always running
+
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: AGENT_ROLE
+      value: "command-center"
+    - name: REDIS_URL
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: REDIS_URL
+    - name: POSTGRES_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: POSTGRES_HOST
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: agentchat-secrets
+          key: postgres-password
+    - name: KUBERNETES_NAMESPACE
+      value: "agent-chat"
+    - name: ALERT_WEBHOOK_URL
+      valueFrom:
+        secretKeyRef:
+          name: agentchat-secrets
+          key: alert-webhook-url
+    - name: DASHBOARD_ENABLED
+      value: "true"
+    - name: METRICS_RETENTION_DAYS
+      value: "30"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-chat/command-center"
+    
+    intents:
+      - io.agentchat.admin.alert.dispatch
+      - io.agentchat.admin.user.provisioned
+      - io.agentchat.admin.agent.deployed
+      - io.agentchat.admin.agent.scaled
+      - io.agentchat.admin.report.generated
+    
+    subscriptions:
+      # User events
+      - eventType: io.agentchat.admin.user.created
+        description: "New user registration"
+      - eventType: io.agentchat.admin.user.deleted
+        description: "User account deletion"
+      
+      # Agent health events
+      - eventType: io.agentchat.admin.agent.health
+        description: "Agent health check results"
+      - eventType: io.agentchat.admin.agent.error
+        description: "Agent error reports"
+      
+      # System events
+      - eventType: io.agentchat.admin.alert.raised
+        description: "System alerts"
+      - eventType: io.agentchat.admin.metrics.report
+        description: "Metrics aggregation"
+      
+      # Security events
+      - eventType: io.agentchat.admin.security.violation
+        description: "Security policy violations"
+      - eventType: io.agentchat.admin.audit.event
+        description: "Audit trail events"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 5
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  permissions:
+    disableBrokerCreation: false
+    disableTriggerCreation: false
+    disableFunctionCreation: false  # Can deploy agent-assistants
+    allowedTargetNamespaces:
+      - agent-chat

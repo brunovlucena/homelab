@@ -1,0 +1,21 @@
+---
+# Test Kustomization: Broken (Invalid Path)
+# Purpose: Test flux-reconcile-kustomization LambdaFunction
+# Expected: LambdaFunction should attempt reconciliation (will fail due to invalid path)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: test-broken-kustomization
+  namespace: flux-system
+  labels:
+    test.agent-sre.io/scenario: broken-kustomization
+    test.agent-sre.io/lambda-function: flux-reconcile-kustomization
+spec:
+  interval: 5m
+  path: ./nonexistent/path  # Invalid path - will cause reconciliation failure
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  timeout: 5m
+

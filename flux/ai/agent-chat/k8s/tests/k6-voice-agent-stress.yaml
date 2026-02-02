@@ -1,0 +1,140 @@
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agentchat-voice-stress
+  namespace: agent-chat
+  labels:
+    test-suite: agent-chat
+    test-type: stress
+spec:
+  parallelism: 1
+  script:
+    configMap:
+      name: agentchat-voice-k6-scripts
+      file: voice-stress.js
+  arguments: ""
+  runner:
+    image: grafana/k6:0.47.0
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentchat-voice-k6-scripts
+  namespace: agent-chat
+data:
+  voice-stress.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Trend, Counter } from 'k6/metrics';
+    import { randomString, randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js';
+
+    // Custom metrics
+    const voiceTTSSuccess = new Rate('agentchat_voice_tts_success');
+    const voiceSTTSuccess = new Rate('agentchat_voice_stt_success');
+    const voiceCloneSuccess = new Rate('agentchat_voice_clone_success');
+    const voiceLatency = new Trend('agentchat_voice_latency_ms');
+
+    export const options = {
+      scenarios: {
+        voice_stress: {
+          executor: 'ramping-arrival-rate',
+          startRate: 1,
+          timeUnit: '1s',
+          preAllocatedVUs: 20,
+          maxVUs: 50,
+          stages: [
+            { duration: '30s', target: 5 },
+            { duration: '1m', target: 20 },
+            { duration: '30s', target: 5 },
+            { duration: '15s', target: 0 },
+          ],
+        },
+      },
+      thresholds: {
+        agentchat_voice_tts_success: ['rate>0.90'],
+        agentchat_voice_latency_ms: ['p(95)<2000'],
+      },
+    };
+
+    const VOICE_AGENT_URL = __ENV.VOICE_AGENT_URL || 'http://voice-agent.agent-chat.svc.cluster.local';
+
+    function createCloudEvent(type, data) {
+      return {
+        specversion: '1.0',
+        id: `k6-voice-${randomString(12)}`,
+        type: type,
+        source: 'k6-voice-stress',
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+
+    export default function () {
+      const userId = `stress-user-${__VU}`;
+      const action = Math.random();
+
+      const start = Date.now();
+      let success = false;
+
+      if (action < 0.5) {
+        // TTS Request
+        const event = createCloudEvent('io.agentchat.voice.tts.request', {
+          userId: userId,
+          text: `This is a stress test TTS request number ${randomIntBetween(1, 10000)}`,
+          voiceId: `voice-${randomIntBetween(1, 5)}`,
+          language: 'en-US',
+        });
+
+        const res = http.post(`${VOICE_AGENT_URL}/`, JSON.stringify(event), {
+          headers: { 'Content-Type': 'application/cloudevents+json' },
+          timeout: '10s',
+        });
+
+        success = check(res, { 'TTS success': (r) => r.status === 200 || r.status === 202 });
+        voiceTTSSuccess.add(success);
+
+      } else if (action < 0.85) {
+        // STT Request (simulated audio)
+        const event = createCloudEvent('io.agentchat.voice.stt.request', {
+          userId: userId,
+          audioFormat: 'wav',
+          sampleRate: 16000,
+          language: 'en-US',
+          // Simulated base64 audio
+          audioData: randomString(5000),
+        });
+
+        const res = http.post(`${VOICE_AGENT_URL}/`, JSON.stringify(event), {
+          headers: { 'Content-Type': 'application/cloudevents+json' },
+          timeout: '15s',
+        });
+
+        success = check(res, { 'STT success': (r) => r.status === 200 || r.status === 202 });
+        voiceSTTSuccess.add(success);
+
+      } else {
+        // Voice Clone Registration
+        const event = createCloudEvent('io.agentchat.voice.clone.register', {
+          userId: userId,
+          voiceSamples: [`sample-${randomString(8)}`, `sample-${randomString(8)}`],
+          voiceName: `MyVoice-${randomIntBetween(1, 100)}`,
+        });
+
+        const res = http.post(`${VOICE_AGENT_URL}/`, JSON.stringify(event), {
+          headers: { 'Content-Type': 'application/cloudevents+json' },
+          timeout: '30s',
+        });
+
+        success = check(res, { 'Clone success': (r) => r.status === 200 || r.status === 202 });
+        voiceCloneSuccess.add(success);
+      }
+
+      voiceLatency.add(Date.now() - start);
+      sleep(randomIntBetween(2, 5));
+    }

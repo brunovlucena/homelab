@@ -1,0 +1,33 @@
+#!/bin/sh
+set -e
+
+echo "=========================================="
+echo "Downloading source from S3"
+echo "=========================================="
+echo "Bucket: {{ .Bucket }}"
+echo "Key:    {{ .Key }}"
+{{- if .Region }}
+echo "Region: {{ .Region }}"
+{{- end }}
+echo "=========================================="
+
+echo "Downloading source files..."
+# Download to temp directory first
+aws s3 cp s3://{{ .Bucket }}/{{ .Key }} /tmp/source/ --recursive
+
+echo "Flattening directory structure..."
+# Find the actual source files and copy to workspace root (flatten any subdirectories)
+cd /tmp/source
+# If there's a single subdirectory, use its contents; otherwise use current dir
+if [ "$(ls -d */ 2>/dev/null | wc -l)" -eq 1 ]; then
+    subdir=$(ls -d */ | head -1)
+    cp -r "${subdir}"* /workspace/
+else
+    cp -r * /workspace/
+fi
+
+echo "=========================================="
+echo "Source downloaded successfully!"
+echo "=========================================="
+ls -la /workspace/
+

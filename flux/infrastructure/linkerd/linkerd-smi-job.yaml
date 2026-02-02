@@ -1,0 +1,92 @@
+---
+# 🔀 Job to install Linkerd SMI extension using Helm
+# Note: linkerd smi CLI command is not available, using Helm instead
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: linkerd-smi-install
+  namespace: linkerd-smi
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  template:
+    metadata:
+      labels:
+        app: linkerd-smi-install
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: linkerd-smi-installer
+      containers:
+      - name: install-smi
+        image: localhost:5001/alpine-helm:3.16.4
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "📦 Helm version:"
+          helm version --client
+          echo "🔀 Installing Linkerd SMI extension via Helm..."
+          # Wait a bit for control plane to be ready
+          sleep 10
+          # Add Helm repository
+          helm repo add l5d-smi https://linkerd.github.io/linkerd-smi || true
+          helm repo update
+          # Install linkerd-smi using Helm
+          helm upgrade --install linkerd-smi l5d-smi/linkerd-smi \
+            --namespace linkerd-smi \
+            --create-namespace \
+            --wait \
+            --timeout 5m
+          echo "✅ Linkerd SMI installed successfully"
+        volumeMounts:
+        - name: kubeconfig
+          mountPath: /root/.kube
+          readOnly: true
+      volumes:
+      - name: kubeconfig
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: linkerd-smi-installer
+  namespace: linkerd-smi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: linkerd-smi-installer
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: linkerd-smi-installer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: linkerd-smi-installer
+subjects:
+- kind: ServiceAccount
+  name: linkerd-smi-installer
+  namespace: linkerd-smi
+---
+# ClusterRoleBinding for namespace-metadata Job created by Helm chart
+# Uses linkerd-smi-installer SA which already exists and has required permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: linkerd-smi-namespace-metadata
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: linkerd-smi-installer
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: linkerd-smi
+

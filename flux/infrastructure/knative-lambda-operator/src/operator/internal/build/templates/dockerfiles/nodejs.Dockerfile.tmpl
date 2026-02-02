@@ -1,0 +1,31 @@
+FROM {{ .BaseImage }}:{{ .Version }}-alpine
+
+WORKDIR /app
+
+# Copy package files first for better caching
+COPY package*.json ./
+
+# Install user dependencies
+RUN npm ci --only=production 2>/dev/null || npm install --only=production 2>/dev/null || true
+
+# Install runtime dependencies (express, cloudevents, snappy for remote write)
+RUN npm install express@4 cloudevents@8 snappyjs@0.7 --save --no-package-lock 2>/dev/null || true
+
+# Copy Lambda runtime wrapper
+COPY runtime.js ./
+
+# Copy application code
+COPY *.js ./
+
+# Set runtime environment
+ENV HANDLER={{ .Handler }}
+ENV FUNCTION_NAME={{ .FunctionName }}
+ENV FUNCTION_NAMESPACE={{ .FunctionNamespace }}
+ENV TIMEOUT_SECONDS={{ .TimeoutSeconds }}
+ENV NODE_PATH=/app
+# Remote write URL (can be overridden)
+ENV PROMETHEUS_REMOTE_WRITE_URL=http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write
+
+EXPOSE 8080
+
+CMD ["node", "runtime.js"]

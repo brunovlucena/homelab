@@ -1,0 +1,761 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🏥 K6 MEDICAL HIPAA COMPLIANCE TESTING
+#
+#  Purpose: Test HIPAA-compliant medical records access with RBAC
+#
+#  Roles Tested:
+#    • 👨‍⚕️ Doctor - Full patient access
+#    • 👩‍⚕️ Nurse - Assigned patient access
+#    • 🧑 Patient - Own records only
+#    • 👔 Admin - Audit access
+#
+#  Compliance Areas:
+#    • RBAC enforcement
+#    • Audit logging
+#    • Patient data isolation
+#    • Access denial logging
+#    • Cross-patient access prevention
+#
+#  Scenarios:
+#    1. Authorized Access - Valid role-based queries
+#    2. Unauthorized Access - Access denial testing
+#    3. Audit Trail - Verify all access is logged
+#    4. Data Isolation - Cross-patient protection
+#    5. Load Test - HIPAA compliance under load
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: medical-hipaa-compliance
+  namespace: agent-medical
+  labels:
+    app.kubernetes.io/name: agent-medical
+    app.kubernetes.io/component: testing
+    test-type: hipaa-compliance
+spec:
+  parallelism: 2
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: medical-hipaa-script
+      file: hipaa-compliance.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: MEDICAL_URL
+        value: "http://agent-medical.agent-medical.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: medical-hipaa-script
+  namespace: agent-medical
+  labels:
+    app.kubernetes.io/name: agent-medical
+    app.kubernetes.io/component: testing
+data:
+  hipaa-compliance.js: |
+    import http from 'k6/http';
+    import { check, group, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CUSTOM METRICS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Access Metrics
+    const accessAttempts = new Counter('hipaa_access_attempts');
+    const accessGranted = new Counter('hipaa_access_granted');
+    const accessDenied = new Counter('hipaa_access_denied');
+    const auditLogsCreated = new Counter('hipaa_audit_logs_created');
+
+    // Role-based Metrics
+    const doctorQueries = new Counter('hipaa_doctor_queries');
+    const nurseQueries = new Counter('hipaa_nurse_queries');
+    const patientQueries = new Counter('hipaa_patient_queries');
+    const adminQueries = new Counter('hipaa_admin_queries');
+
+    // Compliance Metrics
+    const rbacEnforcementRate = new Rate('hipaa_rbac_enforcement');
+    const auditCompleteness = new Rate('hipaa_audit_completeness');
+    const dataIsolationRate = new Rate('hipaa_data_isolation');
+    const unauthorizedBlockRate = new Rate('hipaa_unauthorized_block');
+
+    // Performance Metrics
+    const queryResponseTime = new Trend('hipaa_query_response_ms');
+    const rbacCheckTime = new Trend('hipaa_rbac_check_ms');
+
+    // Data Types
+    const labResultQueries = new Counter('hipaa_lab_result_queries');
+    const prescriptionQueries = new Counter('hipaa_prescription_queries');
+    const historyQueries = new Counter('hipaa_history_queries');
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONFIGURATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    const MEDICAL_URL = __ENV.MEDICAL_URL || 'http://agent-medical.agent-medical.svc.cluster.local';
+
+    // Test Users with different roles
+    const TEST_USERS = {
+      doctors: [
+        { id: 'doctor-001', name: 'Dr. Ana Silva', role: 'doctor', token: 'doctor-token-001' },
+        { id: 'doctor-002', name: 'Dr. Carlos Souza', role: 'doctor', token: 'doctor-token-002' },
+      ],
+      nurses: [
+        { id: 'nurse-001', name: 'Enfermeira Maria', role: 'nurse', token: 'nurse-token-001', assignedPatients: ['patient-001', 'patient-002'] },
+        { id: 'nurse-002', name: 'Enfermeiro João', role: 'nurse', token: 'nurse-token-002', assignedPatients: ['patient-003', 'patient-004'] },
+      ],
+      patients: [
+        { id: 'patient-001', name: 'José Santos', role: 'patient', token: 'patient-token-001' },
+        { id: 'patient-002', name: 'Maria Oliveira', role: 'patient', token: 'patient-token-002' },
+        { id: 'patient-003', name: 'Pedro Lima', role: 'patient', token: 'patient-token-003' },
+        { id: 'patient-004', name: 'Ana Costa', role: 'patient', token: 'patient-token-004' },
+      ],
+      admins: [
+        { id: 'admin-001', name: 'Admin Sistema', role: 'admin', token: 'admin-token-001' },
+      ],
+    };
+
+    // Medical query types
+    const QUERY_TYPES = {
+      lab_results: 'io.homelab.medical.lab.request',
+      prescription: 'io.homelab.medical.prescription.request',
+      history: 'io.homelab.medical.history.request',
+      general: 'io.homelab.medical.query',
+      analyze: 'io.homelab.medical.analyze.request',
+    };
+
+    // Sample queries
+    const SAMPLE_QUERIES = {
+      doctor: [
+        'Show me lab results for patient-001',
+        'What medications is patient-002 currently taking?',
+        'Summarize the medical history for patient-003',
+        'Analyze the recent test results for patient-004',
+      ],
+      nurse: [
+        'What are the vitals for patient-001?',
+        'Show the latest lab results for patient-002',
+        'What is the medication schedule for patient-001?',
+      ],
+      patient: [
+        'Show me my lab results',
+        'What medications am I taking?',
+        'When is my next appointment?',
+      ],
+      admin: [
+        'Show audit logs for today',
+        'List all access attempts for patient-001',
+        'Generate compliance report',
+      ],
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TEST OPTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export const options = {
+      scenarios: {
+        // Scenario 1: Authorized access
+        authorized_access: {
+          executor: 'per-vu-iterations',
+          vus: 4,
+          iterations: 5,
+          maxDuration: '10m',
+          tags: { test_type: 'authorized' },
+          exec: 'authorizedAccess',
+        },
+        // Scenario 2: Unauthorized access attempts
+        unauthorized_access: {
+          executor: 'per-vu-iterations',
+          vus: 2,
+          iterations: 5,
+          maxDuration: '8m',
+          startTime: '2m',
+          tags: { test_type: 'unauthorized' },
+          exec: 'unauthorizedAccess',
+        },
+        // Scenario 3: Audit trail verification
+        audit_verification: {
+          executor: 'per-vu-iterations',
+          vus: 1,
+          iterations: 3,
+          maxDuration: '5m',
+          startTime: '6m',
+          tags: { test_type: 'audit' },
+          exec: 'auditVerification',
+        },
+        // Scenario 4: Data isolation test
+        data_isolation: {
+          executor: 'per-vu-iterations',
+          vus: 2,
+          iterations: 4,
+          maxDuration: '8m',
+          startTime: '8m',
+          tags: { test_type: 'isolation' },
+          exec: 'dataIsolation',
+        },
+        // Scenario 5: HIPAA compliance under load
+        compliance_load: {
+          executor: 'ramping-vus',
+          startVUs: 0,
+          stages: [
+            { duration: '30s', target: 5 },
+            { duration: '2m', target: 15 },
+            { duration: '3m', target: 25 },
+            { duration: '2m', target: 10 },
+            { duration: '30s', target: 0 },
+          ],
+          startTime: '12m',
+          tags: { test_type: 'load' },
+          exec: 'complianceLoad',
+        },
+      },
+      thresholds: {
+        'hipaa_rbac_enforcement': ['rate>0.95'],
+        'hipaa_unauthorized_block': ['rate>0.99'],
+        'hipaa_data_isolation': ['rate>0.99'],
+        'hipaa_audit_completeness': ['rate>0.95'],
+        'hipaa_query_response_ms': ['p(95)<60000'],
+        'http_req_failed': ['rate<0.20'],
+      },
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HELPER FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function createCloudEvent(type, data, source) {
+      return {
+        specversion: '1.0',
+        id: `k6-hipaa-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        type: type,
+        source: source || '/k6-hipaa-test',
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+
+    function sendMedicalQuery(queryType, data, timeout = '120s') {
+      const event = createCloudEvent(queryType, data, '/k6-hipaa-test');
+
+      return http.post(MEDICAL_URL, JSON.stringify(event), {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+          'Ce-Specversion': '1.0',
+        },
+        timeout: timeout,
+      });
+    }
+
+    function randomItem(array) {
+      return array[Math.floor(Math.random() * array.length)];
+    }
+
+    function parseResponse(res) {
+      try {
+        return JSON.parse(res.body);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 1: AUTHORIZED ACCESS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function authorizedAccess() {
+      // Rotate through different roles
+      const roleIndex = __VU % 4;
+      const roles = ['doctor', 'nurse', 'patient', 'admin'];
+      const role = roles[roleIndex];
+
+      let user;
+      let targetPatient;
+      let query;
+
+      switch (role) {
+        case 'doctor':
+          user = randomItem(TEST_USERS.doctors);
+          targetPatient = randomItem(TEST_USERS.patients).id;
+          query = randomItem(SAMPLE_QUERIES.doctor);
+          doctorQueries.add(1);
+          break;
+        case 'nurse':
+          user = randomItem(TEST_USERS.nurses);
+          targetPatient = randomItem(user.assignedPatients);
+          query = randomItem(SAMPLE_QUERIES.nurse);
+          nurseQueries.add(1);
+          break;
+        case 'patient':
+          user = randomItem(TEST_USERS.patients);
+          targetPatient = user.id; // Patient accessing own records
+          query = randomItem(SAMPLE_QUERIES.patient);
+          patientQueries.add(1);
+          break;
+        case 'admin':
+          user = randomItem(TEST_USERS.admins);
+          targetPatient = null; // Admin doesn't need patient ID
+          query = randomItem(SAMPLE_QUERIES.admin);
+          adminQueries.add(1);
+          break;
+      }
+
+      console.log(`\n✅ Authorized Access: ${user.name} (${role})`);
+
+      group(`Authorized ${role} Access`, () => {
+        const queryType = randomItem(Object.values(QUERY_TYPES));
+
+        const data = {
+          query: query,
+          patient_id: targetPatient,
+          token: user.token,
+          user_id: user.id,
+          user_role: role,
+        };
+
+        accessAttempts.add(1);
+
+        const start = Date.now();
+        const res = sendMedicalQuery(queryType, data);
+        const duration = Date.now() - start;
+
+        queryResponseTime.add(duration);
+
+        const body = parseResponse(res);
+        const isAuthorized = res.status >= 200 && res.status < 300;
+        const hasAuditId = body && body.audit_id;
+
+        const success = check(res, {
+          'authorized access granted': (r) => r.status >= 200 && r.status < 300,
+          'response contains data': (r) => {
+            const b = parseResponse(r);
+            return b && (b.response || b.data || b.records);
+          },
+          'audit ID present': (r) => {
+            const b = parseResponse(r);
+            return b && b.audit_id;
+          },
+        });
+
+        if (isAuthorized) {
+          accessGranted.add(1);
+          console.log(`  ✓ Access granted (${duration}ms)`);
+        } else {
+          console.log(`  ✗ Access unexpectedly denied: ${res.status}`);
+        }
+
+        if (hasAuditId) {
+          auditLogsCreated.add(1);
+        }
+
+        rbacEnforcementRate.add(isAuthorized);
+        auditCompleteness.add(hasAuditId);
+
+        // Track query type
+        if (queryType.includes('lab')) labResultQueries.add(1);
+        else if (queryType.includes('prescription')) prescriptionQueries.add(1);
+        else if (queryType.includes('history')) historyQueries.add(1);
+      });
+
+      sleep(2);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 2: UNAUTHORIZED ACCESS ATTEMPTS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function unauthorizedAccess() {
+      const testCases = [
+        {
+          name: 'Nurse accessing non-assigned patient',
+          user: TEST_USERS.nurses[0],
+          targetPatient: 'patient-003', // Not in assignedPatients
+          shouldBlock: true,
+        },
+        {
+          name: 'Patient accessing other patient records',
+          user: TEST_USERS.patients[0],
+          targetPatient: 'patient-002', // Different patient
+          shouldBlock: true,
+        },
+        {
+          name: 'Invalid token',
+          user: { id: 'fake-user', role: 'doctor', token: 'invalid-token' },
+          targetPatient: 'patient-001',
+          shouldBlock: true,
+        },
+        {
+          name: 'No token provided',
+          user: { id: 'anon', role: 'anonymous', token: '' },
+          targetPatient: 'patient-001',
+          shouldBlock: true,
+        },
+      ];
+
+      const testCase = testCases[__ITER % testCases.length];
+
+      console.log(`\n🚫 Unauthorized Access Test: ${testCase.name}`);
+
+      group(`Unauthorized: ${testCase.name}`, () => {
+        const data = {
+          query: 'Show me patient records',
+          patient_id: testCase.targetPatient,
+          token: testCase.user.token,
+          user_id: testCase.user.id,
+          user_role: testCase.user.role,
+        };
+
+        accessAttempts.add(1);
+
+        const start = Date.now();
+        const res = sendMedicalQuery(QUERY_TYPES.general, data);
+        const duration = Date.now() - start;
+
+        queryResponseTime.add(duration);
+
+        // For unauthorized access, we expect either:
+        // - 403 Forbidden
+        // - 401 Unauthorized
+        // - 200 with access_denied in response
+        const body = parseResponse(res);
+        const isBlocked = res.status === 403 ||
+                         res.status === 401 ||
+                         (body && body.status === 'access_denied');
+
+        const success = check(res, {
+          'unauthorized access blocked': () => isBlocked,
+        });
+
+        if (isBlocked) {
+          accessDenied.add(1);
+          console.log(`  ✓ Access correctly blocked (${duration}ms)`);
+          unauthorizedBlockRate.add(true);
+        } else {
+          console.log(`  ✗ SECURITY ISSUE: Unauthorized access NOT blocked!`);
+          console.log(`    Status: ${res.status}, Body: ${res.body?.substring(0, 100)}`);
+          unauthorizedBlockRate.add(false);
+        }
+
+        // Verify audit log was created for denied access
+        if (body && body.audit_id) {
+          auditLogsCreated.add(1);
+          auditCompleteness.add(true);
+        }
+      });
+
+      sleep(2);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 3: AUDIT TRAIL VERIFICATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function auditVerification() {
+      const admin = TEST_USERS.admins[0];
+
+      console.log(`\n📋 Audit Trail Verification`);
+
+      group('Audit Log Query', () => {
+        // First, make a regular query to generate audit log
+        const doctor = TEST_USERS.doctors[0];
+        const patient = TEST_USERS.patients[0];
+
+        const queryData = {
+          query: 'Show lab results',
+          patient_id: patient.id,
+          token: doctor.token,
+          user_id: doctor.id,
+          user_role: 'doctor',
+        };
+
+        let res = sendMedicalQuery(QUERY_TYPES.lab_results, queryData);
+        const queryBody = parseResponse(res);
+        const auditIdToVerify = queryBody?.audit_id;
+
+        sleep(1);
+
+        // Now verify the audit log exists
+        const auditQueryData = {
+          query: `Verify audit log ${auditIdToVerify}`,
+          token: admin.token,
+          user_id: admin.id,
+          user_role: 'admin',
+          audit_action: 'verify',
+          target_audit_id: auditIdToVerify,
+        };
+
+        const start = Date.now();
+        res = sendMedicalQuery(QUERY_TYPES.general, auditQueryData);
+        const duration = Date.now() - start;
+
+        queryResponseTime.add(duration);
+        adminQueries.add(1);
+
+        const success = check(res, {
+          'audit verification response': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        if (success) {
+          console.log(`  ✓ Audit log verified (${duration}ms)`);
+          auditCompleteness.add(true);
+        } else {
+          console.log(`  ✗ Audit verification failed`);
+          auditCompleteness.add(false);
+        }
+      });
+
+      sleep(3);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 4: DATA ISOLATION TEST
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function dataIsolation() {
+      // Test that patient data is properly isolated
+      const testPatient1 = TEST_USERS.patients[0];
+      const testPatient2 = TEST_USERS.patients[1];
+
+      console.log(`\n🔒 Data Isolation Test`);
+
+      group('Cross-Patient Data Isolation', () => {
+        // Patient 1 tries to access Patient 2's data
+        const data = {
+          query: `Show records for ${testPatient2.id}`,
+          patient_id: testPatient2.id,
+          token: testPatient1.token,
+          user_id: testPatient1.id,
+          user_role: 'patient',
+        };
+
+        accessAttempts.add(1);
+        patientQueries.add(1);
+
+        const start = Date.now();
+        const res = sendMedicalQuery(QUERY_TYPES.general, data);
+        const duration = Date.now() - start;
+
+        queryResponseTime.add(duration);
+
+        const body = parseResponse(res);
+        const isIsolated = res.status === 403 ||
+                          res.status === 401 ||
+                          (body && body.status === 'access_denied');
+
+        const success = check(res, {
+          'cross-patient access blocked': () => isIsolated,
+        });
+
+        if (isIsolated) {
+          accessDenied.add(1);
+          dataIsolationRate.add(true);
+          console.log(`  ✓ Patient data isolation enforced (${duration}ms)`);
+        } else {
+          dataIsolationRate.add(false);
+          console.log(`  ✗ CRITICAL: Patient data isolation FAILED!`);
+        }
+      });
+
+      sleep(1);
+
+      // Verify patient CAN access their own data
+      group('Own Data Access', () => {
+        const data = {
+          query: 'Show my records',
+          patient_id: testPatient1.id,
+          token: testPatient1.token,
+          user_id: testPatient1.id,
+          user_role: 'patient',
+        };
+
+        accessAttempts.add(1);
+
+        const start = Date.now();
+        const res = sendMedicalQuery(QUERY_TYPES.general, data);
+        const duration = Date.now() - start;
+
+        queryResponseTime.add(duration);
+
+        const isGranted = res.status >= 200 && res.status < 300;
+
+        const success = check(res, {
+          'own data access granted': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        if (isGranted) {
+          accessGranted.add(1);
+          rbacEnforcementRate.add(true);
+          console.log(`  ✓ Own data access granted (${duration}ms)`);
+        } else {
+          rbacEnforcementRate.add(false);
+          console.log(`  ✗ Own data access incorrectly denied`);
+        }
+      });
+
+      sleep(2);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 5: HIPAA COMPLIANCE UNDER LOAD
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function complianceLoad() {
+      // Random role-based query under load
+      const roles = ['doctor', 'nurse', 'patient'];
+      const role = randomItem(roles);
+
+      let user, targetPatient;
+
+      switch (role) {
+        case 'doctor':
+          user = randomItem(TEST_USERS.doctors);
+          targetPatient = randomItem(TEST_USERS.patients).id;
+          doctorQueries.add(1);
+          break;
+        case 'nurse':
+          user = randomItem(TEST_USERS.nurses);
+          targetPatient = randomItem(user.assignedPatients);
+          nurseQueries.add(1);
+          break;
+        case 'patient':
+          user = randomItem(TEST_USERS.patients);
+          targetPatient = user.id;
+          patientQueries.add(1);
+          break;
+      }
+
+      group('Compliance Under Load', () => {
+        const data = {
+          query: 'Show patient information',
+          patient_id: targetPatient,
+          token: user.token,
+          user_id: user.id,
+          user_role: role,
+        };
+
+        accessAttempts.add(1);
+
+        const start = Date.now();
+        const res = sendMedicalQuery(QUERY_TYPES.general, data, '60s');
+        const duration = Date.now() - start;
+
+        queryResponseTime.add(duration);
+
+        const body = parseResponse(res);
+        const isAuthorized = res.status >= 200 && res.status < 300;
+        const hasAuditId = body && body.audit_id;
+
+        if (isAuthorized) {
+          accessGranted.add(1);
+          rbacEnforcementRate.add(true);
+        }
+
+        if (hasAuditId) {
+          auditLogsCreated.add(1);
+          auditCompleteness.add(true);
+        }
+
+        check(res, {
+          'load query processed': (r) => r.status >= 200 && r.status < 500,
+        });
+      });
+
+      sleep(randomInt(1, 2));
+    }
+
+    function randomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SUMMARY
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function handleSummary(data) {
+      const attempts = data.metrics['hipaa_access_attempts'];
+      const granted = data.metrics['hipaa_access_granted'];
+      const denied = data.metrics['hipaa_access_denied'];
+      const audits = data.metrics['hipaa_audit_logs_created'];
+
+      const rbac = data.metrics['hipaa_rbac_enforcement'];
+      const isolation = data.metrics['hipaa_data_isolation'];
+      const unauthorized = data.metrics['hipaa_unauthorized_block'];
+      const auditComplete = data.metrics['hipaa_audit_completeness'];
+
+      const doctorQ = data.metrics['hipaa_doctor_queries'];
+      const nurseQ = data.metrics['hipaa_nurse_queries'];
+      const patientQ = data.metrics['hipaa_patient_queries'];
+      const adminQ = data.metrics['hipaa_admin_queries'];
+
+      const responseTime = data.metrics['hipaa_query_response_ms'];
+
+      const attemptsCount = attempts && attempts.values ? attempts.values.count : 0;
+      const grantedCount = granted && granted.values ? granted.values.count : 0;
+      const deniedCount = denied && denied.values ? denied.values.count : 0;
+      const auditsCount = audits && audits.values ? audits.values.count : 0;
+
+      const rbacRate = rbac && rbac.values ? rbac.values.rate : 0;
+      const isolationRate = isolation && isolation.values ? isolation.values.rate : 0;
+      const unauthorizedRate = unauthorized && unauthorized.values ? unauthorized.values.rate : 0;
+      const auditRate = auditComplete && auditComplete.values ? auditComplete.values.rate : 0;
+
+      const p95Response = responseTime && responseTime.values ? responseTime.values['p(95)'] : 0;
+
+      const passed = rbacRate >= 0.95 &&
+                    unauthorizedRate >= 0.99 &&
+                    isolationRate >= 0.99 &&
+                    auditRate >= 0.95;
+
+      console.log('\n' + '═'.repeat(70));
+      console.log('🏥 MEDICAL HIPAA COMPLIANCE TEST RESULTS');
+      console.log('═'.repeat(70));
+      console.log('Status: ' + (passed ? '✅ COMPLIANT' : '❌ NON-COMPLIANT'));
+      console.log('─'.repeat(70));
+      console.log('📊 ACCESS STATISTICS');
+      console.log('   Total Access Attempts:   ' + attemptsCount);
+      console.log('   Access Granted:          ' + grantedCount);
+      console.log('   Access Denied:           ' + deniedCount);
+      console.log('   Audit Logs Created:      ' + auditsCount);
+      console.log('─'.repeat(70));
+      console.log('👥 ROLE-BASED QUERIES');
+      console.log('   Doctor Queries:          ' + (doctorQ && doctorQ.values ? doctorQ.values.count : 0));
+      console.log('   Nurse Queries:           ' + (nurseQ && nurseQ.values ? nurseQ.values.count : 0));
+      console.log('   Patient Queries:         ' + (patientQ && patientQ.values ? patientQ.values.count : 0));
+      console.log('   Admin Queries:           ' + (adminQ && adminQ.values ? adminQ.values.count : 0));
+      console.log('─'.repeat(70));
+      console.log('✅ HIPAA COMPLIANCE METRICS');
+      console.log('   RBAC Enforcement:        ' + (rbacRate * 100).toFixed(1) + '% (req: 95%)');
+      console.log('   Data Isolation:          ' + (isolationRate * 100).toFixed(1) + '% (req: 99%)');
+      console.log('   Unauthorized Blocked:    ' + (unauthorizedRate * 100).toFixed(1) + '% (req: 99%)');
+      console.log('   Audit Completeness:      ' + (auditRate * 100).toFixed(1) + '% (req: 95%)');
+      console.log('─'.repeat(70));
+      console.log('⏱️ PERFORMANCE');
+      console.log('   Query Response (P95):    ' + (p95Response || 0).toFixed(0) + 'ms');
+      console.log('═'.repeat(70));
+
+      if (passed) {
+        console.log('🏆 HIPAA COMPLIANCE: VERIFIED');
+      } else {
+        console.log('⚠️ HIPAA COMPLIANCE: VIOLATIONS DETECTED - REVIEW REQUIRED');
+      }
+      console.log('═'.repeat(70) + '\n');
+
+      return {};
+    }

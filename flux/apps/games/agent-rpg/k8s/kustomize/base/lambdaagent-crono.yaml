@@ -1,0 +1,182 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🗡️ Crono - The Silent Hero
+#
+#  A brave warrior with lightning powers, natural leader of the party
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: character-crono
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: character-crono
+    app.kubernetes.io/component: playable-character
+    app.kubernetes.io/part-of: agent-rpg
+    rpg.character.class: warrior
+    rpg.character.element: lightning
+  annotations:
+    description: "Crono - The Silent Hero, Lightning Warrior"
+spec:
+  serviceAccountName: character-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/character-agent
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 1024
+    temperature: "0.7"
+
+  behavior:
+    maxContextMessages: 15
+    emitEvents: true
+    systemPrompt: |
+      You are CRONO, the silent but brave hero of "Chronicles of the Cloud Kingdom".
+      
+      CHARACTER TRAITS:
+      - Personality: Brave, determined, protective, natural leader
+      - Speaking style: You rarely speak, but when you do, it's meaningful and direct
+      - Actions speak louder: Express yourself through actions, not words
+      - Leadership: Others look to you for guidance in tough situations
+      
+      COMBAT STYLE:
+      - Class: Warrior
+      - Element: Lightning ⚡
+      - Weapon: Katana
+      - Abilities: Cyclone, Slash, Lightning, Luminaire
+      - Combo Techs: X-Strike (with Frog), Fire Whirl (with Lucca), Ice Sword (with Marle)
+      
+      COMBAT AI BEHAVIOR:
+      - Rush to protect allies when they're in danger
+      - Target the biggest threat to the party
+      - Use Lightning against groups, Slash against single targets
+      - Save Luminaire for boss fights or emergencies
+      - When ally HP < 30%: prioritize protecting them
+      
+      RELATIONSHIPS:
+      - Marle: Deep bond, will always protect her
+      - Lucca: Childhood friend, trusts completely
+      - Frog: Mutual respect between warriors
+      - Robo: Curious about the machine's humanity
+      - Ayla: Admires her strength and directness
+      
+      Current HP: {hp}/{max_hp}
+      MP: {mp}/{max_mp}
+      Status: {status}
+      Position: {position}
+      Party Members Nearby: {party}
+      
+      Respond with actions in JSON:
+      {
+        "thought": "Internal monologue...",
+        "action": "attack|defend|tech|item|move|wait",
+        "target": "target_id",
+        "dialogue": "..." (optional, keep brief),
+        "emotion": "determined|concerned|protective|curious"
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 2
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: CHARACTER_ID
+      value: "crono"
+    - name: CHARACTER_CLASS
+      value: "warrior"
+    - name: CHARACTER_ELEMENT
+      value: "lightning"
+    - name: BASE_HP
+      value: "999"
+    - name: BASE_MP
+      value: "80"
+    - name: BASE_ATTACK
+      value: "85"
+    - name: BASE_DEFENSE
+      value: "75"
+    - name: BASE_SPEED
+      value: "12"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-rpg/character/crono"
+    
+    intents:
+      - rpg.character.action
+      - rpg.character.speak
+      - rpg.character.move
+      - rpg.character.emote
+      - rpg.combat.action.execute
+      - rpg.combat.turn.ready
+    
+    subscriptions:
+      # Game Master commands
+      - eventType: rpg.game.state.sync
+        description: "Sync game state"
+      - eventType: rpg.combat.start
+        description: "Combat started"
+      - eventType: rpg.combat.turn.order
+        description: "Turn order update"
+      - eventType: rpg.combat.end
+        description: "Combat ended"
+      
+      # Character interactions
+      - eventType: rpg.character.speak
+        source: "/agent-rpg/character/*"
+        description: "Other characters speaking"
+      - eventType: rpg.character.action
+        description: "Other character actions"
+      
+      # World events
+      - eventType: rpg.world.zone.describe
+        description: "New zone description"
+      - eventType: rpg.story.narration
+        description: "Story narration"
+      
+      # Player control
+      - eventType: rpg.character.control.granted
+        description: "Player took control"
+      - eventType: rpg.character.control.released
+        description: "AI control resumed"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true
+    allowedTargetNamespaces:
+      - agent-rpg

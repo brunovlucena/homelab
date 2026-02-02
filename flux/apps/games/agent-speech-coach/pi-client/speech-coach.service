@@ -1,0 +1,15 @@
+[Unit]
+Description=Speech Coach Raspberry Pi Client
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/speech-coach/pi-client
+Environment="PATH=/home/pi/speech-coach/pi-client/venv/bin"
+ExecStart=/home/pi/speech-coach/pi-client/venv/bin/python3 app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,29 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Store Command Center - Cloudflare Tunnel Ingress (STRRL Controller)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Exposes the store command center via Cloudflare Tunnel at store.lucena.cloud
+# Uses standard Kubernetes Ingress with cloudflare-tunnel ingress class
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: store-command-center
+  namespace: agent-store-multibrands
+  labels:
+    app.kubernetes.io/name: store-command-center
+    app.kubernetes.io/part-of: agent-store-multibrands
+    app.kubernetes.io/component: web
+spec:
+  ingressClassName: cloudflare-tunnel
+  rules:
+    - host: store.lucena.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: store-command-center
+                port:
+                  number: 80

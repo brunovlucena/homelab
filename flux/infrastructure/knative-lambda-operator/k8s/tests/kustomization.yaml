@@ -1,0 +1,45 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🧪 TESTS KUSTOMIZATION - K6 Load & Chaos Testing
+#
+#  Purpose: k6 load testing and chaos engineering test resources
+#  Note: k6-operator is managed separately via Flux (see ../k6-operator/)
+#  Usage: Include this in overlays for load testing capabilities
+#
+#  QA Improvements (2025-12-09):
+#    ✅ Setup/teardown hooks added
+#    ✅ Extended soak test (2m → 30m)
+#    ✅ Correlation ID tracking
+#    ✅ Standardized thresholds
+#    ✅ Chaos engineering tests added
+#  Note: Notifi-specific tests moved to demo-notifi repository
+#
+#  Test Suite:
+#    - k6-configmap.yaml:        Base test scripts (smoke, load, stress)
+#    - k6-sre-metrics.yaml:      SRE metrics/SLO validation (NEW - SRE 2025-12-09)
+#  Note: Notifi-specific tests moved to demo-notifi repository
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: knative-lambda
+
+resources:
+  # Base test scripts
+  - k6-configmap.yaml
+  - k6-testrun-create-lambdas.yaml
+  - k6-testrun-execute-lambda.yaml
+  
+  # SRE metrics validation tests (NEW - SRE 2025-12-09)
+  # Based on SRE_LAMBDA_METRICS_REPORT.md
+  - k6-sre-metrics.yaml
+  
+  # RBAC permission tests (NEW - 2025-12-10)
+  # Tests agent permission tiers, broker/trigger restrictions, event-based disable
+  - k6-rbac.yaml
+  - k6-rbac-disable.yaml
+  
+  # Monitoring
+  - k6-podmonitor.yaml

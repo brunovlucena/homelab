@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐉 MAG7 Battle Royale - Knative Lambda Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(180deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: #00ff00;
+            overflow: hidden;
+        }
+        
+        .game-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 10px;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #00ff00;
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .header h1 {
+            font-size: 1.8em;
+            text-shadow: 0 0 20px #00ff00;
+            margin-bottom: 5px;
+        }
+        
+        .header .subtitle {
+            color: #888;
+            font-size: 0.9em;
+        }
+        
+        .main-area {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .scoreboard {
+            width: 200px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #00ff00;
+            border-radius: 10px;
+            padding: 10px;
+        }
+        
+        .scoreboard h2 {
+            text-align: center;
+            border-bottom: 1px solid #00ff00;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+            font-size: 1em;
+        }
+        
+        .agent-score {
+            display: flex;
+            align-items: center;
+            padding: 5px;
+            margin: 5px 0;
+            background: rgba(0, 50, 0, 0.3);
+            border-radius: 5px;
+            border-left: 3px solid var(--agent-color, #00ff00);
+        }
+        
+        .agent-score .emoji {
+            font-size: 1.5em;
+            margin-right: 8px;
+        }
+        
+        .agent-score .name {
+            flex: 1;
+            font-size: 0.8em;
+        }
+        
+        .agent-score .score {
+            font-weight: bold;
+            color: #ffff00;
+        }
+        
+        .agent-score .kills {
+            font-size: 0.7em;
+            color: #ff6666;
+            margin-left: 5px;
+        }
+        
+        .game-canvas-container {
+            flex: 1;
+            position: relative;
+        }
+        
+        #gameCanvas {
+            background: radial-gradient(ellipse at center, #0a0a2a 0%, #000010 100%);
+            border: 2px solid #00ff00;
+            border-radius: 10px;
+            display: block;
+            width: 100%;
+            height: 600px;
+        }
+        
+        .right-panel {
+            width: 220px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .mag7-status {
+            background: rgba(100, 0, 0, 0.5);
+            border: 2px solid #ff0000;
+            border-radius: 10px;
+            padding: 10px;
+        }
+        
+        .mag7-status h2 {
+            text-align: center;
+            color: #ff0000;
+            font-size: 1em;
+            margin-bottom: 10px;
+        }
+        
+        .health-bar {
+            background: #300;
+            height: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 5px 0;
+        }
+        
+        .health-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff0000, #ff6600);
+            transition: width 0.3s;
+        }
+        
+        .heads-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        
+        .head {
+            font-size: 1.2em;
+            opacity: 1;
+            transition: opacity 0.5s, filter 0.5s;
+        }
+        
+        .head.defeated {
+            opacity: 0.3;
+            filter: grayscale(1);
+        }
+        
+        .metrics-panel {
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #00ccff;
+            border-radius: 10px;
+            padding: 10px;
+            flex: 1;
+        }
+        
+        .metrics-panel h2 {
+            text-align: center;
+            color: #00ccff;
+            font-size: 1em;
+            border-bottom: 1px solid #00ccff;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+        }
+        
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 3px 0;
+            font-size: 0.8em;
+            border-bottom: 1px solid rgba(0, 204, 255, 0.2);
+        }
+        
+        .metric-value {
+            color: #00ccff;
+            font-weight: bold;
+        }
+        
+        .controls {
+            text-align: center;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #444;
+            border-radius: 10px;
+            margin-top: 10px;
+        }
+        
+        .controls span {
+            margin: 0 10px;
+            color: #888;
+            font-size: 0.9em;
+        }
+        
+        .controls kbd {
+            background: #333;
+            padding: 2px 8px;
+            border-radius: 3px;
+            border: 1px solid #555;
+        }
+        
+        .game-over-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            border-radius: 10px;
+        }
+        
+        .game-over-overlay.active {
+            display: flex;
+        }
+        
+        .game-over-overlay h2 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            text-shadow: 0 0 30px currentColor;
+        }
+        
+        .game-over-overlay.victory h2 {
+            color: #00ff00;
+        }
+        
+        .game-over-overlay.defeat h2 {
+            color: #ff0000;
+        }
+        
+        .game-over-overlay button {
+            padding: 15px 40px;
+            font-size: 1.2em;
+            background: #00ff00;
+            color: #000;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            margin-top: 20px;
+        }
+        
+        .stars {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+        }
+        
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle 2s infinite;
+        }
+        
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+        
+        .event-log {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #00ff00;
+            border-radius: 5px;
+            padding: 5px;
+            max-height: 80px;
+            overflow-y: auto;
+            font-size: 0.7em;
+        }
+        
+        .event-log .event {
+            padding: 2px 5px;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.2);
+        }
+        
+        .event-log .event:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="stars" id="stars"></div>
+    
+    <div class="game-container">
+        <div class="header">
+            <h1>🐉 MAG7 BATTLE ROYALE 🛡️</h1>
+            <div class="subtitle">Knative Lambda Operator Demo | Agents vs MAG7 | k6 Tests = Power!</div>
+        </div>
+        
+        <div class="main-area">
+            <!-- Left: Scoreboard -->
+            <div class="scoreboard">
+                <h2>⚔️ AGENT LEADERBOARD</h2>
+                <div id="agentScores"></div>
+            </div>
+            
+            <!-- Center: Game Canvas -->
+            <div class="game-canvas-container">
+                <canvas id="gameCanvas"></canvas>
+                <div class="event-log" id="eventLog"></div>
+                <div class="game-over-overlay" id="gameOverlay">
+                    <h2 id="gameOverText">VICTORY!</h2>
+                    <div id="finalStats"></div>
+                    <button onclick="restartGame()">PLAY AGAIN</button>
+                </div>
+            </div>
+            
+            <!-- Right: MAG7 Status & Metrics -->
+            <div class="right-panel">
+                <div class="mag7-status">
+                    <h2>🐉 MAG7 BOSS</h2>
+                    <div class="health-bar">
+                        <div class="health-bar-fill" id="mag7HealthBar" style="width: 100%"></div>
+                    </div>
+                    <div style="text-align: center; font-size: 0.9em;">
+                        <span id="mag7Health">1000</span> / 1000 HP
+                    </div>
+                    <div class="heads-container" id="mag7Heads"></div>
+                </div>
+                
+                <div class="metrics-panel">
+                    <h2>📊 PROMETHEUS METRICS</h2>
+                    <div id="metrics"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <span><kbd>← →</kbd> Move</span>
+            <span><kbd>SPACE</kbd> Fire</span>
+            <span><kbd>1-6</kbd> Switch Agent</span>
+            <span><kbd>P</kbd> Pause</span>
+            <span><kbd>R</kbd> Run k6 Test</span>
+        </div>
+    </div>
+
+    <script>
+        // ============ AGENT DEFINITIONS ============
+        const AGENTS = {
+            bruno: {
+                id: 'bruno',
+                name: 'Agent Bruno',
+                emoji: '🧠',
+                color: '#00ff00',
+                namespace: 'agent-bruno',
+                description: 'AI Chatbot Agent',
+                abilities: ['chat', 'analyze', 'respond'],
+                damage: 30,
+                fireRate: 0.8,
+                projectileColor: '#00ff00',
+                projectileEmoji: '💬'
+            },
+            redteam: {
+                id: 'redteam',
+                name: 'Agent RedTeam',
+                emoji: '🔴',
+                color: '#ff0000',
+                namespace: 'agent-redteam',
+                description: 'Offensive Security Agent',
+                abilities: ['exploit', 'attack', 'pentest'],
+                damage: 50,
+                fireRate: 0.6,
+                projectileColor: '#ff0000',
+                projectileEmoji: '💥'
+            },
+            blueteam: {
+                id: 'blueteam',
+                name: 'Agent BlueTeam',
+                emoji: '🔵',
+                color: '#0088ff',
+                namespace: 'demo-mag7-battle',
+                description: 'Defensive Security Agent',
+                abilities: ['defend', 'block', 'monitor'],
+                damage: 40,
+                fireRate: 0.7,
+                projectileColor: '#0088ff',
+                projectileEmoji: '🛡️'
+            },
+            contracts: {
+                id: 'contracts',
+                name: 'Agent Contracts',
+                emoji: '📜',
+                color: '#ffaa00',
+                namespace: 'agent-contracts',
+                description: 'Smart Contract Security Squad',
+                abilities: ['scan', 'fetch', 'alert'],
+                damage: 35,
+                fireRate: 0.75,
+                projectileColor: '#ffaa00',
+                projectileEmoji: '📄'
+            },
+            vulnscanner: {
+                id: 'vulnscanner',
+                name: 'Vuln Scanner',
+                emoji: '🔍',
+                color: '#ff00ff',
+                namespace: 'agent-contracts',
+                description: 'Vulnerability Detection',
+                abilities: ['scan', 'detect', 'report'],
+                damage: 25,
+                fireRate: 0.9,
+                projectileColor: '#ff00ff',
+                projectileEmoji: '🎯'
+            },
+            exploitgen: {
+                id: 'exploitgen',
+                name: 'Exploit Generator',
+                emoji: '⚡',
+                color: '#ffff00',
+                namespace: 'agent-contracts',
+                description: 'Exploit Creation Engine',
+                abilities: ['generate', 'craft', 'deploy'],
+                damage: 60,
+                fireRate: 0.5,
+                projectileColor: '#ffff00',
+                projectileEmoji: '⚡'
+            }
+        };
+
+        // ============ MAG7 CEO HEADS ============
+        const MAG7_HEADS = [
+            { id: 'apple', emoji: '🍎', name: 'Apple', color: '#a8a8a8', attack: 'Walled Garden', hp: 150 },
+            { id: 'microsoft', emoji: '🪟', name: 'Microsoft', color: '#0078d4', attack: 'Blue Screen', hp: 150 },
+            { id: 'google', emoji: '🔍', name: 'Google', color: '#4285f4', attack: 'Data Harvest', hp: 150 },
+            { id: 'amazon', emoji: '📦', name: 'Amazon', color: '#ff9900', attack: 'Cloud Lock', hp: 150 },
+            { id: 'meta', emoji: '👓', name: 'Meta', color: '#0668e1', attack: 'Privacy Void', hp: 150 },
+            { id: 'tesla', emoji: '⚡', name: 'Tesla', color: '#cc0000', attack: 'Self-Drive', hp: 150 },
+            { id: 'nvidia', emoji: '🎮', name: 'Nvidia', color: '#76b900', attack: 'GPU Meltdown', hp: 100 }
+        ];
+
+        // ============ GAME STATE ============
+        const gameState = {
+            running: false,
+            paused: false,
+            currentAgent: 'bruno',
+            wave: 1,
+            score: 0,
+            mag7Health: 1000,
+            mag7MaxHealth: 1000,
+            mag7Phase: 'normal',
+            mag7Defeated: false,
+            agentScores: {},
+            agentKills: {},
+            agentPositions: {},
+            projectiles: [],
+            enemyProjectiles: [],
+            particles: [],
+            events: [],
+            k6TestsRun: 0,
+            exploitsBlocked: 0,
+            damageDealt: 0
+        };
+
+        // Initialize agent scores
+        Object.keys(AGENTS).forEach(id => {
+            gameState.agentScores[id] = 0;
+            gameState.agentKills[id] = 0;
+        });
+
+        // ============ CANVAS SETUP ============
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth;
+            canvas.height = 600;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ============ PLAYER STATE ============
+        const player = {
+            x: canvas.width / 2,
+            y: canvas.height - 80,
+            width: 50,
+            height: 50,
+            speed: 8,
+            health: 100,
+            maxHealth: 100,
+            lastFire: 0
+        };
+
+        // ============ INPUT HANDLING ============
+        const keys = {};
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            
+            // Switch agents with number keys
+            const agentKeys = ['1', '2', '3', '4', '5', '6'];
+            const agentIds = Object.keys(AGENTS);
+            const keyIndex = agentKeys.indexOf(e.key);
+            if (keyIndex !== -1 && keyIndex < agentIds.length) {
+                gameState.currentAgent = agentIds[keyIndex];
+                logEvent(`Switched to ${AGENTS[gameState.currentAgent].name}!`);
+            }
+            
+            if (e.key === 'p' || e.key === 'P') {
+                gameState.paused = !gameState.paused;
+            }
+            
+            if (e.key === 'r' || e.key === 'R') {
+                simulateK6Test();
+            }
+            
+            if (e.key === ' ') {
+                e.preventDefault();
+            }
+        });
+        document.addEventListener('keyup', (e) => keys[e.key] = false);
+
+        // ============ PROJECTILE SYSTEM ============
+        function fireProjectile() {
+            const agent = AGENTS[gameState.currentAgent];
+            const now = Date.now();
+            const fireDelay = 1000 / agent.fireRate / 2;
+            
+            if (now - player.lastFire < fireDelay) return;
+            player.lastFire = now;
+            
+            gameState.projectiles.push({
+                x: player.x,
+                y: player.y - 20,
+                width: 8,
+                height: 20,
+                speed: 12,
+                damage: agent.damage,
+                color: agent.projectileColor,
+                emoji: agent.projectileEmoji,
+                agent: gameState.currentAgent
+            });
+        }
+
+        // ============ MAG7 ATTACK SYSTEM ============
+        function mag7Attack() {
+            if (gameState.mag7Defeated) return;
+            
+            // Random head attacks
+            const activeHeads = MAG7_HEADS.filter(h => !h.defeated);
+            if (activeHeads.length === 0) return;
+            
+            const attackingHead = activeHeads[Math.floor(Math.random() * activeHeads.length)];
+            
+            // Fire projectile from MAG7
+            const mag7Y = 80;
+            const mag7X = canvas.width / 2;
+            
+            gameState.enemyProjectiles.push({
+                x: mag7X + (Math.random() - 0.5) * 200,
+                y: mag7Y + 50,
+                width: 15,
+                height: 15,
+                speed: 4 + gameState.wave * 0.5,
+                damage: 10 + gameState.wave * 2,
+                color: attackingHead.color,
+                emoji: attackingHead.emoji,
+                head: attackingHead.id
+            });
+        }
+
+        // ============ K6 TEST SIMULATION ============
+        function simulateK6Test() {
+            const agent = AGENTS[gameState.currentAgent];
+            gameState.k6TestsRun++;
+            
+            // K6 test gives points and damages MAG7
+            const points = Math.floor(Math.random() * 500) + 500;
+            const damage = Math.floor(Math.random() * 100) + 50;
+            
+            gameState.agentScores[gameState.currentAgent] += points;
+            gameState.score += points;
+            damageMag7(damage, agent.name);
+            
+            logEvent(`🧪 ${agent.name} ran k6 test! +${points} pts, ${damage} dmg to MAG7`);
+            
+            // Create burst of projectiles
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    gameState.projectiles.push({
+                        x: player.x + (Math.random() - 0.5) * 50,
+                        y: player.y - 20,
+                        width: 10,
+                        height: 25,
+                        speed: 15,
+                        damage: agent.damage * 2,
+                        color: agent.projectileColor,
+                        emoji: '🧪',
+                        agent: gameState.currentAgent
+                    });
+                }, i * 100);
+            }
+        }
+
+        // ============ DAMAGE MAG7 ============
+        function damageMag7(damage, source) {
+            gameState.mag7Health = Math.max(0, gameState.mag7Health - damage);
+            gameState.damageDealt += damage;
+            
+            // Update heads based on health
+            const healthPercent = gameState.mag7Health / gameState.mag7MaxHealth;
+            MAG7_HEADS.forEach((head, i) => {
+                const threshold = 1 - ((i + 1) / MAG7_HEADS.length);
+                head.defeated = healthPercent < threshold;
+            });
+            
+            // Phase changes
+            if (healthPercent <= 0.25) {
+                gameState.mag7Phase = 'desperate';
+            } else if (healthPercent <= 0.5) {
+                gameState.mag7Phase = 'enraged';
+            }
+            
+            // Check victory
+            if (gameState.mag7Health <= 0) {
+                gameState.mag7Defeated = true;
+                victory();
+            }
+            
+            updateUI();
+        }
+
+        // ============ COLLISION DETECTION ============
+        function checkCollisions() {
+            // Projectiles hitting MAG7
+            const mag7Bounds = {
+                x: canvas.width / 2 - 100,
+                y: 30,
+                width: 200,
+                height: 100
+            };
+            
+            gameState.projectiles = gameState.projectiles.filter(p => {
+                if (p.y < 0) return false;
+                
+                // Hit MAG7
+                if (p.x > mag7Bounds.x && p.x < mag7Bounds.x + mag7Bounds.width &&
+                    p.y > mag7Bounds.y && p.y < mag7Bounds.y + mag7Bounds.height) {
+                    
+                    const agent = AGENTS[p.agent];
+                    damageMag7(p.damage, agent.name);
+                    gameState.agentScores[p.agent] += p.damage * 2;
+                    gameState.agentKills[p.agent]++;
+                    gameState.exploitsBlocked++;
+                    
+                    // Particles
+                    createParticles(p.x, p.y, p.color, 5);
+                    return false;
+                }
+                return true;
+            });
+            
+            // Enemy projectiles hitting player
+            gameState.enemyProjectiles = gameState.enemyProjectiles.filter(p => {
+                if (p.y > canvas.height) return false;
+                
+                if (p.x > player.x - player.width/2 && p.x < player.x + player.width/2 &&
+                    p.y > player.y - player.height/2 && p.y < player.y + player.height/2) {
+                    
+                    player.health -= p.damage;
+                    createParticles(p.x, p.y, '#ff0000', 8);
+                    logEvent(`💥 Player hit by ${p.emoji}! -${p.damage} HP`);
+                    
+                    if (player.health <= 0) {
+                        defeat();
+                    }
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        // ============ PARTICLES ============
+        function createParticles(x, y, color, count) {
+            for (let i = 0; i < count; i++) {
+                gameState.particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    life: 30,
+                    color
+                });
+            }
+        }
+
+        // ============ GAME LOOP ============
+        function update() {
+            if (gameState.paused || !gameState.running) return;
+            
+            // Player movement
+            if (keys['ArrowLeft'] || keys['a']) {
+                player.x = Math.max(player.width/2, player.x - player.speed);
+            }
+            if (keys['ArrowRight'] || keys['d']) {
+                player.x = Math.min(canvas.width - player.width/2, player.x + player.speed);
+            }
+            if (keys[' ']) {
+                fireProjectile();
+            }
+            
+            // Update projectiles
+            gameState.projectiles.forEach(p => p.y -= p.speed);
+            gameState.enemyProjectiles.forEach(p => p.y += p.speed);
+            
+            // Update particles
+            gameState.particles = gameState.particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life--;
+                return p.life > 0;
+            });
+            
+            // MAG7 attacks
+            if (Math.random() < 0.02 + gameState.wave * 0.005) {
+                mag7Attack();
+            }
+            
+            checkCollisions();
+        }
+
+        // ============ RENDER ============
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw MAG7 Boss
+            drawMag7();
+            
+            // Draw projectiles
+            gameState.projectiles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = p.color;
+                ctx.font = '20px Arial';
+                ctx.fillText(p.emoji, p.x - 10, p.y);
+                ctx.shadowBlur = 0;
+            });
+            
+            // Draw enemy projectiles
+            gameState.enemyProjectiles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = p.color;
+                ctx.font = '25px Arial';
+                ctx.fillText(p.emoji, p.x - 12, p.y);
+                ctx.shadowBlur = 0;
+            });
+            
+            // Draw particles
+            gameState.particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / 30;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+            
+            // Draw player (current agent)
+            drawPlayer();
+            
+            // Draw other agents in background
+            drawOtherAgents();
+        }
+
+        function drawMag7() {
+            const centerX = canvas.width / 2;
+            const y = 60;
+            
+            // Draw dragon body
+            ctx.font = '60px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('🐉', centerX, y);
+            
+            // Draw CEO heads around dragon
+            const activeHeads = MAG7_HEADS.filter(h => !h.defeated);
+            const headRadius = 80;
+            
+            MAG7_HEADS.forEach((head, i) => {
+                const angle = (Math.PI / (MAG7_HEADS.length + 1)) * (i + 1);
+                const hx = centerX + Math.cos(angle - Math.PI/2) * headRadius;
+                const hy = y + 20 + Math.sin(angle - Math.PI/2) * 40;
+                
+                ctx.font = '25px Arial';
+                ctx.globalAlpha = head.defeated ? 0.3 : 1;
+                ctx.fillText(head.emoji, hx, hy);
+                ctx.globalAlpha = 1;
+            });
+            
+            // Phase indicator
+            if (gameState.mag7Phase === 'enraged') {
+                ctx.fillStyle = '#ff6600';
+                ctx.font = '14px Courier New';
+                ctx.fillText('⚠️ ENRAGED', centerX, y + 60);
+            } else if (gameState.mag7Phase === 'desperate') {
+                ctx.fillStyle = '#ff0000';
+                ctx.font = '14px Courier New';
+                ctx.fillText('💀 DESPERATE', centerX, y + 60);
+            }
+        }
+
+        function drawPlayer() {
+            const agent = AGENTS[gameState.currentAgent];
+            
+            // Glow effect
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = agent.color;
+            
+            // Agent emoji
+            ctx.font = '40px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(agent.emoji, player.x, player.y);
+            
+            // Agent name
+            ctx.font = '12px Courier New';
+            ctx.fillStyle = agent.color;
+            ctx.fillText(agent.name, player.x, player.y + 30);
+            
+            // Health bar
+            const barWidth = 50;
+            const barHeight = 5;
+            ctx.fillStyle = '#300';
+            ctx.fillRect(player.x - barWidth/2, player.y + 35, barWidth, barHeight);
+            ctx.fillStyle = player.health > 30 ? '#0f0' : '#f00';
+            ctx.fillRect(player.x - barWidth/2, player.y + 35, barWidth * (player.health / player.maxHealth), barHeight);
+            
+            ctx.shadowBlur = 0;
+        }
+
+        function drawOtherAgents() {
+            // Draw other agents as "allies" at the bottom
+            const otherAgents = Object.keys(AGENTS).filter(id => id !== gameState.currentAgent);
+            const spacing = canvas.width / (otherAgents.length + 1);
+            
+            otherAgents.forEach((id, i) => {
+                const agent = AGENTS[id];
+                const x = spacing * (i + 1);
+                const y = canvas.height - 30;
+                
+                ctx.globalAlpha = 0.5;
+                ctx.font = '25px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(agent.emoji, x, y);
+                
+                // Score under agent
+                ctx.font = '10px Courier New';
+                ctx.fillStyle = agent.color;
+                ctx.fillText(gameState.agentScores[id], x, y + 15);
+                ctx.globalAlpha = 1;
+            });
+        }
+
+        // ============ UI UPDATES ============
+        function updateUI() {
+            // Update MAG7 health bar
+            document.getElementById('mag7Health').textContent = Math.floor(gameState.mag7Health);
+            document.getElementById('mag7HealthBar').style.width = 
+                (gameState.mag7Health / gameState.mag7MaxHealth * 100) + '%';
+            
+            // Update MAG7 heads
+            const headsContainer = document.getElementById('mag7Heads');
+            headsContainer.innerHTML = MAG7_HEADS.map(h => 
+                `<span class="head ${h.defeated ? 'defeated' : ''}" title="${h.name}">${h.emoji}</span>`
+            ).join('');
+            
+            // Update agent scores
+            const scoresContainer = document.getElementById('agentScores');
+            scoresContainer.innerHTML = Object.entries(AGENTS)
+                .sort((a, b) => gameState.agentScores[b[0]] - gameState.agentScores[a[0]])
+                .map(([id, agent]) => `
+                    <div class="agent-score" style="--agent-color: ${agent.color}; ${id === gameState.currentAgent ? 'background: rgba(0,100,0,0.5);' : ''}">
+                        <span class="emoji">${agent.emoji}</span>
+                        <span class="name">${agent.name}</span>
+                        <span class="score">${gameState.agentScores[id]}</span>
+                        <span class="kills">💀${gameState.agentKills[id]}</span>
+                    </div>
+                `).join('');
+            
+            // Update metrics
+            const metricsContainer = document.getElementById('metrics');
+            metricsContainer.innerHTML = `
+                <div class="metric"><span>Wave</span><span class="metric-value">${gameState.wave}</span></div>
+                <div class="metric"><span>Score</span><span class="metric-value">${gameState.score}</span></div>
+                <div class="metric"><span>k6 Tests</span><span class="metric-value">${gameState.k6TestsRun}</span></div>
+                <div class="metric"><span>Exploits Blocked</span><span class="metric-value">${gameState.exploitsBlocked}</span></div>
+                <div class="metric"><span>Damage Dealt</span><span class="metric-value">${gameState.damageDealt}</span></div>
+                <div class="metric"><span>Player HP</span><span class="metric-value">${player.health}/${player.maxHealth}</span></div>
+            `;
+        }
+
+        function logEvent(message) {
+            gameState.events.unshift({ time: new Date().toLocaleTimeString(), message });
+            gameState.events = gameState.events.slice(0, 10);
+            
+            const logContainer = document.getElementById('eventLog');
+            logContainer.innerHTML = gameState.events.map(e => 
+                `<div class="event">[${e.time}] ${e.message}</div>`
+            ).join('');
+        }
+
+        // ============ GAME STATES ============
+        function victory() {
+            gameState.running = false;
+            const overlay = document.getElementById('gameOverlay');
+            overlay.classList.add('active', 'victory');
+            overlay.classList.remove('defeat');
+            document.getElementById('gameOverText').textContent = '🎉 VICTORY! MAG7 DEFEATED!';
+            document.getElementById('finalStats').innerHTML = `
+                <p>Total Score: ${gameState.score}</p>
+                <p>Damage Dealt: ${gameState.damageDealt}</p>
+                <p>k6 Tests Run: ${gameState.k6TestsRun}</p>
+            `;
+            logEvent('🎉 MAG7 HAS BEEN DEFEATED! VICTORY!');
+        }
+
+        function defeat() {
+            gameState.running = false;
+            const overlay = document.getElementById('gameOverlay');
+            overlay.classList.add('active', 'defeat');
+            overlay.classList.remove('victory');
+            document.getElementById('gameOverText').textContent = '💀 DEFEAT!';
+            document.getElementById('finalStats').innerHTML = `
+                <p>MAG7 Remaining HP: ${Math.floor(gameState.mag7Health)}</p>
+                <p>Your Score: ${gameState.score}</p>
+            `;
+            logEvent('💀 You have been defeated by MAG7!');
+        }
+
+        function restartGame() {
+            // Reset game state
+            gameState.running = true;
+            gameState.paused = false;
+            gameState.wave = 1;
+            gameState.score = 0;
+            gameState.mag7Health = 1000;
+            gameState.mag7Phase = 'normal';
+            gameState.mag7Defeated = false;
+            gameState.projectiles = [];
+            gameState.enemyProjectiles = [];
+            gameState.particles = [];
+            gameState.k6TestsRun = 0;
+            gameState.exploitsBlocked = 0;
+            gameState.damageDealt = 0;
+            
+            Object.keys(AGENTS).forEach(id => {
+                gameState.agentScores[id] = 0;
+                gameState.agentKills[id] = 0;
+            });
+            
+            MAG7_HEADS.forEach(h => h.defeated = false);
+            
+            player.x = canvas.width / 2;
+            player.health = 100;
+            
+            document.getElementById('gameOverlay').classList.remove('active');
+            updateUI();
+            logEvent('🎮 New game started! Defeat MAG7!');
+        }
+
+        // ============ STARS BACKGROUND ============
+        function createStars() {
+            const starsContainer = document.getElementById('stars');
+            for (let i = 0; i < 100; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 100 + '%';
+                star.style.width = star.style.height = Math.random() * 3 + 1 + 'px';
+                star.style.animationDelay = Math.random() * 2 + 's';
+                starsContainer.appendChild(star);
+            }
+        }
+
+        // ============ MAIN GAME LOOP ============
+        function gameLoop() {
+            update();
+            render();
+            updateUI();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ============ INITIALIZE ============
+        function init() {
+            createStars();
+            updateUI();
+            gameState.running = true;
+            logEvent('🎮 MAG7 Battle Royale Started!');
+            logEvent('💡 Press R to run k6 tests for bonus damage!');
+            logEvent('💡 Press 1-6 to switch between agents!');
+            gameLoop();
+        }
+
+        init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+/* Default Theme - Green */
+:root {
+    --primary-color: #4CAF50;
+    --header-bg: #4CAF50;
+    --chat-bg: #f5f5f5;
+    --user-message-bg: #007AFF;
+    --agent-message-bg: white;
+    --agent-message-text: #333;
+}

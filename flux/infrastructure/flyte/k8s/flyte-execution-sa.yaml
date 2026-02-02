@@ -1,0 +1,16 @@
+---
+# ServiceAccount for Flyte execution pods with imagePullSecrets
+# Only creating in flyte namespace - other namespaces should be handled via separate kustomizations if needed
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flyte-execution
+  namespace: flyte
+  labels:
+    app: flyte
+    component: execution
+imagePullSecrets:
+  - name: ghcr-secret
+
+
+

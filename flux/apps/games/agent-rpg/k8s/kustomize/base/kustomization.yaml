@@ -1,0 +1,28 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  # Core
+  - rbac.yaml
+  - configmap-game-config.yaml
+  
+  # Game Master - The DM AI
+  - lambdaagent-game-master.yaml
+  
+  # Playable Characters (each is an AI agent)
+  - lambdaagent-crono.yaml     # 🗡️ Warrior - Lightning
+  - lambdaagent-lucca.yaml     # ⚡ Mage - Fire
+  - lambdaagent-marle.yaml     # 💫 Healer - Ice
+  - lambdaagent-frog.yaml      # 🐸 Paladin - Water
+  - lambdaagent-robo.yaml      # 🤖 Tank - Shadow
+  - lambdaagent-ayla.yaml      # 🦖 Berserker - Physical
+  
+  # Game Server (serves web UI)
+  - lambdafunction-game-server.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: agent-rpg
+  app.kubernetes.io/managed-by: kustomize

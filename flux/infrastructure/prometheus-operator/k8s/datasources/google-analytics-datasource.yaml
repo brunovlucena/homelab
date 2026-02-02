@@ -1,0 +1,42 @@
+---
+# Google Analytics Datasource for Grafana
+#
+# This datasource uses the homelab service account for authentication.
+# Project: homelab-481500
+# Service Account: homelab@homelab-481500.iam.gserviceaccount.com
+#
+# Setup Requirements:
+# 1. Enable the following APIs in Google Cloud Console:
+#    - Google Analytics Admin API
+#    - Google Analytics Data API
+#
+# 2. Grant the service account "Read & Analyze" permission in Google Analytics:
+#    - Go to Google Analytics > Admin > Account Access Management
+#    - Add the service account email (homelab@homelab-481500.iam.gserviceaccount.com) with "Read & Analyze" role
+#
+# NOTE: Do not commit the GCP service account JWT. The JWT must be provided via
+# Sealed Secrets, External Secrets Operator, or a Secret created manually.
+# This file is a template; the jwt value must be injected from your secret.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-google-analytics
+  namespace: prometheus
+  labels:
+    grafana_datasource: "1"
+data:
+  google-analytics-datasource.yaml: |-
+    apiVersion: 1
+    datasources:
+    - name: "Google Analytics"
+      type: blackcowmoo-googleanalytics-datasource
+      uid: google-analytics
+      access: proxy
+      jsonData:
+        authenticationType: jwt
+      secureJsonData:
+        # JWT must be injected from a Kubernetes Secret (e.g. Sealed Secret).
+        # Do not commit real credentials. Create secret with key 'jwt' containing
+        # the full GCP service account JSON.
+        jwt: ""
+      editable: true

@@ -1,0 +1,321 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: prometheus
+spec:
+  interval: 30m
+  # ⏱️ Increased timeout for large chart downloads and pre-upgrade hooks
+  # Prevents failures during GitHub 504 Gateway Timeout issues and hook timeouts
+  timeout: 30m
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "81.2.0"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+      # 🔄 Longer interval reduces load on GitHub CDN
+      interval: 12h
+  install:
+    crds: Create
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+    timeout: 30m
+  values:
+    
+    # Disable all default PrometheusRules
+    defaultRules:
+      create: false
+    
+    # Prometheus Operator configuration
+    prometheusOperator:
+      enabled: true
+      image:
+        registry: localhost:5001
+        repository: prometheus-operator
+        tag: v0.86.2
+      prometheusConfigReloader:
+        image:
+          registry: localhost:5001
+          repository: prometheus-config-reloader
+          tag: v0.81.0
+      admissionWebhooks:
+        patch:
+          image:
+            registry: localhost:5001
+            repository: kube-webhook-certgen
+            tag: v1.6.4
+      resources:
+        # requests:
+        #   cpu: 100m
+        #   memory: 128Mi
+        limits:
+          # cpu: 500m
+          memory: 512Mi
+    
+    # Prometheus configuration
+    prometheus:
+      enabled: true
+      prometheusSpec:
+        image:
+          registry: localhost:5001
+          repository: prometheus
+          tag: v3.7.3
+        retention: 7d
+        # Enable remote write receiver for k6 metrics
+        enableRemoteWriteReceiver: true
+        # Enable native histograms for k6 remote write compatibility
+        enableFeatures:
+          - native-histograms
+          - promql-per-step-stats  # Provides per-step statistics for query optimization
+          - auto-gomaxprocs  # Automatically set GOMAXPROCS for optimal CPU utilization
+        
+        # Query performance settings
+        # These settings help optimize query performance and prevent resource exhaustion
+        query:
+          # Maximum time a query may take before being aborted (default: 2m)
+          # Increased to allow complex queries to complete
+          timeout: 5m
+          # Maximum number of queries executed concurrently (default: 20)
+          # Increased for better throughput
+          maxConcurrency: 50
+          # Maximum number of samples a single query can load into memory (default: 50000000)
+          # This prevents OOM issues from overly complex queries
+          maxSamples: 100000000
+          # Maximum lookback duration for retrieving metrics during expression evaluations (default: 5m)
+          lookbackDelta: 5m
+        
+        # Rules evaluation performance
+        # Controls concurrent rule evaluation
+        rules:
+          # Maximum number of rules that can be evaluated concurrently
+          # This helps with alert rule evaluation performance
+          maxConcurrentEvals: 8
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 10Gi
+        resources:
+          requests:
+            cpu: 500m  # Set CPU request to prevent throttling
+            memory: 1Gi
+          limits:
+            cpu: 2000m  # Increased CPU limit for better query performance
+            memory: 3Gi
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        # Expose Prometheus via NodePort for Cursor access
+        service:
+          type: NodePort
+          nodePort: 30041
+          port: 9090
+    
+    # Grafana
+    grafana:
+      enabled: true
+      image:
+        registry: localhost:5001
+        repository: grafana
+        tag: "12.2.1"
+      # Expose Grafana via NodePort for Cursor access
+      service:
+        type: NodePort
+        nodePort: 30040
+        port: 3000
+      # 1. Persistent storage for Grafana data (prevents logout on pod restart)
+      # This ensures session data, SQLite database, and other state persists across pod restarts
+      persistence:
+        enabled: true
+        type: pvc
+        size: 2Gi
+      # Disable initChownData to avoid permission issues with existing directories
+      # The PVC already has correct permissions, and the init container fails on directories
+      # created by the sidecar (png, pdf, csv) that have restrictive permissions
+      initChownData:
+        enabled: false
+      # Install Google Analytics plugin
+      plugins:
+        - blackcowmoo-googleanalytics-datasource
+      sidecar:
+        image:
+          registry: localhost:5001
+          repository: k8s-sidecar
+          tag: "1.30.10"
+        dashboards:
+          enabled: true
+          label: grafana_dashboard
+          labelValue: "1"
+          folder: /var/lib/grafana/dashboards/default
+          folderAnnotation: k8s-sidecar-target-directory
+          provider:
+            foldersFromFilesStructure: true
+        datasources:
+          enabled: true
+          label: grafana_datasource
+          labelValue: "1"
+      admin:
+        existingSecret: prometheus
+        # userKey: grafana-admin # FIX IT!
+        passwordKey: grafana-password
+      # Critical: Set a persistent secret_key from Kubernetes secret
+      # This key is used to sign session cookies. Without a fixed key,
+      # Grafana generates a random one at startup, invalidating all sessions on pod restart.
+      envValueFrom:
+        GF_SECURITY_SECRET_KEY:
+          secretKeyRef:
+            name: prometheus
+            key: grafana-secret-key
+      # Server configuration for proper cookie handling through Cloudflare Tunnel
+      ini:
+        server:
+          root_url: https://grafana.lucena.cloud
+          domain: grafana.lucena.cloud
+          # Cookie settings for proper session handling through Cloudflare Tunnel
+          cookie_secure: true
+          cookie_samesite: none
+        # 2. Database configuration - use SQLite on persistent storage
+        # This ensures Grafana's internal database persists across pod restarts
+        database:
+          type: sqlite3
+          path: /var/lib/grafana/grafana.db
+        security:
+          # Cookie settings for Cloudflare Tunnel compatibility
+          # SameSite=None requires Secure=true for cross-site cookies
+          cookie_secure: true
+          cookie_samesite: none
+          # Extend default session lifetime to reduce logout issues
+          login_remember_days: 30
+          # Disable strict transport security (handled by Cloudflare)
+          strict_transport_security: false
+        auth:
+          # Increase token rotation interval to reduce logout frequency
+          # Default is 10 minutes - increased to 2 hours to reduce rotation failures
+          # through Cloudflare Tunnel. Token rotation can fail if cookies aren't
+          # properly handled during the rotation request.
+          token_rotation_interval_minutes: 120
+          # Extend maximum inactive lifetime (default is 7 days)
+          login_maximum_inactive_lifetime_duration: 30d
+          # Extend maximum session lifetime (default is 30 days)
+          login_maximum_lifetime_duration: 90d
+          # Disable signout redirect for cleaner behavior
+          signout_redirect_url: ""
+        session:
+          # 3. File-based session storage for persistence across pod restarts
+          # Using file provider stores sessions on the persistent volume
+          provider: file
+          provider_config: /var/lib/grafana/sessions
+          # Extend session lifetime (default 86400 = 24 hours)
+          # Set to 30 days to match login_maximum_inactive_lifetime_duration
+          session_life_time: 2592000
+          # Use secure cookies for session (required for SameSite=None)
+          cookie_secure: true
+          cookie_samesite: none
+      resources:
+        # requests:
+        #   cpu: 50m
+        #   memory: 128Mi
+        limits:
+          # cpu: 200m
+          memory: 256Mi
+    
+    # AlertManager
+    alertmanager:
+      enabled: true
+      alertmanagerSpec:
+        image:
+          registry: localhost:5001
+          repository: alertmanager
+          tag: v0.29.0
+        retention: 120h
+        storage:
+          volumeClaimTemplate:
+            spec:
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 2Gi
+        resources:
+          # requests:
+          #   cpu: 50m
+          #   memory: 64Mi
+          limits:
+            # cpu: 200m
+            memory: 256Mi
+        # Expose AlertManager via NodePort for Cursor access
+        service:
+          type: NodePort
+          nodePort: 30045
+          port: 9093
+        # Mount secret created by secrets-job
+        secrets:
+          - alertmanager-pagerduty
+      config:
+        global:
+          resolve_timeout: 5m
+        route:
+          group_by: ['alertname', 'cluster', 'service']
+          group_wait: 10s
+          group_interval: 10s
+          repeat_interval: 12h
+          receiver: 'prometheus-events'
+          routes:
+            # Route critical alerts to PagerDuty
+            - match:
+                severity: critical
+              receiver: 'pagerduty'
+              continue: true
+            # Route all alerts to prometheus-events for CloudEvent conversion
+            - receiver: 'prometheus-events'
+              continue: true
+            # All other alerts will go to default receiver (no need for explicit match)
+        receivers:
+          - name: 'default'
+            # Default receiver - can be configured later
+          - name: 'pagerduty'
+            pagerduty_configs:
+              # Secret is mounted by alertmanagerSpec.secrets above
+              # Secret created by secrets-job: alertmanager-pagerduty with key: service-key
+              - service_key_file: /etc/alertmanager/secrets/alertmanager-pagerduty/service-key
+                description: '{{ .GroupLabels.alertname }}: {{ .CommonAnnotations.summary }}'
+                client: 'Alertmanager'
+                client_url: 'https://alertmanager.lucena.cloud'
+                details:
+                  severity: '{{ .CommonLabels.severity }}'
+                  service: '{{ .CommonLabels.service }}'
+                  namespace: '{{ .CommonLabels.namespace }}'
+                  description: '{{ .CommonAnnotations.description }}'
+                  runbook_url: '{{ .CommonAnnotations.runbook_url }}'
+                  dashboard_url: '{{ .CommonAnnotations.dashboard_url }}'
+          - name: 'prometheus-events'
+            webhook_configs:
+              - url: 'http://prometheus-events.prometheus.svc.cluster.local:8080/webhook'
+                send_resolved: true
+                http_config:
+                  follow_redirects: true
+    
+    # Node Exporter
+    prometheus-node-exporter:
+      enabled: true
+      image:
+        registry: localhost:5001
+        repository: node-exporter
+        tag: v1.10.2
+    
+    # Kube State Metrics
+    kubeStateMetrics:
+      enabled: true
+      image:
+        registry: localhost:5001
+        repository: kube-state-metrics
+        tag: v2.17.0
+

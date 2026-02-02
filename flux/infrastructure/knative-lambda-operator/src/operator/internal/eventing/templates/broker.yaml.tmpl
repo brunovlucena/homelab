@@ -1,0 +1,62 @@
+{{- /* RabbitMQ Broker Configuration Template */ -}}
+---
+# RabbitMQ Broker Configuration for Lambda Service Events
+apiVersion: eventing.knative.dev/v1alpha1
+kind: RabbitmqBrokerConfig
+metadata:
+  name: {{ .Name }}-config
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: broker-config
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+spec:
+  rabbitmqClusterReference:
+    name: {{ .RabbitMQ.ClusterName }}
+    namespace: {{ .RabbitMQ.Namespace }}
+  queueType: {{ .RabbitMQ.QueueType | default "quorum" }}
+
+---
+# RabbitMQ Broker for Lambda Service Events
+apiVersion: eventing.knative.dev/v1
+kind: Broker
+metadata:
+  name: {{ .Name }}
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: broker
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+  annotations:
+    eventing.knative.dev/broker.class: RabbitMQBroker
+    # High-throughput settings for better autoscaling
+    rabbitmq.eventing.knative.dev/prefetchCount: "{{ .RabbitMQ.PrefetchCount | default 100 }}"
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+    eventing.knative.dev/enable-dead-letter-queue: "{{ .DLQ.Enabled }}"
+    {{- if .DLQ.Enabled }}
+    eventing.knative.dev/retry-policy: "{{ .DLQ.RetryPolicy | default "exponential" }}"
+    eventing.knative.dev/retry-max-attempts: "{{ .DLQ.RetryMaxAttempts | default 5 }}"
+    eventing.knative.dev/retry-backoff-delay: "{{ .DLQ.RetryBackoffDelay | default "PT1S" }}"
+    eventing.knative.dev/retry-backoff-multiplier: "{{ .DLQ.RetryBackoffMultiplier | default 2 }}"
+    {{- end }}
+spec:
+  config:
+    apiVersion: eventing.knative.dev/v1alpha1
+    kind: RabbitmqBrokerConfig
+    name: {{ .Name }}-config
+    namespace: {{ .Namespace }}
+  {{- if .DLQ.Enabled }}
+  delivery:
+    retry: {{ .DLQ.RetryMaxAttempts | default 5 }}
+    backoffPolicy: {{ .DLQ.BackoffPolicy | default "exponential" }}
+    backoffDelay: "{{ .DLQ.RetryBackoffDelay | default "PT1S" }}"
+    deadLetterSink:
+      ref:
+        apiVersion: v1
+        kind: Service
+        name: {{ .Name }}-dlq-handler
+        namespace: {{ .Namespace }}
+  {{- end }}
+

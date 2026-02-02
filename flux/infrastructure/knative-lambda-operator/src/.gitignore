@@ -1,0 +1,78 @@
+# Build artifacts
+bin/
+/build/
+!/operator/internal/build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go binaries (ADDED - these were causing slow git pulls!)
+/service
+builder/src/builder
+bin/service
+bin/sidecar
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+/tmp/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Secret files (plaintext secrets should NEVER be committed)
+secrets.yaml
+secrets.yml
+secret.yaml
+secret.yml
+*-secret.yaml
+*-secret.yml
+*.secret.yaml
+*.secret.yml
+# Only sealed/encrypted secrets are allowed
+!*sealed-secret*.yaml
+!*sealed-secret*.yml
+
+# Coverage reports
+coverage.out
+coverage.html
+
+# Docker
+.dockerignore
+
+# Temporary files
+*.tmp
+*.temp
+
+rabbitmq-1000-events-*

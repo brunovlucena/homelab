@@ -1,0 +1,446 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🎮 RPG Game Server
+#
+#  Serves the web client and handles WebSocket connections for real-time gameplay
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: rpg-game-server
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: rpg-game-server
+    app.kubernetes.io/component: game-server
+    app.kubernetes.io/part-of: agent-rpg
+  annotations:
+    description: "Web game server with WebSocket support"
+spec:
+  build:
+    registry: ghcr.io/brunovlucena
+    registryType: ghcr
+    insecure: false
+
+  source:
+    type: inline
+    inline:
+      code: |
+        """
+        Agent-RPG Game Server
+        
+        Modern Chrono Trigger-style RPG with AI agents
+        Serves web client and handles real-time game events via WebSocket
+        """
+        import os
+        import json
+        import asyncio
+        from datetime import datetime
+        from uuid import uuid4
+        from typing import Dict, List, Optional
+        from dataclasses import dataclass, asdict
+        
+        from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
+        from fastapi.responses import HTMLResponse, JSONResponse
+        from fastapi.middleware.cors import CORSMiddleware
+        import httpx
+        
+        app = FastAPI(title="Agent-RPG", version="1.0.0")
+        
+        # CORS for iOS app
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        
+        # ============ GAME DATA ============
+        
+        CHARACTERS = {
+            "crono": {
+                "id": "crono",
+                "name": "Crono",
+                "class": "Warrior",
+                "element": "lightning",
+                "emoji": "🗡️",
+                "color": "#FFD700",
+                "base_hp": 999,
+                "base_mp": 80,
+                "base_attack": 85,
+                "base_defense": 75,
+                "base_magic": 60,
+                "base_speed": 12,
+                "abilities": ["Cyclone", "Slash", "Lightning", "Luminaire"],
+                "sprite_row": 0
+            },
+            "lucca": {
+                "id": "lucca",
+                "name": "Lucca",
+                "class": "Mage",
+                "element": "fire",
+                "emoji": "⚡",
+                "color": "#FF6B35",
+                "base_hp": 700,
+                "base_mp": 150,
+                "base_attack": 50,
+                "base_defense": 55,
+                "base_magic": 95,
+                "base_speed": 10,
+                "abilities": ["Flame Toss", "Fire", "Napalm", "Flare"],
+                "sprite_row": 1
+            },
+            "marle": {
+                "id": "marle",
+                "name": "Marle",
+                "class": "Healer",
+                "element": "ice",
+                "emoji": "💫",
+                "color": "#87CEEB",
+                "base_hp": 650,
+                "base_mp": 180,
+                "base_attack": 40,
+                "base_defense": 50,
+                "base_magic": 85,
+                "base_speed": 11,
+                "abilities": ["Aura", "Ice", "Cure", "Life"],
+                "sprite_row": 2
+            },
+            "frog": {
+                "id": "frog",
+                "name": "Frog",
+                "class": "Paladin",
+                "element": "water",
+                "emoji": "🐸",
+                "color": "#228B22",
+                "base_hp": 850,
+                "base_mp": 100,
+                "base_attack": 80,
+                "base_defense": 80,
+                "base_magic": 70,
+                "base_speed": 9,
+                "abilities": ["Slurp Cut", "Water", "Heal", "Frog Squash"],
+                "sprite_row": 3
+            },
+            "robo": {
+                "id": "robo",
+                "name": "Robo",
+                "class": "Tank",
+                "element": "shadow",
+                "emoji": "🤖",
+                "color": "#C0C0C0",
+                "base_hp": 999,
+                "base_mp": 120,
+                "base_attack": 90,
+                "base_defense": 95,
+                "base_magic": 50,
+                "base_speed": 7,
+                "abilities": ["Rocket Punch", "Cure Beam", "Laser Spin", "Uzzi Punch"],
+                "sprite_row": 4
+            },
+            "ayla": {
+                "id": "ayla",
+                "name": "Ayla",
+                "class": "Berserker",
+                "element": "physical",
+                "emoji": "🦖",
+                "color": "#FF69B4",
+                "base_hp": 999,
+                "base_mp": 0,
+                "base_attack": 99,
+                "base_defense": 70,
+                "base_magic": 20,
+                "base_speed": 14,
+                "abilities": ["Kiss", "Rollo Kick", "Cat Attack", "Dino Tail"],
+                "sprite_row": 5
+            }
+        }
+        
+        ZONES = {
+            "guardia_forest": {
+                "name": "Guardia Forest",
+                "description": "A peaceful forest near the castle",
+                "encounter_rate": 0.15,
+                "enemies": ["imp", "blue_imp", "roly"]
+            },
+            "guardia_castle": {
+                "name": "Guardia Castle",
+                "description": "The grand castle of the kingdom",
+                "encounter_rate": 0,
+                "enemies": []
+            },
+            "leene_square": {
+                "name": "Leene Square",
+                "description": "The bustling town square during the festival",
+                "encounter_rate": 0,
+                "enemies": []
+            }
+        }
+        
+        # ============ GAME STATE ============
+        
+        active_games: Dict[str, dict] = {}
+        websocket_connections: Dict[str, List[WebSocket]] = {}
+        
+        @dataclass
+        class CharacterState:
+            id: str
+            hp: int
+            max_hp: int
+            mp: int
+            max_mp: int
+            atb: float  # 0.0 to 1.0
+            status: str  # normal, poison, haste, etc.
+            position: dict  # {x, y}
+            controlled_by: Optional[str]  # player_id or None (AI)
+        
+        @dataclass
+        class GameState:
+            game_id: str
+            player_id: str
+            party: List[str]  # character ids
+            characters: Dict[str, CharacterState]
+            zone: str
+            in_combat: bool
+            combat_state: Optional[dict]
+            story_flags: Dict[str, bool]
+            time: dict  # {hour, day}
+            created_at: str
+        
+        def create_new_game(player_id: str) -> GameState:
+            """Create a new game state."""
+            game_id = str(uuid4())[:8]
+            
+            # Initialize party with Crono, Lucca, Marle
+            party = ["crono", "lucca", "marle"]
+            characters = {}
+            
+            for i, char_id in enumerate(party):
+                char = CHARACTERS[char_id]
+                characters[char_id] = CharacterState(
+                    id=char_id,
+                    hp=char["base_hp"],
+                    max_hp=char["base_hp"],
+                    mp=char["base_mp"],
+                    max_mp=char["base_mp"],
+                    atb=0.0,
+                    status="normal",
+                    position={"x": 100 + i * 50, "y": 300},
+                    controlled_by=player_id if i == 0 else None  # Player controls first character
+                )
+            
+            return GameState(
+                game_id=game_id,
+                player_id=player_id,
+                party=party,
+                characters=characters,
+                zone="leene_square",
+                in_combat=False,
+                combat_state=None,
+                story_flags={"intro_complete": False},
+                time={"hour": 10, "day": 1},
+                created_at=datetime.utcnow().isoformat()
+            )
+        
+        # ============ API ENDPOINTS ============
+        
+        @app.get("/")
+        async def root():
+            """Serve main game page."""
+            html_path = os.getenv("GAME_UI_PATH", "/app/static/index.html")
+            if os.path.exists(html_path):
+                with open(html_path) as f:
+                    return HTMLResponse(content=f.read())
+            return HTMLResponse(content=get_fallback_ui())
+        
+        @app.get("/health")
+        async def health():
+            return {"status": "healthy", "active_games": len(active_games)}
+        
+        @app.post("/game/new")
+        async def new_game(request: Request):
+            """Start a new game."""
+            data = await request.json()
+            player_id = data.get("playerId", str(uuid4())[:8])
+            
+            game = create_new_game(player_id)
+            active_games[game.game_id] = asdict(game)
+            
+            return active_games[game.game_id]
+        
+        @app.get("/game/{game_id}")
+        async def get_game(game_id: str):
+            """Get game state."""
+            if game_id not in active_games:
+                raise HTTPException(status_code=404, detail="Game not found")
+            return active_games[game_id]
+        
+        @app.post("/game/{game_id}/control")
+        async def control_character(game_id: str, request: Request):
+            """Request control of a character."""
+            if game_id not in active_games:
+                raise HTTPException(status_code=404, detail="Game not found")
+            
+            data = await request.json()
+            character_id = data.get("characterId")
+            player_id = data.get("playerId")
+            
+            game = active_games[game_id]
+            if character_id in game["characters"]:
+                game["characters"][character_id]["controlled_by"] = player_id
+                
+                # Broadcast control change
+                await broadcast_event(game_id, {
+                    "type": "rpg.character.control.granted",
+                    "characterId": character_id,
+                    "playerId": player_id
+                })
+            
+            return game
+        
+        @app.post("/game/{game_id}/action")
+        async def character_action(game_id: str, request: Request):
+            """Execute a character action."""
+            if game_id not in active_games:
+                raise HTTPException(status_code=404, detail="Game not found")
+            
+            data = await request.json()
+            character_id = data.get("characterId")
+            action = data.get("action")
+            target = data.get("target")
+            
+            # Process action and broadcast
+            await broadcast_event(game_id, {
+                "type": "rpg.character.action",
+                "characterId": character_id,
+                "action": action,
+                "target": target
+            })
+            
+            return {"status": "ok"}
+        
+        @app.get("/characters")
+        async def list_characters():
+            """List all available characters."""
+            return CHARACTERS
+        
+        @app.get("/zones")
+        async def list_zones():
+            """List all zones."""
+            return ZONES
+        
+        # ============ WEBSOCKET ============
+        
+        @app.websocket("/ws/{game_id}")
+        async def websocket_endpoint(websocket: WebSocket, game_id: str):
+            await websocket.accept()
+            
+            if game_id not in websocket_connections:
+                websocket_connections[game_id] = []
+            websocket_connections[game_id].append(websocket)
+            
+            try:
+                while True:
+                    data = await websocket.receive_json()
+                    
+                    # Handle incoming events from client
+                    event_type = data.get("type")
+                    
+                    if event_type == "rpg.character.action":
+                        await broadcast_event(game_id, data)
+                    elif event_type == "rpg.character.move":
+                        await handle_movement(game_id, data)
+                    elif event_type == "rpg.game.chat":
+                        await broadcast_event(game_id, data)
+                        
+            except WebSocketDisconnect:
+                websocket_connections[game_id].remove(websocket)
+        
+        async def broadcast_event(game_id: str, event: dict):
+            """Broadcast event to all connected clients."""
+            if game_id in websocket_connections:
+                for connection in websocket_connections[game_id]:
+                    try:
+                        await connection.send_json(event)
+                    except:
+                        pass
+        
+        async def handle_movement(game_id: str, data: dict):
+            """Handle character movement."""
+            if game_id in active_games:
+                char_id = data.get("characterId")
+                if char_id in active_games[game_id]["characters"]:
+                    active_games[game_id]["characters"][char_id]["position"] = {
+                        "x": data.get("x"),
+                        "y": data.get("y")
+                    }
+            await broadcast_event(game_id, data)
+        
+        # ============ CLOUDEVENTS HANDLER ============
+        
+        async def handler(event):
+            """CloudEvents handler for game events."""
+            event_type = event.get("type", "")
+            data = event.get("data", {})
+            
+            if event_type.startswith("rpg."):
+                game_id = data.get("gameId")
+                if game_id:
+                    await broadcast_event(game_id, {"type": event_type, **data})
+            
+            return {"statusCode": 200, "body": "OK"}
+        
+        def get_fallback_ui():
+            """Fallback UI if static file not found."""
+            return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Agent-RPG Loading...</title>
+                <style>
+                    body { 
+                        background: #1a1a2e; 
+                        color: #eee; 
+                        font-family: 'Courier New'; 
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        height: 100vh;
+                    }
+                </style>
+            </head>
+            <body>
+                <h1>⚔️ Agent-RPG Loading...</h1>
+            </body>
+            </html>
+            """
+
+  runtime:
+    language: python
+    version: "3.11"
+    handler: "main.handler"
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 5
+    targetConcurrency: 20
+    scaleToZeroGracePeriod: 600s
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  env:
+    - name: GAME_UI_PATH
+      value: "/app/static/index.html"
+    - name: BROKER_URL
+      valueFrom:
+        configMapKeyRef:
+          name: rpg-config
+          key: broker_url

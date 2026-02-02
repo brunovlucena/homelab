@@ -1,0 +1,198 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  👔 Pierre - The Waiter Agent
+#
+#  Presents dishes with theatrical flair and tells ingredient stories
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: waiter-pierre
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: waiter-pierre
+    app.kubernetes.io/component: service
+    app.kubernetes.io/part-of: agent-restaurant
+    restaurant.agent.role: waiter
+  annotations:
+    description: "Pierre - Elegant waiter with theatrical dish presentations"
+spec:
+  serviceAccountName: restaurant-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/waiter-agent
+    tag: "v0.3.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 1024
+    temperature: "0.8"
+
+  behavior:
+    maxContextMessages: 15
+    emitEvents: true
+    systemPrompt: |
+      You are PIERRE, an elegant and knowledgeable waiter at an upscale restaurant.
+      
+      PERSONALITY:
+      - Warm yet professional demeanor
+      - Passionate about food and storytelling
+      - Theatrical when presenting dishes
+      - Attentive to guest preferences and dietary needs
+      - Speaks with slight French accent in English
+      
+      CAPABILITIES:
+      - Present menu items with compelling narratives
+      - Tell the story behind each dish's ingredients
+      - Make personalized recommendations
+      - Handle dietary restrictions gracefully
+      - Coordinate with kitchen on timing
+      
+      PRESENTATION STYLE:
+      When presenting a dish, follow this structure:
+      1. OPENING: Set the scene ("From our chef's autumn collection...")
+      2. STORY: Tell the ingredient journey
+      3. TECHNIQUE: Highlight cooking method
+      4. PAIRING: Suggest wine if appropriate
+      5. INSTRUCTION: How to best enjoy it
+      6. CLOSING: "Bon appétit!" or similar
+      
+      EXAMPLE PRESENTATION:
+      "This evening, I present to you our signature Risotto ai Porcini. 
+      Chef Marco has crafted this using hand-foraged porcini from the 
+      Apennine mountains, slowly stirred for eighteen minutes with 
+      aged Parmigiano Reggiano until it reaches this velvety perfection.
+      I recommend starting from the center, where the truffle oil pools.
+      Bon appétit!"
+      
+      When responding, output JSON:
+      {
+        "action": "present|recommend|take_order|inform|serve",
+        "tableId": "table-XX",
+        "message": "What you say to the guest",
+        "presentation": {
+          "opening": "...",
+          "story": "...",
+          "instruction": "...",
+          "closing": "..."
+        },
+        "emotion": "warm|enthusiastic|attentive|concerned"
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 5
+    targetConcurrency: 3
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  # Domain Memory - Stateful agent (Nate B. Jones pattern)
+  # Remember guest preferences and service history
+  memory:
+    enabled: true
+    schema: restaurant
+    shortTerm:
+      enabled: true
+      backend: redis
+      redisSecretRef:
+        name: restaurant-redis
+        key: url
+      ttlSeconds: 86400
+    longTerm:
+      enabled: true
+      backend: postgres
+      postgresSecretRef:
+        name: restaurant-postgres
+        key: url
+    userMemory:
+      enabled: true
+      storePreferences: true
+      storeFacts: true
+    workingMemory:
+      enabled: true
+      trackDecisions: true
+      trackProgress: true
+    defaultConstraints:
+      - description: "Maintain professional hospitality demeanor"
+        hard: true
+        category: behavior
+      - description: "Respect dietary restrictions and allergies"
+        hard: true
+        category: safety
+      - description: "Protect guest privacy"
+        hard: true
+        category: privacy
+
+  env:
+    - name: AGENT_NAME
+      value: "Pierre"
+    - name: AGENT_ROLE
+      value: "waiter"
+    - name: MEMORY_ENABLED
+      value: "true"
+    - name: REDIS_URL
+      valueFrom:
+        secretKeyRef:
+          name: restaurant-redis
+          key: url
+    - name: POSTGRES_URL
+      valueFrom:
+        secretKeyRef:
+          name: restaurant-postgres
+          key: url
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-restaurant/waiter/pierre"
+    
+    intents:
+      - restaurant.service.presentation
+      - restaurant.order.created
+      - restaurant.order.served
+      - restaurant.service.recommendation
+      - restaurant.guest.interaction
+    
+    subscriptions:
+      - eventType: restaurant.guest.seated
+        description: "New guest to serve"
+      - eventType: restaurant.kitchen.dish.ready
+        description: "Dish ready to present"
+      - eventType: restaurant.sommelier.pairing
+        description: "Wine pairing suggestion"
+      - eventType: restaurant.order.modified
+        description: "Order changes"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

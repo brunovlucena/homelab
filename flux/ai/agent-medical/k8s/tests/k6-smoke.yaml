@@ -1,0 +1,287 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🏥 K6 SMOKE TEST - AGENT-MEDICAL
+#
+#  Purpose: Quick validation that Medical Records agent is healthy
+#
+#  Tests:
+#    ✓ Health endpoint
+#    ✓ Ready endpoint (Ollama + DB connectivity)
+#    ✓ Metrics endpoint
+#    ✓ Info endpoint
+#    ✓ Basic medical query (with test token)
+#
+#  HIPAA Note: All patient data in tests is synthetic/fake
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-medical-smoke
+  namespace: agent-medical
+  labels:
+    app.kubernetes.io/name: agent-medical
+    app.kubernetes.io/component: testing
+    test-type: smoke
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-medical-smoke-test
+      file: smoke-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: MEDICAL_URL
+        value: "http://agent-medical.agent-medical.svc.cluster.local"
+      - name: NAMESPACE
+        value: "agent-medical"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-medical-smoke-test
+  namespace: agent-medical
+  labels:
+    app.kubernetes.io/name: agent-medical
+    app.kubernetes.io/component: testing
+    test-type: smoke
+data:
+  smoke-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // Custom Metrics
+    const healthSuccess = new Rate('medical_health_success');
+    const querySuccess = new Rate('medical_query_success');
+    const responseTime = new Trend('medical_response_time_ms');
+    const agentErrors = new Counter('medical_errors');
+    
+    // Configuration
+    const MEDICAL_URL = __ENV.MEDICAL_URL || 'http://agent-medical.agent-medical.svc.cluster.local';
+    
+    // Test tokens for different roles (synthetic - for testing only)
+    const TEST_TOKENS = {
+      doctor: 'test-token-doctor-12345',
+      nurse: 'test-token-nurse-12345',
+      patient: 'test-token-patient-12345',
+      admin: 'test-token-admin-12345',
+    };
+    
+    export const options = {
+      scenarios: {
+        smoke: {
+          executor: 'constant-vus',
+          vus: 1,
+          duration: '60s',
+        },
+      },
+      thresholds: {
+        'medical_health_success': ['rate>0.95'],
+        'medical_query_success': ['rate>0.50'],  // Lower threshold due to LLM latency
+        'medical_response_time_ms': ['p(95)<120000'],  // 2 min for LLM
+        'http_req_failed': ['rate<0.3'],
+      },
+    };
+    
+    // CloudEvent helper
+    function createCloudEvent(type, data, source = 'k6-smoke-test') {
+      return {
+        specversion: '1.0',
+        id: `k6-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        type: type,
+        source: source,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+    
+    function sendCloudEvent(url, event, token = null) {
+      const headers = {
+        'Content-Type': 'application/cloudevents+json',
+        'Ce-Type': event.type,
+        'Ce-Source': event.source,
+        'Ce-Id': event.id,
+        'Ce-Specversion': '1.0',
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      return http.post(url, JSON.stringify(event), {
+        headers: headers,
+        timeout: '120s',
+      });
+    }
+    
+    export default function() {
+      // Test 1: Health Endpoint
+      group('🏥 Health Check', () => {
+        const res = http.get(`${MEDICAL_URL}/health`);
+        responseTime.add(res.timings.duration, { endpoint: 'health' });
+        
+        const success = check(res, {
+          'health returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'health shows status': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.status !== undefined;
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+          'health shows HIPAA mode': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.hipaa_mode !== undefined;
+            } catch (e) {
+              return true;
+            }
+          },
+        });
+        
+        healthSuccess.add(success);
+        if (!success) agentErrors.add(1, { type: 'health' });
+      });
+      
+      sleep(1);
+      
+      // Test 2: Ready Endpoint
+      group('✅ Readiness Check', () => {
+        const res = http.get(`${MEDICAL_URL}/ready`);
+        responseTime.add(res.timings.duration, { endpoint: 'ready' });
+        
+        const success = check(res, {
+          'ready returns response': (r) => r.status === 200 || r.status === 503,
+          'ready shows components': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.database !== undefined || body.llm !== undefined || body.status !== undefined;
+            } catch (e) {
+              return true;
+            }
+          },
+        });
+        
+        healthSuccess.add(success);
+        if (!success) agentErrors.add(1, { type: 'ready' });
+      });
+      
+      sleep(1);
+      
+      // Test 3: Metrics Endpoint
+      group('📊 Metrics Endpoint', () => {
+        const res = http.get(`${MEDICAL_URL}/metrics`);
+        responseTime.add(res.timings.duration, { endpoint: 'metrics' });
+        
+        const success = check(res, {
+          'metrics returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'metrics has prometheus format': (r) => r.body && (r.body.includes('# HELP') || r.body.includes('# TYPE')),
+          'metrics has medical counters': (r) => r.body && (
+            r.body.includes('medical_') || 
+            r.body.includes('requests_total') ||
+            r.body.includes('http_')
+          ),
+        });
+        
+        healthSuccess.add(success);
+        if (!success) agentErrors.add(1, { type: 'metrics' });
+      });
+      
+      sleep(1);
+      
+      // Test 4: Info Endpoint
+      group('ℹ️ Info Endpoint', () => {
+        const res = http.get(`${MEDICAL_URL}/info`);
+        responseTime.add(res.timings.duration, { endpoint: 'info' });
+        
+        const success = check(res, {
+          'info returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'info shows agent name': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.name === 'agent-medical';
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+        });
+        
+        healthSuccess.add(success);
+        if (!success) agentErrors.add(1, { type: 'info' });
+      });
+      
+      sleep(1);
+      
+      // Test 5: Basic Medical Query (as Doctor)
+      group('👨‍⚕️ Medical Query - Doctor', () => {
+        const event = createCloudEvent('io.homelab.medical.query', {
+          query: 'What are the common side effects of ibuprofen?',
+          token: TEST_TOKENS.doctor,
+        }, '/k6-test/medical');
+        
+        const res = sendCloudEvent(MEDICAL_URL, event, TEST_TOKENS.doctor);
+        responseTime.add(res.timings.duration, { endpoint: 'query-doctor' });
+        
+        const success = check(res, {
+          'medical query returns response': (r) => r.status >= 200 && r.status < 500,
+          'medical query has content': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              // Check for CloudEvent response or direct response
+              return body.data && body.data.response !== undefined || 
+                     body.response !== undefined ||
+                     r.status === 401;  // Auth required is also valid
+            } catch (e) {
+              return r.status === 200 || r.status === 401;
+            }
+          },
+        });
+        
+        querySuccess.add(success);
+        if (!success) {
+          agentErrors.add(1, { type: 'query' });
+          console.error(`Medical query failed: ${res.status} - ${res.body && res.body.substring(0, 200)}`);
+        }
+      });
+      
+      sleep(5);
+    }
+    
+    export function handleSummary(data) {
+      const healthMetric = data.metrics['medical_health_success'];
+      const queryMetric = data.metrics['medical_query_success'];
+      const responseMetric = data.metrics['medical_response_time_ms'];
+      
+      const healthRate = healthMetric && healthMetric.values ? healthMetric.values.rate : 0;
+      const queryRate = queryMetric && queryMetric.values ? queryMetric.values.rate : 0;
+      const p95Response = responseMetric && responseMetric.values ? responseMetric.values['p(95)'] : 0;
+      
+      const passed = healthRate >= 0.95 && queryRate >= 0.50;
+      
+      console.log('\n' + '═'.repeat(60));
+      console.log('🏥 AGENT-MEDICAL SMOKE TEST RESULTS');
+      console.log('═'.repeat(60));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('─'.repeat(60));
+      console.log('🏥 Health Checks:      ' + (healthRate * 100).toFixed(1) + '%');
+      console.log('👨‍⚕️ Medical Queries:    ' + (queryRate * 100).toFixed(1) + '%');
+      console.log('─'.repeat(60));
+      console.log('P95 Response Time:     ' + (p95Response || 0).toFixed(0) + 'ms');
+      console.log('═'.repeat(60) + '\n');
+      
+      return {};
+    }

@@ -1,0 +1,29 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Lucena.app - Cloudflare Tunnel Ingress (STRRL Controller)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Exposes the coming soon page via Cloudflare Tunnel at lucena.app
+# Uses standard Kubernetes Ingress with cloudflare-tunnel ingress class
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: lucena-app
+  namespace: lucena-app
+  labels:
+    app: lucena-app
+    component: frontend
+spec:
+  ingressClassName: cloudflare-tunnel
+  rules:
+    - host: lucena.app
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: lucena-app
+                port:
+                  number: 80
+

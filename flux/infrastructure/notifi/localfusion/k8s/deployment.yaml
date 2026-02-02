@@ -1,0 +1,99 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 LOCALFUSION DEPLOYMENT
+#
+#  Purpose: Deploy LocalFusion mock services for parser testing
+#  
+#  Services exposed:
+#    - BlockchainManager (50051)
+#    - EphemeralStorage (50052)
+#    - PersistentStorage (50053)
+#    - EVM RPC (50054)
+#    - Solana RPC (50055)
+#    - SubscriptionManager (50056)
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localfusion
+  namespace: localfusion
+  labels:
+    app.kubernetes.io/name: localfusion
+    app.kubernetes.io/component: mock-services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: localfusion
+  template:
+    metadata:
+      labels:
+        app: localfusion
+        app.kubernetes.io/name: localfusion
+    spec:
+      containers:
+        - name: localfusion
+          image: localhost:5001/localfusion:v1.0.3
+          imagePullPolicy: Always
+          ports:
+            - name: ephemeral-stor
+              containerPort: 50052
+              protocol: TCP
+            - name: persistent-stor
+              containerPort: 50053
+              protocol: TCP
+            - name: evm-rpc
+              containerPort: 50054
+              protocol: TCP
+            - name: solana-rpc
+              containerPort: 50055
+              protocol: TCP
+            - name: sub-mgr
+              containerPort: 50056
+              protocol: TCP
+          env:
+            # ─────────────────────────────────────────────────────────────────
+            # RPC URLs for blockchain networks (using public endpoints)
+            # ─────────────────────────────────────────────────────────────────
+            - name: ETHEREUM_RPC_URL
+              value: "https://ethereum.publicnode.com"
+            - name: POLYGON_RPC_URL
+              value: "https://polygon-bor.publicnode.com"
+            - name: OPTIMISM_RPC_URL
+              value: "https://optimism.publicnode.com"
+            - name: ARBITRUM_RPC_URL
+              value: "https://arbitrum.publicnode.com"
+            - name: BASE_RPC_URL
+              value: "https://base.publicnode.com"
+            - name: AVALANCHE_RPC_URL
+              value: "https://avalanche.publicnode.com"
+            - name: BNB_RPC_URL
+              value: "https://bsc.publicnode.com"
+            # Botanix testnet (for notifi parser testing)
+            # Using Ankr free RPC endpoint (more reliable than botanixlabs.dev)
+            - name: CUSTOM_CHAIN_CONFIGS
+              value: '[{"blockchainType":52,"rpcUrl":"https://rpc.ankr.com/botanix_testnet"}]'
+            # ─────────────────────────────────────────────────────────────────
+            # MOCK MODE: Enable to return fake data instead of calling public RPCs
+            # This prevents rate limit errors during presentations/demos
+            # ─────────────────────────────────────────────────────────────────
+            - name: MOCK_MODE
+              value: "true"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            tcpSocket:
+              port: 50054
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 50054
+            initialDelaySeconds: 5
+            periodSeconds: 10

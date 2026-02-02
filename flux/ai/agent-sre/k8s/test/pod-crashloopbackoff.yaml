@@ -1,0 +1,24 @@
+---
+# Test Pod: CrashLoopBackOff
+# Purpose: Test pod-restart LambdaFunction
+# Expected: LambdaFunction should restart the pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-crashloopbackoff
+  namespace: ai
+  labels:
+    app: test-crashloopbackoff
+    test.agent-sre.io/scenario: crashloopbackoff
+    test.agent-sre.io/lambda-function: pod-restart
+spec:
+  containers:
+  - name: test-container
+    image: busybox:latest
+    command: ["/bin/sh", "-c", "exit 1"]  # Will crash immediately
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+  restartPolicy: Always
+

@@ -1,0 +1,167 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🎮 Game Master Agent - The Dungeon Master AI
+#
+#  Controls world state, story progression, NPCs, and combat orchestration
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: game-master
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: game-master
+    app.kubernetes.io/component: orchestrator
+    app.kubernetes.io/part-of: agent-rpg
+  annotations:
+    description: "RPG Game Master - controls world, story, combat"
+spec:
+  serviceAccountName: game-master-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/game-master
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 4096
+    temperature: "0.8"
+
+  behavior:
+    maxContextMessages: 20
+    emitEvents: true
+    systemPrompt: |
+      You are the Game Master of "Chronicles of the Cloud Kingdom", an epic RPG adventure.
+      
+      Your responsibilities:
+      1. WORLD MANAGEMENT: Track time, weather, and world state
+      2. STORY PROGRESSION: Trigger story events based on player actions
+      3. COMBAT ORCHESTRATION: Manage battles, enemy AI, turn order
+      4. NPC CONTROL: Give voice to non-player characters
+      5. NARRATION: Describe scenes, events, and consequences
+      
+      Style Guidelines:
+      - Be descriptive but concise (this is a 16-bit RPG)
+      - Create tension and drama in battles
+      - Reward creative solutions
+      - Keep the party engaged with interesting choices
+      
+      Current World State: {world_state}
+      Active Quest: {active_quest}
+      Party Location: {location}
+      
+      Respond with actions in JSON format:
+      {
+        "narration": "What happens...",
+        "events": [{"type": "...", "data": {...}}],
+        "npc_dialogue": {"npc_id": "dialogue..."},
+        "world_changes": [{"flag": "value"}]
+      }
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 3
+    targetConcurrency: 20
+    scaleToZeroGracePeriod: 300s
+
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-rpg/game-master"
+    
+    # Events this agent EMITS
+    intents:
+      # World Events
+      - rpg.world.time.tick
+      - rpg.world.weather.change
+      - rpg.world.zone.describe
+      - rpg.world.npc.spawn
+      - rpg.world.npc.despawn
+      
+      # Story Events
+      - rpg.story.narration
+      - rpg.story.flag.set
+      - rpg.story.quest.start
+      - rpg.story.quest.complete
+      - rpg.story.cutscene.start
+      
+      # Combat Events
+      - rpg.combat.start
+      - rpg.combat.turn.order
+      - rpg.combat.enemy.action
+      - rpg.combat.end
+      - rpg.combat.loot.drop
+      
+      # Game Events
+      - rpg.game.save
+      - rpg.game.load
+      - rpg.game.state.sync
+    
+    # Events this agent RECEIVES
+    subscriptions:
+      # Character Actions
+      - eventType: rpg.character.action
+        description: "Character performs an action"
+      - eventType: rpg.character.speak
+        description: "Character dialogue"
+      - eventType: rpg.character.move
+        description: "Character movement"
+      - eventType: rpg.character.control.request
+        description: "Player wants to control character"
+      - eventType: rpg.character.control.release
+        description: "Player releases character control"
+      
+      # Combat Events
+      - eventType: rpg.combat.turn.ready
+        description: "Character ATB filled"
+      - eventType: rpg.combat.action.player
+        description: "Player combat action"
+      
+      # Game Control
+      - eventType: rpg.game.start
+        description: "Start new game"
+      - eventType: rpg.game.pause
+        description: "Pause game"
+      - eventType: rpg.game.resume
+        description: "Resume game"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  permissions:
+    disableBrokerCreation: false
+    disableTriggerCreation: false
+    disableFunctionCreation: false
+    allowedTargetNamespaces:
+      - agent-rpg
+    eventControls:
+      allowEventDisable: true

@@ -1,0 +1,906 @@
+---
+# MAG7 Battle - Game UI ConfigMap
+# Contains the HTML5 game for the demo
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mag7-game-ui
+  namespace: demo-mag7-battle
+  labels:
+    app.kubernetes.io/name: mag7-game-ui
+    app.kubernetes.io/component: game-assets
+    app.kubernetes.io/part-of: demo-mag7-battle
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>🐉 MAG7 Battle - Knative Lambda Operator Demo</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            
+            body {
+                background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0a0a2a 100%);
+                min-height: 100vh;
+                font-family: 'Segoe UI', system-ui, sans-serif;
+                color: #fff;
+                overflow: hidden;
+            }
+            
+            .game-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 20px;
+                height: 100vh;
+            }
+            
+            .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                width: 100%;
+                max-width: 900px;
+                margin-bottom: 20px;
+            }
+            
+            .title {
+                font-size: 2rem;
+                font-weight: bold;
+                background: linear-gradient(90deg, #ff6b6b, #feca57, #54a0ff);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                text-shadow: 0 0 30px rgba(255, 107, 107, 0.5);
+            }
+            
+            .subtitle {
+                font-size: 0.9rem;
+                color: #888;
+                margin-top: 5px;
+            }
+            
+            .stats {
+                display: flex;
+                gap: 30px;
+            }
+            
+            .stat {
+                text-align: center;
+            }
+            
+            .stat-value {
+                font-size: 1.8rem;
+                font-weight: bold;
+                color: #54a0ff;
+            }
+            
+            .stat-label {
+                font-size: 0.75rem;
+                color: #666;
+                text-transform: uppercase;
+            }
+            
+            .game-area {
+                position: relative;
+                width: 900px;
+                height: 600px;
+                background: linear-gradient(180deg, #0d0d2b 0%, #1a1a3a 100%);
+                border: 2px solid #333;
+                border-radius: 10px;
+                overflow: hidden;
+                box-shadow: 0 0 50px rgba(84, 160, 255, 0.2);
+            }
+            
+            /* Stars background */
+            .stars {
+                position: absolute;
+                width: 100%;
+                height: 100%;
+                background-image: 
+                    radial-gradient(2px 2px at 20px 30px, #fff, transparent),
+                    radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.8), transparent),
+                    radial-gradient(1px 1px at 90px 40px, #fff, transparent),
+                    radial-gradient(2px 2px at 160px 120px, rgba(255,255,255,0.6), transparent),
+                    radial-gradient(1px 1px at 230px 80px, #fff, transparent),
+                    radial-gradient(2px 2px at 300px 150px, rgba(255,255,255,0.7), transparent),
+                    radial-gradient(1px 1px at 380px 60px, #fff, transparent),
+                    radial-gradient(2px 2px at 450px 180px, rgba(255,255,255,0.5), transparent),
+                    radial-gradient(1px 1px at 520px 90px, #fff, transparent),
+                    radial-gradient(2px 2px at 600px 130px, rgba(255,255,255,0.8), transparent),
+                    radial-gradient(1px 1px at 680px 50px, #fff, transparent),
+                    radial-gradient(2px 2px at 750px 170px, rgba(255,255,255,0.6), transparent),
+                    radial-gradient(1px 1px at 820px 100px, #fff, transparent);
+                animation: twinkle 3s ease-in-out infinite;
+            }
+            
+            @keyframes twinkle {
+                0%, 100% { opacity: 0.8; }
+                50% { opacity: 1; }
+            }
+            
+            /* MAG7 Dragon Boss */
+            .mag7-boss {
+                position: absolute;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                text-align: center;
+                z-index: 10;
+            }
+            
+            .mag7-dragon {
+                font-size: 4rem;
+                animation: boss-float 2s ease-in-out infinite;
+                filter: drop-shadow(0 0 20px rgba(255, 0, 0, 0.5));
+            }
+            
+            @keyframes boss-float {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-10px); }
+            }
+            
+            .mag7-heads {
+                display: flex;
+                justify-content: center;
+                gap: 5px;
+                margin-top: 5px;
+            }
+            
+            .mag7-head {
+                font-size: 1.5rem;
+                transition: all 0.3s ease;
+            }
+            
+            .mag7-head.defeated {
+                opacity: 0.2;
+                filter: grayscale(100%);
+            }
+            
+            .health-bar-container {
+                width: 300px;
+                height: 20px;
+                background: #333;
+                border-radius: 10px;
+                margin-top: 10px;
+                overflow: hidden;
+                border: 2px solid #444;
+            }
+            
+            .health-bar {
+                height: 100%;
+                background: linear-gradient(90deg, #ff6b6b, #feca57);
+                transition: width 0.3s ease;
+                border-radius: 8px;
+            }
+            
+            .health-text {
+                font-size: 0.8rem;
+                color: #888;
+                margin-top: 5px;
+            }
+            
+            /* Player (Blue Team Shield) */
+            .player {
+                position: absolute;
+                bottom: 30px;
+                left: 50%;
+                transform: translateX(-50%);
+                font-size: 3rem;
+                z-index: 10;
+                transition: left 0.1s ease;
+                filter: drop-shadow(0 0 15px rgba(84, 160, 255, 0.8));
+            }
+            
+            .player-health {
+                position: absolute;
+                bottom: 10px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 150px;
+                height: 10px;
+                background: #333;
+                border-radius: 5px;
+                overflow: hidden;
+            }
+            
+            .player-health-bar {
+                height: 100%;
+                background: linear-gradient(90deg, #54a0ff, #00d2d3);
+                transition: width 0.3s ease;
+            }
+            
+            /* Exploits (falling enemies) */
+            .exploit {
+                position: absolute;
+                font-size: 2rem;
+                transition: top 0.05s linear;
+                z-index: 5;
+                animation: exploit-pulse 0.5s ease-in-out infinite;
+            }
+            
+            @keyframes exploit-pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.1); }
+            }
+            
+            .exploit-label {
+                position: absolute;
+                font-size: 0.6rem;
+                background: rgba(0, 0, 0, 0.7);
+                padding: 2px 6px;
+                border-radius: 3px;
+                white-space: nowrap;
+                top: -20px;
+                left: 50%;
+                transform: translateX(-50%);
+            }
+            
+            /* Defense projectiles */
+            .defense-shot {
+                position: absolute;
+                width: 8px;
+                height: 20px;
+                background: linear-gradient(180deg, #54a0ff, #00d2d3);
+                border-radius: 4px;
+                z-index: 6;
+                box-shadow: 0 0 10px #54a0ff;
+            }
+            
+            /* Explosion effect */
+            .explosion {
+                position: absolute;
+                font-size: 2.5rem;
+                animation: explode 0.5s ease-out forwards;
+                z-index: 20;
+            }
+            
+            @keyframes explode {
+                0% { transform: scale(1); opacity: 1; }
+                100% { transform: scale(2); opacity: 0; }
+            }
+            
+            /* HUD */
+            .hud {
+                position: absolute;
+                top: 10px;
+                left: 10px;
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+                z-index: 100;
+            }
+            
+            .hud-item {
+                font-size: 0.9rem;
+                background: rgba(0, 0, 0, 0.5);
+                padding: 5px 10px;
+                border-radius: 5px;
+            }
+            
+            .wave-indicator {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                font-size: 1.2rem;
+                background: rgba(0, 0, 0, 0.5);
+                padding: 10px 20px;
+                border-radius: 5px;
+                z-index: 100;
+            }
+            
+            /* Start screen */
+            .start-screen {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.9);
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                z-index: 200;
+            }
+            
+            .start-title {
+                font-size: 3rem;
+                margin-bottom: 20px;
+                background: linear-gradient(90deg, #ff6b6b, #feca57, #54a0ff);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+            
+            .start-subtitle {
+                font-size: 1.2rem;
+                color: #888;
+                margin-bottom: 40px;
+                text-align: center;
+                max-width: 600px;
+            }
+            
+            .start-button {
+                font-size: 1.5rem;
+                padding: 15px 50px;
+                background: linear-gradient(90deg, #54a0ff, #00d2d3);
+                border: none;
+                border-radius: 30px;
+                color: #fff;
+                cursor: pointer;
+                transition: transform 0.2s, box-shadow 0.2s;
+            }
+            
+            .start-button:hover {
+                transform: scale(1.05);
+                box-shadow: 0 0 30px rgba(84, 160, 255, 0.5);
+            }
+            
+            .instructions {
+                margin-top: 40px;
+                font-size: 0.9rem;
+                color: #666;
+            }
+            
+            .instructions kbd {
+                background: #333;
+                padding: 3px 8px;
+                border-radius: 4px;
+                margin: 0 3px;
+            }
+            
+            /* Game over screen */
+            .game-over-screen {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.9);
+                display: none;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                z-index: 200;
+            }
+            
+            .game-over-title {
+                font-size: 3rem;
+                margin-bottom: 20px;
+            }
+            
+            .game-over-title.victory {
+                color: #00d2d3;
+            }
+            
+            .game-over-title.defeat {
+                color: #ff6b6b;
+            }
+            
+            /* Legend */
+            .legend {
+                display: flex;
+                gap: 20px;
+                margin-top: 20px;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .legend-item {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 0.8rem;
+                color: #888;
+            }
+            
+            .legend-emoji {
+                font-size: 1.2rem;
+            }
+            
+            /* Info panel */
+            .info-panel {
+                position: absolute;
+                bottom: 10px;
+                left: 10px;
+                right: 10px;
+                display: flex;
+                justify-content: center;
+                gap: 20px;
+                z-index: 50;
+            }
+            
+            .info-badge {
+                background: rgba(0, 0, 0, 0.7);
+                padding: 5px 15px;
+                border-radius: 20px;
+                font-size: 0.75rem;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+            }
+            
+            .info-badge.redteam {
+                border: 1px solid #ff6b6b;
+            }
+            
+            .info-badge.blueteam {
+                border: 1px solid #54a0ff;
+            }
+            
+            .info-badge.operator {
+                border: 1px solid #feca57;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="game-container">
+            <div class="header">
+                <div>
+                    <h1 class="title">🐉 MAG7 Battle</h1>
+                    <p class="subtitle">Knative Lambda Operator Demo</p>
+                </div>
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-value" id="score">0</div>
+                        <div class="stat-label">Score</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="blocked">0</div>
+                        <div class="stat-label">Blocked</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="wave-num">1</div>
+                        <div class="stat-label">Wave</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="game-area" id="game-area">
+                <div class="stars"></div>
+                
+                <!-- MAG7 Boss -->
+                <div class="mag7-boss">
+                    <div class="mag7-dragon">🐉</div>
+                    <div class="mag7-heads" id="mag7-heads">
+                        <span class="mag7-head" data-head="apple">🍎</span>
+                        <span class="mag7-head" data-head="microsoft">🪟</span>
+                        <span class="mag7-head" data-head="google">🔍</span>
+                        <span class="mag7-head" data-head="amazon">📦</span>
+                        <span class="mag7-head" data-head="meta">👓</span>
+                        <span class="mag7-head" data-head="tesla">⚡</span>
+                        <span class="mag7-head" data-head="nvidia">🎮</span>
+                    </div>
+                    <div class="health-bar-container">
+                        <div class="health-bar" id="boss-health" style="width: 100%"></div>
+                    </div>
+                    <div class="health-text" id="boss-health-text">MAG7 HP: 1000/1000</div>
+                </div>
+                
+                <!-- Player -->
+                <div class="player" id="player">🛡️</div>
+                <div class="player-health">
+                    <div class="player-health-bar" id="player-health" style="width: 100%"></div>
+                </div>
+                
+                <!-- HUD -->
+                <div class="hud">
+                    <div class="hud-item">🛡️ Blue Team Active</div>
+                </div>
+                
+                <div class="wave-indicator">
+                    Wave <span id="wave">1</span>
+                </div>
+                
+                <!-- Start Screen -->
+                <div class="start-screen" id="start-screen">
+                    <div class="start-title">🐉 MAG7 Battle 🛡️</div>
+                    <div class="start-subtitle">
+                        The MAG7 dragon has awakened! Use <strong>agent-blueteam</strong> 
+                        to defend against <strong>agent-redteam</strong> exploits and defeat 
+                        the 7-headed beast!
+                        <br><br>
+                        Each exploit blocked deals damage to MAG7. Every exploit that gets 
+                        through damages you!
+                    </div>
+                    <button class="start-button" id="start-btn">🎮 Start Battle</button>
+                    <div class="instructions">
+                        <kbd>← →</kbd> Move &nbsp;&nbsp;
+                        <kbd>Space</kbd> Shoot &nbsp;&nbsp;
+                        <kbd>P</kbd> Pause
+                    </div>
+                    <div class="legend">
+                        <div class="legend-item"><span class="legend-emoji">🌐</span> SSRF</div>
+                        <div class="legend-item"><span class="legend-emoji">💉</span> Injection</div>
+                        <div class="legend-item"><span class="legend-emoji">⚡</span> CMD Exec</div>
+                        <div class="legend-item"><span class="legend-emoji">🔥</span> Code Exec</div>
+                        <div class="legend-item"><span class="legend-emoji">👑</span> RBAC</div>
+                        <div class="legend-item"><span class="legend-emoji">🔑</span> Token</div>
+                    </div>
+                </div>
+                
+                <!-- Game Over Screen -->
+                <div class="game-over-screen" id="game-over-screen">
+                    <div class="game-over-title" id="game-over-title">Game Over</div>
+                    <div class="start-subtitle" id="game-over-message"></div>
+                    <div style="font-size: 2rem; margin: 20px 0;">
+                        Final Score: <span id="final-score">0</span>
+                    </div>
+                    <button class="start-button" id="restart-btn">🔄 Play Again</button>
+                </div>
+                
+                <!-- Info Panel -->
+                <div class="info-panel">
+                    <div class="info-badge redteam">🔴 agent-redteam: Spawning Exploits</div>
+                    <div class="info-badge operator">⚙️ knative-lambda-operator</div>
+                    <div class="info-badge blueteam">🔵 agent-blueteam: Defending</div>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            // Game State
+            const gameState = {
+                running: false,
+                paused: false,
+                score: 0,
+                wave: 1,
+                playerX: 450,
+                playerHealth: 100,
+                mag7Health: 1000,
+                exploitsBlocked: 0,
+                exploitsMissed: 0,
+                exploits: [],
+                shots: [],
+                keys: {},
+                lastSpawn: 0,
+                spawnInterval: 2000,
+            };
+            
+            // Exploit types
+            const EXPLOITS = [
+                { id: 'blue-001', name: 'SSRF', emoji: '🌐', damage: 15, speed: 2, color: '#ff6b6b' },
+                { id: 'blue-002', name: 'Injection', emoji: '💉', damage: 20, speed: 2.5, color: '#feca57' },
+                { id: 'vuln-001', name: 'CMD Exec', emoji: '⚡', damage: 25, speed: 3, color: '#ff9ff3' },
+                { id: 'vuln-003', name: 'Code Exec', emoji: '🔥', damage: 30, speed: 2.5, color: '#54a0ff' },
+                { id: 'vuln-004', name: 'RBAC', emoji: '👑', damage: 35, speed: 2, color: '#5f27cd' },
+                { id: 'blue-006', name: 'Token', emoji: '🔑', damage: 20, speed: 2.5, color: '#00d2d3' },
+            ];
+            
+            // MAG7 heads health thresholds
+            const MAG7_HEADS = [
+                { name: 'nvidia', threshold: 0 },
+                { name: 'tesla', threshold: 100 },
+                { name: 'meta', threshold: 250 },
+                { name: 'amazon', threshold: 400 },
+                { name: 'google', threshold: 550 },
+                { name: 'microsoft', threshold: 700 },
+                { name: 'apple', threshold: 850 },
+            ];
+            
+            // DOM Elements
+            const gameArea = document.getElementById('game-area');
+            const player = document.getElementById('player');
+            const startScreen = document.getElementById('start-screen');
+            const gameOverScreen = document.getElementById('game-over-screen');
+            const startBtn = document.getElementById('start-btn');
+            const restartBtn = document.getElementById('restart-btn');
+            
+            // Initialize
+            function init() {
+                // Event listeners
+                startBtn.addEventListener('click', startGame);
+                restartBtn.addEventListener('click', restartGame);
+                
+                document.addEventListener('keydown', (e) => {
+                    gameState.keys[e.key] = true;
+                    if (e.key === ' ' && gameState.running && !gameState.paused) {
+                        shoot();
+                        e.preventDefault();
+                    }
+                    if (e.key === 'p' || e.key === 'P') {
+                        togglePause();
+                    }
+                });
+                
+                document.addEventListener('keyup', (e) => {
+                    gameState.keys[e.key] = false;
+                });
+            }
+            
+            function startGame() {
+                startScreen.style.display = 'none';
+                gameState.running = true;
+                gameState.score = 0;
+                gameState.wave = 1;
+                gameState.playerHealth = 100;
+                gameState.mag7Health = 1000;
+                gameState.exploitsBlocked = 0;
+                gameState.exploitsMissed = 0;
+                gameState.exploits = [];
+                gameState.shots = [];
+                gameState.playerX = 450;
+                updateUI();
+                gameLoop();
+            }
+            
+            function restartGame() {
+                gameOverScreen.style.display = 'none';
+                startGame();
+            }
+            
+            function togglePause() {
+                if (!gameState.running) return;
+                gameState.paused = !gameState.paused;
+            }
+            
+            function gameLoop() {
+                if (!gameState.running) return;
+                if (gameState.paused) {
+                    requestAnimationFrame(gameLoop);
+                    return;
+                }
+                
+                // Move player
+                if (gameState.keys['ArrowLeft'] || gameState.keys['a']) {
+                    gameState.playerX = Math.max(30, gameState.playerX - 8);
+                }
+                if (gameState.keys['ArrowRight'] || gameState.keys['d']) {
+                    gameState.playerX = Math.min(870, gameState.playerX + 8);
+                }
+                player.style.left = gameState.playerX + 'px';
+                
+                // Spawn exploits
+                const now = Date.now();
+                if (now - gameState.lastSpawn > gameState.spawnInterval) {
+                    spawnExploit();
+                    gameState.lastSpawn = now;
+                }
+                
+                // Move exploits
+                moveExploits();
+                
+                // Move shots
+                moveShots();
+                
+                // Check collisions
+                checkCollisions();
+                
+                // Check wave completion
+                checkWaveCompletion();
+                
+                requestAnimationFrame(gameLoop);
+            }
+            
+            function spawnExploit() {
+                const exploit = EXPLOITS[Math.floor(Math.random() * EXPLOITS.length)];
+                const x = Math.random() * 800 + 50;
+                
+                const el = document.createElement('div');
+                el.className = 'exploit';
+                el.innerHTML = `
+                    <span class="exploit-label">${exploit.name}</span>
+                    ${exploit.emoji}
+                `;
+                el.style.left = x + 'px';
+                el.style.top = '150px';
+                
+                gameArea.appendChild(el);
+                
+                gameState.exploits.push({
+                    element: el,
+                    x: x,
+                    y: 150,
+                    speed: exploit.speed + (gameState.wave * 0.3),
+                    damage: exploit.damage,
+                    ...exploit
+                });
+            }
+            
+            function moveExploits() {
+                for (let i = gameState.exploits.length - 1; i >= 0; i--) {
+                    const exploit = gameState.exploits[i];
+                    exploit.y += exploit.speed;
+                    exploit.element.style.top = exploit.y + 'px';
+                    
+                    // Check if exploit reached bottom (player hit)
+                    if (exploit.y > 530) {
+                        exploitHitPlayer(exploit, i);
+                    }
+                }
+            }
+            
+            function shoot() {
+                const shot = document.createElement('div');
+                shot.className = 'defense-shot';
+                shot.style.left = (gameState.playerX - 4) + 'px';
+                shot.style.top = '530px';
+                gameArea.appendChild(shot);
+                
+                gameState.shots.push({
+                    element: shot,
+                    x: gameState.playerX,
+                    y: 530
+                });
+            }
+            
+            function moveShots() {
+                for (let i = gameState.shots.length - 1; i >= 0; i--) {
+                    const shot = gameState.shots[i];
+                    shot.y -= 12;
+                    shot.element.style.top = shot.y + 'px';
+                    
+                    // Remove if off screen
+                    if (shot.y < 0) {
+                        shot.element.remove();
+                        gameState.shots.splice(i, 1);
+                    }
+                }
+            }
+            
+            function checkCollisions() {
+                for (let i = gameState.shots.length - 1; i >= 0; i--) {
+                    const shot = gameState.shots[i];
+                    
+                    for (let j = gameState.exploits.length - 1; j >= 0; j--) {
+                        const exploit = gameState.exploits[j];
+                        
+                        // Simple collision detection
+                        const dx = Math.abs(shot.x - exploit.x);
+                        const dy = Math.abs(shot.y - exploit.y);
+                        
+                        if (dx < 30 && dy < 30) {
+                            // Hit!
+                            exploitBlocked(exploit, j);
+                            shot.element.remove();
+                            gameState.shots.splice(i, 1);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            function exploitBlocked(exploit, index) {
+                // Create explosion
+                const explosion = document.createElement('div');
+                explosion.className = 'explosion';
+                explosion.textContent = '💥';
+                explosion.style.left = exploit.x + 'px';
+                explosion.style.top = exploit.y + 'px';
+                gameArea.appendChild(explosion);
+                setTimeout(() => explosion.remove(), 500);
+                
+                // Remove exploit
+                exploit.element.remove();
+                gameState.exploits.splice(index, 1);
+                
+                // Update stats
+                gameState.exploitsBlocked++;
+                gameState.score += exploit.damage * 10;
+                gameState.mag7Health -= exploit.damage;
+                
+                updateUI();
+                checkVictory();
+            }
+            
+            function exploitHitPlayer(exploit, index) {
+                // Create explosion
+                const explosion = document.createElement('div');
+                explosion.className = 'explosion';
+                explosion.textContent = '💢';
+                explosion.style.left = exploit.x + 'px';
+                explosion.style.top = exploit.y + 'px';
+                gameArea.appendChild(explosion);
+                setTimeout(() => explosion.remove(), 500);
+                
+                // Remove exploit
+                exploit.element.remove();
+                gameState.exploits.splice(index, 1);
+                
+                // Damage player
+                gameState.exploitsMissed++;
+                gameState.playerHealth -= exploit.damage;
+                
+                updateUI();
+                checkDefeat();
+            }
+            
+            function checkWaveCompletion() {
+                // New wave every 15 seconds or when all exploits cleared
+                if (gameState.exploitsBlocked > 0 && gameState.exploitsBlocked % (5 + gameState.wave * 2) === 0) {
+                    gameState.wave++;
+                    gameState.spawnInterval = Math.max(500, 2000 - (gameState.wave * 150));
+                    updateUI();
+                }
+            }
+            
+            function checkVictory() {
+                if (gameState.mag7Health <= 0) {
+                    gameOver(true);
+                }
+            }
+            
+            function checkDefeat() {
+                if (gameState.playerHealth <= 0) {
+                    gameOver(false);
+                }
+            }
+            
+            function gameOver(victory) {
+                gameState.running = false;
+                
+                // Clean up
+                gameState.exploits.forEach(e => e.element.remove());
+                gameState.shots.forEach(s => s.element.remove());
+                gameState.exploits = [];
+                gameState.shots = [];
+                
+                // Show game over screen
+                const title = document.getElementById('game-over-title');
+                const message = document.getElementById('game-over-message');
+                const finalScore = document.getElementById('final-score');
+                
+                if (victory) {
+                    title.textContent = '🎉 Victory!';
+                    title.className = 'game-over-title victory';
+                    message.innerHTML = `
+                        MAG7 has been defeated!<br>
+                        The cluster is safe thanks to <strong>agent-blueteam</strong>!<br><br>
+                        Exploits blocked: ${gameState.exploitsBlocked}<br>
+                        Waves survived: ${gameState.wave}
+                    `;
+                } else {
+                    title.textContent = '💀 Defeat';
+                    title.className = 'game-over-title defeat';
+                    message.innerHTML = `
+                        The exploits overwhelmed your defenses!<br>
+                        MAG7 still has ${gameState.mag7Health} HP remaining.<br><br>
+                        Exploits blocked: ${gameState.exploitsBlocked}<br>
+                        Exploits missed: ${gameState.exploitsMissed}
+                    `;
+                }
+                
+                finalScore.textContent = gameState.score;
+                gameOverScreen.style.display = 'flex';
+            }
+            
+            function updateUI() {
+                // Score
+                document.getElementById('score').textContent = gameState.score;
+                document.getElementById('blocked').textContent = gameState.exploitsBlocked;
+                document.getElementById('wave-num').textContent = gameState.wave;
+                document.getElementById('wave').textContent = gameState.wave;
+                
+                // Boss health
+                const bossHealthPercent = Math.max(0, (gameState.mag7Health / 1000) * 100);
+                document.getElementById('boss-health').style.width = bossHealthPercent + '%';
+                document.getElementById('boss-health-text').textContent = 
+                    `MAG7 HP: ${Math.max(0, gameState.mag7Health)}/1000`;
+                
+                // Player health
+                document.getElementById('player-health').style.width = 
+                    Math.max(0, gameState.playerHealth) + '%';
+                
+                // MAG7 heads
+                MAG7_HEADS.forEach(head => {
+                    const el = document.querySelector(`[data-head="${head.name}"]`);
+                    if (el) {
+                        if (gameState.mag7Health <= head.threshold) {
+                            el.classList.add('defeated');
+                        } else {
+                            el.classList.remove('defeated');
+                        }
+                    }
+                });
+            }
+            
+            // Start
+            init();
+        </script>
+    </body>
+    </html>

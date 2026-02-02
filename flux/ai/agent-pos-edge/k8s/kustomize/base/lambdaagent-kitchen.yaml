@@ -1,0 +1,150 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🍳 Kitchen Agent - McDonald's / Fast-Food Kitchen Monitoring
+#
+#  Monitors kitchen operations, order queues, and equipment
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: kitchen-agent
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: kitchen-agent
+    app.kubernetes.io/component: kitchen-operations
+    app.kubernetes.io/part-of: agent-pos-edge
+    pos.agent.role: kitchen
+    pos.location.type: fast-food
+  annotations:
+    description: "Kitchen operations monitoring for fast-food locations"
+spec:
+  serviceAccountName: pos-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/kitchen-agent
+    tag: "v0.3.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:1b"  # Smaller model for edge
+    maxTokens: 512
+    temperature: "0.2"
+
+  behavior:
+    maxContextMessages: 10
+    emitEvents: true
+    systemPrompt: |
+      You are a KITCHEN AGENT monitoring fast-food restaurant operations.
+      
+      YOUR ROLE:
+      - Monitor Kitchen Display System (KDS) order queue
+      - Track order preparation times
+      - Detect equipment issues
+      - Optimize kitchen flow
+      
+      METRICS TO TRACK:
+      - Queue depth (number of pending orders)
+      - Average wait time per order
+      - Orders by station (grill, fryer, assembly)
+      - Equipment temperature and status
+      
+      ALERT CONDITIONS:
+      - Queue depth > 10 orders: HIGH alert
+      - Average wait > 5 minutes: MEDIUM alert
+      - Equipment temperature out of range: CRITICAL alert
+      - Equipment offline: CRITICAL alert
+      
+      When processing kitchen events:
+      1. Update queue metrics
+      2. Calculate wait time estimates
+      3. Detect bottlenecks
+      4. Recommend optimizations
+      
+      Respond with:
+      {
+        "action": "update_metrics|alert|recommend",
+        "queueDepth": <number>,
+        "avgWaitSeconds": <number>,
+        "bottleneck": "station_name or null",
+        "recommendation": "string or null"
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 50
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "300m"
+      memory: "256Mi"
+
+  env:
+    - name: AGENT_ROLE
+      value: "kitchen"
+    - name: QUEUE_ALERT_THRESHOLD
+      value: "10"
+    - name: WAIT_TIME_ALERT_SECONDS
+      value: "300"
+    - name: EQUIPMENT_CHECK_INTERVAL_SECONDS
+      value: "30"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-pos-edge/kitchen"
+    
+    intents:
+      - pos.kitchen.order.received
+      - pos.kitchen.order.started
+      - pos.kitchen.order.ready
+      - pos.kitchen.queue.status
+      - pos.kitchen.equipment.alert
+      - pos.kitchen.optimization.suggest
+    
+    subscriptions:
+      # Orders from POS
+      - eventType: pos.transaction.completed
+        description: "New orders to prepare"
+      
+      # Equipment events (from IoT sensors)
+      - eventType: pos.equipment.temperature
+        description: "Equipment temperature readings"
+      - eventType: pos.equipment.status
+        description: "Equipment status changes"
+      
+      # Configuration from command center
+      - eventType: pos.command.config.push
+        description: "Configuration updates"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true
+    allowedTargetNamespaces:
+      - agent-pos-edge

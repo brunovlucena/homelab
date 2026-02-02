@@ -1,0 +1,43 @@
+---
+# LambdaFunction: Pod Check Status (MinIO)
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: pod-check-status
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: pod-check-status
+    app.kubernetes.io/component: remediation
+    app.kubernetes.io/part-of: agent-sre
+    source.type: minio
+spec:
+  source:
+    type: minio
+    minio:
+      endpoint: minio.minio.svc.cluster.local:9000
+      bucket: lambda-functions
+      key: agent-sre/pod-check-status/main.py
+      secretRef:
+        name: minio-credentials
+  runtime:
+    language: python
+    version: "3.11"
+    handler: handler
+  scaling:
+    minReplicas: 0
+    maxReplicas: 10
+    targetConcurrency: 5
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  build:
+    timeout: "10m"
+    registry: localhost:5001
+    insecure: true
+  eventing:
+    enabled: false
+

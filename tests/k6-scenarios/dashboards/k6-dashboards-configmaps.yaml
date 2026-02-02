@@ -1,0 +1,412 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📊 K6 PERFORMANCE TEST SCENARIOS - GRAFANA DASHBOARDS
+#
+#  This file contains ConfigMaps for deploying all k6 scenario dashboards
+#  to Grafana via the Grafana sidecar.
+#
+#  Dashboards included:
+#    1. K6 Scenarios Overview - Master dashboard
+#    2. Security Battle Arena - Redteam vs Blueteam
+#    3. Restaurant Full Service - Dining flow
+#    4. Store Customer Journey - E-commerce + WhatsApp
+#    5. POS Edge Fleet - Multi-location operations
+#    6. Cross-Agent Communication - Bruno AI chatbot
+#    7. Medical HIPAA - Compliance testing
+#
+#  Apply with: kubectl apply -f k6-dashboards-configmaps.yaml
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-scenarios-overview-dashboard
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: grafana-dashboard
+    app.kubernetes.io/component: k6-scenarios
+    grafana_dashboard: "1"
+data:
+  k6-scenarios-overview.json: |-
+    {
+      "title": "K6 Performance Test Scenarios Overview",
+      "uid": "k6-scenarios-overview",
+      "tags": ["k6", "scenario", "overview", "performance", "lambda"],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "links": [
+        {
+          "asDropdown": true,
+          "icon": "external link",
+          "includeVars": true,
+          "keepTime": true,
+          "tags": ["k6", "scenario"],
+          "targetBlank": true,
+          "title": "Scenario Dashboards",
+          "type": "dashboards"
+        }
+      ],
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "title": "🎯 Test Scenarios Overview - Deploy k6-scenarios-overview-dashboard.json for full version",
+          "type": "row"
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 38,
+      "time": { "from": "now-30m", "to": "now" },
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 2
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-security-battle-dashboard
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: grafana-dashboard
+    app.kubernetes.io/component: k6-scenarios
+    grafana_dashboard: "1"
+data:
+  k6-security-battle.json: |-
+    {
+      "title": "K6 Security Battle Arena - Redteam vs Blueteam",
+      "uid": "k6-security-battle",
+      "tags": ["k6", "scenario", "security", "battle", "redteam", "blueteam"],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "links": [
+        {
+          "asDropdown": false,
+          "icon": "external link",
+          "includeVars": true,
+          "keepTime": true,
+          "title": "Scenarios Overview",
+          "type": "link",
+          "url": "/d/k6-scenarios-overview"
+        }
+      ],
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "title": "⚔️ Security Battle Arena - Deploy k6-security-battle-dashboard.json for full version",
+          "type": "row"
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 38,
+      "time": { "from": "now-30m", "to": "now" },
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 2
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-restaurant-service-dashboard
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: grafana-dashboard
+    app.kubernetes.io/component: k6-scenarios
+    grafana_dashboard: "1"
+data:
+  k6-restaurant-service.json: |-
+    {
+      "title": "K6 Restaurant Full Service - Dining Flow",
+      "uid": "k6-restaurant-service",
+      "tags": ["k6", "scenario", "restaurant", "dining", "hospitality"],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "links": [
+        {
+          "asDropdown": false,
+          "icon": "external link",
+          "includeVars": true,
+          "keepTime": true,
+          "title": "Scenarios Overview",
+          "type": "link",
+          "url": "/d/k6-scenarios-overview"
+        }
+      ],
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "title": "🍽️ Restaurant Full Service - Deploy k6-restaurant-service-dashboard.json for full version",
+          "type": "row"
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 38,
+      "time": { "from": "now-1h", "to": "now" },
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 2
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-store-customer-dashboard
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: grafana-dashboard
+    app.kubernetes.io/component: k6-scenarios
+    grafana_dashboard: "1"
+data:
+  k6-store-customer.json: |-
+    {
+      "title": "K6 Store Customer Journey - MultiBrands E-commerce",
+      "uid": "k6-store-customer",
+      "tags": ["k6", "scenario", "store", "ecommerce", "whatsapp"],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "links": [
+        {
+          "asDropdown": false,
+          "icon": "external link",
+          "includeVars": true,
+          "keepTime": true,
+          "title": "Scenarios Overview",
+          "type": "link",
+          "url": "/d/k6-scenarios-overview"
+        }
+      ],
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "title": "🏪 Store Customer Journey - Deploy k6-store-customer-dashboard.json for full version",
+          "type": "row"
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 38,
+      "time": { "from": "now-1h", "to": "now" },
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 2
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-pos-edge-fleet-dashboard
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: grafana-dashboard
+    app.kubernetes.io/component: k6-scenarios
+    grafana_dashboard: "1"
+data:
+  k6-pos-edge-fleet.json: |-
+    {
+      "title": "K6 POS Edge Fleet - Multi-Location Operations",
+      "uid": "k6-pos-edge-fleet",
+      "tags": ["k6", "scenario", "pos", "edge", "retail", "mcdonalds", "gas-station"],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "links": [
+        {
+          "asDropdown": false,
+          "icon": "external link",
+          "includeVars": true,
+          "keepTime": true,
+          "title": "Scenarios Overview",
+          "type": "link",
+          "url": "/d/k6-scenarios-overview"
+        }
+      ],
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "title": "🏪 POS Edge Fleet - Deploy k6-pos-edge-fleet-dashboard.json for full version",
+          "type": "row"
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 38,
+      "time": { "from": "now-1h", "to": "now" },
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 2
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-cross-agent-dashboard
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: grafana-dashboard
+    app.kubernetes.io/component: k6-scenarios
+    grafana_dashboard: "1"
+data:
+  k6-cross-agent.json: |-
+    {
+      "title": "K6 Cross-Agent Communication - Bruno AI Chatbot",
+      "uid": "k6-cross-agent",
+      "tags": ["k6", "scenario", "bruno", "chat", "cross-agent", "llm"],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "links": [
+        {
+          "asDropdown": false,
+          "icon": "external link",
+          "includeVars": true,
+          "keepTime": true,
+          "title": "Scenarios Overview",
+          "type": "link",
+          "url": "/d/k6-scenarios-overview"
+        }
+      ],
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "title": "💬 Cross-Agent Communication - Deploy k6-cross-agent-dashboard.json for full version",
+          "type": "row"
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 38,
+      "time": { "from": "now-1h", "to": "now" },
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 2
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-medical-hipaa-dashboard
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: grafana-dashboard
+    app.kubernetes.io/component: k6-scenarios
+    grafana_dashboard: "1"
+data:
+  k6-medical-hipaa.json: |-
+    {
+      "title": "K6 Medical HIPAA Compliance - Patient Records",
+      "uid": "k6-medical-hipaa",
+      "tags": ["k6", "scenario", "medical", "hipaa", "compliance", "rbac"],
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "links": [
+        {
+          "asDropdown": false,
+          "icon": "external link",
+          "includeVars": true,
+          "keepTime": true,
+          "title": "Scenarios Overview",
+          "type": "link",
+          "url": "/d/k6-scenarios-overview"
+        }
+      ],
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "title": "🏥 Medical HIPAA Compliance - Deploy k6-medical-hipaa-dashboard.json for full version",
+          "type": "row"
+        }
+      ],
+      "refresh": "10s",
+      "schemaVersion": 38,
+      "time": { "from": "now-1h", "to": "now" },
+      "timezone": "browser",
+      "editable": true,
+      "graphTooltip": 2
+    }

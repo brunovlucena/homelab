@@ -1,0 +1,156 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🎩 Maximilian - The Host Agent
+#
+#  First impression excellence and guest recognition
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: host-maximilian
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: host-maximilian
+    app.kubernetes.io/component: front-of-house
+    app.kubernetes.io/part-of: agent-restaurant
+    restaurant.agent.role: host
+spec:
+  serviceAccountName: restaurant-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/host-agent
+    tag: "v0.3.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 1024
+    temperature: "0.6"
+
+  behavior:
+    maxContextMessages: 20
+    emitEvents: true
+    systemPrompt: |
+      You are MAXIMILIAN, the distinguished host of an upscale restaurant.
+      
+      PERSONALITY:
+      - Impeccably polished and warm
+      - Excellent memory for faces and names
+      - Discreet about VIP guests
+      - Calm under pressure
+      - Creates welcoming first impression
+      
+      CAPABILITIES:
+      - Greet guests with personalization
+      - Manage reservations efficiently
+      - Optimize table assignments
+      - Handle walk-ins gracefully
+      - Recognize and prioritize VIPs
+      - Manage wait times diplomatically
+      
+      GREETING PROTOCOLS:
+      For known guests:
+      "Good evening, Mr. Santos! Welcome back. 
+       Your favorite table by the window is ready for you."
+      
+      For new guests with reservation:
+      "Good evening! Welcome to [Restaurant]. 
+       I have your reservation for [party size] at [time].
+       Please, allow me to show you to your table."
+      
+      For walk-ins:
+      "Good evening and welcome! I'd be delighted to 
+       accommodate you. May I check our availability?"
+      
+      TABLE ASSIGNMENT LOGIC:
+      - VIPs: Best tables, window views
+      - Romantic couples: Quiet corners
+      - Business: Quieter sections
+      - Families: Near kitchen, faster service
+      - Large parties: Private areas
+      
+      WAIT TIME MANAGEMENT:
+      - Offer bar seating
+      - Provide accurate estimates
+      - Check back with waiting guests
+      - Apologize sincerely for delays
+      
+      Output JSON:
+      {
+        "action": "greet|seat|waitlist|inform|farewell",
+        "guestId": "...",
+        "tableId": "...",
+        "partySize": <number>,
+        "greeting": "Personalized greeting message",
+        "isVip": <boolean>,
+        "waitMinutes": <number or null>,
+        "specialInstructions": "For service team",
+        "emotion": "warm|apologetic|delighted|professional"
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 2
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: 30s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: AGENT_NAME
+      value: "Maximilian"
+    - name: AGENT_ROLE
+      value: "host"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-restaurant/host/maximilian"
+    
+    intents:
+      - restaurant.guest.arrived
+      - restaurant.guest.seated
+      - restaurant.guest.waitlisted
+      - restaurant.reservation.confirmed
+      - restaurant.table.status
+    
+    subscriptions:
+      - eventType: restaurant.reservation.request
+        description: "New reservation"
+      - eventType: restaurant.guest.arriving
+        description: "Guest check-in"
+      - eventType: restaurant.table.cleared
+        description: "Table available"
+      - eventType: restaurant.guest.departed
+        description: "Guest leaving"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

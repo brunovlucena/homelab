@@ -1,0 +1,766 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 K6 RBAC TEST - Lambda Agent Permission Validation
+#
+#  Purpose: Test RBAC capabilities for Lambda Agents
+#  
+#  Test Scenarios:
+#    1. Permission Tier Validation (viewer, developer, orchestrator, admin)
+#    2. Broker/Trigger Creation Restrictions
+#    3. Event-based Disable/Enable via CloudEvents
+#    4. Namespace Restrictions
+#    5. Denied Action Logging
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: lambda-rbac-test
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: testing
+    test-type: rbac
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: lambda-rbac-test
+      file: rbac-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    serviceAccountName: lambda-rbac-test-runner
+    env:
+      - name: K8S_API_SERVER
+        value: "https://kubernetes.default.svc"
+      - name: TEST_NAMESPACE
+        value: "rbac-test"
+      - name: BROKER_URL
+        value: "http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+
+---
+# Test namespace for RBAC tests
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rbac-test
+  labels:
+    app.kubernetes.io/name: rbac-test
+    app.kubernetes.io/part-of: knative-lambda-operator
+    testing.knative.io/rbac: "true"
+
+---
+# ServiceAccount for test runner (has admin permissions to validate others)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lambda-rbac-test-runner
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: testing
+
+---
+# Test runner needs admin access to create test resources and validate permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: lambda-rbac-test-runner
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: testing
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-admin
+subjects:
+  - kind: ServiceAccount
+    name: lambda-rbac-test-runner
+    namespace: knative-lambda
+
+---
+# ClusterRole to allow impersonation for RBAC testing
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lambda-rbac-test-impersonator
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: testing
+rules:
+  - apiGroups: [""]
+    resources: ["users", "serviceaccounts"]
+    verbs: ["impersonate"]
+
+---
+# Bind impersonation permissions to test runner
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: lambda-rbac-test-impersonator
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: testing
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-rbac-test-impersonator
+subjects:
+  - kind: ServiceAccount
+    name: lambda-rbac-test-runner
+    namespace: knative-lambda
+
+---
+# Test ServiceAccounts with different permission tiers
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-agent-viewer
+  namespace: rbac-test
+  labels:
+    testing.knative.io/rbac-tier: viewer
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-agent-developer
+  namespace: rbac-test
+  labels:
+    testing.knative.io/rbac-tier: developer
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-agent-orchestrator
+  namespace: rbac-test
+  labels:
+    testing.knative.io/rbac-tier: orchestrator
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-agent-restricted
+  namespace: rbac-test
+  labels:
+    testing.knative.io/rbac-tier: restricted
+
+---
+# Bind test SAs to their respective roles (namespace-scoped)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-agent-viewer-binding
+  namespace: rbac-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-viewer
+subjects:
+  - kind: ServiceAccount
+    name: test-agent-viewer
+    namespace: rbac-test
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-agent-developer-binding
+  namespace: rbac-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-developer
+subjects:
+  - kind: ServiceAccount
+    name: test-agent-developer
+    namespace: rbac-test
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-agent-orchestrator-binding
+  namespace: rbac-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-orchestrator
+subjects:
+  - kind: ServiceAccount
+    name: test-agent-orchestrator
+    namespace: rbac-test
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-agent-restricted-binding
+  namespace: rbac-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-restricted
+subjects:
+  - kind: ServiceAccount
+    name: test-agent-restricted
+    namespace: rbac-test
+
+---
+# Developer with broker restriction override
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-agent-developer-no-broker
+  namespace: rbac-test
+  labels:
+    testing.knative.io/rbac-tier: developer
+    testing.knative.io/restriction: no-broker
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-agent-developer-no-broker-base
+  namespace: rbac-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-developer
+subjects:
+  - kind: ServiceAccount
+    name: test-agent-developer-no-broker
+    namespace: rbac-test
+
+---
+# Override with no-broker restriction
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-agent-developer-no-broker-restriction
+  namespace: rbac-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: lambda-agent-no-broker
+subjects:
+  - kind: ServiceAccount
+    name: test-agent-developer-no-broker
+    namespace: rbac-test
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lambda-rbac-test
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda-operator
+    app.kubernetes.io/component: testing
+    test-type: rbac
+data:
+  rbac-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    import exec from 'k6/execution';
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Custom Metrics
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const rbacTestSuccess = new Rate('rbac_test_success');
+    const permissionAllowed = new Counter('rbac_permission_allowed');
+    const permissionDenied = new Counter('rbac_permission_denied');
+    const rbacTestLatency = new Trend('rbac_test_latency_ms');
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Configuration
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const K8S_API = __ENV.K8S_API_SERVER || 'https://kubernetes.default.svc';
+    const TEST_NS = __ENV.TEST_NAMESPACE || 'rbac-test';
+    const BROKER_URL = __ENV.BROKER_URL || 'http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local';
+    
+    // Read SA token from mounted secret
+    const SA_TOKEN = open('/var/run/secrets/kubernetes.io/serviceaccount/token');
+    const CA_CERT = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt';
+    
+    // Permission matrix: what each tier can/cannot do
+    const PERMISSION_MATRIX = {
+      viewer: {
+        lambdaFunctions: { create: false, read: true, update: false, delete: false },
+        brokers: { create: false, read: true, update: false, delete: false },
+        triggers: { create: false, read: true, update: false, delete: false },
+      },
+      developer: {
+        lambdaFunctions: { create: true, read: true, update: true, delete: true },
+        brokers: { create: false, read: true, update: false, delete: false },
+        triggers: { create: true, read: true, update: true, delete: true },
+      },
+      orchestrator: {
+        lambdaFunctions: { create: true, read: true, update: true, delete: true },
+        brokers: { create: true, read: true, update: true, delete: true },
+        triggers: { create: true, read: true, update: true, delete: true },
+      },
+      restricted: {
+        lambdaFunctions: { create: false, read: true, update: false, delete: false },
+        brokers: { create: false, read: false, update: false, delete: false },
+        triggers: { create: false, read: false, update: false, delete: false },
+      },
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test Options
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export const options = {
+      insecureSkipTLSVerify: true,
+      scenarios: {
+        rbac_validation: {
+          executor: 'per-vu-iterations',
+          vus: 1,
+          iterations: 4,  // One iteration per tier
+          maxDuration: '5m',
+        },
+      },
+      thresholds: {
+        'rbac_test_success': ['rate>0.95'],
+        'rbac_test_latency_ms': ['p(95)<5000'],
+      },
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Helper Functions
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function k8sRequest(method, path, body, impersonateUser) {
+      const headers = {
+        'Authorization': `Bearer ${SA_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      };
+      
+      // Add impersonation header if specified
+      if (impersonateUser) {
+        headers['Impersonate-User'] = impersonateUser;
+      }
+      
+      const url = `${K8S_API}${path}`;
+      let res;
+      
+      // Use insecureSkipTLSVerify for in-cluster k8s API calls
+      const params = { headers, timeout: '30s' };
+      
+      switch (method.toUpperCase()) {
+        case 'GET':
+          res = http.get(url, params);
+          break;
+        case 'POST':
+          res = http.post(url, JSON.stringify(body), params);
+          break;
+        case 'PUT':
+          res = http.put(url, JSON.stringify(body), params);
+          break;
+        case 'PATCH':
+          params.headers = Object.assign({}, headers, { 'Content-Type': 'application/merge-patch+json' });
+          res = http.patch(url, JSON.stringify(body), params);
+          break;
+        case 'DELETE':
+          res = http.del(url, null, params);
+          break;
+      }
+      
+      return res;
+    }
+    
+    function generateTestId() {
+      return `rbac-test-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    }
+    
+    function testLambdaFunction(tier, operation, impersonateUser) {
+      const testId = generateTestId();
+      const path = `/apis/lambda.knative.io/v1alpha1/namespaces/${TEST_NS}/lambdafunctions`;
+      
+      const lambdaFunc = {
+        apiVersion: 'lambda.knative.io/v1alpha1',
+        kind: 'LambdaFunction',
+        metadata: {
+          name: `test-func-${testId}`,
+          namespace: TEST_NS,
+        },
+        spec: {
+          runtime: { language: 'python', version: '3.11' },
+          source: {
+            type: 'inline',
+            inline: { code: 'def handler(event, context): return {"statusCode": 200}' },
+          },
+        },
+      };
+      
+      let res;
+      const start = Date.now();
+      
+      switch (operation) {
+        case 'create':
+          res = k8sRequest('POST', path, lambdaFunc, impersonateUser);
+          break;
+        case 'read':
+          res = k8sRequest('GET', path, null, impersonateUser);
+          break;
+        case 'update':
+          // First create, then update using PATCH (no impersonation for admin setup)
+          k8sRequest('POST', path, lambdaFunc, null);
+          sleep(0.5);
+          const lambdaPatch = { metadata: { labels: { updated: 'true' } } };
+          res = k8sRequest('PATCH', `${path}/${lambdaFunc.metadata.name}`, lambdaPatch, impersonateUser);
+          k8sRequest('DELETE', `${path}/${lambdaFunc.metadata.name}`, null, null);  // Cleanup
+          break;
+        case 'delete':
+          k8sRequest('POST', path, lambdaFunc, null);  // Create as admin
+          sleep(0.5);
+          res = k8sRequest('DELETE', `${path}/${lambdaFunc.metadata.name}`, null, impersonateUser);
+          break;
+      }
+      
+      rbacTestLatency.add(Date.now() - start, { tier, resource: 'lambdafunction', operation });
+      return res;
+    }
+    
+    function testBroker(tier, operation, impersonateUser) {
+      const testId = generateTestId();
+      const path = `/apis/eventing.knative.dev/v1/namespaces/${TEST_NS}/brokers`;
+      
+      const broker = {
+        apiVersion: 'eventing.knative.dev/v1',
+        kind: 'Broker',
+        metadata: {
+          name: `test-broker-${testId}`,
+          namespace: TEST_NS,
+        },
+      };
+      
+      let res;
+      const start = Date.now();
+      
+      switch (operation) {
+        case 'create':
+          res = k8sRequest('POST', path, broker, impersonateUser);
+          // Cleanup if created
+          if (res.status === 201) {
+            k8sRequest('DELETE', `${path}/${broker.metadata.name}`, null, null);
+          }
+          break;
+        case 'read':
+          res = k8sRequest('GET', path, null, impersonateUser);
+          break;
+        case 'update':
+          k8sRequest('POST', path, broker, null);
+          sleep(0.5);
+          const brokerPatch = { metadata: { labels: { updated: 'true' } } };
+          res = k8sRequest('PATCH', `${path}/${broker.metadata.name}`, brokerPatch, impersonateUser);
+          k8sRequest('DELETE', `${path}/${broker.metadata.name}`, null, null);
+          break;
+        case 'delete':
+          k8sRequest('POST', path, broker, null);
+          sleep(0.5);
+          res = k8sRequest('DELETE', `${path}/${broker.metadata.name}`, null, impersonateUser);
+          break;
+      }
+      
+      rbacTestLatency.add(Date.now() - start, { tier, resource: 'broker', operation });
+      return res;
+    }
+    
+    function testTrigger(tier, operation, impersonateUser) {
+      const testId = generateTestId();
+      const path = `/apis/eventing.knative.dev/v1/namespaces/${TEST_NS}/triggers`;
+      
+      const trigger = {
+        apiVersion: 'eventing.knative.dev/v1',
+        kind: 'Trigger',
+        metadata: {
+          name: `test-trigger-${testId}`,
+          namespace: TEST_NS,
+        },
+        spec: {
+          broker: 'default',
+          filter: {
+            attributes: {
+              type: 'io.homelab.test',
+            },
+          },
+          subscriber: {
+            uri: 'http://test-service.rbac-test.svc.cluster.local',
+          },
+        },
+      };
+      
+      let res;
+      const start = Date.now();
+      
+      switch (operation) {
+        case 'create':
+          res = k8sRequest('POST', path, trigger, impersonateUser);
+          if (res.status === 201) {
+            k8sRequest('DELETE', `${path}/${trigger.metadata.name}`, null, null);
+          }
+          break;
+        case 'read':
+          res = k8sRequest('GET', path, null, impersonateUser);
+          break;
+        case 'update':
+          k8sRequest('POST', path, trigger, null);
+          sleep(0.5);
+          const triggerPatch = { metadata: { labels: { updated: 'true' } } };
+          res = k8sRequest('PATCH', `${path}/${trigger.metadata.name}`, triggerPatch, impersonateUser);
+          k8sRequest('DELETE', `${path}/${trigger.metadata.name}`, null, null);
+          break;
+        case 'delete':
+          k8sRequest('POST', path, trigger, null);
+          sleep(0.5);
+          res = k8sRequest('DELETE', `${path}/${trigger.metadata.name}`, null, impersonateUser);
+          break;
+      }
+      
+      rbacTestLatency.add(Date.now() - start, { tier, resource: 'trigger', operation });
+      return res;
+    }
+    
+    function getImpersonateUser(tier) {
+      // Use Kubernetes impersonation to test as different service accounts
+      return `system:serviceaccount:rbac-test:test-agent-${tier}`;
+    }
+    
+    function validatePermission(res, expected, tier, resource, operation) {
+      const allowed = res.status >= 200 && res.status < 300;
+      
+      if (expected && allowed) {
+        permissionAllowed.add(1, { tier, resource, operation });
+        return true;
+      } else if (!expected && (res.status === 403 || res.status === 401)) {
+        permissionDenied.add(1, { tier, resource, operation });
+        return true;
+      } else {
+        console.error(`❌ Unexpected: tier=${tier}, resource=${resource}, op=${operation}, expected=${expected}, got=${res.status}`);
+        return false;
+      }
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test: Event-based Permission Disable
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function testEventBasedDisable() {
+      const eventId = generateTestId();
+      
+      // Send RBAC disable event
+      const disableEvent = {
+        specversion: '1.0',
+        type: 'io.homelab.rbac.disable',
+        source: '/k6/rbac-test',
+        id: eventId,
+        time: new Date().toISOString(),
+        data: {
+          agentName: 'test-agent',
+          agentNamespace: TEST_NS,
+          capabilities: ['brokers.create', 'triggers.create'],
+          reason: 'k6 RBAC test',
+          duration: '5m',
+        },
+      };
+      
+      const headers = {
+        'Content-Type': 'application/json',
+        'ce-specversion': '1.0',
+        'ce-type': 'io.homelab.rbac.disable',
+        'ce-source': '/k6/rbac-test',
+        'ce-id': eventId,
+        'ce-time': new Date().toISOString(),
+      };
+      
+      const res = http.post(BROKER_URL, JSON.stringify(disableEvent.data), {
+        headers,
+        timeout: '10s',
+      });
+      
+      return check(res, {
+        'RBAC disable event accepted': (r) => r.status >= 200 && r.status < 300,
+      });
+    }
+    
+    function testEventBasedEnable() {
+      const eventId = generateTestId();
+      
+      // Send RBAC enable event
+      const enableEvent = {
+        specversion: '1.0',
+        type: 'io.homelab.rbac.enable',
+        source: '/k6/rbac-test',
+        id: eventId,
+        time: new Date().toISOString(),
+        data: {
+          agentName: 'test-agent',
+          agentNamespace: TEST_NS,
+          capabilities: ['brokers.create', 'triggers.create'],
+          reason: 'k6 RBAC test - re-enable',
+        },
+      };
+      
+      const headers = {
+        'Content-Type': 'application/json',
+        'ce-specversion': '1.0',
+        'ce-type': 'io.homelab.rbac.enable',
+        'ce-source': '/k6/rbac-test',
+        'ce-id': eventId,
+        'ce-time': new Date().toISOString(),
+      };
+      
+      const res = http.post(BROKER_URL, JSON.stringify(enableEvent.data), {
+        headers,
+        timeout: '10s',
+      });
+      
+      return check(res, {
+        'RBAC enable event accepted': (r) => r.status >= 200 && r.status < 300,
+      });
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Main Test
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export default function() {
+      const tiers = ['viewer', 'developer', 'orchestrator', 'restricted'];
+      const tier = tiers[__ITER % tiers.length];
+      const permissions = PERMISSION_MATRIX[tier];
+      
+      console.log(`\n🔐 Testing RBAC tier: ${tier}`);
+      
+      let allPassed = true;
+      
+      // Test LambdaFunction permissions
+      group(`${tier} - LambdaFunction permissions`, () => {
+        const impersonateUser = getImpersonateUser(tier);
+        
+        for (const [op, expected] of Object.entries(permissions.lambdaFunctions)) {
+          const res = testLambdaFunction(tier, op, impersonateUser);
+          const passed = validatePermission(res, expected, tier, 'lambdafunction', op);
+          
+          const icon = passed ? '✅' : '❌';
+          console.log(`  ${icon} lambdafunction.${op}: expected=${expected}, got=${res.status}`);
+          
+          if (!passed) allPassed = false;
+          sleep(0.2);
+        }
+      });
+      
+      // Test Broker permissions
+      group(`${tier} - Broker permissions`, () => {
+        const impersonateUser = getImpersonateUser(tier);
+        
+        for (const [op, expected] of Object.entries(permissions.brokers)) {
+          const res = testBroker(tier, op, impersonateUser);
+          const passed = validatePermission(res, expected, tier, 'broker', op);
+          
+          const icon = passed ? '✅' : '❌';
+          console.log(`  ${icon} broker.${op}: expected=${expected}, got=${res.status}`);
+          
+          if (!passed) allPassed = false;
+          sleep(0.2);
+        }
+      });
+      
+      // Test Trigger permissions
+      group(`${tier} - Trigger permissions`, () => {
+        const impersonateUser = getImpersonateUser(tier);
+        
+        for (const [op, expected] of Object.entries(permissions.triggers)) {
+          const res = testTrigger(tier, op, impersonateUser);
+          const passed = validatePermission(res, expected, tier, 'trigger', op);
+          
+          const icon = passed ? '✅' : '❌';
+          console.log(`  ${icon} trigger.${op}: expected=${expected}, got=${res.status}`);
+          
+          if (!passed) allPassed = false;
+          sleep(0.2);
+        }
+      });
+      
+      // Test event-based disable (only on first iteration)
+      if (__ITER === 0) {
+        group('Event-based Permission Control', () => {
+          console.log('\n📨 Testing event-based permission control...');
+          
+          const disableOk = testEventBasedDisable();
+          console.log(`  ${disableOk ? '✅' : '❌'} RBAC disable event`);
+          
+          sleep(1);
+          
+          const enableOk = testEventBasedEnable();
+          console.log(`  ${enableOk ? '✅' : '❌'} RBAC enable event`);
+          
+          if (!disableOk || !enableOk) allPassed = false;
+        });
+      }
+      
+      rbacTestSuccess.add(allPassed);
+      
+      console.log(`\n${allPassed ? '✅' : '❌'} Tier ${tier}: ${allPassed ? 'PASSED' : 'FAILED'}`);
+      
+      sleep(1);
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Summary
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function getMetricValue(data, metricName, path) {
+      const metric = data.metrics[metricName];
+      if (!metric || !metric.values) return 0;
+      return path ? metric.values[path] || 0 : metric.values.rate || 0;
+    }
+    
+    function getMetricCount(data, metricName) {
+      const metric = data.metrics[metricName];
+      if (!metric || !metric.values) return 0;
+      return metric.values.count || 0;
+    }
+    
+    export function handleSummary(data) {
+      const successRate = getMetricValue(data, 'rbac_test_success');
+      const allowed = getMetricCount(data, 'rbac_permission_allowed');
+      const denied = getMetricCount(data, 'rbac_permission_denied');
+      const p95Latency = getMetricValue(data, 'rbac_test_latency_ms', 'p(95)');
+      
+      const passed = successRate >= 0.95;
+      
+      console.log('\n' + '═'.repeat(60));
+      console.log('🔐 LAMBDA AGENT RBAC TEST RESULTS');
+      console.log('═'.repeat(60));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('');
+      console.log('┌────────────────────────────────────────────────────────────┐');
+      console.log('│  PERMISSION VALIDATION                                      │');
+      console.log('├────────────────────────────────────────────────────────────┤');
+      console.log('│  Success Rate:        ' + (successRate * 100).toFixed(1) + '%                            │');
+      console.log('│  Permissions Allowed: ' + allowed + '                                   │');
+      console.log('│  Permissions Denied:  ' + denied + '                                   │');
+      console.log('│  P95 Latency:         ' + p95Latency.toFixed(0) + 'ms                              │');
+      console.log('└────────────────────────────────────────────────────────────┘');
+      console.log('═'.repeat(60) + '\n');
+      
+      return {};
+    }

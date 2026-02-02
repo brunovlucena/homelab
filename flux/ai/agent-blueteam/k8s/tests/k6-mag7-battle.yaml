@@ -1,0 +1,213 @@
+---
+# k6 MAG7 Battle Test for agent-blueteam
+# Simulates a full game session - try to defeat MAG7!
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-blueteam-mag7-battle
+  namespace: agent-blueteam
+  labels:
+    app.kubernetes.io/name: agent-blueteam
+    app.kubernetes.io/component: testing
+    test-type: game-simulation
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-blueteam-mag7-battle-script
+      file: script.js
+  runner:
+    image: grafana/k6:0.47.0
+    env:
+      - name: TARGET_URL
+        value: "http://agent-blueteam.agent-blueteam.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-blueteam-mag7-battle-script
+  namespace: agent-blueteam
+data:
+  script.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Counter, Gauge, Trend } from 'k6/metrics';
+    
+    // Game metrics
+    const exploitsBlocked = new Counter('game_exploits_blocked');
+    const exploitsMissed = new Counter('game_exploits_missed');
+    const mag7Damage = new Counter('game_mag7_damage_total');
+    const playerDamage = new Counter('game_player_damage_total');
+    const mag7Health = new Gauge('game_mag7_health');
+    const playerHealth = new Gauge('game_player_health');
+    const waveNumber = new Gauge('game_wave');
+    const gameScore = new Gauge('game_score');
+    
+    export const options = {
+      scenarios: {
+        game_session: {
+          executor: 'constant-vus',
+          vus: 1,
+          duration: '2m',  // Play for 2 minutes
+        },
+      },
+      thresholds: {
+        http_req_failed: ['rate<0.05'],
+        game_mag7_health: ['value<=500'],  // Goal: reduce MAG7 to half health
+      },
+    };
+    
+    const BASE_URL = __ENV.TARGET_URL || 'http://localhost';
+    
+    // Exploit catalog (matches agent-redteam)
+    const EXPLOITS = [
+      { id: 'blue-001', name: 'SSRF', damage: 15, severity: 'critical' },
+      { id: 'blue-002', name: 'Template Injection', damage: 20, severity: 'critical' },
+      { id: 'vuln-001', name: 'Command Injection', damage: 25, severity: 'critical' },
+      { id: 'vuln-003', name: 'Code Execution', damage: 30, severity: 'critical' },
+      { id: 'vuln-004', name: 'RBAC Escalation', damage: 35, severity: 'high' },
+      { id: 'blue-006', name: 'Token Theft', damage: 20, severity: 'high' },
+    ];
+    
+    // Game state
+    let gameState = {
+      wave: 1,
+      score: 0,
+      playerHP: 100,
+      mag7HP: 1000,
+      blocked: 0,
+      missed: 0,
+    };
+    
+    export function setup() {
+      console.log('🐉 MAG7 Battle - Starting Game Session');
+      console.log('=====================================');
+      
+      // Reset MAG7 for fresh game
+      const res = http.post(`${BASE_URL}/mag7/reset`);
+      check(res, { 'game reset': (r) => r.status === 200 });
+      
+      // Send game start event
+      const headers = {
+        'Content-Type': 'application/json',
+        'ce-type': 'io.homelab.demo.game.start',
+        'ce-source': '/k6-test/mag7-battle',
+        'ce-id': `game-start-${Date.now()}`,
+        'ce-specversion': '1.0',
+      };
+      http.post(`${BASE_URL}/`, JSON.stringify({ game_id: 'k6-battle' }), { headers });
+      
+      console.log('🎮 Game Started! Defeat MAG7!');
+      return { startTime: Date.now() };
+    }
+    
+    export default function() {
+      // Simulate game loop
+      const wave = Math.floor(__ITER / 10) + 1;
+      gameState.wave = wave;
+      waveNumber.add(wave);
+      
+      // Spawn exploit (from agent-redteam)
+      const exploit = EXPLOITS[Math.floor(Math.random() * EXPLOITS.length)];
+      
+      // Simulate defense - 70% block rate (blue team is skilled!)
+      const blocked = Math.random() < 0.7;
+      
+      if (blocked) {
+        // Send exploit blocked event
+        const headers = {
+          'Content-Type': 'application/json',
+          'ce-type': 'io.homelab.exploit.blocked',
+          'ce-source': '/k6-test/mag7-battle',
+          'ce-id': `block-${Date.now()}-${__ITER}`,
+          'ce-specversion': '1.0',
+        };
+        
+        const res = http.post(`${BASE_URL}/`, JSON.stringify({
+          exploit_id: exploit.id,
+          name: exploit.name,
+          severity: exploit.severity,
+          namespace: 'game-test',
+        }), { headers });
+        
+        check(res, { 'exploit blocked event sent': (r) => r.status === 200 });
+        
+        // Attack MAG7
+        const attackRes = http.post(`${BASE_URL}/mag7/attack`, JSON.stringify({
+          damage: exploit.damage,
+          attack_type: 'exploit_blocked'
+        }), { headers: { 'Content-Type': 'application/json' } });
+        
+        if (attackRes.status === 200) {
+          const result = attackRes.json();
+          gameState.mag7HP = result.health;
+          gameState.blocked++;
+          gameState.score += exploit.damage * 10;
+          
+          exploitsBlocked.add(1);
+          mag7Damage.add(exploit.damage);
+          mag7Health.add(result.health);
+          gameScore.add(gameState.score);
+          
+          if (result.status === 'defeated') {
+            console.log('🎉 VICTORY! MAG7 Defeated!');
+          }
+        }
+      } else {
+        // Exploit got through - player takes damage
+        const damage = Math.floor(exploit.damage / 2);
+        gameState.playerHP -= damage;
+        gameState.missed++;
+        
+        exploitsMissed.add(1);
+        playerDamage.add(damage);
+        playerHealth.add(Math.max(0, gameState.playerHP));
+        
+        if (gameState.playerHP <= 0) {
+          console.log('💀 DEFEAT! Player health depleted');
+        }
+      }
+      
+      // Log progress every 20 iterations
+      if (__ITER % 20 === 0) {
+        console.log(`Wave ${wave} | Score: ${gameState.score} | MAG7: ${gameState.mag7HP}/1000 | Player: ${gameState.playerHP}/100 | Blocked: ${gameState.blocked} | Missed: ${gameState.missed}`);
+      }
+      
+      sleep(0.5);
+    }
+    
+    export function teardown(data) {
+      const duration = (Date.now() - data.startTime) / 1000;
+      
+      // Get final status
+      const res = http.get(`${BASE_URL}/mag7/status`);
+      const finalStatus = res.status === 200 ? res.json() : {};
+      
+      console.log('=====================================');
+      console.log('🐉 MAG7 Battle - Game Over');
+      console.log('=====================================');
+      console.log(`Duration: ${duration.toFixed(1)}s`);
+      console.log(`Final Score: ${gameState.score}`);
+      console.log(`MAG7 Health: ${finalStatus.health || gameState.mag7HP}/1000`);
+      console.log(`Player Health: ${gameState.playerHP}/100`);
+      console.log(`Exploits Blocked: ${gameState.blocked}`);
+      console.log(`Exploits Missed: ${gameState.missed}`);
+      console.log(`Block Rate: ${((gameState.blocked / (gameState.blocked + gameState.missed)) * 100).toFixed(1)}%`);
+      
+      if (finalStatus.defeated) {
+        console.log('🎉 RESULT: VICTORY - MAG7 Defeated!');
+      } else if (gameState.playerHP <= 0) {
+        console.log('💀 RESULT: DEFEAT - Try again!');
+      } else {
+        console.log(`⏱️ RESULT: Time Up - MAG7 survived with ${finalStatus.health || gameState.mag7HP} HP`);
+      }
+    }

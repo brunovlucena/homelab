@@ -1,0 +1,81 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 AgentChat - Studio (Production) Overlay
+#
+#  Production environment configuration with HA and canary deployments
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  - ../base
+
+patches:
+  # Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+  # so we use patches instead of kustomize images: section
+  # Update image tags for all LambdaAgents
+  - target:
+      kind: LambdaAgent
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.2.0"
+  
+  # Production scaling for messaging-hub
+  - patch: |-
+      - op: replace
+        path: /spec/scaling/minReplicas
+        value: 2
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 20
+    target:
+      group: lambda.knative.io
+      version: v1alpha1
+      kind: LambdaAgent
+      name: messaging-hub
+  
+  # Production scaling for command-center
+  - patch: |-
+      - op: replace
+        path: /spec/scaling/minReplicas
+        value: 2
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 5
+    target:
+      group: lambda.knative.io
+      version: v1alpha1
+      kind: LambdaAgent
+      name: command-center
+  
+  # Production resources for voice-agent (reduced from 8Gi to 4Gi)
+  - patch: |-
+      - op: replace
+        path: /spec/resources/requests/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/resources/requests/memory
+        value: "2Gi"
+      - op: replace
+        path: /spec/resources/limits/cpu
+        value: "2000m"
+      - op: replace
+        path: /spec/resources/limits/memory
+        value: "4Gi"
+    target:
+      group: lambda.knative.io
+      version: v1alpha1
+      kind: LambdaAgent
+      name: voice-agent
+
+commonLabels:
+  environment: production
+  cluster: studio
+
+commonAnnotations:
+  flux.weave.works/automated: "true"

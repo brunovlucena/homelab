@@ -1,0 +1,30 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+namespace: ai
+
+kind: Kustomization
+
+resources:
+  - ../base
+
+# 📝 Pro-specific patches
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+patches:
+  - patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.5.6"
+      - op: replace
+        path: /spec/scaling/minReplicas
+        value: 2
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 5
+    target:
+      kind: LambdaAgent
+      name: agent-bruno
+
+# 📝 Pro-specific labels
+commonLabels:
+  environment: pro

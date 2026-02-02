@@ -1,0 +1,83 @@
+---
+# Agent-Screenshot - Screenshot Analysis Agent
+# Cada screenshot inicia um agente diferente (estilo Cursor Agents)
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: agent-screenshot
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-screenshot
+    app.kubernetes.io/component: ai-agent
+    app.kubernetes.io/part-of: homelab-ai
+spec:
+  serviceAccountName: agent-screenshot-sa
+  
+  image:
+    repository: localhost:5001/agent-screenshot
+    tag: "0.1.0"
+    port: 8080
+
+  # AI/LLM configuration (para análise de screenshots)
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 2048
+    temperature: "0.7"
+
+  # Operation mode: agentic (autonomous)
+  operationMode: agentic
+
+  # Agent behavior
+  behavior:
+    emitEvents: true
+
+  # Scaling - scale to zero quando não há screenshots
+  scaling:
+    minReplicas: 0
+    maxReplicas: 10
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 30s
+
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+  # Eventing - recebe eventos screenshot.upload
+  eventing:
+    enabled: true
+    eventSource: "/agent-screenshot"
+    
+    # Events this agent EMITS
+    intents:
+      - screenshot.analysis.completed
+      - screenshot.analysis.failed
+    
+    # Events this agent RECEIVES
+    subscriptions:
+      - eventType: screenshot.upload
+        description: "Screenshot upload from browser extension"
+    
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+    
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  # Observability
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json

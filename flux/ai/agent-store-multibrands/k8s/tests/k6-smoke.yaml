@@ -1,0 +1,238 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔥 K6 Smoke Test for Agent Store MultiBrands
+#
+#  Basic functionality test for all agents
+#
+#  Fixes (2025-12-10):
+#    ✅ Realistic thresholds for AI/LLM workloads (30s for chat, 2s for health)
+#    ✅ Separate thresholds by endpoint type using tags
+#    ✅ Robust chat response validation
+#    ✅ Extended timeout for LLM requests
+#    ✅ Reduced VUs for smoke test to minimize cold start impact
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: store-smoke-test
+  namespace: agent-store-multibrands
+  labels:
+    app.kubernetes.io/name: agent-store-multibrands
+    app.kubernetes.io/component: testing
+    test-type: smoke
+spec:
+  parallelism: 1
+  script:
+    configMap:
+      name: store-k6-tests
+      file: smoke.js
+  arguments: -o experimental-prometheus-rw
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+      - name: K6_PROMETHEUS_RW_STALE_MARKERS
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+      requests:
+        memory: 128Mi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: store-k6-tests
+  namespace: agent-store-multibrands
+data:
+  smoke.js: |
+    import http from 'k6/http';
+    import { check, sleep, group } from 'k6';
+    import { Rate, Trend } from 'k6/metrics';
+    
+    // Custom metrics for better observability
+    const chatResponseTime = new Trend('chat_response_time', true);
+    const chatSuccessRate = new Rate('chat_success_rate');
+    const healthCheckTime = new Trend('health_check_time', true);
+    
+    export const options = {
+      // Reduced load for smoke test - focus on functionality
+      stages: [
+        { duration: '20s', target: 2 },   // Warm up with 2 VUs
+        { duration: '40s', target: 3 },   // Steady state with 3 VUs
+        { duration: '20s', target: 0 },   // Ramp down
+      ],
+      thresholds: {
+        // Health endpoints should be fast
+        'http_req_duration{type:health}': ['p(95)<2000'],
+        // AI/LLM chat endpoints need longer timeout (cold start + inference)
+        'http_req_duration{type:chat}': ['p(95)<30000'],
+        // Search/catalog can be moderate
+        'http_req_duration{type:api}': ['p(95)<5000'],
+        // Overall failure rate
+        'http_req_failed': ['rate<0.10'],
+        // Custom chat metrics
+        'chat_success_rate': ['rate>0.80'],
+      },
+    };
+    
+    const BASE_URL = __ENV.BASE_URL || 'http://whatsapp-gateway.agent-store-multibrands.svc.cluster.local';
+    const CATALOG_URL = __ENV.CATALOG_URL || 'http://product-catalog.agent-store-multibrands.svc.cluster.local';
+    const SELLER_URL = __ENV.SELLER_URL || 'http://ai-seller-fashion.agent-store-multibrands.svc.cluster.local';
+    
+    // Test messages to vary the requests
+    const testMessages = [
+      'Olá, quero ver vestidos',
+      'Tem alguma promoção?',
+      'Quero ver sapatos femininos',
+      'Qual o preço desse produto?',
+      'Vocês entregam para São Paulo?',
+    ];
+    
+    export default function() {
+      group('Health Checks', function() {
+        // Test WhatsApp Gateway health
+        let gwHealth = http.get(`${BASE_URL}/health`, {
+          tags: { type: 'health', service: 'gateway' },
+          timeout: '10s',
+        });
+        let gwCheck = check(gwHealth, {
+          'gateway health is 200': (r) => r.status === 200,
+          'gateway is healthy': (r) => {
+            try {
+              const body = r.json();
+              return body && body.status === 'healthy';
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+        healthCheckTime.add(gwHealth.timings.duration);
+        
+        // Test Product Catalog health
+        let catalogHealth = http.get(`${CATALOG_URL}/health`, {
+          tags: { type: 'health', service: 'catalog' },
+          timeout: '10s',
+        });
+        check(catalogHealth, {
+          'catalog health is 200': (r) => r.status === 200,
+        });
+        healthCheckTime.add(catalogHealth.timings.duration);
+        
+        // Test AI Seller health
+        let sellerHealth = http.get(`${SELLER_URL}/health`, {
+          tags: { type: 'health', service: 'seller' },
+          timeout: '10s',
+        });
+        check(sellerHealth, {
+          'seller health is 200': (r) => r.status === 200,
+        });
+        healthCheckTime.add(sellerHealth.timings.duration);
+      });
+      
+      group('Product Catalog', function() {
+        // Search products
+        let searchRes = http.post(`${CATALOG_URL}/search`, 
+          JSON.stringify({ brand: 'fashion', limit: 5 }),
+          { 
+            headers: { 'Content-Type': 'application/json' },
+            tags: { type: 'api', service: 'catalog' },
+            timeout: '15s',
+          }
+        );
+        check(searchRes, {
+          'search returns 200': (r) => r.status === 200,
+          'search has products': (r) => {
+            try {
+              const body = r.json();
+              return body && body.products && body.products.length > 0;
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+      
+      group('AI Seller Chat', function() {
+        // Select a random test message
+        const message = testMessages[Math.floor(Math.random() * testMessages.length)];
+        
+        // Test chat with AI seller - extended timeout for LLM
+        let chatRes = http.post(`${SELLER_URL}/chat`,
+          JSON.stringify({
+            message: message,
+            customer_id: `test-customer-${__VU}-${__ITER}`,
+            customer_phone: `551199999${String(__VU).padStart(4, '0')}`,
+          }),
+          { 
+            headers: { 'Content-Type': 'application/json' },
+            tags: { type: 'chat', service: 'seller' },
+            timeout: '120s',  // 2 min timeout for LLM cold start + inference
+          }
+        );
+        
+        // Track response time
+        chatResponseTime.add(chatRes.timings.duration);
+        
+        // Validate chat response
+        let chatSuccess = check(chatRes, {
+          'chat returns 200': (r) => r.status === 200,
+          'chat has valid response': (r) => {
+            if (r.status !== 200) return false;
+            try {
+              const body = r.json();
+              // Check for message field with content
+              if (body && typeof body.message === 'string' && body.message.length > 0) {
+                return true;
+              }
+              // Log for debugging if check fails
+              console.log(`Chat response missing message: ${JSON.stringify(body)}`);
+              return false;
+            } catch (e) {
+              console.log(`Chat response parse error: ${e.message}, body: ${r.body}`);
+              return false;
+            }
+          },
+          'chat has conversation_id': (r) => {
+            try {
+              const body = r.json();
+              return body && body.conversation_id && body.conversation_id.length > 0;
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+        
+        // Track success rate
+        chatSuccessRate.add(chatSuccess);
+      });
+      
+      // Sleep between iterations to reduce load
+      sleep(2);
+    }
+    
+    export function handleSummary(data) {
+      console.log('\n========== Test Summary ==========');
+      console.log('Total Requests: ' + data.metrics.http_reqs.values.count);
+      console.log('Failed Requests: ' + data.metrics.http_req_failed.values.passes);
+      
+      let chatRate = data.metrics.chat_success_rate && data.metrics.chat_success_rate.values 
+        ? (data.metrics.chat_success_rate.values.rate * 100).toFixed(1) : '0.0';
+      console.log('Chat Success Rate: ' + chatRate + '%');
+      
+      let chatAvg = data.metrics.chat_response_time && data.metrics.chat_response_time.values
+        ? data.metrics.chat_response_time.values.avg.toFixed(0) : '0';
+      console.log('Chat Avg Response: ' + chatAvg + 'ms');
+      
+      let healthAvg = data.metrics.health_check_time && data.metrics.health_check_time.values
+        ? data.metrics.health_check_time.values.avg.toFixed(0) : '0';
+      console.log('Health Check Avg: ' + healthAvg + 'ms');
+      console.log('==================================\n');
+      return {};
+    }

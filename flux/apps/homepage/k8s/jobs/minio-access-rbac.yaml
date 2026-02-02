@@ -1,0 +1,80 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 MinIO Access RBAC - Generic ServiceAccount for MinIO operations
+#
+#  Purpose: Provides RBAC permissions for pods/jobs that need to access
+#           MinIO credentials from the minio namespace and sync them to homepage
+#
+#  Usage: Apply this file to enable minio-access service account
+#         kubectl apply -f minio-access-rbac.yaml
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: minio-access
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: minio-access
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: minio-access
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: minio-access
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: minio-access
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: minio-access
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: minio-access
+subjects:
+- kind: ServiceAccount
+  name: minio-access
+  namespace: homepage
+---
+# ClusterRole to read secrets from minio namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: minio-secret-reader
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: minio-access
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+  resourceNames: ["minio-credentials"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: minio-secret-reader
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: minio-access
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: minio-secret-reader
+subjects:
+- kind: ServiceAccount
+  name: minio-access
+  namespace: homepage
+

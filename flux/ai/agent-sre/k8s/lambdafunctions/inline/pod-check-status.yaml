@@ -1,0 +1,85 @@
+---
+# LambdaFunction: Pod Check Status
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: pod-check-status
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: pod-check-status
+    app.kubernetes.io/component: remediation
+    app.kubernetes.io/part-of: agent-sre
+spec:
+  source:
+    type: inline
+    inline:
+      code: |
+        import os
+        import subprocess
+        import json
+        from typing import Dict, Any
+        
+        def handler(event: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            Check pod status and return details.
+            
+            Parameters:
+            - name: Pod name or label selector (required)
+            - namespace: Namespace (required)
+            - selector: Label selector (optional, if name not provided)
+            """
+            name = event.get('name')
+            namespace = event.get('namespace')
+            selector = event.get('selector')
+            
+            if not namespace:
+                return {'status': 'error', 'message': 'namespace parameter is required'}
+            
+            try:
+                if selector:
+                    cmd = ['kubectl', 'get', 'pods', '-n', namespace, '-l', selector, '-o', 'json']
+                elif name:
+                    cmd = ['kubectl', 'get', 'pod', name, '-n', namespace, '-o', 'json']
+                else:
+                    return {'status': 'error', 'message': 'name or selector parameter is required'}
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                
+                if result.returncode == 0:
+                    pod_data = json.loads(result.stdout)
+                    return {
+                        'status': 'success',
+                        'pods': pod_data,
+                        'message': 'Pod status retrieved successfully'
+                    }
+                else:
+                    return {
+                        'status': 'error',
+                        'message': f'Failed to get pod status: {result.stderr}'
+                    }
+            except Exception as e:
+                return {'status': 'error', 'message': f'Error: {str(e)}'}
+      dependencies: |
+        {}
+  runtime:
+    language: python
+    version: "3.11"
+    handler: main.handler
+  scaling:
+    minReplicas: 0
+    maxReplicas: 10
+    targetConcurrency: 5
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  build:
+    timeout: "10m"
+    registry: localhost:5001
+    insecure: true
+  eventing:
+    enabled: false
+

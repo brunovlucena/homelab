@@ -1,0 +1,53 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: homelab-services
+  labels:
+    app.kubernetes.io/name: user-service
+    app.kubernetes.io/part-of: agents-whatsapp-rust
+    app.kubernetes.io/component: user
+spec:
+  template:
+    spec:
+      containers:
+      - image: localhost:5001/agents-whatsapp-rust-user:v1.0.0
+        name: user-service
+        ports:
+        - containerPort: 8080
+          name: http1
+          protocol: TCP
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: homelab-services-secrets
+              key: mongodb-uri
+        - name: MONGODB_DATABASE
+          value: "messaging_app"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: jwt-secret
+              key: secret
+        - name: RUST_LOG
+          value: "info"
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5

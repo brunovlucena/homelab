@@ -1,0 +1,44 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cert-manager-alerts
+  namespace: prometheus
+  labels:
+    app: cert-manager
+    prometheus: kube-prometheus-stack
+spec:
+  groups:
+    - name: cert-manager
+      interval: 30s
+      rules:
+        - alert: CertManagerAbsent
+          annotations:
+            description: "cert-manager has disappeared from Prometheus target discovery."
+            summary: "cert-manager is down"
+          expr: |
+            absent(up{job="cert-manager"})
+          for: 10m
+          labels:
+            severity: critical
+
+        - alert: CertificateExpiringSoon
+          annotations:
+            description: "Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} expires in less than 14 days."
+            summary: "Certificate expiring soon"
+          expr: |
+            certmanager_certificate_expiration_timestamp_seconds - time() < (14 * 24 * 3600)
+          for: 1h
+          labels:
+            severity: warning
+
+        - alert: CertificateNotReady
+          annotations:
+            description: "Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} is not ready."
+            summary: "Certificate not ready"
+          expr: |
+            certmanager_certificate_ready_status{condition="False"} == 1
+          for: 10m
+          labels:
+            severity: critical
+

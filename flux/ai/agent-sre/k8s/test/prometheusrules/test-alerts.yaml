@@ -1,0 +1,118 @@
+---
+# PrometheusRules for Testing Agent-SRE LambdaFunction Remediation
+# These rules fire alerts for test scenarios to trigger LambdaFunction calls
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: agent-sre-test-alerts
+  namespace: prometheus
+  labels:
+    app: agent-sre
+    component: testing
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+  - name: agent-sre-tests
+    interval: 30s
+    rules:
+    # Test: Pod CrashLoopBackOff
+    - alert: TestPodCrashLoopBackOff
+      expr: |
+        kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff", namespace="ai"} == 1
+      for: 1m
+      labels:
+        severity: warning
+        test_scenario: crashloopbackoff
+      annotations:
+        summary: "Test pod {{ $labels.pod }} is in CrashLoopBackOff"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has crashed multiple times"
+        lambda_function: "pod-restart"
+        lambda_parameters: '{"name": "{{ $labels.pod }}", "namespace": "{{ $labels.namespace }}", "type": "pod"}'
+    
+    # Test: Deployment Unhealthy
+    - alert: TestDeploymentUnhealthy
+      expr: |
+        kube_deployment_status_replicas_unavailable{namespace="ai"} > 0
+      for: 2m
+      labels:
+        severity: warning
+        test_scenario: unhealthy-deployment
+      annotations:
+        summary: "Test deployment {{ $labels.deployment }} has unhealthy replicas"
+        description: "Deployment {{ $labels.deployment }} in namespace {{ $labels.namespace }} has {{ $value }} unavailable replicas"
+        lambda_function: "pod-restart"
+        lambda_parameters: '{"name": "{{ $labels.deployment }}", "namespace": "{{ $labels.namespace }}", "type": "deployment"}'
+    
+    # Test: Deployment Needs Scaling
+    - alert: TestDeploymentNeedsScaling
+      expr: |
+        kube_deployment_spec_replicas{namespace="ai"} < 3
+        and
+        on(deployment, namespace) kube_deployment_spec_replicas{namespace="ai"} == 1
+      for: 1m
+      labels:
+        severity: info
+        test_scenario: needs-scaling
+      annotations:
+        summary: "Test deployment {{ $labels.deployment }} needs scaling"
+        description: "Deployment {{ $labels.deployment }} has only {{ $value }} replica, should scale to 3"
+        lambda_function: "scale-deployment"
+        lambda_parameters: '{"name": "{{ $labels.deployment }}", "namespace": "{{ $labels.namespace }}", "replicas": 3}'
+    
+    # Test: Pod Pending
+    - alert: TestPodPending
+      expr: |
+        kube_pod_status_phase{phase="Pending", namespace="ai"} == 1
+      for: 2m
+      labels:
+        severity: warning
+        test_scenario: pending
+      annotations:
+        summary: "Test pod {{ $labels.pod }} is Pending"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has been Pending for more than 2 minutes"
+        lambda_function: "pod-check-status"
+        lambda_parameters: '{"name": "{{ $labels.pod }}", "namespace": "{{ $labels.namespace }}"}'
+    
+    # Test: PVC Filling Up
+    - alert: TestPVCFillingUp
+      expr: |
+        (kubelet_volume_stats_available_bytes{namespace="ai"} / kubelet_volume_stats_capacity_bytes{namespace="ai"}) < 0.2
+      for: 5m
+      labels:
+        severity: warning
+        test_scenario: pvc-filling-up
+      annotations:
+        summary: "Test PVC {{ $labels.persistentvolumeclaim }} is filling up"
+        description: "PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} has less than 20% free space"
+        lambda_function: "check-pvc-status"
+        lambda_parameters: '{"name": "{{ $labels.persistentvolumeclaim }}", "namespace": "{{ $labels.namespace }}"}'
+    
+    # Test: ImagePullBackOff
+    - alert: TestImagePullBackOff
+      expr: |
+        kube_pod_container_status_waiting_reason{reason="ImagePullBackOff", namespace="ai"} == 1
+      for: 1m
+      labels:
+        severity: warning
+        test_scenario: imagepullbackoff
+      annotations:
+        summary: "Test pod {{ $labels.pod }} has ImagePullBackOff"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} cannot pull image"
+        lambda_function: "pod-check-status"
+        lambda_parameters: '{"name": "{{ $labels.pod }}", "namespace": "{{ $labels.namespace }}"}'
+    
+    # Test: High CPU Usage (for scaling)
+    - alert: TestHighCPUUsage
+      expr: |
+        rate(container_cpu_usage_seconds_total{namespace="ai", container!="POD"}[5m]) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        test_scenario: high-cpu
+      annotations:
+        summary: "Test deployment {{ $labels.deployment }} has high CPU usage"
+        description: "Deployment {{ $labels.deployment }} CPU usage is {{ $value | humanizePercentage }}"
+        lambda_function: "scale-deployment"
+        lambda_parameters: '{"name": "{{ $labels.deployment }}", "namespace": "{{ $labels.namespace }}", "replicas": 3}'
+

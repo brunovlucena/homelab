@@ -1,0 +1,11 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-mag7-battle
+  labels:
+    app.kubernetes.io/name: demo-mag7-battle
+    app.kubernetes.io/part-of: homelab-ai
+    demo.homelab.io/type: game
+  annotations:
+    description: "MAG7 Battle Demo - Space Invaders meets Kubernetes Security"

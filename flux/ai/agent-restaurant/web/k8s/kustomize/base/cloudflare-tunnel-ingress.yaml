@@ -1,0 +1,29 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Restaurant Command Center - Cloudflare Tunnel Ingress (STRRL Controller)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Exposes the restaurant command center via Cloudflare Tunnel
+# Uses standard Kubernetes Ingress with cloudflare-tunnel ingress class
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: restaurant-command-center
+  namespace: agent-restaurant
+  labels:
+    app.kubernetes.io/name: restaurant-command-center
+    app.kubernetes.io/part-of: agent-restaurant
+    app.kubernetes.io/component: web
+spec:
+  ingressClassName: cloudflare-tunnel
+  rules:
+    - host: restaurant.lucena.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: restaurant-command-center
+                port:
+                  number: 80

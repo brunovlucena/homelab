@@ -1,0 +1,131 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: register-agent-training-workflow
+  namespace: flyte
+  labels:
+    app: flyte-workflow-registration
+    workflow: agent-training
+  annotations:
+    # Force replace on changes (Jobs are immutable)
+    kustomize.toolkit.fluxcd.io/force: "enabled"
+    kustomize.toolkit.fluxcd.io/prune: "enabled"
+    # Hash annotation will trigger recreation when workflow code changes
+    workflow/hash: "placeholder"
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300  # Clean up after 5 minutes
+  template:
+    metadata:
+      labels:
+        app: flyte-workflow-registration
+        workflow: agent-training
+      annotations:
+        workflow/hash: "placeholder"
+    spec:
+      restartPolicy: OnFailure
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: register
+          # Use pre-built image with flytekit and dependencies
+          image: ghcr.io/brunovlucena/flyte-workflow-registry:latest
+          imagePullPolicy: IfNotPresent
+          workingDir: /workflows
+          env:
+            - name: FLYTE_CREDENTIALS_CLIENT_ID
+              value: "flyteadmin"
+            - name: FLYTE_CREDENTIALS_CLIENT_SECRET
+              value: "flyteadmin"
+            - name: FLYTE_PLATFORM_URL
+              value: "flyteadmin.flyte.svc.cluster.local:81"
+            - name: FLYTE_PLATFORM_INSECURE
+              value: "true"
+            # MinIO/S3 configuration
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+            - name: AWS_ENDPOINT
+              value: "http://minio.minio.svc.cluster.local:9000"
+            - name: AWS_REGION
+              value: "us-east-1"
+            - name: S3_ENDPOINT
+              value: "http://minio.minio.svc.cluster.local:9000"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "✅ Using pre-built image with flytekit installed"
+              
+              echo "🔍 Verifying Flyte admin connectivity..."
+              # Test connection to Flyte admin using Python
+              python3 -c "
+              import socket
+              import sys
+              sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+              sock.settimeout(5)
+              result = sock.connect_ex(('flyteadmin.flyte.svc.cluster.local', 81))
+              sock.close()
+              sys.exit(result)
+              " || {
+                echo "❌ Cannot reach flyteadmin.flyte.svc.cluster.local:81"
+                exit 1
+              }
+              
+              echo "🔍 Verifying MinIO connectivity..."
+              # Test connection to MinIO using Python
+              python3 -c "
+              import socket
+              import sys
+              sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+              sock.settimeout(5)
+              result = sock.connect_ex(('minio.minio.svc.cluster.local', 9000))
+              sock.close()
+              sys.exit(result)
+              " || {
+                echo "⚠️  Warning: Cannot reach minio.minio.svc.cluster.local:9000"
+                echo "   Continuing anyway - Flyte admin will handle storage..."
+              }
+              
+              echo "📝 Registering workflow..."
+              # Configure Flyte endpoint
+              mkdir -p ~/.flyte
+              cat > ~/.flyte/config.yaml <<EOF
+              admin:
+                endpoint: flyteadmin.flyte.svc.cluster.local:81
+                insecure: true
+              EOF
+              
+              # Register the workflow
+              pyflyte register workflows/agent_training.py \
+                --project homelab \
+                --domain production \
+                --image ghcr.io/brunovlucena/flyte-sandbox-training:latest
+              
+              echo "✅ Workflow registered successfully!"
+          volumeMounts:
+            - name: workflow-code
+              mountPath: /workflows/workflows
+              readOnly: true
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: workflow-code
+          configMap:
+            name: agent-training-workflow
+            # Kustomize will generate this ConfigMap with the actual workflow file

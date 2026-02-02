@@ -1,0 +1,429 @@
+name: 💰 Agent Auditor - Cost Tracking & Budget Alerts
+
+on:
+  issues:
+    types: [opened, labeled, closed]
+  pull_request:
+    types: [opened, labeled, closed]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-auditor/**'
+      - '.github/workflows/agent-auditor-cost-tracking.yml'
+    # Only run for PRs with expense or budget-related labels
+  schedule:
+    # Weekly budget review every Monday at 9 AM
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+env:
+  PROJECT_NUMBER: 1  # Update with your actual project number
+  ORG: brunovlucena
+  TOTAL_BUDGET: 256000  # $256K Year 1
+  SECURITY_BUDGET: 25000  # $25K Week 1-2
+  ML_BUDGET: 32000  # $32K Week 3-5
+  MOBILE_BUDGET_IOS: 30000  # $30K Week 7-12
+  MOBILE_BUDGET_ANDROID: 30000  # $30K Week 13-18
+  MOBILE_BUDGET_PREREQ: 8000  # $8K Week 6
+
+jobs:
+  track-expense:
+    name: 💵 Track Project Expenses
+    runs-on: [self-hosted]
+    if: |
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'expense')) ||
+      (github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'expense') || contains(github.event.pull_request.labels.*.name, 'budget')))
+    permissions:
+      issues: write
+    steps:
+      - name: 📊 Extract and Track Expense
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            
+            // Extract expense amount (look for $XXX or $X,XXX format)
+            const amountMatch = body.match(/\$[\d,]+(?:\.\d{2})?/);
+            let amount = 0;
+            if (amountMatch) {
+              amount = parseFloat(amountMatch[0].replace(/[$,]/g, ''));
+            }
+            
+            // Determine category/phase
+            let phase = 'general';
+            let phaseBudget = 0;
+            
+            if (issue.labels.some(l => l.name === 'week-1-2' || l.name === 'security-sprint')) {
+              phase = 'Security Sprint (Week 1-2)';
+              phaseBudget = parseFloat(process.env.SECURITY_BUDGET);
+            } else if (issue.labels.some(l => l.name === 'week-3-5' || l.name === 'ml-infrastructure')) {
+              phase = 'ML Infrastructure (Week 3-5)';
+              phaseBudget = parseFloat(process.env.ML_BUDGET);
+            } else if (issue.labels.some(l => l.name === 'week-6')) {
+              phase = 'Mobile Requirements (Week 6)';
+              phaseBudget = parseFloat(process.env.MOBILE_BUDGET_PREREQ);
+            } else if (issue.labels.some(l => l.name === 'week-7-12' || l.name === 'ios')) {
+              phase = 'iOS Development (Week 7-12)';
+              phaseBudget = parseFloat(process.env.MOBILE_BUDGET_IOS);
+            } else if (issue.labels.some(l => l.name === 'week-13-18' || l.name === 'android')) {
+              phase = 'Android Development (Week 13-18)';
+              phaseBudget = parseFloat(process.env.MOBILE_BUDGET_ANDROID);
+            }
+            
+            // Query all expenses for this phase
+            const phaseLabels = {
+              'Security Sprint (Week 1-2)': 'week-1-2',
+              'ML Infrastructure (Week 3-5)': 'week-3-5',
+              'Mobile Requirements (Week 6)': 'week-6',
+              'iOS Development (Week 7-12)': 'week-7-12',
+              'Android Development (Week 13-18)': 'week-13-18'
+            };
+            
+            const phaseLabel = phaseLabels[phase];
+            if (phaseLabel) {
+              const { data: phaseExpenses } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: `expense,${phaseLabel}`,
+                state: 'all'
+              });
+              
+              // Calculate total spent in phase
+              let totalSpent = 0;
+              for (const expense of phaseExpenses) {
+                const match = (expense.body || '').match(/\$[\d,]+(?:\.\d{2})?/);
+                if (match) {
+                  totalSpent += parseFloat(match[0].replace(/[$,]/g, ''));
+                }
+              }
+              
+              const percentSpent = phaseBudget > 0 ? (totalSpent / phaseBudget) * 100 : 0;
+              const remaining = phaseBudget - totalSpent;
+              
+              const statusEmoji = percentSpent < 75 ? '✅' : percentSpent < 90 ? '⚠️' : '🚨';
+              
+              const comment = `💰 **Expense Tracked**
+              
+              **Phase**: ${phase}
+              **Amount**: $${amount.toLocaleString()}
+              
+              ### 📊 Phase Budget Status
+              
+              - **Budget**: $${phaseBudget.toLocaleString()}
+              - **Spent**: $${totalSpent.toLocaleString()} (${percentSpent.toFixed(1)}%)
+              - **Remaining**: $${remaining.toLocaleString()}
+              - **Status**: ${statusEmoji} ${percentSpent < 75 ? 'On track' : percentSpent < 90 ? 'Monitor closely' : 'OVER BUDGET!'}
+              
+              ${percentSpent >= 90 ? `
+              🚨 **BUDGET ALERT**: This phase is at ${percentSpent.toFixed(1)}% of budget!
+              
+              **Required Actions**:
+              - Review all planned expenses
+              - Identify cost optimization opportunities
+              - Consider scope reduction if necessary
+              - Escalate to finance team
+              - Update executive stakeholders
+              ` : percentSpent >= 75 ? `
+              ⚠️ **WARNING**: Budget utilization above 75%
+              
+              **Recommended Actions**:
+              - Review remaining planned expenses
+              - Prioritize critical work
+              - Look for cost savings
+              - Monitor weekly
+              ` : `
+              ✅ Budget utilization is healthy
+              `}
+              
+              ---
+              
+              📊 [View all ${phase} expenses](https://github.com/${{ github.repository }}/issues?q=label%3Aexpense+label%3A${phaseLabel})
+              💼 [Cost Analysis](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/02-for-executives/COST_ANALYSIS.md)`;
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: comment
+              });
+              
+              // Add budget alert label if needed
+              if (percentSpent >= 90) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: ['budget-alert', 'executive-attention']
+                });
+              } else if (percentSpent >= 75) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: ['budget-warning']
+                });
+              }
+            }
+
+  weekly-budget-report:
+    name: 📈 Weekly Budget Report
+    runs-on: [self-hosted]
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    permissions:
+      issues: write
+    steps:
+      - name: 📊 Generate Budget Report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Calculate expenses by phase
+            const phases = {
+              'Security Sprint (Week 1-2)': { budget: 25000, label: 'week-1-2' },
+              'ML Infrastructure (Week 3-5)': { budget: 32000, label: 'week-3-5' },
+              'Mobile Requirements (Week 6)': { budget: 8000, label: 'week-6' },
+              'iOS Development (Week 7-12)': { budget: 30000, label: 'week-7-12' },
+              'Android Development (Week 13-18)': { budget: 30000, label: 'week-13-18' }
+            };
+            
+            let totalSpent = 0;
+            let phaseReports = [];
+            
+            for (const [phaseName, phaseInfo] of Object.entries(phases)) {
+              const { data: expenses } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: `expense,${phaseInfo.label}`,
+                state: 'all'
+              });
+              
+              let phaseSpent = 0;
+              for (const expense of expenses) {
+                const match = (expense.body || '').match(/\$[\d,]+(?:\.\d{2})?/);
+                if (match) {
+                  phaseSpent += parseFloat(match[0].replace(/[$,]/g, ''));
+                }
+              }
+              
+              totalSpent += phaseSpent;
+              const percentSpent = (phaseSpent / phaseInfo.budget) * 100;
+              const status = percentSpent < 75 ? '✅' : percentSpent < 90 ? '⚠️' : '🚨';
+              
+              phaseReports.push({
+                name: phaseName,
+                budget: phaseInfo.budget,
+                spent: phaseSpent,
+                percent: percentSpent,
+                status: status,
+                remaining: phaseInfo.budget - phaseSpent
+              });
+            }
+            
+            const totalBudget = 256000; // $256K
+            const overallPercent = (totalSpent / totalBudget) * 100;
+            
+            // Create report
+            let report = `# 💰 Weekly Budget Report\n\n`;
+            report += `**Report Date**: ${new Date().toISOString().split('T')[0]}\n`;
+            report += `**Project**: Agent Auditor\n`;
+            report += `**Timeline**: Week 1-18 (Nov 1, 2025 - Feb 21, 2026)\n\n`;
+            
+            report += `## 📊 Overall Budget Status\n\n`;
+            report += `| Metric | Value |\n`;
+            report += `|--------|-------|\n`;
+            report += `| Total Budget | $${totalBudget.toLocaleString()} |\n`;
+            report += `| Total Spent | $${totalSpent.toLocaleString()} |\n`;
+            report += `| Remaining | $${(totalBudget - totalSpent).toLocaleString()} |\n`;
+            report += `| Utilization | ${overallPercent.toFixed(1)}% |\n\n`;
+            
+            report += `## 📋 Budget by Phase\n\n`;
+            report += `| Phase | Budget | Spent | % | Remaining | Status |\n`;
+            report += `|-------|--------|-------|---|-----------|--------|\n`;
+            
+            for (const phase of phaseReports) {
+              report += `| ${phase.name} | $${phase.budget.toLocaleString()} | $${phase.spent.toLocaleString()} | ${phase.percent.toFixed(1)}% | $${phase.remaining.toLocaleString()} | ${phase.status} |\n`;
+            }
+            
+            report += `\n## 🚨 Budget Alerts\n\n`;
+            
+            const alerts = phaseReports.filter(p => p.percent >= 90);
+            const warnings = phaseReports.filter(p => p.percent >= 75 && p.percent < 90);
+            
+            if (alerts.length > 0) {
+              report += `### 🚨 Critical (>90%)\n\n`;
+              for (const alert of alerts) {
+                report += `- **${alert.name}**: ${alert.percent.toFixed(1)}% utilized ($${alert.spent.toLocaleString()} / $${alert.budget.toLocaleString()})\n`;
+              }
+              report += `\n`;
+            }
+            
+            if (warnings.length > 0) {
+              report += `### ⚠️ Warning (75-90%)\n\n`;
+              for (const warning of warnings) {
+                report += `- **${warning.name}**: ${warning.percent.toFixed(1)}% utilized ($${warning.spent.toLocaleString()} / $${warning.budget.toLocaleString()})\n`;
+              }
+              report += `\n`;
+            }
+            
+            if (alerts.length === 0 && warnings.length === 0) {
+              report += `✅ All phases are within budget targets (<75% utilization)\n\n`;
+            }
+            
+            report += `## 📈 Trend Analysis\n\n`;
+            report += `**Burn Rate**: $${(totalSpent / Math.max(1, phaseReports.filter(p => p.spent > 0).length)).toLocaleString()} per active phase\n`;
+            report += `**Projected Total**: $${Math.min(totalBudget, totalSpent + (totalBudget - totalSpent) * 1.1).toLocaleString()}\n\n`;
+            
+            report += `## 🎯 Recommendations\n\n`;
+            
+            if (overallPercent > 60) {
+              report += `- ⚠️ Overall budget utilization above 60% - review remaining phases for cost optimization\n`;
+            }
+            
+            if (alerts.length > 0) {
+              report += `- 🚨 Critical budget alerts require immediate attention\n`;
+              report += `- Consider scope reduction or timeline adjustment\n`;
+              report += `- Schedule budget review with executive team\n`;
+            }
+            
+            if (warnings.length > 0) {
+              report += `- ⚠️ Monitor phases with >75% utilization closely\n`;
+              report += `- Identify non-critical expenses to defer\n`;
+            }
+            
+            report += `\n---\n\n`;
+            report += `📊 [Detailed Cost Analysis](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/02-for-executives/COST_ANALYSIS.md)\n`;
+            report += `💼 [View All Expenses](https://github.com/${{ github.repository }}/issues?q=label%3Aexpense)`;
+            
+            // Find or create budget report issue
+            const { data: reportIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'budget-report',
+              state: 'open'
+            });
+            
+            if (reportIssues.length > 0) {
+              // Update existing report
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: reportIssues[0].number,
+                body: report
+              });
+            } else {
+              // Create new report issue
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '💰 Budget Tracking Dashboard',
+                body: `This issue tracks weekly budget reports for the Agent Auditor project.\n\nUpdated automatically every Monday.\n\n---\n\n${report}`,
+                labels: ['budget-report', 'automation', 'executive-dashboard']
+              });
+            }
+
+  phase-budget-completion:
+    name: ✅ Phase Budget Closure
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'closed' &&
+      (contains(github.event.issue.labels.*.name, 'week-2-checkpoint') ||
+       contains(github.event.issue.labels.*.name, 'week-5-checkpoint') ||
+       contains(github.event.issue.labels.*.name, 'week-12-checkpoint'))
+    permissions:
+      issues: write
+    steps:
+      - name: 📊 Phase Budget Summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const checkpoint = context.payload.issue;
+            
+            // Determine which phase
+            let phase = '';
+            let budget = 0;
+            let label = '';
+            
+            if (checkpoint.labels.some(l => l.name === 'week-2-checkpoint')) {
+              phase = 'Security Sprint (Week 1-2)';
+              budget = 25000;
+              label = 'week-1-2';
+            } else if (checkpoint.labels.some(l => l.name === 'week-5-checkpoint')) {
+              phase = 'ML Infrastructure (Week 3-5)';
+              budget = 32000;
+              label = 'week-3-5';
+            } else if (checkpoint.labels.some(l => l.name === 'week-12-checkpoint')) {
+              phase = 'iOS Development (Week 7-12)';
+              budget = 30000;
+              label = 'week-7-12';
+            }
+            
+            if (phase) {
+              // Calculate actual spend
+              const { data: expenses } = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: `expense,${label}`,
+                state: 'all'
+              });
+              
+              let totalSpent = 0;
+              for (const expense of expenses) {
+                const match = (expense.body || '').match(/\$[\d,]+(?:\.\d{2})?/);
+                if (match) {
+                  totalSpent += parseFloat(match[0].replace(/[$,]/g, ''));
+                }
+              }
+              
+              const variance = budget - totalSpent;
+              const percentUsed = (totalSpent / budget) * 100;
+              
+              const summary = `## 💰 ${phase} - Budget Summary
+              
+              **Phase Complete**: ${new Date().toISOString().split('T')[0]}
+              
+              ### 📊 Financial Performance
+              
+              | Metric | Value |
+              |--------|-------|
+              | Budgeted | $${budget.toLocaleString()} |
+              | Actual Spend | $${totalSpent.toLocaleString()} |
+              | Variance | $${variance.toLocaleString()} ${variance >= 0 ? '✅ Under' : '🚨 Over'} |
+              | % of Budget | ${percentUsed.toFixed(1)}% |
+              
+              ### 🎯 Budget Analysis
+              
+              ${variance >= 0 ? `
+              ✅ **Phase completed under budget!**
+              
+              **Savings**: $${variance.toLocaleString()} can be reallocated to:
+              - Future phases
+              - Contingency reserve
+              - Additional features
+              - Risk mitigation
+              ` : `
+              🚨 **Phase exceeded budget!**
+              
+              **Overspend**: $${Math.abs(variance).toLocaleString()}
+              
+              **Root Causes**: [To be analyzed]
+              **Lessons Learned**: [To be documented]
+              **Adjustments Needed**: Review remaining phase budgets
+              `}
+              
+              ### 📈 Expense Breakdown
+              
+              **Expense Categories**:
+              ${expenses.map(e => `- ${e.title}: [Extract amount]`).join('\n') || 'No expenses tracked'}
+              
+              ---
+              
+              💼 [View All Phase Expenses](https://github.com/${{ github.repository }}/issues?q=label%3Aexpense+label%3A${label})
+              📊 [Cost Analysis](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/02-for-executives/COST_ANALYSIS.md)`;
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: checkpoint.number,
+                body: summary
+              });
+            }
+

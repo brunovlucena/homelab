@@ -1,0 +1,43 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  - rbac.yaml
+  - secrets.yaml
+  # LambdaAgents (all AI agents as serverless agents)
+  - lambdaagent.yaml
+  # Alerting
+  - alertmanager-rules.yaml
+  # NOTE: triggers.yaml moved to flux/ai/shared/triggers.yaml
+  # All AI agents share a single broker and trigger configuration
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: agent-contracts
+      app.kubernetes.io/part-of: agent-contracts
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: agent-contracts-config
+    literals:
+      - OLLAMA_URL=http://ollama-native.ollama.svc.cluster.local:11434
+      - OLLAMA_MODEL=deepseek-coder-v2:16b
+      - LLM_CONFIDENCE_THRESHOLD=0.8
+      - SCAN_TIMEOUT_SECONDS=300
+      - SLITHER_TIMEOUT_SECONDS=60
+      - MYTHRIL_TIMEOUT_SECONDS=120
+      - ETHERSCAN_RATE_LIMIT=5
+      - RPC_RATE_LIMIT=10
+      - ALERT_SEVERITY_THRESHOLD=high
+      - ENABLED_CHAINS=ethereum,bsc,polygon,arbitrum,base,optimism
+      - S3_BUCKET=agent-contracts
+      - S3_ENDPOINT=http://minio.storage.svc.cluster.local:9000
+      # Shared broker configuration
+      - KNATIVE_BROKER_URL=http://ai-agents-broker-ingress.ai-agents.svc.cluster.local

@@ -1,0 +1,12 @@
+name: homelab
+runtime:
+  name: go
+  options:
+    binary: .pulumi-bin
+description: Homelab Kubernetes Infrastructure - Connecting Teams, Clusters & Edge Devices
+
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: kubernetes-go
+

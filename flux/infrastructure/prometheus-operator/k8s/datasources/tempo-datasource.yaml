@@ -1,0 +1,73 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-tempo
+  namespace: prometheus
+  labels:
+    grafana_datasource: "1"
+data:
+  tempo-datasource.yaml: |-
+    apiVersion: 1
+    datasources:
+    - name: "Tempo"
+      type: tempo
+      uid: tempo
+      access: proxy
+      url: http://tempo.tempo:3200
+      jsonData:
+        httpMethod: GET
+        # Trace-to-Logs correlation (Loki)
+        tracesToLogsV2:
+          datasourceUid: loki
+          spanStartTimeShift: "-1h"
+          spanEndTimeShift: "1h"
+          filterByTraceID: true
+          filterBySpanID: false
+          tags:
+          - key: service.name
+            value: service
+          - key: job
+            value: service
+          - key: lambda.function
+            value: function
+          - key: lambda.namespace
+            value: namespace
+          customQuery: true
+          query: '{namespace="$${__span.tags["lambda.namespace"]}"} |= "$${__trace.traceId}"'
+        # Trace-to-Metrics correlation (Prometheus)
+        tracesToMetrics:
+          datasourceUid: prometheus
+          spanStartTimeShift: "-5m"
+          spanEndTimeShift: "5m"
+          tags:
+          - key: service.name
+            value: service
+          - key: lambda.function
+            value: function
+          - key: lambda.namespace
+            value: namespace
+          queries:
+          - name: "Reconcile Duration"
+            query: 'histogram_quantile(0.95, sum(rate(knative_lambda_reconcile_duration_seconds_bucket{function="$${__span.tags["lambda.function"]}"}[5m])) by (le))'
+          - name: "Build Duration"
+            query: 'histogram_quantile(0.95, sum(rate(knative_lambda_build_duration_seconds_bucket{runtime="$${__span.tags["lambda.runtime"]}"}[5m])) by (le))'
+          - name: "Error Rate"
+            query: 'sum(rate(knative_lambda_errors_total{function="$${__span.tags["lambda.function"]}"}[5m]))'
+        # Service map for dependency visualization
+        serviceMap:
+          datasourceUid: prometheus
+        # Node graph for trace visualization
+        nodeGraph:
+          enabled: true
+        # Trace search
+        search:
+          hide: false
+        # Span bar configuration
+        spanBar:
+          type: Tag
+          tag: http.status_code
+        # Lokiware search for logs
+        lokiSearch:
+          datasourceUid: loki
+      editable: true

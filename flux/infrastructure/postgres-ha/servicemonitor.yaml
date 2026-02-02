@@ -1,0 +1,32 @@
+---
+# Prometheus ServiceMonitor for PostgreSQL HA
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: homepage-postgres
+  namespace: postgres-ha
+  labels:
+    app.kubernetes.io/name: homepage-postgres
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: homepage-postgres
+  endpoints:
+    - port: metrics
+      interval: 30s
+      scrapeTimeout: 10s
+---
+# Prometheus ServiceMonitor for PgBouncer
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: homepage-postgres-pooler
+  namespace: postgres-ha
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/poolerName: homepage-postgres-pooler-rw
+  endpoints:
+    - port: metrics
+      interval: 30s
+

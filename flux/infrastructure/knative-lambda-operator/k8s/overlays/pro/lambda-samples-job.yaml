@@ -1,0 +1,124 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📤 LAMBDA SAMPLES UPLOAD JOB
+#
+#  Uploads sample lambda source code to MinIO on cluster creation
+#  This job runs once and uploads hello-python and hello-nodejs samples
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: lambda-samples-init
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: lambda-samples-init
+    app.kubernetes.io/component: init
+    app.kubernetes.io/managed-by: knative-lambda-operator
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lambda-samples-init
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: knative-lambda-operator
+      initContainers:
+        # Copy minio-credentials from minio namespace
+        - name: copy-minio-secret
+          image: localhost:5001/kubectl:v1.34.0
+          command:
+            - sh
+            - -c
+            - |
+              echo "Copying minio-credentials from minio namespace..."
+              if kubectl get secret minio-credentials -n knative-lambda &>/dev/null; then
+                echo "Secret already exists in knative-lambda namespace"
+              else
+                kubectl get secret minio-credentials -n minio -o yaml | \
+                  sed 's/namespace: minio/namespace: knative-lambda/' | \
+                  kubectl apply -f -
+                echo "Secret copied successfully"
+              fi
+        # Wait for MinIO to be ready
+        - name: wait-for-minio
+          image: localhost:5001/busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for MinIO to be ready..."
+              until nc -z minio.minio.svc.cluster.local 9000; do
+                echo "MinIO not ready, waiting..."
+                sleep 5
+              done
+              echo "MinIO is ready!"
+      containers:
+        - name: upload-samples
+          image: localhost:5001/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              
+              echo "=== Lambda Samples Upload ==="
+              echo "Configuring MinIO client..."
+              
+              # Configure mc alias
+              mc alias set minio http://minio.minio.svc.cluster.local:9000 "${MINIO_ACCESS_KEY}" "${MINIO_SECRET_KEY}"
+              
+              # Verify connection
+              mc admin info minio || echo "Admin info not available (might need admin creds)"
+              
+              # Create bucket if it doesn't exist
+              echo "Ensuring bucket exists..."
+              mc mb --ignore-existing minio/lambda-functions
+              
+              # Upload hello-python samples
+              echo "Uploading hello-python..."
+              mc cp /samples/hello-python-main.py minio/lambda-functions/hello-python/main.py
+              mc cp /samples/hello-python-requirements.txt minio/lambda-functions/hello-python/requirements.txt
+              
+              # Upload hello-nodejs samples
+              echo "Uploading hello-nodejs..."
+              mc cp /samples/hello-nodejs-index.js minio/lambda-functions/hello-nodejs/index.js
+              mc cp /samples/hello-nodejs-package.json minio/lambda-functions/hello-nodejs/package.json
+              
+              # Verify uploads
+              echo ""
+              echo "=== Uploaded Files ==="
+              mc ls --recursive minio/lambda-functions/
+              
+              echo ""
+              echo "=== Lambda Samples Upload Complete ==="
+          volumeMounts:
+            - name: samples
+              mountPath: /samples
+      volumes:
+        - name: samples
+          configMap:
+            name: lambda-samples
+            items:
+              - key: hello-python-main.py
+                path: hello-python-main.py
+              - key: hello-python-requirements.txt
+                path: hello-python-requirements.txt
+              - key: hello-nodejs-index.js
+                path: hello-nodejs-index.js
+              - key: hello-nodejs-package.json
+                path: hello-nodejs-package.json

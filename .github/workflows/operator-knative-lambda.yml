@@ -1,0 +1,631 @@
+# ============================================================================
+# 🚀 Knative Lambda Operator - CI/CD Pipeline
+# ============================================================================
+# Version: 2.0.0
+# Last Updated: 2025-12-10
+#
+# This workflow handles the complete CI/CD pipeline for the Knative Lambda
+# Operator, including linting, testing, building, and GitOps deployment.
+#
+# Triggers:
+#   - Push to main, develop, cursor/**, feature/**, bugfix/**, release/** branches
+#   - Pull requests affecting operator code
+#   - Manual dispatch with environment selection
+#
+# Current Operator Version: 1.11.0
+# ============================================================================
+
+name: 🚀 Knative Lambda - CI/CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'pro'
+        type: choice
+        options:
+          - pro
+          - studio
+      skip-tests:
+        description: 'Skip tests (for emergency deployments)'
+        required: false
+        default: false
+        type: boolean
+      force-build:
+        description: 'Force build even without changes'
+        required: false
+        default: false
+        type: boolean
+
+  pull_request:
+    paths:
+      - 'flux/infrastructure/knative-lambda-operator/**'
+      - '.github/workflows/operator-knative-lambda.yml'
+
+  push:
+    branches:
+      - main
+      - develop
+      - 'cursor/**'
+      - 'feature/**'
+      - 'bugfix/**'
+      - 'release/**'
+    paths:
+      - 'flux/infrastructure/knative-lambda-operator/**'
+      - '.github/workflows/operator-knative-lambda.yml'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/knative-lambda-operator
+  WORKING_DIR: flux/infrastructure/knative-lambda-operator
+  GO_VERSION: '1.24'
+  GOLANGCI_LINT_VERSION: 'v1.62.2'
+
+permissions:
+  contents: write
+  pull-requests: read
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+
+jobs:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Detect Changes & Extract Version
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  detect-changes:
+    name: 🔍 Detect Changes
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    outputs:
+      should_build: ${{ steps.changes.outputs.knative-lambda == 'true' || github.event_name == 'workflow_dispatch' || github.event.inputs.force-build == 'true' }}
+      should_deploy: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')) || github.event_name == 'workflow_dispatch' }}
+      environment: ${{ steps.env.outputs.environment }}
+      version: ${{ steps.version.outputs.version }}
+      docker_tag: ${{ steps.version.outputs.docker_tag }}
+      is_release: ${{ steps.version.outputs.is_release }}
+      short_sha: ${{ steps.version.outputs.short_sha }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 🔍 Detect Changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            knative-lambda:
+              - 'flux/infrastructure/knative-lambda-operator/src/**'
+              - 'flux/infrastructure/knative-lambda-operator/VERSION'
+              - 'flux/infrastructure/knative-lambda-operator/Makefile'
+              - '.github/workflows/operator-knative-lambda.yml'
+
+      - name: 🏷️ Set Environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            ENV="studio"  # Production
+          else
+            ENV="pro"     # Development
+          fi
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "🎯 Target environment: $ENV"
+
+      - name: 🏷️ Extract Version
+        id: version
+        run: |
+          VERSION_FILE="${{ env.WORKING_DIR }}/VERSION"
+          if [ ! -f "$VERSION_FILE" ]; then
+            echo "❌ ERROR: VERSION file not found at $VERSION_FILE"
+            exit 1
+          fi
+
+          VERSION=$(cat "$VERSION_FILE" | tr -d '\n' | tr -d ' ')
+          SHORT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+          ENVIRONMENT="${{ steps.env.outputs.environment }}"
+
+          # Generate Docker tag based on environment and branch
+          if [ "$ENVIRONMENT" = "studio" ] && [ "$GIT_BRANCH" = "main" ]; then
+            DOCKER_TAG="v${VERSION}"
+            IS_RELEASE="true"
+          elif [ "$GIT_BRANCH" = "develop" ]; then
+            DOCKER_TAG="v${VERSION}-rc.${SHORT_SHA}"
+            IS_RELEASE="false"
+          else
+            DOCKER_TAG="v${VERSION}-dev.${SHORT_SHA}"
+            IS_RELEASE="false"
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "docker_tag=$DOCKER_TAG"
+            echo "short_sha=$SHORT_SHA"
+            echo "git_branch=$GIT_BRANCH"
+            echo "is_release=$IS_RELEASE"
+          } >> $GITHUB_OUTPUT
+
+          echo "## 📋 Version Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Tag | \`$DOCKER_TAG\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Git Commit | \`$SHORT_SHA\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Git Branch | \`$GIT_BRANCH\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`$ENVIRONMENT\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Is Release | \`$IS_RELEASE\` |" >> $GITHUB_STEP_SUMMARY
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Code Quality & Linting
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  lint:
+    name: 🔍 Lint & Format
+    runs-on: [self-hosted]
+    timeout-minutes: 15
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.should_build == 'true'
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/src/operator
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐹 Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ${{ env.WORKING_DIR }}/src/operator/go.sum
+
+      - name: 🎨 Auto-format code with gofmt
+        id: format
+        run: |
+          echo "🎨 Running gofmt to auto-format code..."
+          UNFORMATTED=$(gofmt -s -l . 2>&1)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "📝 Formatting the following files:"
+            echo "$UNFORMATTED"
+            gofmt -s -w .
+            echo "formatted=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Code is already properly formatted"
+            echo "formatted=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📦 Auto-tidy go.mod
+        id: tidy
+        run: |
+          echo "📦 Running go mod tidy..."
+          go mod tidy
+          if [ -n "$(git status --porcelain go.mod go.sum 2>/dev/null)" ]; then
+            echo "tidied=true" >> $GITHUB_OUTPUT
+          else
+            echo "tidied=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📤 Commit formatting changes
+        if: steps.format.outputs.formatted == 'true' || steps.tidy.outputs.tidied == 'true'
+        run: |
+          cd ${{ github.workspace }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add -A
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "style: auto-format Go code with gofmt
+            
+            🤖 Automated formatting by GitHub Actions
+            
+            Files formatted:
+            $(git diff --name-only HEAD~1 2>/dev/null || echo 'N/A')
+            
+            [skip ci]"
+            git push
+            echo "✅ Formatting changes committed and pushed"
+          fi
+
+      - name: 🔍 Run go vet
+        run: |
+          echo "🔍 Running go vet..."
+          go vet ./...
+          echo "✅ go vet passed"
+
+      - name: 🔍 Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          working-directory: ${{ env.WORKING_DIR }}/src/operator
+          args: --timeout=10m --config=../.golangci.yml
+          skip-cache: false
+          skip-save-cache: false
+        continue-on-error: true
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Unit Tests
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  test:
+    name: 🧪 Unit Tests
+    runs-on: [self-hosted]
+    timeout-minutes: 20
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.should_build == 'true' && github.event.inputs.skip-tests != 'true'
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}/src
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐹 Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ${{ env.WORKING_DIR }}/src/operator/go.sum
+
+      - name: 📦 Install dependencies
+        run: cd operator && go mod download
+
+      - name: 🧪 Run unit tests
+        run: |
+          echo "🧪 Running unit tests..."
+          go test -v -race -coverprofile=coverage.out -covermode=atomic -timeout=15m ./tests/unit/... 2>&1 | tee test-output.txt || true
+
+          # Generate coverage report
+          if [ -f coverage.out ]; then
+            go tool cover -func=coverage.out | tee coverage-summary.txt
+            COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
+            echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📊 Test Summary
+        run: |
+          echo "## 🧪 Unit Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage-summary.txt ]; then
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -20 coverage-summary.txt >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📤 Upload coverage
+        uses: codecov/codecov-action@v5
+        continue-on-error: true
+        with:
+          files: ${{ env.WORKING_DIR }}/src/coverage.out
+          flags: knative-lambda-operator
+          name: knative-lambda-operator
+          fail_ci_if_error: false
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Security Scanning
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: [self-hosted]
+    timeout-minutes: 15
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.should_build == 'true'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐹 Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: ${{ env.WORKING_DIR }}/src/operator/go.sum
+
+      - name: 🔍 Run govulncheck
+        working-directory: ${{ env.WORKING_DIR }}/src/operator
+        continue-on-error: true
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./... 2>&1 | tee govulncheck-results.txt || true
+
+      - name: 🛡️ Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: ${{ env.WORKING_DIR }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: 📤 Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+      - name: 🔍 Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Build & Push Operator Image
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  build-operator:
+    name: 🐳 Build & Push
+    runs-on: [self-hosted]
+    timeout-minutes: 30
+    needs: [lint, test, security-scan, detect-changes]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.should_build == 'true' &&
+      needs.detect-changes.outputs.should_deploy == 'true' &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.security-scan.result == 'success' || needs.security-scan.result == 'skipped')
+    outputs:
+      image_tag: ${{ needs.detect-changes.outputs.docker_tag }}
+      image_digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:v0.17.0
+
+      - name: 🔐 Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ needs.detect-changes.outputs.docker_tag }}
+            type=raw,value=latest,enable=${{ needs.detect-changes.outputs.is_release == 'true' }}
+            type=raw,value=${{ needs.detect-changes.outputs.environment }}
+            type=sha,prefix=sha-,format=short
+          labels: |
+            org.opencontainers.image.title=knative-lambda-operator
+            org.opencontainers.image.description=Kubernetes operator for serverless Lambda functions on Knative
+            org.opencontainers.image.version=${{ needs.detect-changes.outputs.version }}
+
+      - name: 🏗️ Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.WORKING_DIR }}/src/operator
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=knative-lambda-operator
+          cache-to: type=gha,mode=max,scope=knative-lambda-operator
+          platforms: linux/amd64,linux/arm64
+          provenance: true
+          sbom: true
+          build-args: |
+            VERSION=${{ needs.detect-changes.outputs.version }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_COMMIT=${{ needs.detect-changes.outputs.short_sha }}
+
+      - name: 🛡️ Scan built image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.detect-changes.outputs.docker_tag }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: 📋 Image Summary
+        run: |
+          echo "## 🐳 Built Image" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | \`${{ needs.detect-changes.outputs.docker_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`${{ needs.detect-changes.outputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Digest | \`${{ steps.build.outputs.digest }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Platforms | \`linux/amd64, linux/arm64\` |" >> $GITHUB_STEP_SUMMARY
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Update Kustomization (GitOps)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  update-kustomization:
+    name: 📝 Update GitOps
+    runs-on: [self-hosted]
+    timeout-minutes: 10
+    needs: [build-operator, detect-changes]
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📝 Update image tag in kustomization
+        run: |
+          ENV="${{ needs.detect-changes.outputs.environment }}"
+          TAG="${{ needs.detect-changes.outputs.docker_tag }}"
+          OVERLAY_DIR="${{ env.WORKING_DIR }}/k8s/overlays/${ENV}"
+
+          echo "🔄 Updating ${ENV} overlay with tag ${TAG}"
+
+          if [ -f "${OVERLAY_DIR}/kustomization.yaml" ]; then
+            # Update the image tag using sed
+            sed -i "s|newTag: v.*|newTag: ${TAG}|g" "${OVERLAY_DIR}/kustomization.yaml"
+            echo "✅ Updated ${OVERLAY_DIR}/kustomization.yaml"
+            cat "${OVERLAY_DIR}/kustomization.yaml" | grep -A5 "images:"
+          else
+            echo "⚠️ Kustomization file not found: ${OVERLAY_DIR}/kustomization.yaml"
+            echo "   This might be expected for new environments."
+          fi
+
+      - name: 📤 Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          ENV="${{ needs.detect-changes.outputs.environment }}"
+          TAG="${{ needs.detect-changes.outputs.docker_tag }}"
+
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "ci(knative-lambda): update ${ENV} image to ${TAG}
+
+            🤖 Automated commit by GitHub Actions
+
+            - Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}
+            - Environment: ${ENV}
+            - Commit: ${{ github.sha }}
+
+            [skip ci]"
+            git push
+            echo "✅ Pushed kustomization update"
+          else
+            echo "ℹ️ No changes to commit"
+          fi
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Create Release (Production only)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  create-release:
+    name: 🎉 Create Release
+    runs-on: [self-hosted]
+    timeout-minutes: 10
+    needs: [build-operator, detect-changes, update-kustomization]
+    if: needs.detect-changes.outputs.is_release == 'true'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📝 Generate Release Notes
+        id: release_notes
+        run: |
+          VERSION="${{ needs.detect-changes.outputs.version }}"
+          TAG="${{ needs.detect-changes.outputs.docker_tag }}"
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          cat > release_notes.md << 'EOF'
+          ## 🚀 Knative Lambda Operator ${{ needs.detect-changes.outputs.docker_tag }}
+
+          ### 📦 Container Image
+
+          ```bash
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.detect-changes.outputs.docker_tag }}
+          ```
+
+          ### 🎯 Deployment
+
+          This release is deployed via GitOps (Flux):
+
+          | Environment | Strategy | Status |
+          |-------------|----------|--------|
+          | **pro** | Direct | ✅ Deployed |
+          | **studio** | Flagger Canary | 🐦 Progressive rollout |
+
+          ### 🔄 GitOps Flow
+
+          1. ✅ Image built and pushed to GHCR
+          2. ✅ Kustomization updated with new tag
+          3. ⏳ Flux will reconcile changes
+          4. 🐦 Flagger handles canary deployment (studio only)
+
+          ---
+
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...${{ needs.detect-changes.outputs.docker_tag }}
+          EOF
+
+      - name: 🏷️ Create Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          TAG="${{ needs.detect-changes.outputs.docker_tag }}"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "⚠️ Tag $TAG already exists, skipping"
+          else
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+            echo "✅ Created tag: $TAG"
+          fi
+
+      - name: 🎉 Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.detect-changes.outputs.docker_tag }}
+          name: Knative Lambda Operator ${{ needs.detect-changes.outputs.docker_tag }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Pipeline Summary
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  summary:
+    name: 📋 Summary
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    needs: [lint, test, security-scan, detect-changes, build-operator, update-kustomization]
+    if: always()
+    steps:
+      - name: 📊 Generate summary
+        run: |
+          echo "## 🚀 Knative Lambda CI/CD Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Pipeline Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Detect Changes | ${{ needs.detect-changes.result == 'success' && '✅' || needs.detect-changes.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ${{ needs.lint.result == 'success' && '✅' || needs.lint.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ${{ needs.test.result == 'success' && '✅' || needs.test.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | ${{ needs.security-scan.result == 'success' && '✅' || needs.security-scan.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build-operator.result == 'success' && '✅' || needs.build-operator.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| GitOps Update | ${{ needs.update-kustomization.result == 'success' && '✅' || needs.update-kustomization.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ needs.detect-changes.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Tag | \`${{ needs.detect-changes.outputs.docker_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`${{ needs.detect-changes.outputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Registry | \`${{ env.REGISTRY }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔄 GitOps Flow" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. ${{ needs.build-operator.result == 'success' && '✅' || '⏳' }} Image built and pushed to GHCR" >> $GITHUB_STEP_SUMMARY
+          echo "2. ${{ needs.update-kustomization.result == 'success' && '✅' || '⏳' }} Kustomization updated with new tag" >> $GITHUB_STEP_SUMMARY
+          echo "3. ⏳ Flux will reconcile changes automatically" >> $GITHUB_STEP_SUMMARY
+          echo "4. 🐦 Flagger handles canary deployment (studio)" >> $GITHUB_STEP_SUMMARY

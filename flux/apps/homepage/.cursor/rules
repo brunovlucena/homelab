@@ -1,0 +1,37 @@
+# Homepage Project Rules
+
+## Deployment Commands
+
+When the user says any of the following:
+- "deploy"
+- "commit, push, build local and verify deployment"
+- "ship it"
+- "push to prod"
+
+Execute these steps in order:
+1. **Git commit**: Stage all changes with `git add -A`, create a commit with a descriptive message
+2. **Git push**: Push to origin with `git push origin main`
+3. **Build images**: Run `make build-images-local` (builds both API and frontend)
+4. **Rollout**: Run `make rollout` (restarts deployments and waits for completion)
+5. **Verify**: Check pod status and health endpoints
+
+Or simply run: `make deploy MSG="commit message here"`
+
+## Quick Deploy Commands
+
+- `make deploy` - Full pipeline (commit, push, build, rollout, verify)
+- `make deploy MSG="message"` - Full pipeline with specific commit message
+- `make deploy-frontend` - Build and deploy frontend only
+- `make deploy-api` - Build and deploy API only
+- `make verify` - Check deployment health
+- `make rollout` - Restart deployments without rebuilding
+
+## Database Operations
+
+When modifying skills or content, use the API:
+- GET skills: `kubectl exec -n homepage deployment/homepage-api -- curl -s http://localhost:8080/api/skills`
+- DELETE skill: `kubectl exec -n homepage deployment/homepage-api -- curl -s -X DELETE http://localhost:8080/api/skills/{id}`
+
+## Never Do Without Confirmation
+- kubectl patch
+- kubectl delete

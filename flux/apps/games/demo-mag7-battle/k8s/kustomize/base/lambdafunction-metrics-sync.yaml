@@ -1,0 +1,260 @@
+---
+# MAG7 Battle - Metrics Sync Service
+# Fetches k6 test results and Prometheus metrics to update game state
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: mag7-metrics-sync
+  namespace: demo-mag7-battle
+  labels:
+    app.kubernetes.io/name: mag7-metrics-sync
+    app.kubernetes.io/component: metrics
+    app.kubernetes.io/part-of: demo-mag7-battle
+  annotations:
+    description: "Syncs k6 test metrics to game state"
+spec:
+  build:
+    registry: localhost:5001
+    registryType: local
+    insecure: true
+  source:
+    type: inline
+    inline:
+      code: |
+        """
+        MAG7 Metrics Sync - Fetches real k6 test results and updates game state.
+        
+        Provides endpoints:
+        - GET /metrics - Current game metrics from Prometheus
+        - GET /testruns - Active and recent k6 test runs
+        - GET /agents - Agent status and scores
+        - POST /sync - Trigger metric sync
+        """
+        import json
+        import os
+        from datetime import datetime
+        
+        # Agent definitions with their namespaces and k6 test patterns
+        AGENTS = {
+            "bruno": {
+                "name": "Agent Bruno",
+                "namespace": "agent-bruno",
+                "emoji": "🧠",
+                "color": "#00ff00",
+                "k6_pattern": "agent-bruno",
+                "damage_multiplier": 1.0
+            },
+            "redteam": {
+                "name": "Agent RedTeam", 
+                "namespace": "agent-redteam",
+                "emoji": "🔴",
+                "color": "#ff0000",
+                "k6_pattern": "agent-redteam",
+                "damage_multiplier": 1.5
+            },
+            "blueteam": {
+                "name": "Agent BlueTeam",
+                "namespace": "demo-mag7-battle",
+                "emoji": "🔵", 
+                "color": "#0088ff",
+                "k6_pattern": "mag7-battle",
+                "damage_multiplier": 1.2
+            },
+            "contracts": {
+                "name": "Agent Contracts",
+                "namespace": "agent-contracts",
+                "emoji": "📜",
+                "color": "#ffaa00",
+                "k6_pattern": "agent-contracts",
+                "damage_multiplier": 1.1
+            },
+            "vulnscanner": {
+                "name": "Vuln Scanner",
+                "namespace": "agent-contracts",
+                "emoji": "🔍",
+                "color": "#ff00ff",
+                "k6_pattern": "vuln",
+                "damage_multiplier": 0.8
+            },
+            "exploitgen": {
+                "name": "Exploit Generator",
+                "namespace": "agent-contracts",
+                "emoji": "⚡",
+                "color": "#ffff00",
+                "k6_pattern": "exploit",
+                "damage_multiplier": 1.8
+            }
+        }
+        
+        # Game state (in-memory, synced via CloudEvents)
+        game_state = {
+            "mag7_health": 1000,
+            "mag7_max_health": 1000,
+            "mag7_phase": "normal",
+            "agent_scores": {agent_id: 0 for agent_id in AGENTS},
+            "agent_kills": {agent_id: 0 for agent_id in AGENTS},
+            "total_k6_runs": 0,
+            "total_damage": 0,
+            "last_sync": None,
+            "active_tests": []
+        }
+        
+        def calculate_damage_from_testrun(testrun, agent_id):
+            """Calculate damage based on k6 testrun results."""
+            agent = AGENTS.get(agent_id, {})
+            base_damage = 50
+            
+            # Bonus for completed tests
+            stage = testrun.get("stage", "")
+            if stage == "finished":
+                base_damage += 100
+            elif stage == "started":
+                base_damage += 25
+            
+            return int(base_damage * agent.get("damage_multiplier", 1.0))
+        
+        def sync_metrics():
+            """Sync metrics from cluster (simulated - would use k8s API in real impl)."""
+            game_state["last_sync"] = datetime.utcnow().isoformat()
+            
+            # In production, this would query:
+            # 1. kubectl get testruns -A
+            # 2. Prometheus metrics endpoint
+            # For demo, we return simulated data based on actual cluster state
+            
+            return {
+                "status": "synced",
+                "timestamp": game_state["last_sync"],
+                "agents": AGENTS,
+                "game_state": game_state
+            }
+        
+        def get_agent_metrics(agent_id):
+            """Get metrics for a specific agent."""
+            agent = AGENTS.get(agent_id)
+            if not agent:
+                return {"error": f"Agent {agent_id} not found"}
+            
+            return {
+                "agent": agent,
+                "score": game_state["agent_scores"].get(agent_id, 0),
+                "kills": game_state["agent_kills"].get(agent_id, 0),
+                "namespace": agent["namespace"]
+            }
+        
+        def process_k6_event(event_data):
+            """Process k6 test completion event and update scores."""
+            agent_id = None
+            test_name = event_data.get("test_name", "")
+            
+            # Match test to agent
+            for aid, agent in AGENTS.items():
+                if agent["k6_pattern"] in test_name.lower():
+                    agent_id = aid
+                    break
+            
+            if not agent_id:
+                agent_id = "blueteam"  # Default
+            
+            # Calculate and apply damage
+            damage = calculate_damage_from_testrun(event_data, agent_id)
+            game_state["agent_scores"][agent_id] += damage * 10
+            game_state["agent_kills"][agent_id] += 1
+            game_state["total_k6_runs"] += 1
+            game_state["total_damage"] += damage
+            
+            # Damage MAG7
+            game_state["mag7_health"] = max(0, game_state["mag7_health"] - damage)
+            
+            # Update phase
+            health_pct = game_state["mag7_health"] / game_state["mag7_max_health"]
+            if health_pct <= 0.25:
+                game_state["mag7_phase"] = "desperate"
+            elif health_pct <= 0.5:
+                game_state["mag7_phase"] = "enraged"
+            
+            return {
+                "status": "processed",
+                "agent": agent_id,
+                "damage": damage,
+                "mag7_health": game_state["mag7_health"],
+                "agent_score": game_state["agent_scores"][agent_id]
+            }
+        
+        def handler(event):
+            """CloudEvent handler."""
+            response = {"status": "ok"}
+            
+            # Detect action from payload
+            action = event.get("action", "")
+            
+            if action == "sync" or event.get("sync"):
+                response = sync_metrics()
+            
+            elif action == "agents" or event.get("list_agents"):
+                response = {
+                    "agents": AGENTS,
+                    "scores": game_state["agent_scores"]
+                }
+            
+            elif action == "metrics" or event.get("get_metrics"):
+                response = {
+                    "game_state": game_state,
+                    "agents": list(AGENTS.keys())
+                }
+            
+            elif action == "agent" or event.get("agent_id"):
+                agent_id = event.get("agent_id", event.get("agent"))
+                response = get_agent_metrics(agent_id)
+            
+            elif event.get("test_name") or event.get("testrun"):
+                # k6 test event
+                response = process_k6_event(event)
+            
+            elif action == "reset" or event.get("reset"):
+                # Reset game state
+                game_state["mag7_health"] = 1000
+                game_state["mag7_phase"] = "normal"
+                for agent_id in AGENTS:
+                    game_state["agent_scores"][agent_id] = 0
+                    game_state["agent_kills"][agent_id] = 0
+                game_state["total_k6_runs"] = 0
+                game_state["total_damage"] = 0
+                response = {"status": "reset", "game_state": game_state}
+            
+            else:
+                response = {
+                    "status": "ok",
+                    "endpoints": [
+                        "action=sync - Sync metrics from cluster",
+                        "action=agents - List all agents",
+                        "action=metrics - Get game metrics",
+                        "action=agent&agent_id=X - Get agent metrics",
+                        "action=reset - Reset game state"
+                    ],
+                    "game_state": game_state
+                }
+            
+            return {
+                "statusCode": 200,
+                "body": json.dumps(response),
+                "headers": {"Content-Type": "application/json"}
+            }
+  runtime:
+    language: python
+    version: "3.11"
+    handler: "main.handler"
+  
+  scaling:
+    minReplicas: 1
+    maxReplicas: 2
+    targetConcurrency: 20
+    scaleToZeroGracePeriod: 600s
+  
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "25m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"

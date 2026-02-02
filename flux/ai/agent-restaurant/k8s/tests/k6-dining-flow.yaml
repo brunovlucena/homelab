@@ -1,0 +1,473 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🍽️ K6 DINING FLOW TEST - AGENT-RESTAURANT
+#
+#  Purpose: End-to-end dining experience simulation
+#
+#  Scenario: Complete dining journey from arrival to departure
+#  1. Guest arrives and is greeted by Host (Maximilian)
+#  2. Seated and presented menu by Waiter (Pierre)
+#  3. Wine recommendations by Sommelier (Isabella)
+#  4. Order sent to Kitchen (Chef Marco)
+#  5. Dish presentation and service
+#  6. Guest departure
+#
+#  This tests the full event-driven workflow between agents
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-restaurant-dining-flow
+  namespace: agent-restaurant
+  labels:
+    app.kubernetes.io/name: agent-restaurant
+    app.kubernetes.io/component: testing
+    test-type: scenario
+    test-scenario: dining-flow
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-restaurant-dining-flow-test
+      file: dining-flow.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: NAMESPACE
+        value: "agent-restaurant"
+      - name: HOST_URL
+        value: "http://host-maximilian.agent-restaurant.svc.cluster.local"
+      - name: WAITER_URL
+        value: "http://waiter-pierre.agent-restaurant.svc.cluster.local"
+      - name: SOMMELIER_URL
+        value: "http://sommelier-isabella.agent-restaurant.svc.cluster.local"
+      - name: CHEF_URL
+        value: "http://chef-marco.agent-restaurant.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-restaurant-dining-flow-test
+  namespace: agent-restaurant
+  labels:
+    app.kubernetes.io/name: agent-restaurant
+    app.kubernetes.io/component: testing
+    test-type: scenario
+data:
+  dining-flow.js: |
+    import http from 'k6/http';
+    import { check, group, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // Custom Metrics for Each Stage
+    const stageSuccess = new Rate('dining_stage_success');
+    const stageTime = new Trend('dining_stage_time_ms');
+    const completedDinings = new Counter('dining_completed');
+    const failedDinings = new Counter('dining_failed');
+    
+    // Per-agent metrics
+    const hostResponseTime = new Trend('dining_host_response_ms');
+    const waiterResponseTime = new Trend('dining_waiter_response_ms');
+    const sommelierResponseTime = new Trend('dining_sommelier_response_ms');
+    const chefResponseTime = new Trend('dining_chef_response_ms');
+    
+    // Configuration
+    const HOST_URL = __ENV.HOST_URL || 'http://host-maximilian.agent-restaurant.svc.cluster.local';
+    const WAITER_URL = __ENV.WAITER_URL || 'http://waiter-pierre.agent-restaurant.svc.cluster.local';
+    const SOMMELIER_URL = __ENV.SOMMELIER_URL || 'http://sommelier-isabella.agent-restaurant.svc.cluster.local';
+    const CHEF_URL = __ENV.CHEF_URL || 'http://chef-marco.agent-restaurant.svc.cluster.local';
+    
+    export const options = {
+      scenarios: {
+        // Single VIP dining experience - detailed flow
+        vip_dining: {
+          executor: 'per-vu-iterations',
+          vus: 1,
+          iterations: 3,
+          maxDuration: '10m',
+        },
+        // Multiple regular dinings
+        regular_dining: {
+          executor: 'constant-vus',
+          vus: 2,
+          duration: '3m',
+          startTime: '30s',
+        },
+      },
+      thresholds: {
+        'dining_stage_success': ['rate>0.60'],
+        'dining_completed': ['count>=1'],
+        'http_req_failed': ['rate<0.40'],
+      },
+    };
+    
+    // CloudEvent helper
+    function createCloudEvent(type, data, source) {
+      return {
+        specversion: '1.0',
+        id: `k6-flow-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        type: type,
+        source: source,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+    
+    function sendCloudEvent(url, event, timeout = '120s') {
+      return http.post(url, JSON.stringify(event), {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+          'Ce-Specversion': '1.0',
+        },
+        timeout: timeout,
+      });
+    }
+    
+    // Dining state for flow tracking
+    class DiningSession {
+      constructor(vu, iteration) {
+        this.guestId = `vip-${vu}-${iteration}-${Date.now()}`;
+        this.tableId = `table-vip-${vu}`;
+        this.orderId = null;
+        this.ticketId = null;
+        this.partySize = 2;
+        this.stages = [];
+        this.startTime = Date.now();
+      }
+      
+      recordStage(name, success, duration) {
+        this.stages.push({ name, success, duration, timestamp: Date.now() });
+        stageSuccess.add(success);
+        stageTime.add(duration, { stage: name });
+      }
+      
+      isComplete() {
+        return this.stages.length >= 6 && this.stages.every(s => s.success);
+      }
+    }
+    
+    export default function() {
+      const session = new DiningSession(__VU, __ITER);
+      let flowSuccess = true;
+      
+      console.log(`\n🍽️ Starting dining session for ${session.guestId}`);
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 1: ARRIVAL - Guest arrives, Host greets
+      // ═══════════════════════════════════════════════════════════════════════
+      group('Stage 1: 🎩 Guest Arrival', () => {
+        console.log('  → Guest arriving at restaurant...');
+        
+        const event = createCloudEvent('restaurant.guest.arriving', {
+          guestId: session.guestId,
+          partySize: session.partySize,
+          reservationId: `res-${session.guestId}`,
+          name: 'K6 VIP Guest',
+          preferences: ['window seat', 'anniversary dinner'],
+          isVip: true,
+          occasion: 'Anniversary',
+        }, '/k6-dining-flow/arrival');
+        
+        const start = Date.now();
+        const res = sendCloudEvent(HOST_URL, event);
+        const duration = Date.now() - start;
+        
+        hostResponseTime.add(duration);
+        
+        const success = check(res, {
+          'host greets guest': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        session.recordStage('arrival', success, duration);
+        
+        if (success) {
+          console.log(`  ✓ Host greeted guest (${duration}ms)`);
+        } else {
+          console.log(`  ✗ Host greeting failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+      
+      sleep(2);
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 2: SEATING - Host seats guest, Waiter approaches
+      // ═══════════════════════════════════════════════════════════════════════
+      group('Stage 2: 👔 Table Seating & Menu', () => {
+        console.log('  → Being seated and receiving menu...');
+        
+        const event = createCloudEvent('restaurant.guest.seated', {
+          tableId: session.tableId,
+          guestId: session.guestId,
+          partySize: session.partySize,
+          request: 'Good evening! We are celebrating our anniversary. Please present the menu and your recommendations for a special evening.',
+          occasion: 'Anniversary',
+        }, '/k6-dining-flow/seating');
+        
+        const start = Date.now();
+        const res = sendCloudEvent(WAITER_URL, event);
+        const duration = Date.now() - start;
+        
+        waiterResponseTime.add(duration);
+        
+        const success = check(res, {
+          'waiter presents menu': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        session.recordStage('seating', success, duration);
+        
+        if (success) {
+          console.log(`  ✓ Waiter presented menu (${duration}ms)`);
+        } else {
+          console.log(`  ✗ Menu presentation failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+      
+      sleep(3);
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 3: WINE CONSULTATION - Sommelier approaches
+      // ═══════════════════════════════════════════════════════════════════════
+      group('Stage 3: 🍷 Wine Consultation', () => {
+        console.log('  → Consulting sommelier for wine pairing...');
+        
+        const event = createCloudEvent('restaurant.service.wine.request', {
+          tableId: session.tableId,
+          guestId: session.guestId,
+          occasion: 'Anniversary',
+          preferences: {
+            style: 'romantic',
+            priceRange: '$80-150',
+            notes: 'We enjoy full-bodied reds but open to suggestions',
+          },
+          anticipatedDishes: [
+            'Beef Tenderloin',
+            'Truffle Risotto',
+          ],
+        }, '/k6-dining-flow/wine-consult');
+        
+        const start = Date.now();
+        const res = sendCloudEvent(SOMMELIER_URL, event);
+        const duration = Date.now() - start;
+        
+        sommelierResponseTime.add(duration);
+        
+        const success = check(res, {
+          'sommelier provides consultation': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        session.recordStage('wine_consultation', success, duration);
+        
+        if (success) {
+          console.log(`  ✓ Sommelier provided recommendations (${duration}ms)`);
+        } else {
+          console.log(`  ✗ Wine consultation failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+      
+      sleep(2);
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 4: ORDER PLACEMENT - Waiter takes order
+      // ═══════════════════════════════════════════════════════════════════════
+      group('Stage 4: 📝 Order Placement', () => {
+        console.log('  → Placing dinner order...');
+        
+        session.orderId = `order-${session.guestId}`;
+        
+        const orderItems = [
+          { dish: 'Burrata with Heirloom Tomatoes', quantity: 1, course: 'starter', notes: 'Extra virgin olive oil drizzle' },
+          { dish: 'Beef Tenderloin', quantity: 1, course: 'main', notes: 'Medium-rare, truffle butter' },
+          { dish: 'Truffle Risotto', quantity: 1, course: 'main', notes: 'Extra parmesan on side' },
+          { dish: 'Tiramisu for Two', quantity: 1, course: 'dessert', notes: 'Anniversary candle please' },
+        ];
+        
+        const event = createCloudEvent('restaurant.order.created', {
+          tableId: session.tableId,
+          orderId: session.orderId,
+          guestId: session.guestId,
+          items: orderItems,
+          specialRequests: 'Anniversary celebration - please make it special',
+          wineSelection: 'Barolo 2019',
+        }, '/k6-dining-flow/order');
+        
+        const start = Date.now();
+        const res = sendCloudEvent(WAITER_URL, event);
+        const duration = Date.now() - start;
+        
+        waiterResponseTime.add(duration);
+        
+        const success = check(res, {
+          'waiter confirms order': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        session.recordStage('order_placement', success, duration);
+        
+        if (success) {
+          console.log(`  ✓ Order confirmed (${duration}ms)`);
+        } else {
+          console.log(`  ✗ Order placement failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+      
+      sleep(2);
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 5: KITCHEN PREPARATION - Chef receives and prepares
+      // ═══════════════════════════════════════════════════════════════════════
+      group('Stage 5: 👨‍🍳 Kitchen Preparation', () => {
+        console.log('  → Kitchen preparing dishes...');
+        
+        session.ticketId = `ticket-${session.guestId}`;
+        
+        const event = createCloudEvent('restaurant.order.created', {
+          ticketId: session.ticketId,
+          tableId: session.tableId,
+          orderId: session.orderId,
+          items: [
+            { dish: 'Burrata', station: 'cold', priority: 1, notes: 'Fire immediately' },
+            { dish: 'Beef Tenderloin', station: 'grill', priority: 2, notes: 'Medium-rare, 8 minutes' },
+            { dish: 'Truffle Risotto', station: 'pasta', priority: 2, notes: '18 min stirring' },
+            { dish: 'Tiramisu', station: 'pastry', priority: 3, notes: 'Anniversary candle' },
+          ],
+          specialInstructions: 'VIP table - Anniversary celebration. Perfect timing required.',
+          priority: 'vip',
+          courseTiming: 'traditional',
+        }, '/k6-dining-flow/kitchen');
+        
+        const start = Date.now();
+        const res = sendCloudEvent(CHEF_URL, event);
+        const duration = Date.now() - start;
+        
+        chefResponseTime.add(duration);
+        
+        const success = check(res, {
+          'chef acknowledges order': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        session.recordStage('kitchen_prep', success, duration);
+        
+        if (success) {
+          console.log(`  ✓ Kitchen acknowledged order (${duration}ms)`);
+        } else {
+          console.log(`  ✗ Kitchen preparation failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+      
+      sleep(3);
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // STAGE 6: DEPARTURE - Guest leaves satisfied
+      // ═══════════════════════════════════════════════════════════════════════
+      group('Stage 6: 🎩 Guest Departure', () => {
+        console.log('  → Guest departing...');
+        
+        const event = createCloudEvent('restaurant.guest.departed', {
+          guestId: session.guestId,
+          tableId: session.tableId,
+          totalSpent: 285.50,
+          tipPercentage: 22,
+          rating: 5,
+          feedback: 'Absolutely wonderful anniversary dinner! Pierre made it magical.',
+          returnIntent: 'definitely',
+        }, '/k6-dining-flow/departure');
+        
+        const start = Date.now();
+        const res = sendCloudEvent(HOST_URL, event);
+        const duration = Date.now() - start;
+        
+        hostResponseTime.add(duration);
+        
+        const success = check(res, {
+          'host bids farewell': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        session.recordStage('departure', success, duration);
+        
+        if (success) {
+          console.log(`  ✓ Host bid farewell (${duration}ms)`);
+        } else {
+          console.log(`  ✗ Departure handling failed: ${res.status}`);
+          flowSuccess = false;
+        }
+      });
+      
+      // Record completion
+      const totalDuration = Date.now() - session.startTime;
+      
+      if (flowSuccess) {
+        completedDinings.add(1);
+        console.log(`\n✅ Dining session completed successfully in ${(totalDuration/1000).toFixed(1)}s`);
+      } else {
+        failedDinings.add(1);
+        console.log(`\n❌ Dining session had failures (${(totalDuration/1000).toFixed(1)}s)`);
+      }
+      
+      console.log('─'.repeat(50));
+      
+      sleep(5);
+    }
+    
+    export function handleSummary(data) {
+      const completed = data.metrics['dining_completed'];
+      const failed = data.metrics['dining_failed'];
+      const stageSuccessMetric = data.metrics['dining_stage_success'];
+      const stageTimeMetric = data.metrics['dining_stage_time_ms'];
+      
+      const hostTime = data.metrics['dining_host_response_ms'];
+      const waiterTime = data.metrics['dining_waiter_response_ms'];
+      const sommelierTime = data.metrics['dining_sommelier_response_ms'];
+      const chefTime = data.metrics['dining_chef_response_ms'];
+      
+      const completedCount = completed && completed.values ? completed.values.count : 0;
+      const failedCount = failed && failed.values ? failed.values.count : 0;
+      const successRate = stageSuccessMetric && stageSuccessMetric.values ? stageSuccessMetric.values.rate : 0;
+      const avgStageTime = stageTimeMetric && stageTimeMetric.values ? stageTimeMetric.values.avg : 0;
+      
+      const hostAvg = hostTime && hostTime.values ? hostTime.values.avg : 0;
+      const waiterAvg = waiterTime && waiterTime.values ? waiterTime.values.avg : 0;
+      const sommelierAvg = sommelierTime && sommelierTime.values ? sommelierTime.values.avg : 0;
+      const chefAvg = chefTime && chefTime.values ? chefTime.values.avg : 0;
+      
+      const passed = successRate >= 0.60 && completedCount >= 1;
+      
+      console.log('\n' + '═'.repeat(70));
+      console.log('🍽️ AGENT-RESTAURANT DINING FLOW TEST RESULTS');
+      console.log('═'.repeat(70));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('─'.repeat(70));
+      console.log('📊 DINING SESSIONS');
+      console.log('   Completed:          ' + completedCount);
+      console.log('   Failed:             ' + failedCount);
+      console.log('   Stage Success Rate: ' + (successRate * 100).toFixed(1) + '%');
+      console.log('─'.repeat(70));
+      console.log('⏱️ AGENT RESPONSE TIMES (avg)');
+      console.log('   🎩 Host (Maximilian):     ' + (hostAvg || 0).toFixed(0) + 'ms');
+      console.log('   👔 Waiter (Pierre):       ' + (waiterAvg || 0).toFixed(0) + 'ms');
+      console.log('   🍷 Sommelier (Isabella):  ' + (sommelierAvg || 0).toFixed(0) + 'ms');
+      console.log('   👨‍🍳 Chef (Marco):          ' + (chefAvg || 0).toFixed(0) + 'ms');
+      console.log('─'.repeat(70));
+      console.log('   Average Stage Time:  ' + (avgStageTime || 0).toFixed(0) + 'ms');
+      console.log('═'.repeat(70) + '\n');
+      
+      return {};
+    }

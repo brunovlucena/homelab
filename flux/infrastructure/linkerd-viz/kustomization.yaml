@@ -1,0 +1,14 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 📊 Linkerd Viz Extension
+# Installs Linkerd Viz for observability and dashboards
+
+resources:
+  # 1. Install Linkerd Viz extension
+  - linkerd-viz-job.yaml
+  
+  # 2. Expose Linkerd Viz services via NodePort for Cursor access
+  - linkerd-viz-services.yaml
+

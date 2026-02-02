@@ -1,0 +1,432 @@
+---
+# Grafana Dashboard ConfigMap for Agent RedTeam Health & Operations
+# This dashboard is automatically discovered by Grafana via the sidecar
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-agent-redteam-health
+  namespace: prometheus
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: dashboard
+    dashboard-type: health
+  annotations:
+    k8s-sidecar-target-directory: "Agents"
+data:
+  agent-redteam-health-dashboard.json: |-
+    {
+      "title": "Agent RedTeam - Health & Operations (v1) [s39]",
+      "tags": ["agent-redteam", "security", "pentesting", "health", "operations", "knative", "lambda"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "uid": "agent-redteam-health",
+      "editable": true,
+      "graphTooltip": 1,
+      "links": [
+        {
+          "asDropdown": true,
+          "icon": "external link",
+          "includeVars": true,
+          "keepTime": true,
+          "tags": ["knative", "lambda", "security"],
+          "targetBlank": true,
+          "title": "Related Dashboards",
+          "type": "dashboards"
+        },
+        {
+          "asDropdown": false,
+          "icon": "dashboard",
+          "includeVars": true,
+          "keepTime": true,
+          "targetBlank": true,
+          "title": "RedTeam Attacks",
+          "type": "link",
+          "url": "/d/agent-redteam-attacks"
+        }
+      ],
+      "templating": { "list": [] },
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "🩺 Service Health",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "collapsed": false
+        },
+        {
+          "type": "stat",
+          "title": "Agent Status",
+          "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+          "id": 2,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+              "mappings": [{ "options": { "0": { "color": "red", "text": "DOWN" }, "1": { "color": "green", "text": "UP" } }, "type": "value" }]
+            }
+          },
+          "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "agent_redteam_up or up{job=\"agent-redteam\"} or vector(1)", "refId": "A" }]
+        },
+        {
+          "type": "stat",
+          "title": "Ready Status",
+          "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+          "id": 3,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] },
+              "mappings": [{ "options": { "0": { "color": "red", "text": "NOT READY" }, "1": { "color": "green", "text": "READY" } }, "type": "value" }]
+            }
+          },
+          "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "agent_redteam_ready or vector(1)", "refId": "A" }]
+        },
+        {
+          "type": "stat",
+          "title": "Dry-Run Mode",
+          "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+          "id": 4,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] },
+              "mappings": [{ "options": { "0": { "color": "green", "text": "LIVE" }, "1": { "color": "yellow", "text": "DRY-RUN" } }, "type": "value" }]
+            }
+          },
+          "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "agent_redteam_dry_run_mode or vector(0)", "refId": "A" }]
+        },
+        {
+          "type": "stat",
+          "title": "Catalog Size",
+          "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+          "id": 5,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 5 }] },
+              "unit": "short"
+            }
+          },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(agent_redteam_catalog_size) or vector(9)", "refId": "A" }]
+        },
+        {
+          "type": "stat",
+          "title": "HTTP Requests (5m)",
+          "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+          "id": 6,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }, "unit": "short" } },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(increase(agent_redteam_http_requests_total[5m])) or vector(0)", "refId": "A" }]
+        },
+        {
+          "type": "stat",
+          "title": "HTTP Errors (5m)",
+          "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+          "id": 7,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 5 }] },
+              "unit": "short"
+            }
+          },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(increase(agent_redteam_http_errors_total[5m])) or vector(0)", "refId": "A" }]
+        },
+        {
+          "type": "row",
+          "title": "📡 API Performance",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+          "id": 10,
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "HTTP Request Rate by Endpoint",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "id": 11,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 }, "unit": "reqps" } },
+          "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+          "targets": [{ "expr": "sum by (endpoint, method) (rate(agent_redteam_http_requests_total[5m]))", "legendFormat": "{{method}} {{endpoint}}", "refId": "A" }]
+        },
+        {
+          "type": "timeseries",
+          "title": "HTTP Request Duration (P95)",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "id": 12,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 },
+              "unit": "s",
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 5 }] }
+            }
+          },
+          "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+          "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, endpoint) (rate(agent_redteam_http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{endpoint}} P95", "refId": "A" }]
+        },
+        {
+          "type": "row",
+          "title": "☁️ CloudEvents Processing",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+          "id": 20,
+          "collapsed": false
+        },
+        {
+          "type": "stat",
+          "title": "Events Received (1h)",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 15 },
+          "id": 21,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }, "unit": "short" } },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(increase(agent_redteam_cloudevents_received_total[1h])) or vector(0)", "refId": "A" }]
+        },
+        {
+          "type": "stat",
+          "title": "Events Processed",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 15 },
+          "id": 22,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "short" } },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(increase(agent_redteam_cloudevents_processed_total{status=\"success\"}[1h])) or vector(0)", "refId": "A" }]
+        },
+        {
+          "type": "stat",
+          "title": "Event Errors",
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 15 },
+          "id": 23,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 5 }] },
+              "unit": "short"
+            }
+          },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(increase(agent_redteam_cloudevents_processed_total{status=\"error\"}[1h])) or vector(0)", "refId": "A" }]
+        },
+        {
+          "type": "stat",
+          "title": "Unknown Events",
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 15 },
+          "id": 24,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 10 }] },
+              "unit": "short"
+            }
+          },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(increase(agent_redteam_cloudevents_processed_total{status=\"unknown_type\"}[1h])) or vector(0)", "refId": "A" }]
+        },
+        {
+          "type": "timeseries",
+          "title": "CloudEvents by Type",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+          "id": 25,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 80, "stacking": { "mode": "normal" } }, "unit": "short" } },
+          "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" } },
+          "targets": [{ "expr": "sum by (event_type) (increase(agent_redteam_cloudevents_received_total[5m]))", "legendFormat": "{{event_type}}", "refId": "A" }]
+        },
+        {
+          "type": "timeseries",
+          "title": "CloudEvent Processing Duration",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+          "id": 26,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 },
+              "unit": "s",
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 60 }] }
+            }
+          },
+          "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+          "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, event_type) (rate(agent_redteam_cloudevents_processing_seconds_bucket[5m])))", "legendFormat": "{{event_type}} P95", "refId": "A" }]
+        },
+        {
+          "type": "row",
+          "title": "🔧 Kubernetes Operations",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+          "id": 30,
+          "collapsed": false
+        },
+        {
+          "type": "stat",
+          "title": "K8s Operations (1h)",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 28 },
+          "id": 31,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }, "unit": "short" } },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(increase(agent_redteam_k8s_operations_total[1h])) or vector(0)", "refId": "A" }]
+        },
+        {
+          "type": "stat",
+          "title": "K8s Successes",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 28 },
+          "id": 32,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "short" } },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(increase(agent_redteam_k8s_operations_total{status=\"success\"}[1h])) or vector(0)", "refId": "A" }]
+        },
+        {
+          "type": "stat",
+          "title": "K8s Errors",
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 28 },
+          "id": 33,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 10 }] },
+              "unit": "short"
+            }
+          },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(increase(agent_redteam_k8s_operations_total{status=\"error\"}[1h])) or sum(increase(agent_redteam_k8s_errors_total[1h])) or vector(0)", "refId": "A" }]
+        },
+        {
+          "type": "stat",
+          "title": "K8s Success Rate",
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 28 },
+          "id": 34,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0.99 }] },
+              "unit": "percentunit",
+              "decimals": 1
+            }
+          },
+          "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+          "targets": [{ "expr": "sum(rate(agent_redteam_k8s_operations_total{status=\"success\"}[5m])) / (sum(rate(agent_redteam_k8s_operations_total[5m])) + 0.0001) or vector(1)", "refId": "A" }]
+        },
+        {
+          "type": "timeseries",
+          "title": "K8s Operations by Type",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+          "id": 35,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 }, "unit": "ops" },
+            "overrides": [{ "matcher": { "id": "byRegexp", "options": ".*error.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }]
+          },
+          "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" } },
+          "targets": [{ "expr": "sum by (operation, resource, status) (rate(agent_redteam_k8s_operations_total[5m]))", "legendFormat": "{{operation}} {{resource}} ({{status}})", "refId": "A" }]
+        },
+        {
+          "type": "timeseries",
+          "title": "K8s Operation Duration (P95)",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+          "id": 36,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 },
+              "unit": "s",
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 30 }] }
+            }
+          },
+          "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+          "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, operation, resource) (rate(agent_redteam_k8s_operation_duration_seconds_bucket[5m])))", "legendFormat": "{{operation}} {{resource}}", "refId": "A" }]
+        },
+        {
+          "type": "row",
+          "title": "📈 Test Run Operations",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
+          "id": 40,
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "Test Run Duration",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
+          "id": 41,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 2 },
+              "unit": "s",
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1800 }] }
+            }
+          },
+          "options": { "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" } },
+          "targets": [
+            { "expr": "histogram_quantile(0.95, sum by (le) (rate(agent_redteam_test_run_duration_seconds_bucket[5m])))", "legendFormat": "P95", "refId": "A" },
+            { "expr": "histogram_quantile(0.50, sum by (le) (rate(agent_redteam_test_run_duration_seconds_bucket[5m])))", "legendFormat": "P50", "refId": "B" }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Test Runs by Status",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
+          "id": 42,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 80, "stacking": { "mode": "normal" } }, "unit": "short" },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "completed" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+              { "matcher": { "id": "byName", "options": "failed" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+            ]
+          },
+          "options": { "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom" } },
+          "targets": [{ "expr": "sum by (status) (increase(agent_redteam_test_runs_total[5m]))", "legendFormat": "{{status}}", "refId": "A" }]
+        },
+        {
+          "type": "row",
+          "title": "🔧 Build Info",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 49 },
+          "id": 50,
+          "collapsed": true,
+          "panels": [
+            {
+              "type": "table",
+              "title": "Build Information",
+              "gridPos": { "h": 4, "w": 24, "x": 0, "y": 50 },
+              "id": 51,
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "targets": [{ "expr": "agent_redteam_build_info", "format": "table", "refId": "A" }],
+              "transformations": [{ "id": "organize", "options": { "excludeByName": { "Time": true, "Value": true, "__name__": true } } }]
+            }
+          ]
+        }
+      ],
+      "time": { "from": "now-1h", "to": "now" },
+      "timepicker": { "refresh_intervals": ["10s", "30s", "1m", "5m", "15m"] }
+    }

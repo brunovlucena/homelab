@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spotify-p2p-config
+  namespace: spotify-p2p
+data:
+  ipfs.api.url: "http://ipfs.homelab-services.svc.cluster.local:5001"
+  ipfs.gateway.url: "http://ipfs.homelab-services.svc.cluster.local:8080"
+  p2p.enabled: "true"
+  p2p.ice.servers: "stun:stun.l.google.com:19302"

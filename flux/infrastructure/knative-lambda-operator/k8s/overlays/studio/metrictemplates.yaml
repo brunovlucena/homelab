@@ -1,0 +1,147 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📏 FLAGGER METRIC TEMPLATES - Studio
+#
+#  Purpose: Custom Prometheus queries for Flagger canary analysis
+#  Used by: Canary resources for success/failure determination
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: request-success-rate
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: metrics
+    environment: studio
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus-kube-prometheus-prometheus.prometheus.svc:9090
+  query: |
+    sum(rate(
+      response_total{
+        namespace="{{ namespace }}",
+        deployment=~"{{ target }}-primary",
+        classification="success"
+      }[{{ interval }}]
+    )) 
+    / 
+    sum(rate(
+      response_total{
+        namespace="{{ namespace }}",
+        deployment=~"{{ target }}-primary"
+      }[{{ interval }}]
+    )) * 100
+---
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: request-duration
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: metrics
+    environment: studio
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus-kube-prometheus-prometheus.prometheus.svc:9090
+  query: |
+    histogram_quantile(
+      0.99,
+      sum(rate(
+        response_latency_ms_bucket{
+          namespace="{{ namespace }}",
+          deployment=~"{{ target }}-primary"
+        }[{{ interval }}]
+      )) by (le)
+    )
+---
+# Linkerd-based success rate
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: linkerd-success-rate
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: metrics
+    environment: studio
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus-kube-prometheus-prometheus.prometheus.svc:9090
+  query: |
+    sum(rate(
+      response_total{
+        namespace="{{ namespace }}",
+        deployment=~"{{ target }}",
+        classification!="failure"
+      }[{{ interval }}]
+    )) 
+    / 
+    sum(rate(
+      response_total{
+        namespace="{{ namespace }}",
+        deployment=~"{{ target }}"
+      }[{{ interval }}]
+    )) * 100
+---
+# Linkerd latency P99
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: linkerd-latency
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: metrics
+    environment: studio
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus-kube-prometheus-prometheus.prometheus.svc:9090
+  query: |
+    histogram_quantile(
+      0.99,
+      sum(rate(
+        response_latency_ms_bucket{
+          namespace="{{ namespace }}",
+          deployment=~"{{ target }}"
+        }[{{ interval }}]
+      )) by (le)
+    )
+---
+# Error rate metric
+apiVersion: flagger.app/v1beta1
+kind: MetricTemplate
+metadata:
+  name: error-rate
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: metrics
+    environment: studio
+spec:
+  provider:
+    type: prometheus
+    address: http://prometheus-kube-prometheus-prometheus.prometheus.svc:9090
+  query: |
+    sum(rate(
+      response_total{
+        namespace="{{ namespace }}",
+        deployment=~"{{ target }}",
+        classification="failure"
+      }[{{ interval }}]
+    )) 
+    / 
+    sum(rate(
+      response_total{
+        namespace="{{ namespace }}",
+        deployment=~"{{ target }}"
+      }[{{ interval }}]
+    )) * 100
+

@@ -1,0 +1,11 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai
+  labels:
+    app.kubernetes.io/name: agent-blueteam
+    app.kubernetes.io/part-of: homelab-ai
+    security.homelab.io/blueteam: "true"
+  annotations:
+    description: "Blue Team defensive agent namespace"

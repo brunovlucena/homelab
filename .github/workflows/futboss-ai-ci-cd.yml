@@ -1,0 +1,49 @@
+# ============================================================================
+# ⚽ FutBoss AI - CI/CD
+# ============================================================================
+# Multiplayer football management game with AI agents.
+# Uses reusable workflow for standardized CI/CD.
+# ============================================================================
+
+name: ⚽ FutBoss AI - CI/CD
+
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/futboss-ai/**'
+      - '.github/workflows/futboss-ai-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/futboss-ai/**'
+      - '.github/workflows/futboss-ai-ci-cd.yml'
+    tags:
+      - 'futboss-ai-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-cd:
+    name: ⚽ FutBoss AI
+    uses: ./.github/workflows/_reusable-agent-cicd.yml
+    with:
+      agent-name: futboss-ai
+      working-directory: flux/ai/futboss-ai
+      image-name: futboss-ai/api
+      dockerfile: apps/api/Dockerfile
+      python-version: '3.12'
+      run-tests: true
+      run-lint: true
+      copy-shared-lib: false
+      build-context: apps/api
+    secrets: inherit

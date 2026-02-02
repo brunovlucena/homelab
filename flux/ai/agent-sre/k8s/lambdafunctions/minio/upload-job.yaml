@@ -1,0 +1,94 @@
+---
+# Job: Upload LambdaFunction code to MinIO
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent-sre-lambdafunctions-upload
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-sre-lambdafunctions-upload
+    app.kubernetes.io/component: build
+    app.kubernetes.io/part-of: agent-sre
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: upload
+        image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "📤 Uploading agent-sre LambdaFunction code to MinIO..."
+          
+          # Configure MinIO client
+          mc alias set minio http://minio.minio.svc.cluster.local:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
+          
+          # Create bucket if not exists
+          mc mb -p minio/lambda-functions || true
+          
+          # Upload all LambdaFunction code files
+          FUNCTIONS=(
+            "flux-reconcile-kustomization"
+            "pod-restart"
+            "pod-check-status"
+            "scale-deployment"
+            "check-pvc-status"
+            "flux-reconcile-gitrepository"
+            "flux-reconcile-helmrelease"
+          )
+          
+          for func in "${FUNCTIONS[@]}"; do
+            echo "📤 Uploading ${func}..."
+            mc cp /src/${func}.py minio/lambda-functions/agent-sre/${func}/main.py
+            echo "✅ Uploaded ${func} to minio/lambda-functions/agent-sre/${func}/main.py"
+          done
+          
+          echo ""
+          echo "📋 Contents of agent-sre/:"
+          mc ls --recursive minio/lambda-functions/agent-sre/ || echo "⚠️  Directory empty or not found"
+          
+          echo ""
+          echo "🎉 All LambdaFunctions uploaded successfully!"
+        env:
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: access-key
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secret-key
+        volumeMounts:
+        - name: src
+          mountPath: /src
+          readOnly: true
+      volumes:
+      - name: src
+        configMap:
+          name: agent-sre-lambdafunctions-src
+---
+# ConfigMap: LambdaFunction source code
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-sre-lambdafunctions-src
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-sre-lambdafunctions-src
+    app.kubernetes.io/component: build
+    app.kubernetes.io/part-of: agent-sre
+binaryData:
+  flux-reconcile-kustomization.py: ""
+  pod-restart.py: ""
+  pod-check-status.py: ""
+  scale-deployment.py: ""
+  check-pvc-status.py: ""
+  flux-reconcile-gitrepository.py: ""
+  flux-reconcile-helmrelease.py: ""
+

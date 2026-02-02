@@ -1,0 +1,41 @@
+# ============================================================================
+# ⚔️ Agent-RedTeam - CI/CD
+# ============================================================================
+# Offensive security testing agent.
+# Uses reusable workflow for standardized CI/CD.
+# ============================================================================
+
+name: ⚔️ Agent-RedTeam - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-redteam/**'
+      - '.github/workflows/agent-redteam-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agent-redteam/**'
+      - '.github/workflows/agent-redteam-ci-cd.yml'
+    tags:
+      - 'agent-redteam-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-cd:
+    name: ⚔️ Agent-RedTeam
+    uses: ./.github/workflows/_reusable-agent-cicd.yml
+    with:
+      agent-name: agent-redteam
+      working-directory: flux/ai/agent-redteam
+      image-name: agent-redteam/exploit-runner
+      dockerfile: src/exploit_runner/Dockerfile
+      python-version: '3.12'
+      run-tests: true
+      run-lint: true
+      copy-shared-lib: true
+    secrets: inherit

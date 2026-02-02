@@ -1,0 +1,57 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🎮 KNATIVE LAMBDA OPERATOR - BASE KUSTOMIZATION
+#
+#  Purpose: Operator resources (CRD, RBAC, Deployment, Service, Monitoring)
+#  Receiver is in separate knative-lambda-receiver component
+#
+#  VERSION CONFIGURATION:
+#  Override in overlays using:
+#    images:
+#      - name: localhost:5001/knative-lambda-operator
+#        newTag: v1.13.16
+#    patches:
+#      - patch: |-
+#          - op: replace
+#            path: /spec/template/spec/containers/0/env/4/value
+#            value: "v1.5.0"
+#        target:
+#          kind: Deployment
+#          name: knative-lambda-operator
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: knative-lambda
+
+# commonLabels removed - causes kustomize to add invalid 'selector' field to Knative Services
+# Labels are defined directly in resource manifests
+
+resources:
+  - namespace.yaml
+  - crd.yaml
+  - crd-lambdaagent.yaml
+  - rbac.yaml
+  - agent-rbac.yaml
+  - security-rbac.yaml  # Security SAs: knative-lambda-receiver, knative-lambda-builder, knative-lambda-function
+  - deployment.yaml
+  - service.yaml
+  # ServiceMonitor moved to prometheus-operator/k8s/servicemonitors/
+  # (requires ServiceMonitor CRD from kube-prometheus-stack)
+  # CloudEvents receiver as LambdaFunction (operator creates all components)
+  - lambda-command-receiver.yaml
+  # MinIO secret bootstrap - ensures minio-credentials exists in knative-lambda namespace
+  - minio-secret-init.yaml
+  # GHCR secret bootstrap
+  - ghcr-secret-init.yaml
+  # Knative Serving config for load balancing fixes
+  - knative-serving-config.yaml
+
+# Default image version (override in overlays)
+# NOTE: This MUST match VERSION file - use 'make version-bump' to update all versions
+images:
+  - name: localhost:5001/knative-lambda-operator
+    newTag: v1.13.16
+

@@ -1,0 +1,58 @@
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: messaging-service-agent-responses
+  namespace: homelab-services
+  labels:
+    app.kubernetes.io/name: messaging-service-agent-responses
+    app.kubernetes.io/part-of: agents-whatsapp-rust
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: agent.response
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: messaging-service
+
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: agent-gateway-messages
+  namespace: homelab-services
+  labels:
+    app.kubernetes.io/name: agent-gateway-messages
+    app.kubernetes.io/part-of: agents-whatsapp-rust
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: messaging.message.received
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: agent-gateway
+
+---
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: message-storage-messages
+  namespace: homelab-services
+  labels:
+    app.kubernetes.io/name: message-storage-messages
+    app.kubernetes.io/part-of: agents-whatsapp-rust
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: messaging.message.received
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: message-storage-service

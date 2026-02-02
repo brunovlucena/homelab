@@ -1,0 +1,48 @@
+---
+# ConfigMap to fix pod-level load distribution imbalance
+# Issue: Connection pooling (HTTP/2) causes 88% of traffic to concentrate on 3 pods
+# Fix: Force HTTP/1.1 to break persistent connections and enable request-level distribution
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-network
+  namespace: knative-serving
+data:
+  # Set connection timeout to force rotation (prevents long-lived sticky connections)
+  # Shorter timeouts force new connections, improving load distribution
+  stream-idle-timeout: "60s"
+  
+  # Enable persistent connections but limit their lifetime
+  # This balances performance with load distribution
+  default-external-scheme: "http"
+---
+# ConfigMap for improved autoscaling behavior
+# Issue: Connection-based autoscaling doesn't detect per-pod hotspots
+# Fix: Request-based autoscaling with faster scale-up
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-autoscaler
+  namespace: knative-serving
+data:
+  # Request-based autoscaling (not connection-based)
+  # This ensures autoscaler responds to actual request load, not just open connections
+  container-concurrency-target-default: "10"
+  container-concurrency-target-percentage: "0.7"
+  
+  # Faster scale-up to distribute load quickly
+  # Reduces time window where few pods handle all traffic
+  stable-window: "30s"
+  
+  # Panic mode threshold - scale up rapidly if requests queue
+  panic-window-percentage: "10.0"
+  panic-threshold-percentage: "200.0"
+  
+  # Max scale-up rate (2.0 = double pods each cycle)
+  max-scale-up-rate: "2.0"
+  
+  # Allow scale-down to happen faster once load drops
+  scale-down-delay: "30s"
+  
+  # Enable request-level metrics (not just pod-level)
+  enable-scale-to-zero: "true"

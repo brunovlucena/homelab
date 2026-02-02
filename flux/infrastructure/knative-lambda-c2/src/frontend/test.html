@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C2 Frontend Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { color: #667eea; }
+        h2 { color: #333; margin-top: 0; }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #5568d3; }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>🧪 C2 Frontend API Test</h1>
+    
+    <div class="test-section">
+        <h2>1. Health Check</h2>
+        <button onclick="testHealth()">Test Health</button>
+        <div id="health-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>2. Generate Presigned URL</h2>
+        <button onclick="testPresignedURL()">Test Presigned URL</button>
+        <div id="presigned-result" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>3. List Files</h2>
+        <button onclick="testListFiles()">List Agent Files</button>
+        <div id="list-result" class="result"></div>
+    </div>
+    
+    <script>
+        const API_BASE = '/api/v1';
+        
+        async function testHealth() {
+            const result = document.getElementById('health-result');
+            result.textContent = 'Testing...';
+            result.className = 'result';
+            
+            try {
+                const response = await fetch(`${API_BASE}/../health`);
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+                result.className = 'result success';
+            } catch (error) {
+                result.textContent = `Error: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testPresignedURL() {
+            const result = document.getElementById('presigned-result');
+            result.textContent = 'Testing...';
+            result.className = 'result';
+            
+            try {
+                const response = await fetch(`${API_BASE}/files/presigned-url`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        filename: 'test-runbook.md',
+                        mimeType: 'text/markdown',
+                        size: 1024,
+                        target: 'agent',
+                        path: 'agent-bruno'
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Request failed');
+                }
+                
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+                result.className = 'result success';
+            } catch (error) {
+                result.textContent = `Error: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testListFiles() {
+            const result = document.getElementById('list-result');
+            result.textContent = 'Testing...';
+            result.className = 'result';
+            
+            try {
+                const response = await fetch(`${API_BASE}/files/list?target=agent&prefix=agent-bruno/`);
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Request failed');
+                }
+                
+                const data = await response.json();
+                result.textContent = `Found ${data.files.length} files:\n\n` + 
+                    JSON.stringify(data.files.slice(0, 5), null, 2);
+                result.className = 'result success';
+            } catch (error) {
+                result.textContent = `Error: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: messaging-service
+  namespace: homelab-services
+  labels:
+    app.kubernetes.io/name: messaging-service
+    app.kubernetes.io/part-of: agents-whatsapp-rust
+    app.kubernetes.io/component: messaging
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "2"
+        autoscaling.knative.dev/maxScale: "10"
+        autoscaling.knative.dev/target: "100"
+    spec:
+      containers:
+      - image: localhost:5001/agents-whatsapp-rust-messaging:v1.0.3
+        name: messaging-service
+        ports:
+        - containerPort: 8080
+          name: http1
+          protocol: TCP
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: homelab-services-secrets
+              key: mongodb-uri
+        - name: MONGODB_DATABASE
+          value: "messaging_app"
+        - name: REDIS_URI
+          value: "redis://redis.homelab-services.svc.cluster.local:6379"
+        - name: BROKER_URL
+          value: "http://default-broker.homelab-services.svc.cluster.local"
+        - name: RUST_LOG
+          value: "info"
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5

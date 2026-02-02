@@ -1,0 +1,90 @@
+---
+# Database Initialization Job for Flyte
+# Creates the flyte database if it doesn't exist
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flyte-db-init
+  namespace: postgres
+  labels:
+    app: postgres
+    component: db-init
+    app.kubernetes.io/part-of: flyte
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: "enabled"
+    kustomize.toolkit.fluxcd.io/prune: "enabled"
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: postgres
+        component: db-init
+        app.kubernetes.io/part-of: flyte
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-postgres
+          image: localhost:5001/postgres:16-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              MAX_ATTEMPTS=60
+              SLEEP_SECONDS=5
+              attempt=0
+              
+              echo "⏳ Waiting for PostgreSQL to be ready..."
+              
+              while [ $attempt -lt $MAX_ATTEMPTS ]; do
+                attempt=$((attempt + 1))
+                echo "🔄 Attempt $attempt/$MAX_ATTEMPTS..."
+                
+                if ! nslookup postgres.postgres.svc.cluster.local > /dev/null 2>&1; then
+                  echo "   ❌ DNS not ready"
+                  sleep $SLEEP_SECONDS
+                  continue
+                fi
+                
+                if pg_isready -h postgres.postgres.svc.cluster.local -p 5432 -U postgres; then
+                  echo "✅ PostgreSQL is ready!"
+                  exit 0
+                fi
+                
+                echo "   ❌ PostgreSQL not ready yet"
+                sleep $SLEEP_SECONDS
+              done
+              
+              echo "💀 FATAL: PostgreSQL did not become ready"
+              exit 1
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: password
+      containers:
+        - name: db-init
+          image: localhost:5001/postgres:16-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "🔍 Checking if flyte database exists..."
+              if psql -h postgres.postgres -p 5432 -U postgres -d template1 -tc "SELECT 1 FROM pg_database WHERE datname='flyte';" | grep -q 1; then
+                echo "✅ Database flyte already exists"
+              else
+                echo "📦 Creating database flyte..."
+                psql -h postgres.postgres -p 5432 -U postgres -d template1 -c "CREATE DATABASE flyte;"
+                echo "✅ Database flyte created successfully!"
+              fi
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: password

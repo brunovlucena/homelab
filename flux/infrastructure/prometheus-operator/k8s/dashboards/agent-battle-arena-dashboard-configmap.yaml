@@ -1,0 +1,1022 @@
+---
+# 🎮 Homelab Agent Battle Arena Dashboard
+# Epic visualization of Red Team vs Blue Team metrics as a game!
+# 
+# Game Design Principles Applied:
+# 1. Clear Goals & Progress - Boss health bar, wave counter, scores
+# 2. Immediate Feedback - Real-time attack/defense counters
+# 3. Social Competition - Leaderboard between Red vs Blue team
+# 4. Narrative - Epic battle between agents and MAG7 dragon
+# 5. Visual Appeal - Gauges, bars, and exciting visualizations
+#
+# Metrics Translation:
+# - Red Team exploits → Laser Attacks
+# - Blue Team defenses → Shield Blocks
+# - MAG7 health → Boss HP
+# - Attack success rate → Battle effectiveness
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-agent-battle-arena
+  namespace: prometheus
+  labels:
+    grafana_dashboard: "1"
+  annotations:
+    k8s-sidecar-target-directory: "Agents"
+    description: "Epic battle visualization - Red Team attacks vs Blue Team defends!"
+data:
+  agent-battle-arena-dashboard.json: |
+    {
+      "title": "🎮 Homelab Agent Battle Arena (v1) [s39]",
+      "description": "Epic battle visualization where Red Team attacks and Blue Team defends! Metrics become lasers, shields, and attacks!",
+      "tags": ["game", "battle", "agents", "redteam", "blueteam", "mag7", "demo"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "5s",
+      "uid": "agent-battle-arena",
+      "editable": true,
+      "graphTooltip": 1,
+      "liveNow": true,
+      "templating": {
+        "list": [
+          {
+            "name": "battle_interval",
+            "type": "interval",
+            "query": "5s,10s,30s,1m,5m",
+            "current": { "selected": true, "text": "10s", "value": "10s" },
+            "label": "Battle Speed"
+          }
+        ]
+      },
+      "annotations": {
+        "list": [
+          {
+            "name": "Critical Attacks",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "enable": true,
+            "expr": "increase(agent_redteam_exploits_executed_total{severity=\"critical\"}[1m]) > 0",
+            "iconColor": "red",
+            "titleFormat": "🔥 CRITICAL ATTACK!"
+          },
+          {
+            "name": "Successful Defense",
+            "datasource": { "type": "prometheus", "uid": "prometheus" },
+            "enable": true,
+            "expr": "increase(blueteam_threats_blocked_total[1m]) > 0",
+            "iconColor": "blue",
+            "titleFormat": "🛡️ DEFENSE ACTIVATED!"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "row",
+          "title": "🏟️ BATTLE ARENA - Agent Wars",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 1,
+          "collapsed": false
+        },
+        {
+          "type": "stat",
+          "title": "🐉 MAG7 BOSS HEALTH",
+          "description": "The dragon boss health! Lower = closer to victory!",
+          "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+          "id": 2,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 300 },
+                  { "color": "orange", "value": 600 },
+                  { "color": "red", "value": 800 }
+                ]
+              },
+              "unit": "short",
+              "min": 0,
+              "max": 1000,
+              "mappings": [
+                { "type": "range", "options": { "from": 0, "to": 100, "result": { "text": "💀 CRITICAL!", "color": "green" } } },
+                { "type": "range", "options": { "from": 800, "to": 1000, "result": { "text": "🐉 FULL POWER", "color": "red" } } }
+              ]
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "horizontal",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "blueteam_mag7_health or vector(1000)",
+              "legendFormat": "HP",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "gauge",
+          "title": "🔴 RED TEAM ATTACK POWER",
+          "description": "Current attack intensity from Red Team exploits!",
+          "gridPos": { "h": 5, "w": 4, "x": 6, "y": 1 },
+          "id": 3,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "dark-red", "value": null },
+                  { "color": "red", "value": 5 },
+                  { "color": "orange", "value": 15 },
+                  { "color": "yellow", "value": 30 }
+                ]
+              },
+              "unit": "short",
+              "min": 0,
+              "max": 50
+            }
+          },
+          "options": {
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(rate(agent_redteam_exploits_executed_total[$battle_interval])) * 60 or vector(0)",
+              "legendFormat": "Attacks/min",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "gauge",
+          "title": "🔵 BLUE TEAM SHIELD POWER",
+          "description": "Current defense strength from Blue Team!",
+          "gridPos": { "h": 5, "w": 4, "x": 10, "y": 1 },
+          "id": 4,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "dark-blue", "value": null },
+                  { "color": "blue", "value": 5 },
+                  { "color": "semi-dark-blue", "value": 15 },
+                  { "color": "light-blue", "value": 30 }
+                ]
+              },
+              "unit": "short",
+              "min": 0,
+              "max": 50
+            }
+          },
+          "options": {
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "showThresholdLabels": false,
+            "showThresholdMarkers": true
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(rate(blueteam_threats_blocked_total[$battle_interval])) * 60 or sum(rate(blueteam_defense_activations_total[$battle_interval])) * 60 or vector(0)",
+              "legendFormat": "Blocks/min",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "🎯 BATTLE SCORE",
+          "description": "Total game score from Blue Team!",
+          "gridPos": { "h": 5, "w": 4, "x": 14, "y": 1 },
+          "id": 5,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "dark-green", "value": null },
+                  { "color": "green", "value": 1000 },
+                  { "color": "yellow", "value": 5000 },
+                  { "color": "orange", "value": 10000 }
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "blueteam_game_score or vector(0)",
+              "legendFormat": "Score",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "🌊 CURRENT WAVE",
+          "description": "Current battle wave - higher = harder!",
+          "gridPos": { "h": 5, "w": 3, "x": 18, "y": 1 },
+          "id": 6,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 3 },
+                  { "color": "orange", "value": 5 },
+                  { "color": "red", "value": 7 }
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "blueteam_game_wave or vector(1)",
+              "legendFormat": "Wave",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "⚔️ ACTIVE WEAPONS",
+          "description": "Number of active exploits/attacks in progress",
+          "gridPos": { "h": 5, "w": 3, "x": 21, "y": 1 },
+          "id": 7,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 3 },
+                  { "color": "red", "value": 5 }
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "area",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "agent_redteam_active_exploits or blueteam_active_defenses or vector(0)",
+              "legendFormat": "Active",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "⚡ LIVE BATTLE - Attack vs Defense Streams",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+          "id": 10,
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "🔥 RED TEAM LASER ATTACKS",
+          "description": "Incoming attack streams from Red Team! Each line is a different weapon type.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+          "id": 11,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "Attacks/sec",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 30,
+                "gradientMode": "hue",
+                "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                "lineInterpolation": "smooth",
+                "lineStyle": { "fill": "solid" },
+                "lineWidth": 3,
+                "pointSize": 5,
+                "scaleDistribution": { "type": "linear" },
+                "showPoints": "auto",
+                "spanNulls": true,
+                "stacking": { "group": "A", "mode": "normal" },
+                "thresholdsStyle": { "mode": "line+area" }
+              },
+              "unit": "ops",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "transparent", "value": null },
+                  { "color": "red", "value": 0.5 }
+                ]
+              }
+            },
+            "overrides": [
+              { "matcher": { "id": "byRegexp", "options": ".*critical.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "#ff0000", "mode": "fixed" } }] },
+              { "matcher": { "id": "byRegexp", "options": ".*high.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "#ff6600", "mode": "fixed" } }] },
+              { "matcher": { "id": "byRegexp", "options": ".*medium.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "#ffcc00", "mode": "fixed" } }] },
+              { "matcher": { "id": "byRegexp", "options": ".*low.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "#ff9999", "mode": "fixed" } }] }
+            ]
+          },
+          "options": {
+            "legend": { "calcs": ["sum", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (severity) (rate(agent_redteam_attacks_by_severity_total[$battle_interval]))",
+              "legendFormat": "⚡ {{severity}} laser",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (category) (rate(agent_redteam_attacks_by_category_total[$battle_interval]))",
+              "legendFormat": "🎯 {{category}} shot",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "🛡️ BLUE TEAM SHIELD BLOCKS",
+          "description": "Defense activations stopping the attacks! Each line is a shield type.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+          "id": 12,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "Blocks/sec",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "line",
+                "fillOpacity": 30,
+                "gradientMode": "hue",
+                "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+                "lineInterpolation": "smooth",
+                "lineStyle": { "fill": "solid" },
+                "lineWidth": 3,
+                "pointSize": 5,
+                "scaleDistribution": { "type": "linear" },
+                "showPoints": "auto",
+                "spanNulls": true,
+                "stacking": { "group": "A", "mode": "normal" },
+                "thresholdsStyle": { "mode": "line+area" }
+              },
+              "unit": "ops",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "transparent", "value": null },
+                  { "color": "blue", "value": 0.5 }
+                ]
+              }
+            },
+            "overrides": [
+              { "matcher": { "id": "byRegexp", "options": ".*blocked.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "#0088ff", "mode": "fixed" } }] },
+              { "matcher": { "id": "byRegexp", "options": ".*mitigated.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "#00ccff", "mode": "fixed" } }] },
+              { "matcher": { "id": "byRegexp", "options": ".*defense.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "#00ffcc", "mode": "fixed" } }] }
+            ]
+          },
+          "options": {
+            "legend": { "calcs": ["sum", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (action) (rate(blueteam_threats_blocked_total[$battle_interval]))",
+              "legendFormat": "🛡️ {{action}} shield",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (action) (rate(blueteam_threats_mitigated_total[$battle_interval]))",
+              "legendFormat": "✨ {{action}} mitigated",
+              "refId": "B"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (action) (rate(blueteam_defense_activations_total[$battle_interval]))",
+              "legendFormat": "⚔️ {{action}} counter",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "🏆 LEADERBOARD & BATTLE STATS",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+          "id": 20,
+          "collapsed": false
+        },
+        {
+          "type": "bargauge",
+          "title": "🔴 RED TEAM - Attack Arsenal",
+          "description": "Total attacks by weapon type - Red Team firepower!",
+          "gridPos": { "h": 6, "w": 6, "x": 0, "y": 16 },
+          "id": 21,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "continuous-RdYlGr", "reverse": true },
+              "custom": { "axisCenteredZero": false, "axisColorMode": "text" },
+              "unit": "short",
+              "min": 0
+            }
+          },
+          "options": {
+            "displayMode": "gradient",
+            "minVizHeight": 10,
+            "minVizWidth": 0,
+            "orientation": "horizontal",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "showUnfilled": true,
+            "valueMode": "color"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (category) (agent_redteam_attacks_by_category_total)",
+              "legendFormat": "🎯 {{category}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "bargauge",
+          "title": "🔵 BLUE TEAM - Defense Arsenal",
+          "description": "Total defenses by type - Blue Team shield strength!",
+          "gridPos": { "h": 6, "w": 6, "x": 6, "y": 16 },
+          "id": 22,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "continuous-BlYlRd", "reverse": true },
+              "custom": { "axisCenteredZero": false, "axisColorMode": "text" },
+              "unit": "short",
+              "min": 0
+            }
+          },
+          "options": {
+            "displayMode": "gradient",
+            "minVizHeight": 10,
+            "minVizWidth": 0,
+            "orientation": "horizontal",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "showUnfilled": true,
+            "valueMode": "color"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (action) (blueteam_defense_activations_total{success=\"true\"})",
+              "legendFormat": "🛡️ {{action}}",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (action) (blueteam_threats_blocked_total)",
+              "legendFormat": "⚔️ blocked {{action}}",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "type": "piechart",
+          "title": "⚔️ BATTLE OUTCOME",
+          "description": "Attack success vs blocked - who's winning?",
+          "gridPos": { "h": 6, "w": 6, "x": 12, "y": 16 },
+          "id": 23,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "short"
+            },
+            "overrides": [
+              { "matcher": { "id": "byName", "options": "Attacks Landed 💥" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+              { "matcher": { "id": "byName", "options": "Attacks Blocked 🛡️" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] }
+            ]
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["percent", "value"] },
+            "pieType": "donut",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "tooltip": { "mode": "multi" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(agent_redteam_exploits_successful_total) or vector(0)",
+              "legendFormat": "Attacks Landed 💥",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(agent_redteam_exploits_blocked_total) + sum(blueteam_threats_blocked_total) or vector(0)",
+              "legendFormat": "Attacks Blocked 🛡️",
+              "refId": "B"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "📊 BATTLE STATS",
+          "description": "Key battle statistics",
+          "gridPos": { "h": 6, "w": 6, "x": 18, "y": 16 },
+          "id": 24,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "horizontal",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "value_and_name"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(increase(agent_redteam_exploits_executed_total[1h])) or vector(0)",
+              "legendFormat": "🔴 Total Attacks",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(increase(blueteam_threats_blocked_total[1h])) or vector(0)",
+              "legendFormat": "🔵 Total Blocks",
+              "refId": "B"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(increase(blueteam_mag7_damage_dealt_total[1h])) or vector(0)",
+              "legendFormat": "🐉 Damage to MAG7",
+              "refId": "C"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum(increase(blueteam_game_exploits_blocked_total[1h])) or vector(0)",
+              "legendFormat": "🎮 Game Exploits Blocked",
+              "refId": "D"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "💥 WEAPON POWER - Attack Effectiveness",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+          "id": 30,
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "⚡ LASER INTENSITY - Attacks by Severity",
+          "description": "Attack power levels! Critical = most powerful laser!",
+          "gridPos": { "h": 7, "w": 12, "x": 0, "y": 23 },
+          "id": 31,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "Power Level",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "drawStyle": "bars",
+                "fillOpacity": 80,
+                "gradientMode": "opacity",
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "normal" }
+              },
+              "unit": "short"
+            },
+            "overrides": [
+              { "matcher": { "id": "byRegexp", "options": ".*critical.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "#ff0000", "mode": "fixed" } }] },
+              { "matcher": { "id": "byRegexp", "options": ".*high.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "#ff6600", "mode": "fixed" } }] },
+              { "matcher": { "id": "byRegexp", "options": ".*medium.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "#ffcc00", "mode": "fixed" } }] },
+              { "matcher": { "id": "byRegexp", "options": ".*low.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "#88cc00", "mode": "fixed" } }] }
+            ]
+          },
+          "options": {
+            "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (severity) (increase(agent_redteam_attacks_by_severity_total[$battle_interval]))",
+              "legendFormat": "{{severity}} laser",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "🎯 TARGET DISTRIBUTION",
+          "description": "Which systems are being targeted by Red Team!",
+          "gridPos": { "h": 7, "w": 12, "x": 12, "y": 23 },
+          "id": 32,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "drawStyle": "bars",
+                "fillOpacity": 80,
+                "gradientMode": "opacity",
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "normal" }
+              },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (target_component) (increase(agent_redteam_attacks_by_target_total[$battle_interval]))",
+              "legendFormat": "🎯 {{target_component}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "⏱️ WEAPON CHARGE TIME",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+          "id": 40,
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "🔴 ATTACK CHARGE TIME (P50/P95/P99)",
+          "description": "How fast Red Team weapons charge!",
+          "gridPos": { "h": 7, "w": 12, "x": 0, "y": 31 },
+          "id": 41,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "none" },
+                "thresholdsStyle": { "mode": "line" }
+              },
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 30 },
+                  { "color": "red", "value": 60 }
+                ]
+              }
+            }
+          },
+          "options": {
+            "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.50, sum by (le) (rate(agent_redteam_exploit_duration_seconds_bucket[$battle_interval])))",
+              "legendFormat": "⚡ P50 Fast Attack",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(agent_redteam_exploit_duration_seconds_bucket[$battle_interval])))",
+              "legendFormat": "💥 P95 Power Attack",
+              "refId": "B"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(agent_redteam_exploit_duration_seconds_bucket[$battle_interval])))",
+              "legendFormat": "🔥 P99 Ultimate Attack",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "🔵 SHIELD ACTIVATION TIME (P50/P95/P99)",
+          "description": "How fast Blue Team shields deploy!",
+          "gridPos": { "h": 7, "w": 12, "x": 12, "y": 31 },
+          "id": 42,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "none" },
+                "thresholdsStyle": { "mode": "line" }
+              },
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 5 },
+                  { "color": "red", "value": 10 }
+                ]
+              }
+            }
+          },
+          "options": {
+            "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.50, sum by (le) (rate(blueteam_defense_duration_seconds_bucket[$battle_interval])))",
+              "legendFormat": "🛡️ P50 Quick Shield",
+              "refId": "A"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(blueteam_defense_duration_seconds_bucket[$battle_interval])))",
+              "legendFormat": "⚔️ P95 Power Shield",
+              "refId": "B"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.99, sum by (le) (rate(blueteam_defense_duration_seconds_bucket[$battle_interval])))",
+              "legendFormat": "✨ P99 Ultimate Shield",
+              "refId": "C"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "🐉 MAG7 DRAGON BOSS BATTLE",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+          "id": 50,
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "🐉 MAG7 HEALTH OVER TIME",
+          "description": "Watch the dragon's health drop!",
+          "gridPos": { "h": 7, "w": 12, "x": 0, "y": 39 },
+          "id": 51,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 50,
+                "gradientMode": "opacity",
+                "lineInterpolation": "smooth",
+                "lineWidth": 3,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "none" },
+                "thresholdsStyle": { "mode": "area" }
+              },
+              "unit": "short",
+              "min": 0,
+              "max": 1000,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 300 },
+                  { "color": "orange", "value": 600 },
+                  { "color": "red", "value": 800 }
+                ]
+              }
+            }
+          },
+          "options": {
+            "legend": { "calcs": ["min", "max", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "blueteam_mag7_health or vector(1000)",
+              "legendFormat": "🐉 MAG7 Health",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "💥 DAMAGE TO MAG7",
+          "description": "Cumulative damage dealt to the dragon!",
+          "gridPos": { "h": 7, "w": 12, "x": 12, "y": 39 },
+          "id": 52,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 80,
+                "gradientMode": "hue",
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "showPoints": "never",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "normal" }
+              },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (attack_type) (increase(blueteam_mag7_damage_dealt_total[$battle_interval]))",
+              "legendFormat": "💥 {{attack_type}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "row",
+          "title": "📡 CLOUDEVENTS - Battle Communications",
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 46 },
+          "id": 60,
+          "collapsed": false
+        },
+        {
+          "type": "timeseries",
+          "title": "📨 RED TEAM COMMS",
+          "description": "Communications into Red Team - attack orders!",
+          "gridPos": { "h": 6, "w": 12, "x": 0, "y": 47 },
+          "id": 61,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "none" }
+              },
+              "unit": "ops"
+            }
+          },
+          "options": {
+            "legend": { "calcs": ["sum", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (event_type) (rate(agent_redteam_cloudevents_received_total[$battle_interval]))",
+              "legendFormat": "📡 {{event_type}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "📨 BLUE TEAM COMMS",
+          "description": "Communications into Blue Team - defense orders!",
+          "gridPos": { "h": 6, "w": 12, "x": 12, "y": 47 },
+          "id": 62,
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 20,
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "auto",
+                "spanNulls": false,
+                "stacking": { "group": "A", "mode": "none" }
+              },
+              "unit": "ops"
+            }
+          },
+          "options": {
+            "legend": { "calcs": ["sum", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (event_type) (rate(blueteam_cloudevents_received_total[$battle_interval]))",
+              "legendFormat": "📡 {{event_type}}",
+              "refId": "A"
+            }
+          ]
+        }
+      ],
+      "time": {
+        "from": "now-15m",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"],
+        "time_options": ["5m", "15m", "1h", "6h", "12h", "24h"]
+      }
+    }

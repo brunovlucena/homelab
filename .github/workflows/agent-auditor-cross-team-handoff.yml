@@ -1,0 +1,464 @@
+name: 🤝 Agent Auditor - Cross-Team Handoff Automation
+
+on:
+  issues:
+    types: [closed, labeled]
+  pull_request:
+    types: [closed, labeled]
+
+env:
+  PROJECT_NUMBER: 1  # Update with your actual project number
+  ORG: brunovlucena
+
+jobs:
+  security-to-ml-handoff:
+    name: 🔒 → 🧠 Security to ML Team Handoff
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'closed' &&
+      contains(github.event.issue.labels.*.name, 'week-2-checkpoint') &&
+      contains(github.event.issue.labels.*.name, 'checkpoint-passed')
+    permissions:
+      issues: write
+    steps:
+      - name: 🎯 Create ML Infrastructure Kickoff Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Create ML Infrastructure kickoff issue
+            const kickoffIssue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🧠 ML Infrastructure Phase Kickoff (Week 3-5)',
+              body: `🎉 **Security Sprint Complete! Starting ML Infrastructure Phase**
+              
+              **Previous Phase**: Week 1-2 Security Sprint ✅ PASSED
+              **Current Phase**: Week 3-5 ML Infrastructure
+              **Timeline**: November 15 - December 5, 2025
+              **Budget**: $32K
+              **Team**: ML Engineer + Data Scientist
+              
+              ## 📋 Phase Objectives
+              
+              ### Week 3-5 Deliverables
+              - [ ] W&B model versioning operational
+              - [ ] DVC data versioning with MinIO backend
+              - [ ] Model drift detection (automated alerts)
+              - [ ] RAG evaluation baseline (Precision@5 >= 0.80, MRR >= 0.80)
+              - [ ] A/B testing framework (20% traffic split)
+              
+              ## 🎓 Security Sprint Learnings
+              
+              **Key Achievements from Week 1-2**:
+              - ✅ LLM prompt injection mitigated (CVSS 8.8 → <4.5)
+              - ✅ File upload security hardened (CVSS 9.1 → <5.5)
+              - ✅ 20+ automated security tests in CI/CD
+              - ✅ External pentest: 0 CRITICAL, 0 HIGH findings
+              
+              **Lessons Learned**: (To be filled by security team)
+              - Security patterns to apply in ML infrastructure
+              - Testing best practices
+              - Documentation standards
+              
+              ## 🤝 Handoff Meeting
+              
+              **Date**: [Schedule for Week 3 Day 1]
+              **Attendees**: 
+              - Security team (handoff)
+              - ML Engineer (recipient)
+              - Data Scientist (recipient)
+              - Tech Lead (facilitator)
+              
+              **Agenda**:
+              1. Security sprint retrospective (15 min)
+              2. Security requirements for ML infrastructure (15 min)
+              3. ML phase objectives walkthrough (15 min)
+              4. Q&A and dependencies (15 min)
+              
+              ## 📊 Success Criteria
+              
+              Week 5 checkpoint must validate:
+              - All 5 deliverables complete
+              - No P0/P1 security regressions
+              - RAG metrics meet SLO (P@5 >= 0.80)
+              - Documentation updated
+              
+              ## 🚀 First Steps
+              
+              **Day 1 (Nov 15)**:
+              - [ ] Kickoff meeting
+              - [ ] Setup W&B workspace
+              - [ ] Review security requirements
+              - [ ] Create Week 3-5 task breakdown
+              
+              **Day 2-3**:
+              - [ ] Configure DVC with MinIO
+              - [ ] Setup model versioning
+              - [ ] Design drift detection strategy
+              
+              ---
+              
+              🔗 [ML Infrastructure Tracker](https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }})
+              📖 [ML Engineering Guide](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/ml-engineers/README.md)
+              📝 [Week 2 Checkpoint Results](https://github.com/${{ github.repository }}/issues?q=label%3Aweek-2-checkpoint)`,
+              labels: ['ml-infrastructure', 'week-3-5', 'kickoff', 'phase-start'],
+              assignees: [], // Add ML team members
+              milestone: 2 // Week 5 milestone
+            });
+            
+            // Comment on closed checkpoint issue
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `✅ **Handoff to ML Team Complete**
+              
+              ML Infrastructure kickoff issue created: #${kickoffIssue.data.number}
+              
+              **Next Phase**: Week 3-5 (Nov 15 - Dec 5, 2025)
+              **Team**: @ml-team
+              
+              🎉 Thank you to the security team for an excellent sprint!`
+            });
+
+  ml-to-mobile-handoff:
+    name: 🧠 → 📱 ML to Mobile Team Handoff
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'closed' &&
+      contains(github.event.issue.labels.*.name, 'week-5-checkpoint') &&
+      contains(github.event.issue.labels.*.name, 'checkpoint-passed')
+    permissions:
+      issues: write
+    steps:
+      - name: 🎯 Create Mobile Requirements Sprint Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const kickoffIssue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '📱 Mobile Requirements Sprint (Week 6)',
+              body: `🎉 **ML Infrastructure Complete! Starting Mobile Requirements Sprint**
+              
+              **Previous Phase**: Week 3-5 ML Infrastructure ✅ PASSED
+              **Current Phase**: Week 6 Mobile Requirements Sprint
+              **Timeline**: December 6-12, 2025
+              **Budget**: $8K
+              **Team**: Mobile Lead + Principal SRE + Principal QA
+              
+              ## 📋 Week 6 Objectives
+              
+              ✅ **All 5 Critical Questions Already ANSWERED!** (Oct 27, 2025)
+              
+              This sprint focuses on final validation and preparation:
+              
+              - [x] File upload scope ✅ ANSWERED
+              - [x] Mobile platform priority ✅ ANSWERED (iOS-only MVP)
+              - [x] Performance SLO ✅ ANSWERED (p95 < 60s investigation)
+              - [x] RAG relevance criteria ✅ ANSWERED (similarity >= 0.75)
+              - [x] Production readiness ✅ ANSWERED (70% overall)
+              
+              **Week 6 Tasks**:
+              - [ ] Backend API contract finalization (OpenAPI spec)
+              - [ ] iOS development environment setup
+              - [ ] Test device procurement (4 devices)
+              - [ ] Mobile CI/CD pipeline configuration
+              - [ ] Accessibility testing plan (WCAG 2.1 AA)
+              
+              ## 🎓 ML Phase Learnings
+              
+              **Key Achievements from Week 3-5**:
+              - ✅ RAG Precision@5: [Value] >= 0.80
+              - ✅ MRR: [Value] >= 0.80
+              - ✅ Model drift detection operational
+              - ✅ A/B testing framework ready (20% split)
+              
+              **Critical for Mobile**:
+              - RAG query performance: p95 < 5s (tested and validated)
+              - Investigation SLO: p95 < 60s (realistic based on ML testing)
+              - File upload processing: p95 < 90s (50MB on LTE)
+              
+              ## 🤝 Handoff Meeting
+              
+              **Date**: December 6, 2025 (Week 6 Day 1)
+              **Attendees**: 
+              - ML team (handoff)
+              - Mobile Lead (recipient)
+              - Backend Lead (API contract)
+              - Tech Lead (facilitator)
+              
+              **Agenda**:
+              1. ML phase retrospective (10 min)
+              2. Performance benchmarks and SLOs (15 min)
+              3. Backend API walkthrough (20 min)
+              4. Mobile phase objectives (15 min)
+              
+              ## 📊 Week 6 Success Criteria
+              
+              - Backend API contract (OpenAPI) complete
+              - iOS dev environment ready
+              - 4 test devices procured
+              - Mobile CI/CD pipeline configured
+              - Ready to start iOS development Week 7
+              
+              ## 🚀 Week 7-12: iOS Development Timeline
+              
+              **Phase 1 (iOS-Only MVP)**:
+              - Week 7-8: Core infrastructure + push notifications
+              - Week 9-10: UI implementation + file upload
+              - Week 11: Testing & QA
+              - Week 12: TestFlight & App Store submission
+              
+              **Target**: iOS launch January 17, 2026
+              
+              ---
+              
+              🔗 [Mobile Development Tracker](https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }})
+              📖 [Mobile Requirements](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/mobile/REQUIREMENTS.md)
+              📝 [Week 5 Checkpoint Results](https://github.com/${{ github.repository }}/issues?q=label%3Aweek-5-checkpoint)`,
+              labels: ['mobile', 'week-6', 'requirements-sprint', 'kickoff'],
+              milestone: 3, // Week 12 milestone
+            });
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `✅ **Handoff to Mobile Team Complete**
+              
+              Mobile Requirements Sprint issue created: #${kickoffIssue.data.number}
+              
+              **Next Phase**: Week 6 (Dec 6-12, 2025)
+              **Team**: @mobile-team @backend-team
+              
+              🎉 Thank you to the ML team for excellent work!`
+            });
+
+  backend-mobile-sync:
+    name: 🔌 Backend-Mobile Synchronization
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'backend-dependency'
+    permissions:
+      issues: write
+    steps:
+      - name: 🔍 Find Related Backend Issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const mobileIssue = context.payload.issue;
+            
+            // Search for related backend work
+            const { data: backendIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'backend-api',
+              state: 'open'
+            });
+            
+            // Check if backend issue exists for this dependency
+            const relatedBackend = backendIssues.find(b => 
+              b.body && b.body.includes(`#${mobileIssue.number}`)
+            );
+            
+            if (relatedBackend) {
+              // Backend issue exists, link them
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: mobileIssue.number,
+                body: `🔗 **Backend Dependency Linked**
+                
+                This mobile feature depends on backend work tracked in #${relatedBackend.number}
+                
+                **Backend Status**: ${relatedBackend.state}
+                **Backend Title**: ${relatedBackend.title}
+                
+                Mobile development should wait for backend completion.
+                
+                ---
+                📋 [Track Backend Progress](#${relatedBackend.number})`
+              });
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: relatedBackend.number,
+                body: `📱 **Mobile Team Waiting**
+                
+                Mobile issue #${mobileIssue.number} is blocked on this backend work.
+                
+                Please prioritize and notify @mobile-team when complete.`
+              });
+            } else {
+              // No backend issue found, create one
+              const backendIssue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `🔌 Backend API: Support for ${mobileIssue.title}`,
+                body: `**Mobile Dependency**: This backend work is required for mobile issue #${mobileIssue.number}
+                
+                **Mobile Feature**: ${mobileIssue.title}
+                
+                ## 📋 Backend Requirements
+                
+                - [ ] Design API endpoints
+                - [ ] Update OpenAPI specification
+                - [ ] Implement backend logic
+                - [ ] Write unit tests
+                - [ ] Update API documentation
+                - [ ] Deploy to dev environment
+                - [ ] Notify mobile team
+                
+                ## 📱 Mobile Impact
+                
+                Once this backend work is complete, the mobile team can proceed with implementation.
+                
+                **Timeline**: Must complete before mobile development in Week 7-12.
+                
+                ---
+                🔗 Related mobile issue: #${mobileIssue.number}
+                📖 [API Client Guide](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/mobile/API_CLIENT.md)`,
+                labels: ['backend-api', 'mobile-blocker', 'high-priority'],
+                assignees: [], // Add backend team members
+              });
+              
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: mobileIssue.number,
+                body: `🔌 **Backend Work Created**
+                
+                Backend issue created to support this mobile feature: #${backendIssue.data.number}
+                
+                **Status**: Backend work will be tracked separately
+                **Next Steps**: Backend team will design and implement API
+                
+                Mobile development should wait for backend completion.`
+              });
+            }
+
+  backend-to-mobile-notification:
+    name: 🔔 Notify Mobile When Backend Ready
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'closed' &&
+      contains(github.event.issue.labels.*.name, 'backend-api') &&
+      contains(github.event.issue.labels.*.name, 'mobile-blocker')
+    permissions:
+      issues: write
+    steps:
+      - name: 📱 Notify Mobile Team
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const backendIssue = context.payload.issue;
+            
+            // Find related mobile issues
+            const mobileIssueMatch = backendIssue.body.match(/#(\d+)/);
+            if (mobileIssueMatch) {
+              const mobileIssueNumber = parseInt(mobileIssueMatch[1]);
+              
+              // Update mobile issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: mobileIssueNumber,
+                body: `✅ **Backend Dependency Complete!**
+                
+                The backend work for this feature is now ready: #${backendIssue.number}
+                
+                **Status**: Mobile development can now proceed
+                
+                **Next Steps**:
+                1. Review updated OpenAPI specification
+                2. Generate/update mobile API client
+                3. Implement mobile feature
+                4. Test against dev backend
+                
+                **Backend Changes**:
+                ${backendIssue.title}
+                
+                ---
+                📖 [OpenAPI Spec](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/openapi.yaml)
+                📖 [API Client Guide](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/mobile/API_CLIENT.md)`
+              });
+              
+              // Remove blocker label and add ready label
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: mobileIssueNumber,
+                name: 'blocked'
+              }).catch(() => {}); // Ignore if label doesn't exist
+              
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: mobileIssueNumber,
+                labels: ['ready-for-development', 'backend-ready']
+              });
+            }
+
+  phase-handoff-checklist:
+    name: ✅ Phase Handoff Checklist Validator
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      contains(github.event.issue.labels.*.name, 'phase-handoff')
+    permissions:
+      issues: write
+    steps:
+      - name: 📋 Validate Handoff Checklist
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            
+            // Count completed checklist items
+            const totalItems = (body.match(/- \[[ x]\]/g) || []).length;
+            const completedItems = (body.match(/- \[x\]/gi) || []).length;
+            const progress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+            
+            const allComplete = totalItems > 0 && completedItems === totalItems;
+            
+            const comment = `📊 **Phase Handoff Progress**
+            
+            - **Completed**: ${completedItems} / ${totalItems} items
+            - **Progress**: ${progress}%
+            - **Status**: ${allComplete ? '✅ Ready for handoff' : '⚠️ Handoff checklist incomplete'}
+            
+            ${allComplete ? `
+            ✅ **ALL ITEMS COMPLETE!**
+            
+            The handoff is ready. Next team can proceed.
+            ` : `
+            **Remaining**: ${totalItems - completedItems} items
+            
+            Please complete all checklist items before proceeding to next phase.
+            `}`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: comment
+            });
+            
+            // Add label when complete
+            if (allComplete) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['handoff-complete']
+              });
+            }
+

@@ -1,0 +1,21 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 NAMESPACE - Agent DevSecOps
+#
+#  Purpose: Security-focused agent for vulnerability scanning, policy
+#           enforcement, and secure rollout coordination
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: security
+    app.kubernetes.io/part-of: homelab-ai
+    # Pod Security Standards - baseline (Knative sidecars need this)
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline

@@ -1,0 +1,250 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔥 K6 SMOKE TEST - AGENT-CONTRACTS
+#
+#  Purpose: Quick validation that all services are healthy and responding
+#  Coverage:
+#    - Health endpoints for all services
+#    - Basic CloudEvent processing
+#    - Service connectivity
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-contracts-smoke
+  namespace: agent-contracts
+  labels:
+    app.kubernetes.io/name: agent-contracts
+    app.kubernetes.io/component: testing
+    test-type: smoke
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-contracts-smoke-test
+      file: smoke-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: CONTRACT_FETCHER_URL
+        value: "http://contract-fetcher.agent-contracts.svc.cluster.local"
+      - name: VULN_SCANNER_URL
+        value: "http://vuln-scanner.agent-contracts.svc.cluster.local"
+      - name: EXPLOIT_GENERATOR_URL
+        value: "http://exploit-generator.agent-contracts.svc.cluster.local"
+      - name: NOTIFI_ADAPTER_URL
+        value: "http://notifi-adapter.agent-contracts.svc.cluster.local"
+      - name: NAMESPACE
+        value: "agent-contracts"
+      # Prometheus Remote Write
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-contracts-smoke-test
+  namespace: agent-contracts
+  labels:
+    app.kubernetes.io/name: agent-contracts
+    app.kubernetes.io/component: testing
+    test-type: smoke
+data:
+  smoke-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Custom Metrics
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const healthCheckSuccess = new Rate('smoke_health_check_success');
+    const serviceErrors = new Counter('smoke_service_errors');
+    const responseTime = new Trend('smoke_response_time_ms');
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Configuration
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const SERVICES = {
+      contractFetcher: __ENV.CONTRACT_FETCHER_URL || 'http://contract-fetcher.agent-contracts.svc.cluster.local',
+      vulnScanner: __ENV.VULN_SCANNER_URL || 'http://vuln-scanner.agent-contracts.svc.cluster.local',
+      exploitGenerator: __ENV.EXPLOIT_GENERATOR_URL || 'http://exploit-generator.agent-contracts.svc.cluster.local',
+      notifiAdapter: __ENV.NOTIFI_ADAPTER_URL || 'http://notifi-adapter.agent-contracts.svc.cluster.local',
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test Options
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export const options = {
+      scenarios: {
+        smoke: {
+          executor: 'constant-vus',
+          vus: 1,
+          duration: '30s',
+        },
+      },
+      thresholds: {
+        'smoke_health_check_success': ['rate>0.95'],
+        'smoke_response_time_ms': ['p(95)<8000'],  // Increased from 7000ms to account for LLM cold starts and network latency
+        'http_req_failed': ['rate<0.1'],
+      },
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test Functions
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function checkHealth(serviceName, url) {
+      const res = http.get(`${url}/health`, {
+        timeout: '10s',
+        tags: { service: serviceName },
+      });
+      
+      responseTime.add(res.timings.duration, { service: serviceName });
+      
+      const success = check(res, {
+        [`${serviceName} is healthy`]: (r) => r.status === 200,
+        [`${serviceName} returns valid JSON`]: (r) => {
+          try {
+            JSON.parse(r.body);
+            return true;
+          } catch (e) {
+            return false;
+          }
+        },
+      });
+      
+      healthCheckSuccess.add(success);
+      if (!success) {
+        serviceErrors.add(1, { service: serviceName });
+      }
+      
+      return success;
+    }
+    
+    function checkReadiness(serviceName, url) {
+      const res = http.get(`${url}/ready`, {
+        timeout: '10s',
+        tags: { service: serviceName },
+      });
+      
+      return check(res, {
+        [`${serviceName} is ready`]: (r) => r.status === 200,
+      });
+    }
+    
+    function sendTestCloudEvent(serviceName, url, eventType, data) {
+      const eventId = `smoke-test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      const headers = {
+        'Content-Type': 'application/json',
+        'ce-specversion': '1.0',
+        'ce-type': eventType,
+        'ce-source': '/k6/smoke-test',
+        'ce-id': eventId,
+        'ce-time': new Date().toISOString(),
+      };
+      
+      const res = http.post(url, JSON.stringify(data), {
+        headers: headers,
+        timeout: '30s',
+        tags: { service: serviceName, event_type: eventType },
+      });
+      
+      responseTime.add(res.timings.duration, { service: serviceName, operation: 'cloudevent' });
+      
+      const success = check(res, {
+        [`${serviceName} accepts CloudEvent`]: (r) => r.status >= 200 && r.status < 300,
+      });
+      
+      if (!success) {
+        serviceErrors.add(1, { service: serviceName, operation: 'cloudevent' });
+        console.error(`${serviceName} CloudEvent failed: ${res.status} - ${res.body}`);
+      }
+      
+      return success;
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Main Test
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export default function() {
+      // Phase 1: Health Checks
+      group('Health Checks', () => {
+        checkHealth('contract-fetcher', SERVICES.contractFetcher);
+        checkHealth('vuln-scanner', SERVICES.vulnScanner);
+        checkHealth('exploit-generator', SERVICES.exploitGenerator);
+        checkHealth('notifi-adapter', SERVICES.notifiAdapter);
+      });
+      
+      sleep(1);
+      
+      // Phase 2: Readiness Checks
+      group('Readiness Checks', () => {
+        checkReadiness('contract-fetcher', SERVICES.contractFetcher);
+        checkReadiness('vuln-scanner', SERVICES.vulnScanner);
+        checkReadiness('exploit-generator', SERVICES.exploitGenerator);
+        checkReadiness('notifi-adapter', SERVICES.notifiAdapter);
+      });
+      
+      sleep(1);
+      
+      // Phase 3: CloudEvent Processing (light load)
+      group('CloudEvent Processing', () => {
+        // Test contract fetcher with scan request
+        sendTestCloudEvent('contract-fetcher', SERVICES.contractFetcher, 'io.homelab.scan.request', {
+          chain: 'ethereum',
+          address: '0x1234567890123456789012345678901234567890',
+        });
+        
+        // Test vuln scanner with contract data
+        sendTestCloudEvent('vuln-scanner', SERVICES.vulnScanner, 'io.homelab.contract.created', {
+          chain: 'ethereum',
+          address: '0x1234567890123456789012345678901234567890',
+          source_code: 'pragma solidity ^0.8.0; contract Test {}',
+          is_verified: true,
+        });
+      });
+      
+      sleep(2);
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Summary
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function handleSummary(data) {
+      const healthMetric = data.metrics['smoke_health_check_success'];
+      const responseMetric = data.metrics['smoke_response_time_ms'];
+      const errorsMetric = data.metrics['smoke_service_errors'];
+      
+      const healthRate = healthMetric && healthMetric.values ? healthMetric.values.rate : 0;
+      const p95Response = responseMetric && responseMetric.values ? responseMetric.values['p(95)'] : 0;
+      const errorCount = errorsMetric && errorsMetric.values ? errorsMetric.values.count : 0;
+      
+      const passed = healthRate >= 0.95;
+      
+      console.log('\n' + '═'.repeat(60));
+      console.log('🔥 AGENT-CONTRACTS SMOKE TEST RESULTS');
+      console.log('═'.repeat(60));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('Health Check Success Rate: ' + (healthRate * 100).toFixed(1) + '%');
+      console.log('P95 Response Time: ' + (p95Response || 0).toFixed(0) + 'ms');
+      console.log('Service Errors: ' + errorCount);
+      console.log('═'.repeat(60) + '\n');
+      
+      return {};
+    }

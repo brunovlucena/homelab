@@ -1,0 +1,35 @@
+{
+  "name": "futboss-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FutBoss AI - Multiplayer football management game with AI agents",
+  "author": {
+    "name": "Bruno Lucena",
+    "email": "bruno@lucena.cloud"
+  },
+  "scripts": {
+    "dev:api": "cd apps/api && source venv/bin/activate && uvicorn app.main:app --reload",
+    "dev:web": "pnpm --filter @futboss/web dev",
+    "dev:mobile": "pnpm --filter @futboss/mobile start",
+    "build:web": "pnpm --filter @futboss/web build",
+    "build:shared": "pnpm --filter @futboss/shared build",
+    "build:game-engine": "pnpm --filter @futboss/game-engine build",
+    "build:cli": "cd apps/cli && go build -o futboss .",
+    "test": "pnpm -r test",
+    "test:api": "cd apps/api && pytest -v --cov=app --cov-report=term-missing",
+    "test:shared": "pnpm --filter @futboss/shared test",
+    "test:game-engine": "pnpm --filter @futboss/game-engine test",
+    "test:web": "pnpm --filter @futboss/web test",
+    "test:cli": "cd apps/cli && go test ./...",
+    "lint": "pnpm -r lint",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "keywords": ["football", "soccer", "game", "ai", "multiplayer", "management"],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
+

@@ -1,0 +1,219 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: falco
+  namespace: falco
+spec:
+  interval: 5m
+  chart:
+    spec:
+      chart: falco
+      version: 2.0.0
+      sourceRef:
+        kind: HelmRepository
+        name: falcosecurity
+        namespace: flux-system
+  values:
+    falco:
+      # Enable Falco
+      enabled: true
+      
+      # Custom rules configuration
+      customRules:
+        custom-rules.yaml: |
+          # WordPress Scanner Detection
+          - rule: WordPress Scanner Detected
+            desc: Detect WordPress vulnerability scanning patterns
+            condition: >
+              spawned_process and proc.name in (curl, wget, nmap) and
+              (proc.args contains "wp-includes" or 
+               proc.args contains "xmlrpc.php" or
+               proc.args contains "wlwmanifest.xml" or
+               proc.args contains "wp-config.php" or
+               proc.args contains "wp-admin" or
+               proc.args contains "wp-content")
+            output: >
+              WordPress scanner detected (user=%user.name command=%proc.cmdline container=%container.name)
+            priority: WARNING
+            tags: [attack, reconnaissance, wordpress, web-security]
+
+          # Container Escape Detection
+          - rule: Container Escape via Mount
+            desc: Detect attempts to mount host directories or access host resources
+            condition: >
+              evt.type=open and proc.name=sh and
+              (proc.args contains "/proc" or proc.args contains "/sys" or
+               proc.args contains "/dev" or proc.args contains "/host")
+            output: >
+              Container escape attempt via mount (user=%user.name command=%proc.cmdline container=%container.name)
+            priority: CRITICAL
+            tags: [attack, container-escape, critical]
+
+          # Privilege Escalation Detection
+          - rule: Privilege Escalation via Sudo
+            desc: Detect privilege escalation attempts using sudo
+            condition: >
+              spawned_process and proc.name=sudo and
+              (proc.args contains "su" or proc.args contains "bash" or proc.args contains "sh")
+            output: >
+              Privilege escalation attempt (user=%user.name command=%proc.cmdline container=%container.name)
+            priority: CRITICAL
+            tags: [attack, privilege-escalation, critical]
+
+          # Suspicious Network Activity
+          - rule: Suspicious Network Activity
+            desc: Detect suspicious network connections and port scanning
+            condition: >
+              evt.type=connect and proc.name in (nmap, nc, netcat, telnet) and
+              (fd.name contains ":" or fd.name contains "tcp" or fd.name contains "udp")
+            output: >
+              Suspicious network activity (user=%user.name command=%proc.cmdline container=%container.name)
+            priority: WARNING
+            tags: [attack, network, reconnaissance]
+
+          # Unauthorized File Access
+          - rule: Unauthorized File Access
+            desc: Detect attempts to access sensitive system files
+            condition: >
+              evt.type=open and proc.name in (cat, less, more, head, tail) and
+              (fd.name contains "/etc/passwd" or fd.name contains "/etc/shadow" or
+               fd.name contains "/etc/sudoers" or fd.name contains "/root")
+            output: >
+              Unauthorized file access attempt (user=%user.name command=%proc.cmdline container=%container.name)
+            priority: WARNING
+            tags: [attack, file-access, reconnaissance]
+
+          # Reverse Shell Detection
+          - rule: Reverse Shell Detection
+            desc: Detect potential reverse shell connections
+            condition: >
+              spawned_process and proc.name in (bash, sh, zsh) and
+              (proc.args contains "-i" or proc.args contains ">&" or proc.args contains "|")
+            output: >
+              Potential reverse shell (user=%user.name command=%proc.cmdline container=%container.name)
+            priority: CRITICAL
+            tags: [attack, reverse-shell, critical]
+
+          # Crypto Mining Detection
+          - rule: Crypto Mining Detection
+            desc: Detect potential cryptocurrency mining activities
+            condition: >
+              spawned_process and proc.name in (xmr-stak, xmrig, ethminer, cgminer) or
+              (proc.args contains "mining" or proc.args contains "pool" or proc.args contains "wallet")
+            output: >
+              Crypto mining activity detected (user=%user.name command=%proc.cmdline container=%container.name)
+            priority: WARNING
+            tags: [attack, crypto-mining, resource-abuse]
+
+      # Falco configuration
+      falco:
+        # Enable JSON output for better integration
+        jsonOutput: true
+        
+        # Enable program output for Falcosidekick
+        programOutput:
+          enabled: true
+          program: "curl -d @- -X POST http://falcosidekick:2801/"
+        
+        # Enable HTTP output for Falcosidekick
+        httpOutput:
+          enabled: true
+          url: "http://falcosidekick:2801/"
+        
+        # Rule priorities to include
+        rulePriority: "WARNING,CRITICAL"
+        
+        # Include rule tags for better categorization
+        ruleTags: "attack,reconnaissance,wordpress,web-security,container-escape,privilege-escalation,network,file-access,reverse-shell,crypto-mining"
+
+      # Resource limits
+      resources:
+        # requests:
+        #   cpu: 100m
+        #   memory: 128Mi
+        limits:
+          # cpu: 500m
+          memory: 512Mi
+
+      # Security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        readOnlyRootFilesystem: false  # Falco needs write access for temporary files
+
+      # Node selector for observability nodes
+      nodeSelector:
+        role: observability
+
+      # Tolerations for observability nodes
+      tolerations:
+        - key: "role"
+          operator: "Equal"
+          value: "observability"
+          effect: "NoSchedule"
+
+      # Service account configuration
+      serviceAccount:
+        create: true
+        annotations: {}
+        name: "falco"
+
+    falcosidekick:
+      enabled: true
+      fullnameOverride: falcosidekick
+
+      config:
+        alertmanager:
+          enabled: true
+          hostport: "alertmanager-operated.prometheus:9093"
+          path: "/api/v1/alerts"
+          customHeaders:
+            Content-Type: "application/json"
+        webhook:
+          enabled: false
+          address: ""
+          customHeaders: {}
+
+      resources:
+        # requests:
+        #   cpu: 50m
+        #   memory: 64Mi
+        limits:
+          # cpu: 200m
+          memory: 128Mi
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        readOnlyRootFilesystem: true
+
+      nodeSelector:
+        role: observability
+
+      tolerations:
+        - key: "role"
+          operator: "Equal"
+          value: "observability"
+          effect: "NoSchedule"
+
+      serviceAccount:
+        create: true
+        annotations: {}
+        name: "falcosidekick"
+
+      service:
+        type: ClusterIP
+        port: 2801
+        targetPort: 2801
+
+      ingress:
+        enabled: false
+        className: nginx
+        hosts:
+          - host: falcosidekick.lucena.cloud
+            paths:
+              - path: /
+                pathType: Prefix
+        tls: []

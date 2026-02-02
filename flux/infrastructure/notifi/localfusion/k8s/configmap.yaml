@@ -1,0 +1,26 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 LOCALFUSION CONFIGMAP
+#
+#  Purpose: Store LocalFusion service addresses for parser configuration
+#
+#  Usage: Parsers need these environment variables to connect to gRPC services
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: localfusion-env
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: localfusion
+data:
+  # gRPC service addresses for LocalFusion
+  EVM_RPC_ADDRESS: "localfusion.localfusion.svc.cluster.local:50054"
+  SOLANA_RPC_ADDRESS: "localfusion.localfusion.svc.cluster.local:50055"
+  SUI_RPC_ADDRESS: "localfusion.localfusion.svc.cluster.local:50055"
+  EPHEMERAL_STORAGE_ADDRESS: "localfusion.localfusion.svc.cluster.local:50052"
+  PERSISTENT_STORAGE_ADDRESS: "localfusion.localfusion.svc.cluster.local:50053"
+  SUBSCRIPTION_MANAGER_ADDRESS: "localfusion.localfusion.svc.cluster.local:50056"
+  # Disable SSL for local testing
+  GRPC_INSECURE: "true"

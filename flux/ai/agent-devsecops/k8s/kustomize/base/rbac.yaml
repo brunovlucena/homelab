@@ -1,0 +1,359 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 RBAC - Agent DevSecOps
+#
+#  Three access levels for different use cases:
+#
+#  1. READ-ONLY (devsecops-readonly)
+#     - View all resources across cluster
+#     - Cannot modify anything
+#     - Default for security scanning and auditing
+#
+#  2. ADMIN (devsecops-admin)
+#     - Full cluster access
+#     - For emergency incident response ONLY
+#     - Requires explicit human approval to activate
+#
+#  3. CUSTOM (devsecops-operator)
+#     - Can create SecurityProposals (CRD for suggested changes)
+#     - Limited write to secrets rotation
+#     - Can patch annotations for policy labels
+#     - Cannot delete core resources
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  SERVICE ACCOUNTS                                                        │
+# └─────────────────────────────────────────────────────────────────────────┘
+
+---
+# Read-only service account (DEFAULT)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: devsecops-readonly-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: security
+    rbac.devsecops.homelab.io/tier: readonly
+  annotations:
+    description: "Read-only access for security scanning and auditing"
+imagePullSecrets:
+  - name: ghcr-secret
+
+---
+# Admin service account (EMERGENCY ONLY)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: devsecops-admin-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: security
+    rbac.devsecops.homelab.io/tier: admin
+  annotations:
+    description: "Full admin access - EMERGENCY USE ONLY - requires human approval"
+    devsecops.homelab.io/requires-approval: "true"
+imagePullSecrets:
+  - name: ghcr-secret
+
+---
+# Custom operator service account (RECOMMENDED FOR AUTOMATION)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: devsecops-operator-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: security
+    rbac.devsecops.homelab.io/tier: operator
+  annotations:
+    description: "Limited write access for automated security operations"
+imagePullSecrets:
+  - name: ghcr-secret
+
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  CLUSTER ROLES                                                           │
+# └─────────────────────────────────────────────────────────────────────────┘
+
+---
+# LEVEL 1: READ-ONLY - Security scanner and auditor
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: devsecops-readonly
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    rbac.devsecops.homelab.io/tier: readonly
+rules:
+  # Core resources - READ ONLY
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - services
+      - endpoints
+      - configmaps
+      - secrets  # Can read to detect misconfigurations (but not values in logs)
+      - namespaces
+      - serviceaccounts
+      - persistentvolumeclaims
+      - events
+    verbs: ["get", "list", "watch"]
+  
+  # Workloads - READ ONLY
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch"]
+  
+  # Networking - READ ONLY
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - networkpolicies
+      - ingresses
+    verbs: ["get", "list", "watch"]
+  
+  # RBAC - READ ONLY (audit permissions)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list", "watch"]
+  
+  # Security policies - READ ONLY
+  - apiGroups: ["policy"]
+    resources:
+      - podsecuritypolicies
+      - poddisruptionbudgets
+    verbs: ["get", "list", "watch"]
+  
+  # Knative resources - READ ONLY
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  
+  # Flux GitOps - READ ONLY
+  - apiGroups: ["source.toolkit.fluxcd.io", "kustomize.toolkit.fluxcd.io", "helm.toolkit.fluxcd.io"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  
+  # Cert-manager - READ ONLY (audit certificates)
+  - apiGroups: ["cert-manager.io"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  
+  # Monitoring - READ ONLY
+  - apiGroups: ["monitoring.coreos.com"]
+    resources:
+      - prometheusrules
+      - servicemonitors
+      - podmonitors
+      - alertmanagers
+    verbs: ["get", "list", "watch"]
+
+---
+# LEVEL 2: ADMIN - Full access for emergencies
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: devsecops-admin
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    rbac.devsecops.homelab.io/tier: admin
+  annotations:
+    devsecops.homelab.io/warning: "EMERGENCY USE ONLY - Full cluster access"
+    devsecops.homelab.io/requires-approval: "true"
+rules:
+  # FULL ACCESS - Use with extreme caution
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+  # Note: This is intentionally broad for incident response
+  # Activation should require human approval via a separate workflow
+
+---
+# LEVEL 3: CUSTOM OPERATOR - Limited write for automated security ops
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: devsecops-operator
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    rbac.devsecops.homelab.io/tier: operator
+rules:
+  # Include all readonly permissions
+  # Core resources - READ
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - services
+      - endpoints
+      - configmaps
+      - namespaces
+      - serviceaccounts
+      - persistentvolumeclaims
+      - events
+    verbs: ["get", "list", "watch"]
+  
+  # Secrets - READ + limited WRITE for rotation
+  - apiGroups: [""]
+    resources:
+      - secrets
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+    # Note: Create/update for secret rotation workflows
+  
+  # Workloads - READ + PATCH annotations only
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch", "patch"]
+    # Patch is limited to annotations/labels via admission webhook
+  
+  # Network policies - FULL CRUD (security enforcement)
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - networkpolicies
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # Ingresses - READ only
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+    verbs: ["get", "list", "watch"]
+  
+  # RBAC - READ ONLY (no permission escalation)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list", "watch"]
+  
+  # SecurityProposals CRD - FULL CRUD (agent's own proposals)
+  - apiGroups: ["devsecops.homelab.io"]
+    resources:
+      - securityproposals
+      - vulnerabilityreports
+      - compliancechecks
+      - secretrotations
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # Knative - READ + limited WRITE
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch", "patch"]  # Patch for security labels
+  
+  # Flux - READ + suspend (for emergency stops)
+  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
+    resources:
+      - kustomizations
+    verbs: ["get", "list", "watch", "patch"]  # Patch to suspend reconciliation
+  - apiGroups: ["helm.toolkit.fluxcd.io"]
+    resources:
+      - helmreleases
+    verbs: ["get", "list", "watch", "patch"]  # Patch to suspend
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  
+  # Monitoring - READ + create alerts
+  - apiGroups: ["monitoring.coreos.com"]
+    resources:
+      - prometheusrules
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["monitoring.coreos.com"]
+    resources:
+      - servicemonitors
+      - podmonitors
+      - alertmanagers
+    verbs: ["get", "list", "watch"]
+
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  CLUSTER ROLE BINDINGS                                                   │
+# └─────────────────────────────────────────────────────────────────────────┘
+
+---
+# Bind readonly SA to readonly role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: devsecops-readonly-binding
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    rbac.devsecops.homelab.io/tier: readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: devsecops-readonly
+subjects:
+  - kind: ServiceAccount
+    name: devsecops-readonly-sa
+    namespace: ai
+
+---
+# Bind admin SA to admin role (REQUIRES HUMAN APPROVAL TO ACTIVATE)
+# This binding exists but the SA token should be restricted via:
+# 1. Token not auto-mounted
+# 2. Requires explicit workflow to obtain
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: devsecops-admin-binding
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    rbac.devsecops.homelab.io/tier: admin
+  annotations:
+    devsecops.homelab.io/warning: "EMERGENCY USE ONLY"
+    devsecops.homelab.io/requires-approval: "true"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: devsecops-admin
+subjects:
+  - kind: ServiceAccount
+    name: devsecops-admin-sa
+    namespace: ai
+
+---
+# Bind operator SA to operator role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: devsecops-operator-binding
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    rbac.devsecops.homelab.io/tier: operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: devsecops-operator
+subjects:
+  - kind: ServiceAccount
+    name: devsecops-operator-sa
+    namespace: ai

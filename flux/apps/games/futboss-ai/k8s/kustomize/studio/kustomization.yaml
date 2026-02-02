@@ -1,0 +1,26 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+
+# Studio-specific patches (development environment)
+patches:
+  - target:
+      kind: Deployment
+      name: futboss-ai-api
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      # Replace DEBUG env var: change from valueFrom (ConfigMap) to direct value
+      - op: replace
+        path: /spec/template/spec/containers/0/env/2
+        value:
+          name: DEBUG
+          value: "true"
+
+# Studio-specific labels
+commonLabels:
+  environment: studio

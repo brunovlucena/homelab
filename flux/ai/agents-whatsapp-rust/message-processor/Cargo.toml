@@ -1,0 +1,47 @@
+[package]
+name = "message-processor"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Workspace
+shared = { path = "../shared" }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Web framework
+axum = { workspace = true }
+
+# Database
+mongodb = { workspace = true }
+redis = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# CloudEvents
+cloudevents-sdk = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# Config
+config = { workspace = true }
+
+# Random (for jitter in backoff)
+rand = { version = "0.8", features = ["std"] }

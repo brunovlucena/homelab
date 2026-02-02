@@ -1,0 +1,39 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 LOCALFUSION SERVICE
+#
+#  Purpose: Expose LocalFusion gRPC services for parser testing
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: v1
+kind: Service
+metadata:
+  name: localfusion
+  namespace: localfusion
+  labels:
+    app.kubernetes.io/name: localfusion
+spec:
+  type: ClusterIP
+  selector:
+    app: localfusion
+  ports:
+    - name: ephemeral-stor
+      port: 50052
+      targetPort: 50052
+      protocol: TCP
+    - name: persistent-stor
+      port: 50053
+      targetPort: 50053
+      protocol: TCP
+    - name: evm-rpc
+      port: 50054
+      targetPort: 50054
+      protocol: TCP
+    - name: solana-rpc
+      port: 50055
+      targetPort: 50055
+      protocol: TCP
+    - name: sub-mgr
+      port: 50056
+      targetPort: 50056
+      protocol: TCP

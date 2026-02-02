@@ -1,0 +1,37 @@
+# Dockerfile for Flyte Workflow Registration Job
+# Lightweight image with flytekit pre-installed for workflow registration
+
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    unzip \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install flytectl
+# The install script installs to ./bin/flytectl, move it to a standard location
+RUN curl -sL https://ctl.flyte.org/install | bash && \
+    mkdir -p /usr/local/bin && \
+    if [ -f ./bin/flytectl ]; then \
+      mv ./bin/flytectl /usr/local/bin/flytectl && \
+      chmod +x /usr/local/bin/flytectl; \
+    fi && \
+    flytectl version || echo "flytectl installed"
+
+# Upgrade pip
+RUN pip install --upgrade pip setuptools wheel
+
+# Install flytekit and dependencies
+RUN pip install --no-cache-dir \
+    flytekit>=1.10.0 \
+    flyteidl
+
+# Set working directory
+WORKDIR /workflows
+
+# Default command (will be overridden by job)
+CMD ["/bin/bash"]
+

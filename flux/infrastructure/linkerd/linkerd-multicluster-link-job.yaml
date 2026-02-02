@@ -1,0 +1,214 @@
+---
+# 🔗 Job to link studio cluster to pro and air clusters
+# This creates Link resources and credentials to connect studio to target clusters
+# Uses the official linkerd multicluster link-gen command (edge-25.4.4+)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: linkerd-multicluster-link-studio
+  namespace: linkerd
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  template:
+    metadata:
+      labels:
+        app: linkerd-multicluster-link
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: linkerd-multicluster-linker
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: link-clusters
+        image: localhost:5001/kubectl:v1.34.0
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "📦 Using pre-installed Linkerd CLI..."
+          linkerd version --client || echo "⚠️  Linkerd CLI not available, skipping multicluster link"
+          echo ""
+          
+          # Setup kubectl config for in-cluster access
+          # Use a writable directory since /root/.kube is read-only
+          echo "🔧 Setting up kubectl config..."
+          KUBECONFIG_DIR="/tmp/.kube"
+          mkdir -p "$KUBECONFIG_DIR"
+          export KUBECONFIG="$KUBECONFIG_DIR/config"
+          kubectl config set-cluster default --server=https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT} --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          kubectl config set-credentials default --token="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+          kubectl config set-context default --cluster=default --user=default
+          kubectl config use-context default
+          echo "✅ kubectl config created"
+          echo ""
+          
+          # Detect current cluster name from node name (e.g., kind-studio-control-plane -> studio)
+          echo "🔍 Detecting current cluster name..."
+          NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [ -z "$NODE_NAME" ]; then
+            echo "⚠️  Could not detect node name, skipping multicluster link"
+            echo "   This is non-blocking - other resources will continue to deploy"
+            exit 0
+          fi
+          CURRENT_CLUSTER=$(echo "$NODE_NAME" | sed 's/kind-//; s/-control-plane//; s/-master//')
+          echo "✅ Detected current cluster: $CURRENT_CLUSTER"
+          echo ""
+          
+          # Only run on studio cluster - it will link to pro and air
+          if [ "$CURRENT_CLUSTER" != "studio" ]; then
+            echo "ℹ️  Current cluster '$CURRENT_CLUSTER' is not studio"
+            echo "   This job is configured to run on studio cluster only"
+            echo "   Studio will connect to pro and air clusters"
+            exit 0
+          fi
+          
+          echo "🌐 Studio cluster detected - will link to pro and air clusters"
+          echo ""
+          
+          # Wait for multicluster extension to be ready
+          echo "⏳ Waiting for Linkerd multicluster extension to be ready..."
+          sleep 30
+          
+          # Check if shared trust anchor exists
+          echo "📋 Checking for shared trust anchor..."
+          if [ -f /etc/linkerd-trust/ca.crt ]; then
+            echo "✅ Shared trust anchor found from GitHub (via ESO)"
+            echo "   Trust anchor is automatically synced via External Secrets Operator"
+            
+            # Display trust anchor info
+            echo ""
+            echo "📜 Trust Anchor Certificate Info:"
+            openssl x509 -in /etc/linkerd-trust/ca.crt -noout -subject -issuer -dates 2>/dev/null || echo "   (certificate info not available)"
+            echo ""
+          else
+            echo "⚠️  Shared trust anchor not found at /etc/linkerd-trust/ca.crt"
+            echo "   Clusters may have different trust roots - multicluster communication may not work"
+            echo ""
+            echo "   To fix this:"
+            echo "   1. Extract trust anchor: ./scripts/mac/manage-linkerd-trust-anchors.sh extract $CURRENT_CLUSTER"
+            echo "   2. Store in GitHub: Add LINKERD_TRUST_ANCHOR_CA_CRT to GitHub repository secrets"
+            echo "   3. ESO will automatically sync to all clusters"
+            echo ""
+          fi
+          
+          # Function to create link to a target cluster
+          create_link() {
+            local TARGET_CLUSTER=$1
+            local TARGET_CONTEXT="kind-${TARGET_CLUSTER}"
+            
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🔗 Linking studio to $TARGET_CLUSTER cluster..."
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo ""
+            
+            # Check if link already exists
+            echo "🔍 Checking if link to $TARGET_CLUSTER already exists..."
+            if kubectl get links.multicluster.linkerd.io "$TARGET_CLUSTER" -n linkerd-multicluster >/dev/null 2>&1; then
+              echo "✅ Link to $TARGET_CLUSTER already exists, skipping"
+              echo ""
+              return 0
+            fi
+            echo "   Link does not exist, will create it"
+            echo ""
+            
+            # Check if we have access to target cluster kubeconfig
+            # Try to use target context if available in KUBECONFIG or default locations
+            if ([ -n "$KUBECONFIG" ] && [ -f "$KUBECONFIG" ] && kubectl config get-contexts 2>/dev/null | grep -q "$TARGET_CONTEXT") || \
+               ([ -f /root/.kube/config ] && KUBECONFIG=/root/.kube/config kubectl config get-contexts 2>/dev/null | grep -q "$TARGET_CONTEXT"); then
+              echo "✅ Found kubeconfig for target cluster $TARGET_CLUSTER"
+              echo "🔗 Generating link manifest from $TARGET_CLUSTER cluster..."
+              
+              # Generate link manifest from target cluster and apply to studio
+              linkerd --context="$TARGET_CONTEXT" multicluster link-gen --cluster-name "$TARGET_CLUSTER" | \
+                kubectl --context=default apply -f - && {
+                  echo "✅ Link to $TARGET_CLUSTER created successfully"
+                  echo ""
+                  return 0
+                } || {
+                  echo "⚠️  Failed to create link to $TARGET_CLUSTER"
+                  echo ""
+                  return 1
+                }
+            else
+              echo "⚠️  Kubeconfig for target cluster $TARGET_CLUSTER not available in pod"
+              echo "   Link generation requires access to target cluster's kubeconfig"
+              echo ""
+              echo "   To complete the link manually from a machine with access to both clusters:"
+              echo "   linkerd --context=$TARGET_CONTEXT multicluster link-gen --cluster-name $TARGET_CLUSTER | \\"
+              echo "     kubectl --context=kind-studio apply -f -"
+              echo ""
+              echo "   Prerequisites:"
+              echo "   1. Both clusters are accessible (on same VPN)"
+              echo "   2. Trust anchors are SHARED between clusters (same ca.crt)"
+              echo "   3. Linkerd multicluster extension is installed on both clusters"
+              echo "   4. Gateway pods are running on target cluster:"
+              echo "      kubectl get pods -n linkerd-multicluster -l component=gateway --context $TARGET_CONTEXT"
+              echo ""
+              echo "   To verify trust anchors match:"
+              echo "   kubectl get secret linkerd-trust-anchor -n linkerd -o jsonpath='{.data.ca\.crt}' --context kind-studio | base64 -d | openssl x509 -noout -fingerprint"
+              echo "   kubectl get secret linkerd-trust-anchor -n linkerd -o jsonpath='{.data.ca\.crt}' --context $TARGET_CONTEXT | base64 -d | openssl x509 -noout -fingerprint"
+              echo "   (Both should show the same fingerprint)"
+              echo ""
+              return 1
+            fi
+          }
+          
+          # Create links to both pro and air clusters
+          LINKS_CREATED=0
+          create_link "pro" && LINKS_CREATED=$((LINKS_CREATED + 1))
+          create_link "air" && LINKS_CREATED=$((LINKS_CREATED + 1))
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          if [ $LINKS_CREATED -eq 2 ]; then
+            echo "✅ Linkerd multicluster link job completed successfully"
+            echo "   Studio -> pro: ✅"
+            echo "   Studio -> air: ✅"
+          elif [ $LINKS_CREATED -eq 1 ]; then
+            echo "⚠️  Linkerd multicluster link job partially completed"
+            echo "   One link was created, but manual setup may be required for the other"
+          else
+            echo "ℹ️  Linkerd multicluster link job completed"
+            echo "   Manual linking required - see instructions above"
+            echo "   This is expected if running in-cluster without access to target cluster kubeconfigs"
+          fi
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        volumeMounts:
+        - name: trust-anchor
+          mountPath: /etc/linkerd-trust
+          readOnly: true
+      volumes:
+      - name: trust-anchor
+        secret:
+          secretName: linkerd-trust-anchor
+          optional: true
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: linkerd-multicluster-linker
+  namespace: linkerd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: linkerd-multicluster-linker
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: linkerd-multicluster-linker
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: linkerd-multicluster-linker
+subjects:
+- kind: ServiceAccount
+  name: linkerd-multicluster-linker
+  namespace: linkerd
+

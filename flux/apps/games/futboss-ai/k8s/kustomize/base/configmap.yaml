@@ -1,0 +1,18 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: futboss-ai-config
+  namespace: futboss-ai
+  labels:
+    app.kubernetes.io/name: futboss-ai
+    app.kubernetes.io/component: config
+data:
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  DEBUG: "false"
+  MONGODB_DATABASE: "futboss"
+  OLLAMA_MODEL: "llama3.2:3b"
+  INITIAL_TOKENS: "1000"
+  MATCH_DURATION_MINUTES: "90"
+  TOKEN_TO_BRL_RATE: "0.01"

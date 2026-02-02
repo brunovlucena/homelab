@@ -1,0 +1,19 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 🏗️ Pro-1-Node Cluster - Core Infrastructure
+# All infrastructure components for the pro cluster (lighter footprint)
+
+resources:
+  - ../../../../infrastructure/linkerd
+  - ../../../../infrastructure/cert-manager
+  - ../../../../infrastructure/pulumi-operator
+  # - ../../../../infrastructure/flagger  # Disabled
+  - ../../../../infrastructure/sealed-secrets
+  # - ../../../../infrastructure/external-secrets  # Disabled
+  # - ../../../../infrastructure/cloudflare-tunnel  # Disabled
+  # - ../../../../infrastructure/knative-operator  # Disabled
+  - ../../../../infrastructure/rabbitmq-operator
+  - ../../../../infrastructure/k6-operator
+  - ../../../../infrastructure/minio

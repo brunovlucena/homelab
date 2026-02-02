@@ -1,0 +1,21 @@
+{
+  "name": "@futboss/shared",
+  "version": "1.0.0",
+  "description": "Shared types and utilities for FutBoss AI",
+  "author": {
+    "name": "Bruno Lucena",
+    "email": "bruno@lucena.cloud"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  }
+}
+

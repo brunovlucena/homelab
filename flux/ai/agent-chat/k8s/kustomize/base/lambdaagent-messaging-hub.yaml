@@ -1,0 +1,130 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  💬 Messaging Hub - Central Message Router
+#
+#  Routes messages between users and agents, manages presence and typing
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: messaging-hub
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: messaging-hub
+    app.kubernetes.io/component: messaging
+    app.kubernetes.io/part-of: agent-chat
+    agentchat.role: core
+  annotations:
+    description: "Central message routing and delivery hub"
+spec:
+  serviceAccountName: messaging-hub-sa
+
+  image:
+    repository: localhost:5001/messaging-hub
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: none  # Pure routing, no LLM needed
+
+  behavior:
+    maxContextMessages: 0  # Stateless router
+    emitEvents: true
+    systemPrompt: ""
+
+  scaling:
+    minReplicas: 2
+    maxReplicas: 20
+    targetConcurrency: 100
+    scaleToZeroGracePeriod: 0s  # Always keep running
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: AGENT_ROLE
+      value: "messaging-hub"
+    - name: REDIS_URL
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: REDIS_URL
+    - name: POSTGRES_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: POSTGRES_HOST
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: agentchat-secrets
+          key: postgres-password
+    - name: WEBSOCKET_ENABLED
+      value: "true"
+    - name: MAX_CONNECTIONS
+      value: "10000"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-chat/messaging-hub"
+    
+    intents:
+      - io.agentchat.message.delivered
+      - io.agentchat.message.read
+      - io.agentchat.presence.updated
+      - io.agentchat.typing.broadcast
+    
+    subscriptions:
+      # Incoming messages from users
+      - eventType: io.agentchat.message.sent
+        description: "User sent a message"
+      # Responses from agents
+      - eventType: io.agentchat.message.response
+        description: "Agent response to forward to user"
+      # Voice messages
+      - eventType: io.agentchat.voice.message.generated
+        description: "Voice message ready for delivery"
+      # Media content
+      - eventType: io.agentchat.media.image.generated
+        description: "Generated image ready for delivery"
+      - eventType: io.agentchat.media.video.generated
+        description: "Generated video ready for delivery"
+      # Typing indicators
+      - eventType: io.agentchat.typing.started
+        description: "User started typing"
+      - eventType: io.agentchat.typing.stopped
+        description: "User stopped typing"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 5
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  permissions:
+    disableBrokerCreation: false
+    disableTriggerCreation: false
+    disableFunctionCreation: true
+    allowedTargetNamespaces:
+      - agent-chat

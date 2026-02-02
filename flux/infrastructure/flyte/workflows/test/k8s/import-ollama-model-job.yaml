@@ -1,0 +1,280 @@
+---
+# Job to automatically import Agent-SRE model into Ollama after Flyte training completes
+# This job downloads the model from MinIO and imports it into Ollama
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: import-agent-sre-ollama
+  namespace: ai
+  labels:
+    app: flyte-workflow
+    component: ollama-import
+    agent: agent-sre
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600  # Keep for 1 hour
+  template:
+    metadata:
+      labels:
+        app: flyte-workflow
+        component: ollama-import
+        agent: agent-sre
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: ollama-import-sa
+      containers:
+        - name: import-model
+          image: ollama/ollama:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "🤖 Automatic Ollama Model Import for Agent-SRE"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo ""
+              
+              # Wait for Ollama to be ready
+              echo "⏳ Waiting for Ollama service..."
+              OLLAMA_HOST="${OLLAMA_HOST:-ollama.ollama.svc.cluster.local:11434}"
+              until nc -z $(echo $OLLAMA_HOST | cut -d: -f1) $(echo $OLLAMA_HOST | cut -d: -f2) 2>/dev/null; do
+                echo "   Ollama not ready, waiting..."
+                sleep 2
+              done
+              echo "✅ Ollama service is ready"
+              
+              # Download model from MinIO
+              echo ""
+              echo "📥 Downloading model from MinIO..."
+              MODEL_BUCKET="${MODEL_BUCKET:-ml-models}"
+              MODEL_PATH="${MODEL_PATH:-agent-sre/functiongemma-270m}"
+              MODEL_VERSION="${MODEL_VERSION:-latest}"
+              
+              # Use mc (MinIO client) if available, otherwise use Python
+              if command -v mc &> /dev/null; then
+                echo "   Using MinIO client (mc)..."
+                mc alias set minio http://minio.minio.svc.cluster.local:9000 \
+                  "${MINIO_ACCESS_KEY:-minioadmin}" "${MINIO_SECRET_KEY:-minioadmin}"
+                mc cp "minio/${MODEL_BUCKET}/${MODEL_PATH}/${MODEL_VERSION}/ollama-model.tar.gz" /tmp/model.tar.gz
+              else
+                echo "   Using Python to download from MinIO..."
+                python3 << 'PYTHON_SCRIPT'
+import os
+import sys
+from minio import Minio
+import tarfile
+import tempfile
+
+minio_endpoint = os.getenv("MINIO_ENDPOINT", "minio.minio.svc.cluster.local:9000")
+access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+bucket = os.getenv("MODEL_BUCKET", "ml-models")
+model_path = os.getenv("MODEL_PATH", "agent-sre/functiongemma-270m")
+model_version = os.getenv("MODEL_VERSION", "latest")
+object_name = f"{model_path}/{model_version}/ollama-model.tar.gz"
+
+try:
+    client = Minio(
+        minio_endpoint,
+        access_key=access_key,
+        secret_key=secret_key,
+        secure=False
+    )
+    
+    print(f"   Downloading {object_name} from {bucket}...")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".tar.gz") as tmp:
+        client.fget_object(bucket, object_name, tmp.name)
+        print(f"   ✅ Downloaded to {tmp.name}")
+        # Move to /tmp/model.tar.gz
+        import shutil
+        shutil.move(tmp.name, "/tmp/model.tar.gz")
+        print("   ✅ Model downloaded successfully")
+except Exception as e:
+    print(f"   ❌ Error downloading model: {e}")
+    sys.exit(1)
+PYTHON_SCRIPT
+              fi
+              
+              # Extract model
+              echo ""
+              echo "📦 Extracting model..."
+              mkdir -p /tmp/ollama-model
+              tar -xzf /tmp/model.tar.gz -C /tmp/ollama-model
+              echo "✅ Model extracted"
+              
+              # Find Modelfile
+              MODELFILE="/tmp/ollama-model/Modelfile"
+              if [ ! -f "$MODELFILE" ]; then
+                # Try to find it in subdirectories
+                MODELFILE=$(find /tmp/ollama-model -name "Modelfile" | head -1)
+              fi
+              
+              if [ -z "$MODELFILE" ] || [ ! -f "$MODELFILE" ]; then
+                echo "❌ Modelfile not found in extracted archive"
+                exit 1
+              fi
+              
+              echo "✅ Found Modelfile: $MODELFILE"
+              
+              # Get model name from Modelfile or use default
+              MODEL_NAME="${MODEL_NAME:-agent-sre:latest}"
+              if grep -q "^FROM" "$MODELFILE"; then
+                # Extract model name from Modelfile if it contains a name
+                EXTRACTED_NAME=$(grep -E "^FROM|^# Model:" "$MODELFILE" | head -1 | sed 's/.*agent-sre[^:]*:\([^ ]*\).*/agent-sre:\1/' || echo "$MODEL_NAME")
+                if [[ "$EXTRACTED_NAME" == agent-sre:* ]]; then
+                  MODEL_NAME="$EXTRACTED_NAME"
+                fi
+              fi
+              
+              echo ""
+              echo "📤 Importing model into Ollama..."
+              echo "   Model name: $MODEL_NAME"
+              echo "   Modelfile: $MODELFILE"
+              
+              # Update Modelfile to use absolute path for model directory
+              MODEL_DIR=$(dirname "$MODELFILE")
+              sed -i "s|^FROM.*|FROM $MODEL_DIR/model|" "$MODELFILE"
+              
+              # Import into Ollama using Ollama API
+              # First, check if model already exists
+              EXISTING_MODELS=$(curl -s "http://${OLLAMA_HOST}/api/tags" | grep -o "\"name\":\"${MODEL_NAME%%:*}[^\"]*\"" || echo "")
+              
+              if echo "$EXISTING_MODELS" | grep -q "$MODEL_NAME"; then
+                echo "   ⚠️  Model $MODEL_NAME already exists, removing old version..."
+                curl -X DELETE "http://${OLLAMA_HOST}/api/delete" -d "{\"name\": \"${MODEL_NAME}\"}" || true
+              fi
+              
+              # Create model using Ollama API
+              echo "   Creating model in Ollama..."
+              python3 << 'PYTHON_IMPORT'
+import os
+import json
+import requests
+import subprocess
+import sys
+
+ollama_host = os.getenv("OLLAMA_HOST", "ollama.ollama.svc.cluster.local:11434")
+model_name = os.getenv("MODEL_NAME", "agent-sre:latest")
+modelfile_path = os.getenv("MODELFILE", "/tmp/ollama-model/Modelfile")
+
+# Read Modelfile
+with open(modelfile_path, 'r') as f:
+    modelfile_content = f.read()
+
+# Create model using Ollama API
+url = f"http://{ollama_host}/api/create"
+data = {
+    "name": model_name,
+    "modelfile": modelfile_content,
+    "stream": False
+}
+
+print(f"   Sending create request to {url}...")
+try:
+    response = requests.post(url, json=data, timeout=300)
+    response.raise_for_status()
+    print(f"   ✅ Model {model_name} created successfully!")
+    
+    # Verify model exists
+    verify_url = f"http://{ollama_host}/api/tags"
+    verify_response = requests.get(verify_url)
+    if verify_response.status_code == 200:
+        models = verify_response.json().get("models", [])
+        found = any(m.get("name") == model_name for m in models)
+        if found:
+            print(f"   ✅ Verified: {model_name} is available in Ollama")
+        else:
+            print(f"   ⚠️  Warning: Model created but not found in list")
+    else:
+        print(f"   ⚠️  Warning: Could not verify model (status: {verify_response.status_code})")
+        
+except requests.exceptions.RequestException as e:
+    print(f"   ❌ Error creating model: {e}")
+    sys.exit(1)
+PYTHON_IMPORT
+              
+              echo ""
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "✅ Agent-SRE model imported successfully into Ollama!"
+              echo "   Model: ${MODEL_NAME}"
+              echo "   Ollama endpoint: http://${OLLAMA_HOST}"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          env:
+            - name: OLLAMA_HOST
+              value: "ollama.ollama.svc.cluster.local:11434"
+            - name: MINIO_ENDPOINT
+              value: "minio.minio.svc.cluster.local:9000"
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+                  optional: true
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+                  optional: true
+            - name: MODEL_BUCKET
+              value: "ml-models"
+            - name: MODEL_PATH
+              value: "agent-sre/functiongemma-270m"
+            - name: MODEL_VERSION
+              value: "latest"  # Can be overridden with specific version
+            - name: MODEL_NAME
+              value: "agent-sre:latest"  # Can be overridden
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+---
+# ServiceAccount for Ollama import job
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ollama-import-sa
+  namespace: ai
+  labels:
+    app: flyte-workflow
+    component: ollama-import
+---
+# Role for accessing MinIO secrets and Ollama
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ollama-import-role
+  namespace: ai
+  labels:
+    app: flyte-workflow
+    component: ollama-import
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ollama-import-rolebinding
+  namespace: ai
+  labels:
+    app: flyte-workflow
+    component: ollama-import
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ollama-import-role
+subjects:
+- kind: ServiceAccount
+  name: ollama-import-sa
+  namespace: ai
+

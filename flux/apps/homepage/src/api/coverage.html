@@ -1,0 +1,2473 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>bruno-api: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">bruno-api/handlers.go (0.0%)</option>
+				
+				<option value="file1">bruno-api/main.go (0.0%)</option>
+				
+				<option value="file2">bruno-api/middleware.go (0.0%)</option>
+				
+				<option value="file3">bruno-api/security/security.go (49.6%)</option>
+				
+				<option value="file4">bruno-api/services/context_builder.go (26.9%)</option>
+				
+				<option value="file5">bruno-api/services/llm_service.go (61.9%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "database/sql"
+        "encoding/json"
+        "log"
+        "net/http"
+        "net/url"
+        "strconv"
+
+        "github.com/gin-gonic/gin"
+        "github.com/lib/pq"
+
+        // 🔒 Security package
+        "bruno-api/security"
+)
+
+// =============================================================================
+// 🎯 PROJECT HANDLERS
+// =============================================================================
+
+func getProjects(c *gin.Context) <span class="cov0" title="0">{
+        query := `
+                SELECT id, title, description, description as short_description, type, github_url, live_url, technologies, active, github_active
+                FROM projects 
+                WHERE active = true
+                ORDER BY "order" ASC, id ASC
+        `
+
+        rows, err := db.Query(query)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch projects"})
+                return
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        var projects []Project
+        for rows.Next() </span><span class="cov0" title="0">{
+                var p Project
+                var githubURL, liveURL sql.NullString
+                var technologies pq.StringArray
+
+                if err := rows.Scan(&amp;p.ID, &amp;p.Title, &amp;p.Description, &amp;p.ShortDescription, &amp;p.Type, &amp;githubURL, &amp;liveURL, &amp;technologies, &amp;p.Active, &amp;p.GithubActive); err != nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">if liveURL.Valid </span><span class="cov0" title="0">{
+                        p.LiveURL = liveURL.String
+                }</span>
+                <span class="cov0" title="0">if githubURL.Valid </span><span class="cov0" title="0">{
+                        p.GithubURL = githubURL.String
+                }</span>
+                <span class="cov0" title="0">p.Technologies = []string(technologies)
+                projects = append(projects, p)</span>
+        }
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, projects)</span>
+}
+
+func getProject(c *gin.Context) <span class="cov0" title="0">{
+        id := c.Param("id")
+
+        // Enhanced input validation using security package
+        projectID, validationErr := security.ValidateInteger(id, "id", 1, 999999)
+        if validationErr != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Message})
+                return
+        }</span>
+
+        <span class="cov0" title="0">var p Project
+        var githubURL, liveURL sql.NullString
+        var technologies pq.StringArray
+
+        query := `
+                SELECT id, title, description, description as short_description, type, github_url, live_url, technologies, active, github_active
+                FROM projects 
+                WHERE id = $1 AND active = true
+        `
+
+        err := db.QueryRow(query, projectID).Scan(&amp;p.ID, &amp;p.Title, &amp;p.Description, &amp;p.ShortDescription, &amp;p.Type, &amp;githubURL, &amp;liveURL, &amp;technologies, &amp;p.Active, &amp;p.GithubActive)
+        if err != nil </span><span class="cov0" title="0">{
+                if err == sql.ErrNoRows </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+                        return
+                }</span>
+                <span class="cov0" title="0">c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch project"})
+                return</span>
+        }
+
+        <span class="cov0" title="0">if liveURL.Valid </span><span class="cov0" title="0">{
+                p.LiveURL = liveURL.String
+        }</span>
+        <span class="cov0" title="0">if githubURL.Valid </span><span class="cov0" title="0">{
+                p.GithubURL = githubURL.String
+        }</span>
+        <span class="cov0" title="0">p.Technologies = []string(technologies)
+
+        c.JSON(http.StatusOK, p)</span>
+}
+
+func createProject(c *gin.Context) <span class="cov0" title="0">{
+        var project Project
+        if err := c.ShouldBindJSON(&amp;project); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+                return
+        }</span>
+
+        // Enhanced input validation and sanitization using security package
+        <span class="cov0" title="0">title, titleErr := security.ValidateAndSanitizeTitle(project.Title)
+        if titleErr != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": titleErr.Message})
+                return
+        }</span>
+        <span class="cov0" title="0">project.Title = title
+
+        description, descErr := security.ValidateAndSanitizeDescription(project.Description)
+        if descErr != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": descErr.Message})
+                return
+        }</span>
+        <span class="cov0" title="0">project.Description = description
+
+        // Validate type
+        if project.Type == "" || len(project.Type) &gt; 100 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid type length"})
+                return
+        }</span>
+        <span class="cov0" title="0">project.Type = security.SanitizeString(project.Type)
+
+        // Validate and sanitize URLs if provided
+        if project.GithubURL != "" </span><span class="cov0" title="0">{
+                githubURL, urlErr := security.ValidateAndSanitizeURL(project.GithubURL, "github_url")
+                if urlErr != nil </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusBadRequest, gin.H{"error": urlErr.Message})
+                        return
+                }</span>
+                <span class="cov0" title="0">project.GithubURL = githubURL</span>
+        }
+
+        <span class="cov0" title="0">if project.LiveURL != "" </span><span class="cov0" title="0">{
+                liveURL, urlErr := security.ValidateAndSanitizeURL(project.LiveURL, "live_url")
+                if urlErr != nil </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusBadRequest, gin.H{"error": urlErr.Message})
+                        return
+                }</span>
+                <span class="cov0" title="0">project.LiveURL = liveURL</span>
+        }
+
+        <span class="cov0" title="0">query := `
+                INSERT INTO projects (title, description, type, github_url, live_url, technologies, active, "order")
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING id
+        `
+
+        var id int
+        err := db.QueryRow(query, project.Title, project.Description, project.Type, project.GithubURL, project.LiveURL, pq.Array(project.Technologies), project.Active, 0).Scan(&amp;id)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create project"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">project.ID = id
+        c.JSON(http.StatusCreated, project)</span>
+}
+
+func updateProject(c *gin.Context) <span class="cov0" title="0">{
+        id := c.Param("id")
+
+        // Enhanced input validation using security package
+        projectID, validationErr := security.ValidateInteger(id, "id", 1, 999999)
+        if validationErr != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Message})
+                return
+        }</span>
+
+        <span class="cov0" title="0">var project Project
+        if err := c.ShouldBindJSON(&amp;project); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+                return
+        }</span>
+
+        // Enhanced input validation and sanitization using security package
+        <span class="cov0" title="0">title, titleErr := security.ValidateAndSanitizeTitle(project.Title)
+        if titleErr != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": titleErr.Message})
+                return
+        }</span>
+        <span class="cov0" title="0">project.Title = title
+
+        description, descErr := security.ValidateAndSanitizeDescription(project.Description)
+        if descErr != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": descErr.Message})
+                return
+        }</span>
+        <span class="cov0" title="0">project.Description = description
+
+        // Validate type
+        if project.Type == "" || len(project.Type) &gt; 100 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid type length"})
+                return
+        }</span>
+        <span class="cov0" title="0">project.Type = security.SanitizeString(project.Type)
+
+        // Validate and sanitize URLs if provided
+        if project.GithubURL != "" </span><span class="cov0" title="0">{
+                githubURL, urlErr := security.ValidateAndSanitizeURL(project.GithubURL, "github_url")
+                if urlErr != nil </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusBadRequest, gin.H{"error": urlErr.Message})
+                        return
+                }</span>
+                <span class="cov0" title="0">project.GithubURL = githubURL</span>
+        }
+
+        <span class="cov0" title="0">if project.LiveURL != "" </span><span class="cov0" title="0">{
+                liveURL, urlErr := security.ValidateAndSanitizeURL(project.LiveURL, "live_url")
+                if urlErr != nil </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusBadRequest, gin.H{"error": urlErr.Message})
+                        return
+                }</span>
+                <span class="cov0" title="0">project.LiveURL = liveURL</span>
+        }
+
+        <span class="cov0" title="0">query := `
+                UPDATE projects 
+                SET title = $1, description = $2, type = $3, github_url = $4, live_url = $5, technologies = $6, active = $7
+                WHERE id = $8
+        `
+
+        result, err := db.Exec(query, project.Title, project.Description, project.Type, project.GithubURL, project.LiveURL, pq.Array(project.Technologies), project.Active, projectID)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update project"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">rowsAffected, _ := result.RowsAffected()
+        if rowsAffected == 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, gin.H{"message": "Project updated successfully"})</span>
+}
+
+func deleteProject(c *gin.Context) <span class="cov0" title="0">{
+        id := c.Param("id")
+
+        // Input validation - ensure id is a valid integer
+        if id == "" </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">projectID, err := strconv.Atoi(id)
+        if err != nil || projectID &lt;= 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project ID format"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">query := `DELETE FROM projects WHERE id = $1`
+        result, err := db.Exec(query, projectID)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete project"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">rowsAffected, _ := result.RowsAffected()
+        if rowsAffected == 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusNotFound, gin.H{"error": "Project not found"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, gin.H{"message": "Project deleted successfully"})</span>
+}
+
+// =============================================================================
+// 🛠️ SKILL HANDLERS
+// =============================================================================
+
+func getSkills(c *gin.Context) <span class="cov0" title="0">{
+        query := `
+                SELECT id, name, category, proficiency, icon, "order" 
+                FROM skills 
+                ORDER BY "order", name
+        `
+
+        rows, err := db.Query(query)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch skills"})
+                return
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        var skills []Skill
+        for rows.Next() </span><span class="cov0" title="0">{
+                var skill Skill
+                err := rows.Scan(&amp;skill.ID, &amp;skill.Name, &amp;skill.Category, &amp;skill.Proficiency, &amp;skill.Icon, &amp;skill.Order)
+                if err != nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">skills = append(skills, skill)</span>
+        }
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, skills)</span>
+}
+
+func getSkill(c *gin.Context) <span class="cov0" title="0">{
+        id := c.Param("id")
+
+        // Input validation - ensure id is a valid integer
+        if id == "" </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid skill ID"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">skillID, err := strconv.Atoi(id)
+        if err != nil || skillID &lt;= 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid skill ID format"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">var skill Skill
+        query := `SELECT id, name, category, proficiency, icon, "order" FROM skills WHERE id = $1`
+
+        err = db.QueryRow(query, skillID).Scan(&amp;skill.ID, &amp;skill.Name, &amp;skill.Category, &amp;skill.Proficiency, &amp;skill.Icon, &amp;skill.Order)
+        if err != nil </span><span class="cov0" title="0">{
+                if err == sql.ErrNoRows </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusNotFound, gin.H{"error": "Skill not found"})
+                        return
+                }</span>
+                <span class="cov0" title="0">c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch skill"})
+                return</span>
+        }
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, skill)</span>
+}
+
+func createSkill(c *gin.Context) <span class="cov0" title="0">{
+        var skill Skill
+        if err := c.ShouldBindJSON(&amp;skill); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+                return
+        }</span>
+
+        // Input validation and sanitization
+        <span class="cov0" title="0">if skill.Name == "" || len(skill.Name) &gt; 100 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid skill name length"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">if skill.Category == "" || len(skill.Category) &gt; 100 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category length"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">if skill.Proficiency &lt; 1 || skill.Proficiency &gt; 5 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid proficiency level (1-5)"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">if skill.Icon != "" &amp;&amp; len(skill.Icon) &gt; 50 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid icon length"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">query := `
+                INSERT INTO skills (name, category, proficiency, icon, "order")
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id
+        `
+
+        var id int
+        err := db.QueryRow(query, skill.Name, skill.Category, skill.Proficiency, skill.Icon, skill.Order).Scan(&amp;id)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create skill"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">skill.ID = id
+        c.JSON(http.StatusCreated, skill)</span>
+}
+
+func updateSkill(c *gin.Context) <span class="cov0" title="0">{
+        id := c.Param("id")
+
+        // Input validation - ensure id is a valid integer
+        if id == "" </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid skill ID"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">skillID, err := strconv.Atoi(id)
+        if err != nil || skillID &lt;= 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid skill ID format"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">var skill Skill
+        if err := c.ShouldBindJSON(&amp;skill); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+                return
+        }</span>
+
+        // Input validation and sanitization
+        <span class="cov0" title="0">if skill.Name == "" || len(skill.Name) &gt; 100 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid skill name length"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">if skill.Category == "" || len(skill.Category) &gt; 100 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category length"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">if skill.Proficiency &lt; 1 || skill.Proficiency &gt; 5 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid proficiency level (1-5)"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">if skill.Icon != "" &amp;&amp; len(skill.Icon) &gt; 50 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid icon length"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">query := `
+                UPDATE skills 
+                SET name = $1, category = $2, proficiency = $3, icon = $4, "order" = $5
+                WHERE id = $6
+        `
+
+        result, err := db.Exec(query, skill.Name, skill.Category, skill.Proficiency, skill.Icon, skill.Order, skillID)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update skill"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">rowsAffected, _ := result.RowsAffected()
+        if rowsAffected == 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusNotFound, gin.H{"error": "Skill not found"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, gin.H{"message": "Skill updated successfully"})</span>
+}
+
+func deleteSkill(c *gin.Context) <span class="cov0" title="0">{
+        id := c.Param("id")
+
+        // Input validation - ensure id is a valid integer
+        if id == "" </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid skill ID"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">skillID, err := strconv.Atoi(id)
+        if err != nil || skillID &lt;= 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid skill ID format"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">query := `DELETE FROM skills WHERE id = $1`
+        result, err := db.Exec(query, skillID)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete skill"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">rowsAffected, _ := result.RowsAffected()
+        if rowsAffected == 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusNotFound, gin.H{"error": "Skill not found"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, gin.H{"message": "Skill deleted successfully"})</span>
+}
+
+// =============================================================================
+// 💼 EXPERIENCE HANDLERS
+// =============================================================================
+
+func getExperiences(c *gin.Context) <span class="cov0" title="0">{
+        query := `
+                SELECT id, title, company, start_date, end_date, current, description, technologies, "order", active
+                FROM experience 
+                WHERE active = true
+                ORDER BY "order" DESC, start_date DESC
+        `
+
+        rows, err := db.Query(query)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch experiences"})
+                return
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        var experiences []Experience
+        for rows.Next() </span><span class="cov0" title="0">{
+                var exp Experience
+                var technologies pq.StringArray
+                err := rows.Scan(&amp;exp.ID, &amp;exp.Title, &amp;exp.Company, &amp;exp.StartDate, &amp;exp.EndDate, &amp;exp.Current, &amp;exp.Description, &amp;technologies, &amp;exp.Order, &amp;exp.Active)
+                if err != nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">exp.Technologies = []string(technologies)
+
+                experiences = append(experiences, exp)</span>
+        }
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, experiences)</span>
+}
+
+func getExperience(c *gin.Context) <span class="cov0" title="0">{
+        id := c.Param("id")
+
+        var exp Experience
+        var technologies pq.StringArray
+        query := `SELECT id, title, company, start_date, end_date, current, description, technologies, "order", active FROM experience WHERE id = $1 AND active = true`
+
+        err := db.QueryRow(query, id).Scan(&amp;exp.ID, &amp;exp.Title, &amp;exp.Company, &amp;exp.StartDate, &amp;exp.EndDate, &amp;exp.Current, &amp;exp.Description, &amp;technologies, &amp;exp.Order, &amp;exp.Active)
+        if err != nil </span><span class="cov0" title="0">{
+                if err == sql.ErrNoRows </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusNotFound, gin.H{"error": "Experience not found"})
+                        return
+                }</span>
+                <span class="cov0" title="0">c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch experience"})
+                return</span>
+        }
+
+        <span class="cov0" title="0">exp.Technologies = []string(technologies)
+
+        c.JSON(http.StatusOK, exp)</span>
+}
+
+func createExperience(c *gin.Context) <span class="cov0" title="0">{
+        var exp Experience
+        if err := c.ShouldBindJSON(&amp;exp); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">technologiesJSON, _ := json.Marshal(exp.Technologies)
+        query := `
+                INSERT INTO experience (title, company, start_date, end_date, current, description, technologies, "order", active)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                RETURNING id
+        `
+
+        var id int
+        err := db.QueryRow(query, exp.Title, exp.Company, exp.StartDate, exp.EndDate, exp.Current, exp.Description, technologiesJSON, exp.Order, true).Scan(&amp;id)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create experience"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">exp.ID = id
+        c.JSON(http.StatusCreated, exp)</span>
+}
+
+func updateExperience(c *gin.Context) <span class="cov0" title="0">{
+        id := c.Param("id")
+        var exp Experience
+        if err := c.ShouldBindJSON(&amp;exp); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">technologiesJSON, _ := json.Marshal(exp.Technologies)
+        query := `
+                UPDATE experience 
+                SET title = $1, company = $2, start_date = $3, end_date = $4, current = $5, description = $6, technologies = $7, "order" = $8, active = $9
+                WHERE id = $10
+        `
+
+        result, err := db.Exec(query, exp.Title, exp.Company, exp.StartDate, exp.EndDate, exp.Current, exp.Description, technologiesJSON, exp.Order, exp.Active, id)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update experience"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">rowsAffected, _ := result.RowsAffected()
+        if rowsAffected == 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusNotFound, gin.H{"error": "Experience not found"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, gin.H{"message": "Experience updated successfully"})</span>
+}
+
+func deleteExperience(c *gin.Context) <span class="cov0" title="0">{
+        id := c.Param("id")
+
+        query := `DELETE FROM experience WHERE id = $1`
+        result, err := db.Exec(query, id)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete experience"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">rowsAffected, _ := result.RowsAffected()
+        if rowsAffected == 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusNotFound, gin.H{"error": "Experience not found"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, gin.H{"message": "Experience deleted successfully"})</span>
+}
+
+// =============================================================================
+// 📄 CONTENT HANDLERS
+// =============================================================================
+
+func getContent(c *gin.Context) <span class="cov0" title="0">{
+        query := `SELECT id, type, value FROM content ORDER BY type, id`
+
+        rows, err := db.Query(query)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch content"})
+                return
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        var contents []Content
+        for rows.Next() </span><span class="cov0" title="0">{
+                var content Content
+                err := rows.Scan(&amp;content.ID, &amp;content.Type, &amp;content.Value)
+                if err != nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">contents = append(contents, content)</span>
+        }
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, contents)</span>
+}
+
+func getContentByType(c *gin.Context) <span class="cov0" title="0">{
+        contentType := c.Param("type")
+
+        query := `SELECT id, type, value FROM content WHERE type = $1`
+
+        rows, err := db.Query(query, contentType)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch content"})
+                return
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        var contents []Content
+        for rows.Next() </span><span class="cov0" title="0">{
+                var content Content
+                err := rows.Scan(&amp;content.ID, &amp;content.Type, &amp;content.Value)
+                if err != nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">contents = append(contents, content)</span>
+        }
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, contents)</span>
+}
+
+func createContent(c *gin.Context) <span class="cov0" title="0">{
+        var content Content
+        if err := c.ShouldBindJSON(&amp;content); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">query := `
+                INSERT INTO content (type, value)
+                VALUES ($1, $2)
+                RETURNING id
+        `
+
+        var id int
+        err := db.QueryRow(query, content.Type, content.Value).Scan(&amp;id)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create content"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">content.ID = id
+        c.JSON(http.StatusCreated, content)</span>
+}
+
+func updateContent(c *gin.Context) <span class="cov0" title="0">{
+        id := c.Param("id")
+        var content Content
+        if err := c.ShouldBindJSON(&amp;content); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">query := `UPDATE content SET type = $1, value = $2 WHERE id = $3`
+
+        result, err := db.Exec(query, content.Type, content.Value, id)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update content"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">rowsAffected, _ := result.RowsAffected()
+        if rowsAffected == 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusNotFound, gin.H{"error": "Content not found"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, gin.H{"message": "Content updated successfully"})</span>
+}
+
+func deleteContent(c *gin.Context) <span class="cov0" title="0">{
+        id := c.Param("id")
+
+        query := `DELETE FROM content WHERE id = $1`
+        result, err := db.Exec(query, id)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete content"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">rowsAffected, _ := result.RowsAffected()
+        if rowsAffected == 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusNotFound, gin.H{"error": "Content not found"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, gin.H{"message": "Content deleted successfully"})</span>
+}
+
+// =============================================================================
+// 👤 ABOUT HANDLERS
+// =============================================================================
+
+func getAbout(c *gin.Context) <span class="cov0" title="0">{
+        var description string
+        err := db.QueryRow("SELECT value-&gt;&gt;'description' FROM content WHERE key = 'about'").Scan(&amp;description)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch about data"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">aboutData := AboutData{
+                Description: description,
+                Highlights: []struct {
+                        Icon string `json:"icon"`
+                        Text string `json:"text"`
+                }{},
+        }
+
+        c.JSON(http.StatusOK, aboutData)</span>
+}
+
+func updateAbout(c *gin.Context) <span class="cov0" title="0">{
+        var aboutData AboutData
+        if err := c.ShouldBindJSON(&amp;aboutData); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">query := `UPDATE content SET value = jsonb_set(value, '{description}', $1) WHERE key = 'about'`
+        result, err := db.Exec(query, aboutData.Description)
+        if err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update about data"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">rowsAffected, _ := result.RowsAffected()
+        if rowsAffected == 0 </span><span class="cov0" title="0">{
+                c.JSON(http.StatusNotFound, gin.H{"error": "About content not found"})
+                return
+        }</span>
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, gin.H{"message": "About data updated successfully"})</span>
+}
+
+// =============================================================================
+// 📞 CONTACT HANDLERS
+// =============================================================================
+
+func getContact(c *gin.Context) <span class="cov0" title="0">{
+        contactData := ContactData{
+                Email:        getContentValue("contact", "email", "bruno@lucena.cloud"),
+                Location:     getContentValue("contact", "location", "Brazil"),
+                LinkedIn:     getContentValue("contact", "linkedin", "https://www.linkedin.com/in/bvlucena"),
+                GitHub:       getContentValue("contact", "github", "https://github.com/brunovlucena"),
+                Availability: getContentValue("contact", "availability", "Open to new opportunities"),
+        }
+
+        c.JSON(http.StatusOK, contactData)
+}</span>
+
+func updateContact(c *gin.Context) <span class="cov0" title="0">{
+        var contactData ContactData
+        if err := c.ShouldBindJSON(&amp;contactData); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+                return
+        }</span>
+
+        // Update each field individually
+        <span class="cov0" title="0">fields := map[string]string{
+                "email":        contactData.Email,
+                "location":     contactData.Location,
+                "linkedin":     contactData.LinkedIn,
+                "github":       contactData.GitHub,
+                "availability": contactData.Availability,
+        }
+
+        for field, value := range fields </span><span class="cov0" title="0">{
+                query := `UPDATE content SET value = jsonb_set(value, $1, $2) WHERE key = 'contact'`
+                _, err := db.Exec(query, "{"+field+"}", value)
+                if err != nil </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update contact data"})
+                        return
+                }</span>
+        }
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, gin.H{"message": "Contact data updated successfully"})</span>
+}
+
+// =============================================================================
+// 📊 ANALYTICS HANDLERS
+// =============================================================================
+
+func handleAnalyticsTrack(c *gin.Context) <span class="cov0" title="0">{
+        var trackData struct {
+                ProjectID int    `json:"project_id"`
+                IP        string `json:"ip"`
+                UserAgent string `json:"user_agent"`
+                Referrer  string `json:"referrer"`
+        }
+
+        if err := c.ShouldBindJSON(&amp;trackData); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+                return
+        }</span>
+
+        // Log the analytics data (in a real implementation, you might store this in a database)
+        <span class="cov0" title="0">log.Printf("📊 Analytics: Project %d viewed from IP %s", trackData.ProjectID, trackData.IP)
+
+        c.JSON(http.StatusOK, gin.H{"status": "tracked", "project_id": trackData.ProjectID})</span>
+}
+
+// =============================================================================
+// 🛠️ UTILITY FUNCTIONS
+// =============================================================================
+
+func getContentValue(key, field, defaultValue string) string <span class="cov0" title="0">{
+        var value string
+        query := "SELECT value-&gt;&gt;$1 FROM content WHERE key = $2"
+        err := db.QueryRow(query, field, key).Scan(&amp;value)
+        if err != nil </span><span class="cov0" title="0">{
+                return defaultValue
+        }</span>
+        <span class="cov0" title="0">return value</span>
+}
+
+// =============================================================================
+// 🔒 SECURITY HELPER FUNCTIONS
+// =============================================================================
+
+func isValidURL(urlStr string) bool <span class="cov0" title="0">{
+        if urlStr == "" </span><span class="cov0" title="0">{
+                return false
+        }</span>
+
+        <span class="cov0" title="0">parsedURL, err := url.Parse(urlStr)
+        if err != nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+
+        // Check if scheme is http or https
+        <span class="cov0" title="0">if parsedURL.Scheme != "http" &amp;&amp; parsedURL.Scheme != "https" </span><span class="cov0" title="0">{
+                return false
+        }</span>
+
+        // Check if host is not empty
+        <span class="cov0" title="0">if parsedURL.Host == "" </span><span class="cov0" title="0">{
+                return false
+        }</span>
+
+        <span class="cov0" title="0">return true</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package main
+
+import (
+        "context"
+        "database/sql"
+        "log"
+        "net/http"
+        "os"
+        "strings"
+        "time"
+
+        // 🌐 Web framework and middleware
+        "github.com/gin-contrib/cors"
+        "github.com/gin-contrib/gzip"
+        "github.com/gin-gonic/gin"
+
+        // 🔧 Environment and database
+        "github.com/joho/godotenv"
+        _ "github.com/lib/pq"
+
+        // 📊 Prometheus monitoring
+        "github.com/prometheus/client_golang/prometheus/promhttp"
+
+        // 🗄️ Redis caching
+        "github.com/redis/go-redis/v9"
+
+        // 🔒 Security package
+        "bruno-api/security"
+
+        // 🤖 LLM services
+        "bruno-api/services"
+)
+
+// =============================================================================
+// 📋 GLOBAL VARIABLES
+// =============================================================================
+
+var (
+        db          *sql.DB
+        redisClient *redis.Client
+        secConfig   security.SecurityConfig
+        llmService  *services.LLMService
+)
+
+// =============================================================================
+// 🚀 MAIN APPLICATION
+// =============================================================================
+
+func main() <span class="cov0" title="0">{
+        // Load environment variables
+        if err := godotenv.Load(); err != nil </span><span class="cov0" title="0">{
+                log.Println("No .env file found, using environment variables")
+        }</span>
+
+        // Initialize database connection
+        <span class="cov0" title="0">if err := initDatabase(); err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("Failed to initialize database: %v", err)
+        }</span>
+        <span class="cov0" title="0">defer db.Close()
+
+        // Initialize Redis connection
+        if err := initRedis(); err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("Failed to initialize Redis: %v", err)
+        }</span>
+        <span class="cov0" title="0">defer redisClient.Close()
+
+        // Initialize security configuration
+        initSecurityConfig()
+
+        // Initialize LLM service
+        initLLMService()
+
+        // Initialize OpenTelemetry (if enabled)
+        initTracing()
+
+        // Setup Gin router
+        router := setupRouter()
+
+        // Get port from environment
+        port := getEnv("PORT", "8080")
+
+        // Start server
+        log.Printf("🚀 Server starting on port %s", port)
+        if err := router.Run(":" + port); err != nil </span><span class="cov0" title="0">{
+                log.Fatalf("Failed to start server: %v", err)
+        }</span>
+}
+
+// =============================================================================
+// 🔧 INITIALIZATION FUNCTIONS
+// =============================================================================
+
+func initDatabase() error <span class="cov0" title="0">{
+        connStr := getEnv("DATABASE_URL", "postgresql://postgres:secure-password@localhost:5432/bruno_site?sslmode=disable")
+
+        var err error
+        db, err = sql.Open("postgres", connStr)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        // Test connection
+        <span class="cov0" title="0">if err := db.Ping(); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        // Configure connection pool
+        <span class="cov0" title="0">db.SetMaxOpenConns(25)
+        db.SetMaxIdleConns(5)
+        db.SetConnMaxLifetime(5 * time.Minute)
+
+        log.Println("✅ Database connected successfully")
+        return nil</span>
+}
+
+func initRedis() error <span class="cov0" title="0">{
+        redisURL := getEnv("REDIS_URL", "redis://localhost:6379")
+
+        opts, err := redis.ParseURL(redisURL)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">redisClient = redis.NewClient(opts)
+
+        // Test connection
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+
+        if err := redisClient.Ping(ctx).Err(); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">log.Println("✅ Redis connected successfully")
+        return nil</span>
+}
+
+func initSecurityConfig() <span class="cov0" title="0">{
+        // Initialize security configuration from environment variables
+        secConfig = security.SecurityConfig{
+                EnableMetricsAuth: getEnv("ENABLE_METRICS_AUTH", "true") == "true",
+                MetricsUsername:   getEnv("METRICS_USERNAME", "admin"),
+                MetricsPassword:   getEnv("METRICS_PASSWORD", "secure_password_change_me"),
+                AllowedOrigins:    strings.Split(getEnv("ALLOWED_ORIGINS", "*"), ","),
+                EnableCSP:         getEnv("ENABLE_CSP", "true") == "true",
+                CSPPolicy:         getEnv("CSP_POLICY", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;"),
+        }
+
+        log.Println("🔒 Security configuration initialized")
+}</span>
+
+func initLLMService() <span class="cov0" title="0">{
+        llmService = services.NewLLMService(db)
+
+        // Test LLM service health
+        if err := llmService.HealthCheck(); err != nil </span><span class="cov0" title="0">{
+                log.Printf("⚠️ LLM service health check failed: %v", err)
+                log.Println("💡 Make sure Ollama is running and the model is available")
+        }</span> else<span class="cov0" title="0"> {
+                log.Println("🤖 LLM service initialized and healthy")
+        }</span>
+}
+
+func initTracing() <span class="cov0" title="0">{
+        // OpenTelemetry initialization (currently disabled)
+        // This can be enabled when needed for distributed tracing
+        log.Println("ℹ️  OpenTelemetry tracing disabled")
+}</span>
+
+// =============================================================================
+// 🌐 ROUTER SETUP
+// =============================================================================
+
+func setupRouter() *gin.Engine <span class="cov0" title="0">{
+        // Set Gin mode
+        if getEnv("GIN_MODE", "release") == "debug" </span><span class="cov0" title="0">{
+                gin.SetMode(gin.DebugMode)
+        }</span> else<span class="cov0" title="0"> {
+                gin.SetMode(gin.ReleaseMode)
+        }</span>
+
+        <span class="cov0" title="0">router := gin.New()
+
+        // Add middleware
+        router.Use(requestLogger())
+        router.Use(errorHandler())
+        router.Use(gzip.Gzip(gzip.DefaultCompression))
+        router.Use(security.EnhancedSecurityHeaders(secConfig))
+        router.Use(security.SQLInjectionProtectionMiddleware())
+        router.Use(security.RateLimitMiddleware())
+        router.Use(cors.New(cors.Config{
+                AllowOrigins:     secConfig.AllowedOrigins,
+                AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+                AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+                ExposeHeaders:    []string{"Content-Length"},
+                AllowCredentials: true,
+                MaxAge:           12 * time.Hour,
+        }))
+
+        // Health check endpoint
+        router.GET("/health", healthCheck)
+
+        // Prometheus metrics endpoint (secured)
+        router.GET("/metrics", security.MetricsAuthMiddleware(secConfig), gin.WrapH(promhttp.Handler()))
+
+        // API routes (v1)
+        api := router.Group("/api/v1")
+        </span><span class="cov0" title="0">{
+                // Projects
+                api.GET("/projects", getProjects)
+                api.GET("/projects/:id", getProject)
+                api.POST("/projects", createProject)
+                api.PUT("/projects/:id", updateProject)
+                api.DELETE("/projects/:id", deleteProject)
+
+                // Skills
+                api.GET("/skills", getSkills)
+                api.GET("/skills/:id", getSkill)
+                api.POST("/skills", createSkill)
+                api.PUT("/skills/:id", updateSkill)
+                api.DELETE("/skills/:id", deleteSkill)
+
+                // Experiences
+                api.GET("/experiences", getExperiences)
+                api.GET("/experiences/:id", getExperience)
+                api.POST("/experiences", createExperience)
+                api.PUT("/experiences/:id", updateExperience)
+                api.DELETE("/experiences/:id", deleteExperience)
+
+                // Content
+                api.GET("/content", getContent)
+                api.GET("/content/:type", getContentByType)
+                api.POST("/content", createContent)
+                api.PUT("/content/:id", updateContent)
+                api.DELETE("/content/:id", deleteContent)
+
+                // About
+                api.GET("/about", getAbout)
+                api.PUT("/about", updateAbout)
+
+                // Contact
+                api.GET("/contact", getContact)
+                api.PUT("/contact", updateContact)
+
+                // 🤖 AI Chat endpoint
+                api.POST("/chat", handleChat)
+                api.GET("/chat/health", handleChatHealth)
+
+                // 📊 Analytics endpoint
+                api.POST("/analytics/track", handleAnalyticsTrack)
+        }</span>
+
+        // Legacy API routes (for frontend compatibility)
+        <span class="cov0" title="0">legacyApi := router.Group("/api")
+        </span><span class="cov0" title="0">{
+                // Projects
+                legacyApi.GET("/projects", getProjects)
+                legacyApi.GET("/projects/:id", getProject)
+                legacyApi.POST("/projects", createProject)
+                legacyApi.PUT("/projects/:id", updateProject)
+                legacyApi.DELETE("/projects/:id", deleteProject)
+
+                // Skills
+                legacyApi.GET("/skills", getSkills)
+                legacyApi.GET("/skills/:id", getSkill)
+                legacyApi.POST("/skills", createSkill)
+                legacyApi.PUT("/skills/:id", updateSkill)
+                legacyApi.DELETE("/skills/:id", deleteSkill)
+
+                // Experiences
+                legacyApi.GET("/experiences", getExperiences)
+                legacyApi.GET("/experiences/:id", getExperience)
+                legacyApi.POST("/experiences", createExperience)
+                legacyApi.PUT("/experiences/:id", updateExperience)
+                legacyApi.DELETE("/experiences/:id", deleteExperience)
+
+                // Content
+                legacyApi.GET("/content", getContent)
+                legacyApi.GET("/content/:type", getContentByType)
+                legacyApi.POST("/content", createContent)
+                legacyApi.PUT("/content/:id", updateContent)
+                legacyApi.DELETE("/content/:id", deleteContent)
+
+                // About
+                legacyApi.GET("/about", getAbout)
+                legacyApi.PUT("/about", updateAbout)
+
+                // Contact
+                legacyApi.GET("/contact", getContact)
+                legacyApi.PUT("/contact", updateContact)
+
+                // 🤖 AI Chat endpoint
+                legacyApi.POST("/chat", handleChat)
+                legacyApi.GET("/chat/health", handleChatHealth)
+
+                // 📊 Analytics endpoint
+                legacyApi.POST("/analytics/track", handleAnalyticsTrack)
+        }</span>
+
+        <span class="cov0" title="0">return router</span>
+}
+
+// =============================================================================
+// 🛠️ UTILITY FUNCTIONS
+// =============================================================================
+
+func getEnv(key, defaultValue string) string <span class="cov0" title="0">{
+        if value := os.Getenv(key); value != "" </span><span class="cov0" title="0">{
+                return value
+        }</span>
+        <span class="cov0" title="0">return defaultValue</span>
+}
+
+func healthCheck(c *gin.Context) <span class="cov0" title="0">{
+        c.JSON(http.StatusOK, gin.H{
+                "status":    "healthy",
+                "timestamp": time.Now().UTC(),
+                "service":   "bruno-api",
+        })
+}</span>
+
+// =============================================================================
+// 🤖 CHAT HANDLERS
+// =============================================================================
+
+func handleChat(c *gin.Context) <span class="cov0" title="0">{
+        var request services.ChatRequest
+
+        if err := c.ShouldBindJSON(&amp;request); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{
+                        "error":   "Invalid request format",
+                        "details": err.Error(),
+                })
+                return
+        }</span>
+
+        // Validate message is not empty
+        <span class="cov0" title="0">if strings.TrimSpace(request.Message) == "" </span><span class="cov0" title="0">{
+                c.JSON(http.StatusBadRequest, gin.H{
+                        "error": "Message cannot be empty",
+                })
+                return
+        }</span>
+
+        // Process chat request
+        <span class="cov0" title="0">response, err := llmService.ProcessChat(request)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Printf("❌ Chat processing error: %v", err)
+                c.JSON(http.StatusInternalServerError, gin.H{
+                        "error":   "Failed to process chat request",
+                        "details": err.Error(),
+                })
+                return
+        }</span>
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, response)</span>
+}
+
+func handleChatHealth(c *gin.Context) <span class="cov0" title="0">{
+        if err := llmService.HealthCheck(); err != nil </span><span class="cov0" title="0">{
+                c.JSON(http.StatusServiceUnavailable, gin.H{
+                        "status":    "unhealthy",
+                        "error":     err.Error(),
+                        "timestamp": time.Now().UTC(),
+                })
+                return
+        }</span>
+
+        <span class="cov0" title="0">c.JSON(http.StatusOK, gin.H{
+                "status":    "healthy",
+                "provider":  "ollama",
+                "model":     getEnv("GEMMA_MODEL", "gemma3n:e4b"),
+                "timestamp": time.Now().UTC(),
+        })</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package main
+
+import (
+        "fmt"
+        "log"
+        "net/http"
+        "time"
+
+        "github.com/gin-gonic/gin"
+)
+
+// =============================================================================
+// 🔧 MIDDLEWARE FUNCTIONS
+// =============================================================================
+
+// requestLogger logs all incoming requests
+func requestLogger() gin.HandlerFunc <span class="cov0" title="0">{
+        return gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string </span><span class="cov0" title="0">{
+                return fmt.Sprintf("[%s] %s %s %d %s %s\n",
+                        param.TimeStamp.Format(time.RFC3339),
+                        param.Method,
+                        param.Path,
+                        param.StatusCode,
+                        param.Latency,
+                        param.ClientIP,
+                )
+        }</span>)
+}
+
+// errorHandler handles panics and errors
+func errorHandler() gin.HandlerFunc <span class="cov0" title="0">{
+        return gin.CustomRecovery(func(c *gin.Context, recovered interface{}) </span><span class="cov0" title="0">{
+                if err, ok := recovered.(string); ok </span><span class="cov0" title="0">{
+                        log.Printf("Panic recovered: %s", err)
+                        c.JSON(http.StatusInternalServerError, gin.H{
+                                "error": "Internal server error",
+                        })
+                }</span>
+                <span class="cov0" title="0">c.AbortWithStatus(http.StatusInternalServerError)</span>
+        })
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package security
+
+import (
+        "crypto/rand"
+        "crypto/subtle"
+        "encoding/base64"
+        "fmt"
+        "html"
+        "net/http"
+        "regexp"
+        "strconv"
+        "strings"
+        "time"
+
+        "github.com/gin-gonic/gin"
+        "golang.org/x/crypto/bcrypt"
+)
+
+// =============================================================================
+// 🔒 SECURITY CONSTANTS AND CONFIGURATION
+// =============================================================================
+
+const (
+        // Rate limiting constants
+        MaxRequestsPerMinute = 100
+        MaxRequestsPerHour   = 1000
+
+        // Input validation constants
+        MaxTitleLength       = 255
+        MaxDescriptionLength = 5000
+        MaxURLLength         = 2048
+        MaxEmailLength       = 254
+
+        // Token constants
+        TokenLength = 32
+        TokenExpiry = 24 * time.Hour
+)
+
+// SecurityConfig holds security configuration
+type SecurityConfig struct {
+        EnableMetricsAuth bool
+        MetricsUsername   string
+        MetricsPassword   string
+        AllowedOrigins    []string
+        EnableCSP         bool
+        CSPPolicy         string
+}
+
+// =============================================================================
+// 🔍 INPUT VALIDATION AND SANITIZATION
+// =============================================================================
+
+// ValidationError represents a validation error
+type ValidationError struct {
+        Field   string `json:"field"`
+        Message string `json:"message"`
+}
+
+// ValidationResult holds validation results
+type ValidationResult struct {
+        IsValid bool              `json:"is_valid"`
+        Errors  []ValidationError `json:"errors,omitempty"`
+}
+
+// SanitizeString removes potentially dangerous characters and normalizes input
+func SanitizeString(input string) string <span class="cov6" title="19">{
+        if input == "" </span><span class="cov1" title="1">{
+                return ""
+        }</span>
+
+        // Remove null bytes and control characters
+        <span class="cov6" title="18">re := regexp.MustCompile(`[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]`)
+        input = re.ReplaceAllString(input, "")
+
+        // HTML escape to prevent XSS
+        input = html.EscapeString(input)
+
+        // Trim whitespace
+        input = strings.TrimSpace(input)
+
+        return input</span>
+}
+
+// ValidateAndSanitizeTitle validates and sanitizes project/skill titles
+func ValidateAndSanitizeTitle(title string) (string, *ValidationError) <span class="cov4" title="5">{
+        if title == "" </span><span class="cov1" title="1">{
+                return "", &amp;ValidationError{
+                        Field:   "title",
+                        Message: "Title is required",
+                }
+        }</span>
+
+        // Check for potentially dangerous patterns before sanitization
+        <span class="cov3" title="4">dangerousPatterns := []string{
+                "&lt;script", "javascript:", "onload=", "onerror=", "onclick=",
+                "&lt;iframe", "&lt;object", "&lt;embed", "data:text/html",
+        }
+
+        lowerTitle := strings.ToLower(title)
+        for _, pattern := range dangerousPatterns </span><span class="cov6" title="21">{
+                if strings.Contains(lowerTitle, pattern) </span><span class="cov2" title="2">{
+                        return "", &amp;ValidationError{
+                                Field:   "title",
+                                Message: "Title contains potentially dangerous content",
+                        }
+                }</span>
+        }
+
+        // Sanitize input
+        <span class="cov2" title="2">title = SanitizeString(title)
+
+        // Check length
+        if len(title) &gt; MaxTitleLength </span><span class="cov1" title="1">{
+                return "", &amp;ValidationError{
+                        Field:   "title",
+                        Message: fmt.Sprintf("Title must be %d characters or less", MaxTitleLength),
+                }
+        }</span>
+
+        <span class="cov1" title="1">return title, nil</span>
+}
+
+// ValidateAndSanitizeDescription validates and sanitizes descriptions
+func ValidateAndSanitizeDescription(description string) (string, *ValidationError) <span class="cov0" title="0">{
+        if description == "" </span><span class="cov0" title="0">{
+                return "", &amp;ValidationError{
+                        Field:   "description",
+                        Message: "Description is required",
+                }
+        }</span>
+
+        // Sanitize input
+        <span class="cov0" title="0">description = SanitizeString(description)
+
+        // Check length
+        if len(description) &gt; MaxDescriptionLength </span><span class="cov0" title="0">{
+                return "", &amp;ValidationError{
+                        Field:   "description",
+                        Message: fmt.Sprintf("Description must be %d characters or less", MaxDescriptionLength),
+                }
+        }</span>
+
+        <span class="cov0" title="0">return description, nil</span>
+}
+
+// ValidateAndSanitizeURL validates and sanitizes URLs
+func ValidateAndSanitizeURL(urlStr, fieldName string) (string, *ValidationError) <span class="cov4" title="7">{
+        if urlStr == "" </span><span class="cov1" title="1">{
+                return "", nil // URLs can be optional
+        }</span>
+
+        // Sanitize input
+        <span class="cov4" title="6">urlStr = SanitizeString(urlStr)
+
+        // Check length
+        if len(urlStr) &gt; MaxURLLength </span><span class="cov0" title="0">{
+                return "", &amp;ValidationError{
+                        Field:   fieldName,
+                        Message: fmt.Sprintf("URL must be %d characters or less", MaxURLLength),
+                }
+        }</span>
+
+        // Basic URL validation
+        <span class="cov4" title="6">if !strings.HasPrefix(urlStr, "http://") &amp;&amp; !strings.HasPrefix(urlStr, "https://") </span><span class="cov3" title="4">{
+                return "", &amp;ValidationError{
+                        Field:   fieldName,
+                        Message: "URL must start with http:// or https://",
+                }
+        }</span>
+
+        // Check for potentially dangerous URLs
+        <span class="cov2" title="2">dangerousPatterns := []string{
+                "javascript:", "data:text/html", "vbscript:", "file://",
+        }
+
+        lowerURL := strings.ToLower(urlStr)
+        for _, pattern := range dangerousPatterns </span><span class="cov4" title="8">{
+                if strings.Contains(lowerURL, pattern) </span><span class="cov0" title="0">{
+                        return "", &amp;ValidationError{
+                                Field:   fieldName,
+                                Message: "URL contains potentially dangerous content",
+                        }
+                }</span>
+        }
+
+        <span class="cov2" title="2">return urlStr, nil</span>
+}
+
+// ValidateAndSanitizeEmail validates and sanitizes email addresses
+func ValidateAndSanitizeEmail(email string) (string, *ValidationError) <span class="cov4" title="7">{
+        if email == "" </span><span class="cov1" title="1">{
+                return "", &amp;ValidationError{
+                        Field:   "email",
+                        Message: "Email is required",
+                }
+        }</span>
+
+        // Sanitize input
+        <span class="cov4" title="6">email = SanitizeString(email)
+
+        // Check length
+        if len(email) &gt; MaxEmailLength </span><span class="cov0" title="0">{
+                return "", &amp;ValidationError{
+                        Field:   "email",
+                        Message: fmt.Sprintf("Email must be %d characters or less", MaxEmailLength),
+                }
+        }</span>
+
+        // Basic email validation
+        <span class="cov4" title="6">emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+        if !emailRegex.MatchString(email) </span><span class="cov3" title="4">{
+                return "", &amp;ValidationError{
+                        Field:   "email",
+                        Message: "Invalid email format",
+                }
+        }</span>
+
+        <span class="cov2" title="2">return email, nil</span>
+}
+
+// ValidateInteger validates integer parameters
+func ValidateInteger(value string, fieldName string, min, max int) (int, *ValidationError) <span class="cov4" title="5">{
+        if value == "" </span><span class="cov1" title="1">{
+                return 0, &amp;ValidationError{
+                        Field:   fieldName,
+                        Message: fmt.Sprintf("%s is required", fieldName),
+                }
+        }</span>
+
+        // Check if it's a valid integer
+        <span class="cov3" title="4">intValue, err := parseInt(value)
+        if err != nil </span><span class="cov1" title="1">{
+                return 0, &amp;ValidationError{
+                        Field:   fieldName,
+                        Message: fmt.Sprintf("%s must be a valid integer", fieldName),
+                }
+        }</span>
+
+        // Check range
+        <span class="cov3" title="3">if intValue &lt; min || intValue &gt; max </span><span class="cov2" title="2">{
+                return 0, &amp;ValidationError{
+                        Field:   fieldName,
+                        Message: fmt.Sprintf("%s must be between %d and %d", fieldName, min, max),
+                }
+        }</span>
+
+        <span class="cov1" title="1">return intValue, nil</span>
+}
+
+// =============================================================================
+// 🔐 AUTHENTICATION AND AUTHORIZATION
+// =============================================================================
+
+// GenerateSecureToken generates a cryptographically secure random token
+func GenerateSecureToken() (string, error) <span class="cov0" title="0">{
+        bytes := make([]byte, TokenLength)
+        if _, err := rand.Read(bytes); err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov0" title="0">return base64.URLEncoding.EncodeToString(bytes), nil</span>
+}
+
+// HashPassword creates a bcrypt hash of a password
+func HashPassword(password string) (string, error) <span class="cov0" title="0">{
+        bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov0" title="0">return string(bytes), nil</span>
+}
+
+// CheckPassword compares a password with its hash
+func CheckPassword(password, hash string) bool <span class="cov0" title="0">{
+        err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+        return err == nil
+}</span>
+
+// SecureCompare performs a constant-time comparison
+func SecureCompare(a, b string) bool <span class="cov4" title="5">{
+        return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}</span>
+
+// =============================================================================
+// 🛡️ SECURITY MIDDLEWARE
+// =============================================================================
+
+// MetricsAuthMiddleware provides authentication for metrics endpoint
+func MetricsAuthMiddleware(config SecurityConfig) gin.HandlerFunc <span class="cov0" title="0">{
+        return func(c *gin.Context) </span><span class="cov0" title="0">{
+                if !config.EnableMetricsAuth </span><span class="cov0" title="0">{
+                        c.Next()
+                        return
+                }</span>
+
+                // Check for Basic Auth
+                <span class="cov0" title="0">username, password, ok := c.Request.BasicAuth()
+                if !ok </span><span class="cov0" title="0">{
+                        c.Header("WWW-Authenticate", `Basic realm="Metrics"`)
+                        c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+                        c.Abort()
+                        return
+                }</span>
+
+                // Validate credentials
+                <span class="cov0" title="0">if username != config.MetricsUsername || !SecureCompare(password, config.MetricsPassword) </span><span class="cov0" title="0">{
+                        c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+                        c.Abort()
+                        return
+                }</span>
+
+                <span class="cov0" title="0">c.Next()</span>
+        }
+}
+
+// EnhancedSecurityHeaders adds comprehensive security headers
+func EnhancedSecurityHeaders(config SecurityConfig) gin.HandlerFunc <span class="cov0" title="0">{
+        return func(c *gin.Context) </span><span class="cov0" title="0">{
+                // Basic security headers
+                c.Header("X-Content-Type-Options", "nosniff")
+                c.Header("X-Frame-Options", "DENY")
+                c.Header("X-XSS-Protection", "1; mode=block")
+                c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+                c.Header("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+
+                // Content Security Policy
+                if config.EnableCSP </span><span class="cov0" title="0">{
+                        c.Header("Content-Security-Policy", config.CSPPolicy)
+                }</span>
+
+                // HSTS (HTTP Strict Transport Security)
+                <span class="cov0" title="0">c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
+
+                // Remove server information
+                c.Header("Server", "")
+
+                c.Next()</span>
+        }
+}
+
+// RateLimitMiddleware implements rate limiting with Redis (placeholder)
+func RateLimitMiddleware() gin.HandlerFunc <span class="cov0" title="0">{
+        return func(c *gin.Context) </span><span class="cov0" title="0">{
+                // TODO: Implement Redis-based rate limiting
+                // For now, just pass through
+                c.Next()
+        }</span>
+}
+
+// SQLInjectionProtectionMiddleware adds additional SQL injection protection
+func SQLInjectionProtectionMiddleware() gin.HandlerFunc <span class="cov0" title="0">{
+        return func(c *gin.Context) </span><span class="cov0" title="0">{
+                // Check query parameters for SQL injection patterns
+                for _, values := range c.Request.URL.Query() </span><span class="cov0" title="0">{
+                        for _, value := range values </span><span class="cov0" title="0">{
+                                if containsSQLInjectionPattern(value) </span><span class="cov0" title="0">{
+                                        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input detected"})
+                                        c.Abort()
+                                        return
+                                }</span>
+                        }
+                }
+
+                // Check path parameters
+                <span class="cov0" title="0">for _, param := range c.Params </span><span class="cov0" title="0">{
+                        if containsSQLInjectionPattern(param.Value) </span><span class="cov0" title="0">{
+                                c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input detected"})
+                                c.Abort()
+                                return
+                        }</span>
+                }
+
+                <span class="cov0" title="0">c.Next()</span>
+        }
+}
+
+// =============================================================================
+// 🛠️ UTILITY FUNCTIONS
+// =============================================================================
+
+// containsSQLInjectionPattern checks for common SQL injection patterns
+func containsSQLInjectionPattern(input string) bool <span class="cov5" title="13">{
+        if input == "" </span><span class="cov1" title="1">{
+                return false
+        }</span>
+
+        // Convert to lowercase for case-insensitive matching
+        <span class="cov5" title="12">lowerInput := strings.ToLower(input)
+
+        // Common SQL injection patterns
+        patterns := []string{
+                "union select", "union all select", "drop table", "delete from",
+                "insert into", "update set", "alter table", "create table",
+                "exec(", "execute(", "xp_", "sp_", "--", "/*", "*/",
+                "waitfor delay", "benchmark(", "sleep(", "load_file(",
+                "into outfile", "into dumpfile", "information_schema",
+                "update ", "set ", "where ", "select ", "from ",
+        }
+
+        for _, pattern := range patterns </span><span class="cov10" title="118">{
+                if strings.Contains(lowerInput, pattern) </span><span class="cov5" title="11">{
+                        return true
+                }</span>
+        }
+
+        <span class="cov1" title="1">return false</span>
+}
+
+// parseInt safely parses an integer string
+func parseInt(s string) (int, error) <span class="cov3" title="4">{
+        // Remove any whitespace
+        s = strings.TrimSpace(s)
+
+        // Check for non-numeric characters
+        for _, char := range s </span><span class="cov4" title="7">{
+                if char &lt; '0' || char &gt; '9' </span><span class="cov1" title="1">{
+                        return 0, fmt.Errorf("non-numeric character found")
+                }</span>
+        }
+
+        // Use strconv.Atoi for actual parsing
+        <span class="cov3" title="3">return strconv.Atoi(s)</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package services
+
+import (
+        "database/sql"
+        "encoding/json"
+        "fmt"
+        "log"
+        "strings"
+)
+
+// ContextBuilder builds context from PostgreSQL data for LLM prompts
+type ContextBuilder struct {
+        db *sql.DB
+}
+
+// PersonalContext represents structured data about Bruno
+type PersonalContext struct {
+        About      AboutInfo     `json:"about"`
+        Skills     []SkillInfo   `json:"skills"`
+        Experience []ExpInfo     `json:"experience"`
+        Projects   []ProjectInfo `json:"projects"`
+        Contact    ContactInfo   `json:"contact"`
+}
+
+type AboutInfo struct {
+        Description string `json:"description"`
+}
+
+type SkillInfo struct {
+        Name        string `json:"name"`
+        Category    string `json:"category"`
+        Proficiency int    `json:"proficiency"`
+}
+
+type ExpInfo struct {
+        Title        string   `json:"title"`
+        Company      string   `json:"company"`
+        Period       string   `json:"period"`
+        Current      bool     `json:"current"`
+        Description  string   `json:"description"`
+        Technologies []string `json:"technologies"`
+}
+
+type ProjectInfo struct {
+        Title        string   `json:"title"`
+        Description  string   `json:"description"`
+        Type         string   `json:"type"`
+        Technologies []string `json:"technologies"`
+        GithubURL    string   `json:"github_url"`
+        LiveURL      string   `json:"live_url"`
+        Featured     bool     `json:"featured"`
+}
+
+type ContactInfo struct {
+        Email        string `json:"email"`
+        Location     string `json:"location"`
+        LinkedIn     string `json:"linkedin"`
+        GitHub       string `json:"github"`
+        Availability string `json:"availability"`
+}
+
+// NewContextBuilder creates a new context builder
+func NewContextBuilder(db *sql.DB) *ContextBuilder <span class="cov4" title="9">{
+        return &amp;ContextBuilder{db: db}
+}</span>
+
+// BuildContext creates context based on user query
+func (cb *ContextBuilder) BuildContext(query string) (string, error) <span class="cov3" title="5">{
+        log.Printf("🔍 Building context for query: %s", query)
+
+        // Analyze query to determine what data to include
+        context := &amp;PersonalContext{}
+
+        // Always include basic about info
+        about, err := cb.getAboutInfo()
+        if err != nil </span><span class="cov3" title="5">{
+                log.Printf("⚠️ Error getting about info: %v", err)
+        }</span> else<span class="cov0" title="0"> {
+                context.About = about
+        }</span>
+
+        // Always include contact info for contact-related queries
+        <span class="cov3" title="5">if cb.isContactQuery(query) </span><span class="cov1" title="1">{
+                contact, err := cb.getContactInfo()
+                if err != nil </span><span class="cov1" title="1">{
+                        log.Printf("⚠️ Error getting contact info: %v", err)
+                }</span> else<span class="cov0" title="0"> {
+                        context.Contact = contact
+                }</span>
+        }
+
+        // Include skills if query mentions skills, technologies, or capabilities
+        <span class="cov3" title="5">if cb.isSkillsQuery(query) </span><span class="cov1" title="1">{
+                skills, err := cb.getRelevantSkills(query)
+                if err != nil </span><span class="cov1" title="1">{
+                        log.Printf("⚠️ Error getting skills: %v", err)
+                }</span> else<span class="cov0" title="0"> {
+                        context.Skills = skills
+                }</span>
+        }
+
+        // Include experience if query mentions work, experience, or companies
+        <span class="cov3" title="5">if cb.isExperienceQuery(query) </span><span class="cov0" title="0">{
+                experience, err := cb.getRelevantExperience(query)
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Printf("⚠️ Error getting experience: %v", err)
+                }</span> else<span class="cov0" title="0"> {
+                        context.Experience = experience
+                }</span>
+        }
+
+        // Include projects if query mentions projects, work, or specific technologies
+        <span class="cov3" title="5">if cb.isProjectsQuery(query) </span><span class="cov0" title="0">{
+                projects, err := cb.getRelevantProjects(query)
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Printf("⚠️ Error getting projects: %v", err)
+                }</span> else<span class="cov0" title="0"> {
+                        context.Projects = projects
+                }</span>
+        }
+
+        // Convert to formatted string for LLM
+        <span class="cov3" title="5">return cb.formatContextForLLM(context, query), nil</span>
+}
+
+// Query analysis methods
+func (cb *ContextBuilder) isContactQuery(query string) bool <span class="cov5" title="17">{
+        contactKeywords := []string{"contact", "email", "reach", "hire", "available", "linkedin", "github"}
+        return cb.containsKeywords(query, contactKeywords)
+}</span>
+
+func (cb *ContextBuilder) isSkillsQuery(query string) bool <span class="cov5" title="22">{
+        skillKeywords := []string{"skill", "technology", "tech", "stack", "tools", "languages", "kubernetes", "aws", "go", "python", "devops", "sre"}
+        return cb.containsKeywords(query, skillKeywords)
+}</span>
+
+func (cb *ContextBuilder) isExperienceQuery(query string) bool <span class="cov5" title="20">{
+        expKeywords := []string{"experience", "work", "job", "career", "company", "role", "position", "background", "mobimeo", "notifi", "crealytics"}
+        return cb.containsKeywords(query, expKeywords)
+}</span>
+
+func (cb *ContextBuilder) isProjectsQuery(query string) bool <span class="cov5" title="21">{
+        projectKeywords := []string{"project", "site", "github", "build", "created", "developed", "bruno site", "knative"}
+        return cb.containsKeywords(query, projectKeywords)
+}</span>
+
+func (cb *ContextBuilder) containsKeywords(query string, keywords []string) bool <span class="cov7" title="80">{
+        queryLower := strings.ToLower(query)
+        for _, keyword := range keywords </span><span class="cov10" title="572">{
+                if strings.Contains(queryLower, keyword) </span><span class="cov6" title="41">{
+                        return true
+                }</span>
+        }
+        <span class="cov6" title="39">return false</span>
+}
+
+// Data retrieval methods
+func (cb *ContextBuilder) getAboutInfo() (AboutInfo, error) <span class="cov3" title="5">{
+        var about AboutInfo
+
+        // Check if database connection is available
+        if cb.db == nil </span><span class="cov3" title="5">{
+                return about, fmt.Errorf("database connection not available")
+        }</span>
+
+        <span class="cov0" title="0">var valueJSON string
+
+        err := cb.db.QueryRow("SELECT value FROM content WHERE key = 'about'").Scan(&amp;valueJSON)
+        if err != nil </span><span class="cov0" title="0">{
+                return about, err
+        }</span>
+
+        <span class="cov0" title="0">var data map[string]interface{}
+        if err := json.Unmarshal([]byte(valueJSON), &amp;data); err != nil </span><span class="cov0" title="0">{
+                return about, err
+        }</span>
+
+        <span class="cov0" title="0">if desc, ok := data["description"].(string); ok </span><span class="cov0" title="0">{
+                about.Description = desc
+        }</span>
+
+        <span class="cov0" title="0">return about, nil</span>
+}
+
+func (cb *ContextBuilder) getContactInfo() (ContactInfo, error) <span class="cov1" title="1">{
+        var contact ContactInfo
+
+        // Check if database connection is available
+        if cb.db == nil </span><span class="cov1" title="1">{
+                return contact, fmt.Errorf("database connection not available")
+        }</span>
+
+        <span class="cov0" title="0">var valueJSON string
+
+        err := cb.db.QueryRow("SELECT value FROM content WHERE key = 'contact'").Scan(&amp;valueJSON)
+        if err != nil </span><span class="cov0" title="0">{
+                return contact, err
+        }</span>
+
+        <span class="cov0" title="0">var data map[string]interface{}
+        if err := json.Unmarshal([]byte(valueJSON), &amp;data); err != nil </span><span class="cov0" title="0">{
+                return contact, err
+        }</span>
+
+        <span class="cov0" title="0">if email, ok := data["email"].(string); ok </span><span class="cov0" title="0">{
+                contact.Email = email
+        }</span>
+        <span class="cov0" title="0">if location, ok := data["location"].(string); ok </span><span class="cov0" title="0">{
+                contact.Location = location
+        }</span>
+        <span class="cov0" title="0">if linkedin, ok := data["linkedin"].(string); ok </span><span class="cov0" title="0">{
+                contact.LinkedIn = linkedin
+        }</span>
+        <span class="cov0" title="0">if github, ok := data["github"].(string); ok </span><span class="cov0" title="0">{
+                contact.GitHub = github
+        }</span>
+        <span class="cov0" title="0">if availability, ok := data["availability"].(string); ok </span><span class="cov0" title="0">{
+                contact.Availability = availability
+        }</span>
+
+        <span class="cov0" title="0">return contact, nil</span>
+}
+
+func (cb *ContextBuilder) getRelevantSkills(query string) ([]SkillInfo, error) <span class="cov1" title="1">{
+        var skills []SkillInfo
+
+        // Check if database connection is available
+        if cb.db == nil </span><span class="cov1" title="1">{
+                return skills, fmt.Errorf("database connection not available")
+        }</span>
+
+        // Get all active skills, ordered by proficiency and category
+        <span class="cov0" title="0">rows, err := cb.db.Query(`
+                SELECT name, category, proficiency 
+                FROM skills 
+                WHERE active = true 
+                ORDER BY proficiency DESC, category, name
+                LIMIT 20
+        `)
+        if err != nil </span><span class="cov0" title="0">{
+                return skills, err
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        for rows.Next() </span><span class="cov0" title="0">{
+                var skill SkillInfo
+                err := rows.Scan(&amp;skill.Name, &amp;skill.Category, &amp;skill.Proficiency)
+                if err != nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">skills = append(skills, skill)</span>
+        }
+
+        <span class="cov0" title="0">return skills, nil</span>
+}
+
+func (cb *ContextBuilder) getRelevantExperience(query string) ([]ExpInfo, error) <span class="cov0" title="0">{
+        var experiences []ExpInfo
+
+        // Check if database connection is available
+        if cb.db == nil </span><span class="cov0" title="0">{
+                return experiences, fmt.Errorf("database connection not available")
+        }</span>
+
+        <span class="cov0" title="0">rows, err := cb.db.Query(`
+                SELECT title, company, 
+                        CASE 
+                                WHEN current = true THEN start_date::text || ' - Present'
+                                ELSE start_date::text || ' - ' || end_date::text
+                        END as period,
+                        current, description, technologies
+                FROM experience 
+                WHERE active = true 
+                ORDER BY "order" DESC
+        `)
+        if err != nil </span><span class="cov0" title="0">{
+                return experiences, err
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        for rows.Next() </span><span class="cov0" title="0">{
+                var exp ExpInfo
+                var techArray sql.NullString
+
+                err := rows.Scan(&amp;exp.Title, &amp;exp.Company, &amp;exp.Period, &amp;exp.Current, &amp;exp.Description, &amp;techArray)
+                if err != nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                // Parse PostgreSQL array
+                <span class="cov0" title="0">if techArray.Valid </span><span class="cov0" title="0">{
+                        exp.Technologies = cb.parsePostgreSQLArray(techArray.String)
+                }</span>
+
+                <span class="cov0" title="0">experiences = append(experiences, exp)</span>
+        }
+
+        <span class="cov0" title="0">return experiences, nil</span>
+}
+
+func (cb *ContextBuilder) getRelevantProjects(query string) ([]ProjectInfo, error) <span class="cov0" title="0">{
+        var projects []ProjectInfo
+
+        // Check if database connection is available
+        if cb.db == nil </span><span class="cov0" title="0">{
+                return projects, fmt.Errorf("database connection not available")
+        }</span>
+
+        <span class="cov0" title="0">rows, err := cb.db.Query(`
+                SELECT title, description, type, github_url, live_url, technologies, featured
+                FROM projects 
+                WHERE active = true 
+                ORDER BY featured DESC, "order"
+        `)
+        if err != nil </span><span class="cov0" title="0">{
+                return projects, err
+        }</span>
+        <span class="cov0" title="0">defer rows.Close()
+
+        for rows.Next() </span><span class="cov0" title="0">{
+                var project ProjectInfo
+                var techArray sql.NullString
+                var githubURL, liveURL sql.NullString
+
+                err := rows.Scan(&amp;project.Title, &amp;project.Description, &amp;project.Type,
+                        &amp;githubURL, &amp;liveURL, &amp;techArray, &amp;project.Featured)
+                if err != nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">if githubURL.Valid </span><span class="cov0" title="0">{
+                        project.GithubURL = githubURL.String
+                }</span>
+                <span class="cov0" title="0">if liveURL.Valid </span><span class="cov0" title="0">{
+                        project.LiveURL = liveURL.String
+                }</span>
+
+                // Parse PostgreSQL array
+                <span class="cov0" title="0">if techArray.Valid </span><span class="cov0" title="0">{
+                        project.Technologies = cb.parsePostgreSQLArray(techArray.String)
+                }</span>
+
+                <span class="cov0" title="0">projects = append(projects, project)</span>
+        }
+
+        <span class="cov0" title="0">return projects, nil</span>
+}
+
+// Helper method to parse PostgreSQL arrays
+func (cb *ContextBuilder) parsePostgreSQLArray(arrayStr string) []string <span class="cov0" title="0">{
+        // Remove curly braces and split by comma
+        arrayStr = strings.Trim(arrayStr, "{}")
+        if arrayStr == "" </span><span class="cov0" title="0">{
+                return []string{}
+        }</span>
+
+        <span class="cov0" title="0">parts := strings.Split(arrayStr, ",")
+        var result []string
+        for _, part := range parts </span><span class="cov0" title="0">{
+                result = append(result, strings.Trim(part, " \""))
+        }</span>
+        <span class="cov0" title="0">return result</span>
+}
+
+// Format context for LLM prompt
+func (cb *ContextBuilder) formatContextForLLM(context *PersonalContext, query string) string <span class="cov3" title="5">{
+        var builder strings.Builder
+
+        builder.WriteString("SYSTEM: Answer questions directly with facts. NO greetings, NO introductions. Maximum 2 sentences.\n\n")
+
+        // About section
+        if context.About.Description != "" </span><span class="cov0" title="0">{
+                builder.WriteString(fmt.Sprintf("ABOUT BRUNO:\n%s\n\n", context.About.Description))
+        }</span>
+
+        // Contact information
+        <span class="cov3" title="5">if context.Contact.Email != "" </span><span class="cov0" title="0">{
+                builder.WriteString("CONTACT INFORMATION:\n")
+                builder.WriteString(fmt.Sprintf("- Email: %s\n", context.Contact.Email))
+                if context.Contact.Location != "" </span><span class="cov0" title="0">{
+                        builder.WriteString(fmt.Sprintf("- Location: %s\n", context.Contact.Location))
+                }</span>
+                <span class="cov0" title="0">if context.Contact.LinkedIn != "" </span><span class="cov0" title="0">{
+                        builder.WriteString(fmt.Sprintf("- LinkedIn: %s\n", context.Contact.LinkedIn))
+                }</span>
+                <span class="cov0" title="0">if context.Contact.GitHub != "" </span><span class="cov0" title="0">{
+                        builder.WriteString(fmt.Sprintf("- GitHub: %s\n", context.Contact.GitHub))
+                }</span>
+                <span class="cov0" title="0">if context.Contact.Availability != "" </span><span class="cov0" title="0">{
+                        builder.WriteString(fmt.Sprintf("- Availability: %s\n", context.Contact.Availability))
+                }</span>
+                <span class="cov0" title="0">builder.WriteString("\n")</span>
+        }
+
+        // Skills section
+        <span class="cov3" title="5">if len(context.Skills) &gt; 0 </span><span class="cov0" title="0">{
+                builder.WriteString("SKILLS &amp; TECHNOLOGIES:\n")
+                skillsByCategory := make(map[string][]SkillInfo)
+                for _, skill := range context.Skills </span><span class="cov0" title="0">{
+                        skillsByCategory[skill.Category] = append(skillsByCategory[skill.Category], skill)
+                }</span>
+
+                <span class="cov0" title="0">for category, skills := range skillsByCategory </span><span class="cov0" title="0">{
+                        builder.WriteString(fmt.Sprintf("- %s: ", category))
+                        var skillNames []string
+                        for _, skill := range skills </span><span class="cov0" title="0">{
+                                skillNames = append(skillNames, fmt.Sprintf("%s (%d/5)", skill.Name, skill.Proficiency))
+                        }</span>
+                        <span class="cov0" title="0">builder.WriteString(strings.Join(skillNames, ", "))
+                        builder.WriteString("\n")</span>
+                }
+                <span class="cov0" title="0">builder.WriteString("\n")</span>
+        }
+
+        // Experience section
+        <span class="cov3" title="5">if len(context.Experience) &gt; 0 </span><span class="cov0" title="0">{
+                builder.WriteString("PROFESSIONAL EXPERIENCE:\n")
+                for _, exp := range context.Experience </span><span class="cov0" title="0">{
+                        builder.WriteString(fmt.Sprintf("- %s at %s (%s)\n", exp.Title, exp.Company, exp.Period))
+                        if len(exp.Technologies) &gt; 0 </span><span class="cov0" title="0">{
+                                builder.WriteString(fmt.Sprintf("  Tech: %s\n", strings.Join(exp.Technologies, ", ")))
+                        }</span>
+                }
+                <span class="cov0" title="0">builder.WriteString("\n")</span>
+        }
+
+        // Projects section
+        <span class="cov3" title="5">if len(context.Projects) &gt; 0 </span><span class="cov0" title="0">{
+                builder.WriteString("KEY PROJECTS:\n")
+                for _, project := range context.Projects </span><span class="cov0" title="0">{
+                        builder.WriteString(fmt.Sprintf("- %s (%s)\n", project.Title, project.Type))
+                        if len(project.Technologies) &gt; 0 </span><span class="cov0" title="0">{
+                                builder.WriteString(fmt.Sprintf("  Tech: %s\n", strings.Join(project.Technologies, ", ")))
+                        }</span>
+                }
+                <span class="cov0" title="0">builder.WriteString("\n")</span>
+        }
+
+        <span class="cov3" title="5">builder.WriteString("CRITICAL: Keep responses SHORT and DIRECT. Maximum 2-3 sentences only.\n\n")
+
+        builder.WriteString(fmt.Sprintf("USER QUESTION: %s\n", query))
+
+        return builder.String()</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package services
+
+import (
+        "bytes"
+        "database/sql"
+        "encoding/json"
+        "fmt"
+        "io"
+        "log"
+        "net/http"
+        "os"
+        "strings"
+        "time"
+)
+
+// LLMService handles communication with Ollama
+type LLMService struct {
+        ollamaURL      string
+        model          string
+        contextBuilder *ContextBuilder
+        httpClient     *http.Client
+}
+
+// ChatRequest represents an incoming chat request
+type ChatRequest struct {
+        Message string `json:"message" binding:"required"`
+        Context string `json:"context,omitempty"`
+}
+
+// ChatResponse represents the response from the chatbot
+type ChatResponse struct {
+        Response  string   `json:"response"`
+        Sources   []string `json:"sources,omitempty"`
+        Model     string   `json:"model"`
+        Timestamp string   `json:"timestamp"`
+}
+
+// OllamaRequest represents request format for Ollama Chat API
+type OllamaRequest struct {
+        Model    string        `json:"model"`
+        Messages []ChatMessage `json:"messages"`
+        Stream   bool          `json:"stream"`
+}
+
+type ChatMessage struct {
+        Role    string `json:"role"`
+        Content string `json:"content"`
+}
+
+// OllamaResponse represents response format from Ollama Chat API
+type OllamaResponse struct {
+        Message OllamaMessage `json:"message"`
+        Done    bool          `json:"done"`
+}
+
+type OllamaMessage struct {
+        Role    string `json:"role"`
+        Content string `json:"content"`
+}
+
+// NewLLMService creates a new LLM service
+func NewLLMService(db *sql.DB) *LLMService <span class="cov6" title="3">{
+        service := &amp;LLMService{
+                ollamaURL:      getEnv("OLLAMA_URL", "http://192.168.0.3:11434"),
+                model:          getEnv("GEMMA_MODEL", "gemma3n:e4b"),
+                contextBuilder: NewContextBuilder(db),
+                httpClient: &amp;http.Client{
+                        Timeout: 60 * time.Second,
+                },
+        }
+
+        log.Printf("🤖 LLM Service initialized - Model: %s", service.model)
+        return service
+}</span>
+
+// ProcessChat handles a chat request and returns an AI response
+func (llm *LLMService) ProcessChat(request ChatRequest) (*ChatResponse, error) <span class="cov1" title="1">{
+        log.Printf("💬 Processing chat request: %s", request.Message)
+
+        // Build context from PostgreSQL data
+        context, err := llm.contextBuilder.BuildContext(request.Message)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Printf("⚠️ Error building context: %v", err)
+                return nil, fmt.Errorf("failed to build context: %v", err)
+        }</span>
+
+        // Generate response using Ollama
+        <span class="cov1" title="1">response, err := llm.callOllama(context)
+
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("LLM request failed: %v", err)
+        }</span>
+
+        // Create response
+        <span class="cov1" title="1">chatResponse := &amp;ChatResponse{
+                Response:  response,
+                Model:     llm.model,
+                Timestamp: time.Now().UTC().Format(time.RFC3339),
+                Sources:   []string{"PostgreSQL Database"}, // Could be enhanced to show specific tables used
+        }
+
+        log.Printf("✅ Chat response generated successfully")
+        return chatResponse, nil</span>
+}
+
+// callOllama sends request to Ollama API
+func (llm *LLMService) callOllama(prompt string) (string, error) <span class="cov1" title="1">{
+        log.Printf("🦙 Calling Ollama API at %s", llm.ollamaURL)
+
+        requestBody := OllamaRequest{
+                Model: llm.model,
+                Messages: []ChatMessage{
+                        {
+                                Role:    "system",
+                                Content: "You are a fact-based assistant. NEVER use greetings, introductions, or pleasantries. Answer questions immediately with facts only. Maximum 2 sentences. Start directly with the answer.",
+                        },
+                        {
+                                Role:    "user",
+                                Content: prompt,
+                        },
+                },
+                Stream: false,
+        }
+
+        jsonData, err := json.Marshal(requestBody)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to marshal request: %v", err)
+        }</span>
+
+        <span class="cov1" title="1">resp, err := llm.httpClient.Post(
+                fmt.Sprintf("%s/api/chat", llm.ollamaURL),
+                "application/json",
+                bytes.NewBuffer(jsonData),
+        )
+        if err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("HTTP request failed: %v", err)
+        }</span>
+        <span class="cov1" title="1">defer resp.Body.Close()
+
+        if resp.StatusCode != http.StatusOK </span><span class="cov0" title="0">{
+                body, _ := io.ReadAll(resp.Body)
+                return "", fmt.Errorf("ollama API error (status %d): %s", resp.StatusCode, string(body))
+        }</span>
+
+        <span class="cov1" title="1">var ollamaResp OllamaResponse
+        if err := json.NewDecoder(resp.Body).Decode(&amp;ollamaResp); err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("failed to decode response: %v", err)
+        }</span>
+
+        <span class="cov1" title="1">response := strings.TrimSpace(ollamaResp.Message.Content)
+
+        // Clean up any double spaces and trim
+        response = strings.TrimSpace(response)
+
+        return response, nil</span>
+}
+
+// HealthCheck checks if Ollama service is available
+func (llm *LLMService) HealthCheck() error <span class="cov0" title="0">{
+        resp, err := llm.httpClient.Get(fmt.Sprintf("%s/api/tags", llm.ollamaURL))
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("ollama health check failed: %v", err)
+        }</span>
+        <span class="cov0" title="0">defer resp.Body.Close()
+
+        if resp.StatusCode != http.StatusOK </span><span class="cov0" title="0">{
+                return fmt.Errorf("ollama health check failed with status: %d", resp.StatusCode)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// Helper function to get environment variables
+func getEnv(key, defaultValue string) string <span class="cov10" title="7">{
+        if value := os.Getenv(key); value != "" </span><span class="cov0" title="0">{
+                return value
+        }</span>
+        <span class="cov10" title="7">return defaultValue</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

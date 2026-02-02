@@ -1,0 +1,23 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 📊 PrometheusRules for alerting
+# Alert rules for various components
+# NOTE: These PrometheusRules are deployed AFTER kube-prometheus-stack HelmRelease
+# to ensure PrometheusRule CRDs are available
+
+resources:
+  - cert-manager.yaml
+  - cloudflare-argo.yaml  # BVL-23: Argo Smart Routing usage & cost alerts
+  - falco-security.yaml
+  - flux-system.yaml
+  - github-runners.yaml
+  - grafana.yaml
+  - homepage.yaml
+  - homepage-security.yaml  # SEC-013: Security monitoring and alerting
+  - node-disk.yaml
+  - persistent-volumes.yaml
+  - sealed-secrets.yaml
+  - agent-sre-triggers.yaml
+  - grafana-service-accounts.yaml

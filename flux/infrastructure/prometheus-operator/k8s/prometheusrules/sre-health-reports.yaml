@@ -1,0 +1,279 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sre-health-reports
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: sre-health-reports
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+    role: record-rules
+spec:
+  groups:
+  # =============================================================================
+  # 📊 LOKI HEALTH METRICS
+  # =============================================================================
+  - name: loki.health
+    interval: 30s
+    rules:
+    # Availability
+    - record: loki:health:availability:ratio
+      expr: |
+        sum(up{job=~".*loki.*"}) / count(up{job=~".*loki.*"})
+    
+    # Panic count (should be 0)
+    - record: loki:health:panics:total
+      expr: |
+        sum(increase(loki_panic_total[1h]))
+    
+    # Dropped entries rate
+    - record: loki:health:dropped_entries:rate
+      expr: |
+        sum(rate(loki_write_dropped_entries_total[5m]))
+    
+    # Dropped lines rate
+    - record: loki:health:dropped_lines:rate
+      expr: |
+        sum(rate(loki_process_dropped_lines_total{reason!="unwanted_container"}[5m]))
+    
+    # Query latency (P50, P95, P99)
+    - record: loki:health:query_latency:p50
+      expr: |
+        histogram_quantile(0.50, sum(rate(loki_request_duration_seconds_bucket{route=~"loki_api_v1_query_range|loki_api_v1_query"}[5m])) by (le))
+    
+    - record: loki:health:query_latency:p95
+      expr: |
+        histogram_quantile(0.95, sum(rate(loki_request_duration_seconds_bucket{route=~"loki_api_v1_query_range|loki_api_v1_query"}[5m])) by (le))
+    
+    - record: loki:health:query_latency:p99
+      expr: |
+        histogram_quantile(0.99, sum(rate(loki_request_duration_seconds_bucket{route=~"loki_api_v1_query_range|loki_api_v1_query"}[5m])) by (le))
+    
+    # Write latency
+    - record: loki:health:write_latency:p95
+      expr: |
+        histogram_quantile(0.95, sum(rate(loki_write_request_duration_seconds_bucket[5m])) by (le))
+    
+    # Ingestion rate (bytes/sec)
+    - record: loki:health:ingestion_rate:bytes_per_sec
+      expr: |
+        sum(rate(loki_distributor_bytes_received_total[5m]))
+    
+    # Ingestion rate (lines/sec)
+    - record: loki:health:ingestion_rate:lines_per_sec
+      expr: |
+        sum(rate(loki_distributor_lines_received_total[5m]))
+    
+    # Error rates
+    - record: loki:health:error_rate:ingestion
+      expr: |
+        sum(rate(loki_distributor_ingestion_failures_total[5m])) / 
+        sum(rate(loki_distributor_received_samples_total[5m]))
+    
+    - record: loki:health:error_rate:query
+      expr: |
+        sum(rate(loki_query_frontend_queries_failed_total[5m])) / 
+        sum(rate(loki_query_frontend_queries_total[5m]))
+    
+    # Memory streams (cardinality indicator)
+    - record: loki:health:memory_streams:total
+      expr: |
+        sum(loki_ingester_memory_streams)
+    
+    # Chunk operations
+    - record: loki:health:chunks:stored_bytes_total
+      expr: |
+        sum(loki_ingester_chunks_stored_bytes_total)
+    
+    - record: loki:health:chunks:flush_failures_rate
+      expr: |
+        sum(rate(loki_ingester_chunks_flush_failures_total[5m]))
+    
+    # Index cache performance
+    - record: loki:health:index_cache:hit_ratio
+      expr: |
+        sum(rate(loki_querier_index_cache_hits_total[5m])) / 
+        (sum(rate(loki_querier_index_cache_hits_total[5m])) + sum(rate(loki_querier_index_cache_gets_total[5m])))
+    
+    - record: loki:health:index_cache:encode_errors_rate
+      expr: |
+        sum(rate(loki_querier_index_cache_encode_errors_total[5m]))
+    
+    # Overall health score (0-1, where 1 is healthy)
+    - record: loki:health:score
+      expr: |
+        (
+          (loki:health:availability:ratio * 0.3) +
+          (clamp_min(1 - loki:health:error_rate:ingestion, 0) * 0.2) +
+          (clamp_min(1 - loki:health:error_rate:query, 0) * 0.2) +
+          (clamp_min(1 - (loki:health:dropped_entries:rate / 100), 0) * 0.15) +
+          (clamp_min(1 - (loki:health:query_latency:p95 / 10), 0) * 0.15)
+        )
+
+  # =============================================================================
+  # 📊 PROMETHEUS HEALTH METRICS
+  # =============================================================================
+  - name: prometheus.health
+    interval: 30s
+    rules:
+    # Availability
+    - record: prometheus:health:availability:ratio
+      expr: |
+        sum(up{job=~".*prometheus.*"}) / count(up{job=~".*prometheus.*"})
+    
+    # Scrape failures
+    - record: prometheus:health:scrape_failures:rate
+      expr: |
+        sum(rate(prometheus_target_scrapes_exceeded_sample_limit_total[5m]))
+    
+    # Storage
+    - record: prometheus:health:storage:chunks_head
+      expr: |
+        sum(prometheus_tsdb_head_chunks)
+    
+    - record: prometheus:health:storage:series_total
+      expr: |
+        sum(prometheus_tsdb_head_series)
+    
+    # Query performance
+    - record: prometheus:health:query_latency:p95
+      expr: |
+        histogram_quantile(0.95, sum(rate(prometheus_engine_query_duration_seconds_bucket[5m])) by (le))
+    
+    # Rule evaluation
+    - record: prometheus:health:rule_evaluation:failures_rate
+      expr: |
+        sum(rate(prometheus_rule_evaluation_failures_total[5m]))
+    
+    # Overall health score
+    - record: prometheus:health:score
+      expr: |
+        (
+          (prometheus:health:availability:ratio * 0.4) +
+          (clamp_min(1 - (prometheus:health:scrape_failures:rate / 100), 0) * 0.3) +
+          (clamp_min(1 - (prometheus:health:rule_evaluation:failures_rate / 10), 0) * 0.3)
+        )
+
+  # =============================================================================
+  # 📊 INFRASTRUCTURE HEALTH METRICS
+  # =============================================================================
+  - name: infrastructure.health
+    interval: 30s
+    rules:
+    # Kubernetes cluster health
+    - record: k8s:health:node_ready:ratio
+      expr: |
+        sum(kube_node_status_condition{condition="Ready",status="true"}) / 
+        count(kube_node_status_condition{condition="Ready"})
+    
+    - record: k8s:health:pod_ready:ratio
+      expr: |
+        sum(kube_pod_status_phase{phase="Running"}) / 
+        count(kube_pod_status_phase)
+    
+    - record: k8s:health:pod_restarts:rate
+      expr: |
+        sum(rate(kube_pod_container_status_restarts_total[5m]))
+    
+    # Resource utilization
+    - record: k8s:health:cpu_utilization:ratio
+      expr: |
+        sum(rate(container_cpu_usage_seconds_total[5m])) / 
+        sum(kube_pod_container_resource_limits{resource="cpu"})
+    
+    - record: k8s:health:memory_utilization:ratio
+      expr: |
+        sum(container_memory_working_set_bytes) / 
+        sum(kube_pod_container_resource_limits{resource="memory"})
+    
+    # Network
+    - record: k8s:health:network_errors:rate
+      expr: |
+        sum(rate(container_network_receive_errors_total[5m])) + 
+        sum(rate(container_network_transmit_errors_total[5m]))
+    
+    # Overall infrastructure health score
+    - record: infrastructure:health:score
+      expr: |
+        (
+          (k8s:health:node_ready:ratio * 0.3) +
+          (k8s:health:pod_ready:ratio * 0.3) +
+          (clamp_min(1 - k8s:health:cpu_utilization:ratio, 0) * 0.2) +
+          (clamp_min(1 - k8s:health:memory_utilization:ratio, 0) * 0.2)
+        )
+
+  # =============================================================================
+  # 📊 OBSERVABILITY STACK HEALTH (AGGREGATED)
+  # =============================================================================
+  - name: observability.health
+    interval: 30s
+    rules:
+    # Overall observability health score
+    - record: observability:health:score
+      expr: |
+        (
+          (loki:health:score * 0.4) +
+          (prometheus:health:score * 0.4) +
+          (infrastructure:health:score * 0.2)
+        )
+    
+    # Component status summary
+    - record: observability:health:components:healthy
+      expr: |
+        (loki:health:score > 0.8) + (prometheus:health:score > 0.8) + (infrastructure:health:score > 0.8)
+    
+    - record: observability:health:components:total
+      expr: "3"
+    
+    - record: observability:health:components:ratio
+      expr: |
+        observability:health:components:healthy / observability:health:components:total
+
+  # =============================================================================
+  # 📊 SRE REPORT METRICS (FOR AGENT CONSUMPTION)
+  # =============================================================================
+  - name: sre.report
+    interval: 60s
+    rules:
+    # Report-ready metrics (formatted for agent consumption)
+    - record: sre:report:loki:status
+      expr: |
+        (loki:health:score > 0.8) * 1
+    
+    - record: sre:report:prometheus:status
+      expr: |
+        (prometheus:health:score > 0.8) * 1
+    
+    - record: sre:report:infrastructure:status
+      expr: |
+        (infrastructure:health:score > 0.8) * 1
+    
+    - record: sre:report:overall:status
+      expr: |
+        (observability:health:score > 0.8) * 1
+    
+    # Key metrics for report generation
+    - record: sre:report:loki:key_metrics
+      expr: |
+        loki:health:availability:ratio or vector(0)
+    
+    - record: sre:report:loki:error_rate
+      expr: |
+        loki:health:error_rate:ingestion or vector(0)
+    
+    - record: sre:report:loki:latency_p95
+      expr: |
+        loki:health:query_latency:p95 or vector(0)
+    
+    - record: sre:report:prometheus:key_metrics
+      expr: |
+        prometheus:health:availability:ratio or vector(0)
+    
+    - record: sre:report:infrastructure:node_ready
+      expr: |
+        k8s:health:node_ready:ratio or vector(0)
+    
+    - record: sre:report:infrastructure:pod_ready
+      expr: |
+        k8s:health:pod_ready:ratio or vector(0)
+

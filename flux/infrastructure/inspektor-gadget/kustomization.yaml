@@ -1,0 +1,20 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 🔍 Inspektor Gadget - eBPF-based Kubernetes Observability
+# Provides real-time I/O, network, and system event monitoring
+# Similar to btop/ctop but for Kubernetes with deep kernel-level insights
+#
+# Usage after installation:
+#   kubectl gadget run top_blockio   # Monitor disk I/O per container
+#   kubectl gadget run top_file      # Monitor file operations
+#   kubectl gadget run top_tcp       # Monitor TCP connections
+#   kubectl gadget run trace_exec    # Trace process executions
+
+resources:
+  # 1. Create namespace first
+  - namespace.yaml
+  
+  # 2. Install Inspektor Gadget via Job
+  - inspektor-gadget-job.yaml

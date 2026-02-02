@@ -1,0 +1,93 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 STUDIO OVERLAY - Production Environment
+#
+#  Purpose: Production-grade deployment with conservative rollouts
+#  Features:
+#  - Flagger canary with conservative settings
+#  - A/B testing support via Linkerd headers
+#  - High availability (2+ replicas)
+#  - Strict success thresholds
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: knative-lambda
+
+# commonLabels removed - causes kustomize to add invalid 'selector' field to Knative Services
+# Labels are applied via patches instead
+
+resources:
+  - ../../base
+  # - canary.yaml  # Disabled: Flagger CRD not available
+  # - ab-testing.yaml  # Disabled: TrafficSplit CRD not available
+  # - metrictemplates.yaml  # Disabled: Flagger dependencies
+  - alertrules.yaml  # BVL-388: PrometheusRule for knative-lambda alerts
+
+# 🏷️ Image override for studio - ghcr.io (multi-arch)
+# NOTE: MUST match OPERATOR_VERSION below - use 'make version-bump' to update both
+images:
+  - name: localhost:5001/knative-lambda-operator
+    newName: ghcr.io/brunovlucena/knative-lambda-operator
+    newTag: v1.13.16
+
+# 📝 Patches for studio-specific config
+patches:
+  # Configure for studio environment
+  - target:
+      kind: Deployment
+      name: knative-lambda-operator
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 2
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: LOG_LEVEL
+          value: info
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ENVIRONMENT
+          value: studio
+      # OPERATOR_REGISTRY must match the image newName above (ghcr.io/brunovlucena)
+      # This is used by the operator to construct the lambda-command-receiver image URI
+      # env[7] = OPERATOR_REGISTRY (after POD_NAMESPACE[0], POD_NAME[1], NODE_NAME[2],
+      #                            OTEL_EXPORTER_OTLP_ENDPOINT[3], OTEL_SERVICE_NAME[4],
+      #                            OTEL_SERVICE_NAMESPACE[5], OTEL_TRACES_SAMPLER_ARG[6])
+      - op: replace
+        path: /spec/template/spec/containers/0/env/7/value
+        value: "ghcr.io/brunovlucena"
+      # OPERATOR_VERSION must match image tag for lambda-command-receiver
+      # NOTE: Use 'make version-bump' to update - NEVER edit manually!
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OPERATOR_VERSION
+          value: "v1.13.16"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          limits:
+            memory: 512Mi
+      # Add pod anti-affinity for HA
+      - op: add
+        path: /spec/template/spec/affinity
+        value:
+          podAntiAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: knative-lambda-operator
+                  topologyKey: kubernetes.io/hostname
+      # Add imagePullSecrets for ghcr.io
+      - op: add
+        path: /spec/template/spec/imagePullSecrets
+        value:
+          - name: ghcr-secret
+

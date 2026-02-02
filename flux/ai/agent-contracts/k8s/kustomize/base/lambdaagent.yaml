@@ -1,0 +1,342 @@
+---
+# Contract Fetcher Agent - Fetches smart contracts from various chains
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: contract-fetcher
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: contract-fetcher
+    app.kubernetes.io/component: fetcher
+    app.kubernetes.io/part-of: agent-contracts
+spec:
+  # ServiceAccount for K8s API access (lambda-agent-orchestrator role)
+  serviceAccountName: contract-fetcher-sa
+  
+  image:
+    repository: localhost:5001/agent-contracts/contract-fetcher
+    tag: "v1.1.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+
+  # Operation mode: agentic (autonomous) or supervised (requires approval)
+  operationMode: agentic  # Default: autonomous execution
+
+  behavior:
+    emitEvents: true
+
+  env:
+    - name: ENABLED_CHAINS
+      value: "ethereum,polygon,arbitrum"
+    - name: ETHERSCAN_RATE_LIMIT
+      value: "5"
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 5
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 30s
+
+  resources:
+    requests:
+      memory: "256Mi"
+    limits:
+      memory: "512Mi"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-contracts/contract-fetcher"
+    
+    # Events this agent EMITS
+    intents:
+      - contract.fetch
+      - contract.created
+    
+    # Events this agent RECEIVES (operator creates Triggers)
+    subscriptions:
+      # From agent-bruno - project queries
+      - eventType: io.homelab.chat.intent.projects
+        description: "Project queries from agent-bruno chatbot"
+      - eventType: io.homelab.agent.query
+        description: "Direct agent queries from agent-bruno"
+    
+    # Forward responses back to agent-bruno
+    forwards:
+      - eventTypes:
+          - io.homelab.agent.response
+          - io.homelab.contracts.status
+        targetAgent: agent-bruno
+        targetNamespace: agent-bruno
+        description: "Send responses back to agent-bruno"
+    
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  # RBAC Permissions (orchestrator role - full access)
+  permissions:
+    disableBrokerCreation: false
+    disableTriggerCreation: false
+    disableFunctionCreation: false
+    allowedTargetNamespaces:
+      - agent-contracts
+      - agent-bruno
+    eventControls:
+      allowEventDisable: true
+
+---
+# Vulnerability Scanner Agent - Scans contracts for security issues
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: vuln-scanner
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: vuln-scanner
+    app.kubernetes.io/component: scanner
+    app.kubernetes.io/part-of: agent-contracts
+spec:
+  # ServiceAccount for K8s API access (lambda-agent-orchestrator role)
+  serviceAccountName: vuln-scanner-sa
+  
+  image:
+    repository: localhost:5001/agent-contracts/vuln-scanner
+    tag: "v1.1.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+
+  # Operation mode: agentic (autonomous) or supervised (requires approval)
+  operationMode: agentic  # Default: autonomous execution
+
+  behavior:
+    emitEvents: true
+
+  env:
+    - name: SLITHER_TIMEOUT
+      value: "300"
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 3
+    targetConcurrency: 2
+    scaleToZeroGracePeriod: 60s
+
+  resources:
+    requests:
+      memory: "512Mi"
+    limits:
+      memory: "1Gi"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-contracts/vuln-scanner"
+    intents:
+      - vuln.scan
+      - vuln.found
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  # RBAC Permissions (orchestrator role)
+  permissions:
+    disableBrokerCreation: false
+    disableTriggerCreation: false
+    disableFunctionCreation: false
+    allowedTargetNamespaces:
+      - agent-contracts
+    eventControls:
+      allowEventDisable: true
+
+---
+# Exploit Generator Agent - Generates PoC exploits for vulnerabilities
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: exploit-generator
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: exploit-generator
+    app.kubernetes.io/component: generator
+    app.kubernetes.io/part-of: agent-contracts
+spec:
+  # ServiceAccount for K8s API access (lambda-agent-orchestrator role)
+  serviceAccountName: exploit-generator-sa
+  
+  image:
+    repository: localhost:5001/agent-contracts/exploit-generator
+    tag: "v1.1.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+
+  # Operation mode: agentic (autonomous) or supervised (requires approval)
+  operationMode: agentic  # Default: autonomous execution
+
+  behavior:
+    emitEvents: true
+
+  env:
+    - name: FOUNDRY_TIMEOUT
+      value: "600"
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 2
+    targetConcurrency: 1
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      memory: "1Gi"
+    limits:
+      memory: "2Gi"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-contracts/exploit-generator"
+    intents:
+      - exploit.generate
+      - exploit.validated
+    dlq:
+      enabled: true
+      retryMaxAttempts: 2
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  # RBAC Permissions (orchestrator role)
+  permissions:
+    disableBrokerCreation: false
+    disableTriggerCreation: false
+    disableFunctionCreation: false
+    allowedTargetNamespaces:
+      - agent-contracts
+    eventControls:
+      allowEventDisable: true
+
+---
+# Notifi Adapter Agent - Sends notifications via Notifi Network
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: notifi-adapter
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: notifi-adapter
+    app.kubernetes.io/component: adapter
+    app.kubernetes.io/part-of: agent-contracts
+spec:
+  # ServiceAccount for K8s API access (lambda-agent-developer role - no broker creation)
+  serviceAccountName: notifi-adapter-sa
+  
+  image:
+    repository: localhost:5001/agent-contracts/notifi-adapter
+    tag: "v1.1.0"
+    port: 8080
+
+  ai:
+    provider: none  # This agent doesn't use AI directly
+
+  # Operation mode: agentic (autonomous) or supervised (requires approval)
+  operationMode: agentic  # Default: autonomous execution
+
+  behavior:
+    emitEvents: true
+
+  env:
+    - name: NOTIFI_ENV
+      value: "production"
+    - name: NOTIFI_WEBHOOK_URL
+      value: ""
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 3
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: 30s
+
+  resources:
+    requests:
+      memory: "128Mi"
+    limits:
+      memory: "256Mi"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-contracts/notifi-adapter"
+    intents:
+      - notification.send
+      - notification.sent
+    dlq:
+      enabled: true
+      retryMaxAttempts: 5
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  # RBAC Permissions (developer role - no broker creation)
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: false
+    disableFunctionCreation: false
+    allowedTargetNamespaces:
+      - agent-contracts
+    eventControls:
+      allowEventDisable: true

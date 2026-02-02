@@ -1,0 +1,85 @@
+---
+# LambdaFunction: Scale Deployment
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: scale-deployment
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: scale-deployment
+    app.kubernetes.io/component: remediation
+    app.kubernetes.io/part-of: agent-sre
+spec:
+  source:
+    type: inline
+    inline:
+      code: |
+        import os
+        import subprocess
+        from typing import Dict, Any
+        
+        def handler(event: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            Scale a deployment.
+            
+            Parameters:
+            - name: Deployment name (required)
+            - namespace: Namespace (required)
+            - replicas: Number of replicas (required)
+            """
+            name = event.get('name')
+            namespace = event.get('namespace')
+            replicas = event.get('replicas')
+            
+            if not name or not namespace or replicas is None:
+                return {
+                    'status': 'error',
+                    'message': 'name, namespace, and replicas parameters are required'
+                }
+            
+            try:
+                result = subprocess.run(
+                    ['kubectl', 'scale', 'deployment', name, '-n', namespace, '--replicas', str(replicas)],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                if result.returncode == 0:
+                    return {
+                        'status': 'success',
+                        'message': f'Deployment {name} scaled to {replicas} replicas',
+                        'output': result.stdout
+                    }
+                else:
+                    return {
+                        'status': 'error',
+                        'message': f'Scaling failed: {result.stderr}',
+                        'output': result.stdout
+                    }
+            except Exception as e:
+                return {'status': 'error', 'message': f'Error: {str(e)}'}
+      dependencies: |
+        {}
+  runtime:
+    language: python
+    version: "3.11"
+    handler: main.handler
+  scaling:
+    minReplicas: 0
+    maxReplicas: 10
+    targetConcurrency: 5
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  build:
+    timeout: "10m"
+    registry: localhost:5001
+    insecure: true
+  eventing:
+    enabled: false
+

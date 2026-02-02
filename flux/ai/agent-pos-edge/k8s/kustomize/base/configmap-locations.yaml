@@ -1,0 +1,139 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📍 Location Configuration - Sample Locations
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: locations-config
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: locations-config
+    app.kubernetes.io/part-of: agent-pos-edge
+data:
+  locations.yaml: |
+    # Sample location configurations
+    locations:
+      # Gas Station Example
+      - id: gas-station-001
+        name: "Shell Station - Downtown"
+        type: gas_station
+        address: "123 Main St, City"
+        timezone: "America/Sao_Paulo"
+        agents:
+          - pos-edge
+          - pump-agent
+        config:
+          pumps: 8
+          tanks:
+            - id: tank-regular
+              fuelType: regular
+              capacity: 20000
+            - id: tank-premium
+              fuelType: premium
+              capacity: 10000
+            - id: tank-diesel
+              fuelType: diesel
+              capacity: 15000
+          posTerminals: 2
+          operatingHours:
+            open: "06:00"
+            close: "22:00"
+        alertConfig:
+          tankLowThreshold: 20
+          tankCriticalThreshold: 10
+      
+      # McDonald's Example
+      - id: mcdonalds-042
+        name: "McDonald's - Shopping Mall"
+        type: fast_food
+        address: "456 Mall Ave, City"
+        timezone: "America/Sao_Paulo"
+        agents:
+          - pos-edge
+          - kitchen-agent
+        config:
+          posTerminals: 4
+          driveThru: true
+          kitchenStations:
+            - grill
+            - fryer
+            - assembly
+            - drinks
+          operatingHours:
+            open: "10:00"
+            close: "22:00"
+        alertConfig:
+          queueDepthThreshold: 10
+          waitTimeThresholdSeconds: 300
+      
+      # Retail Example
+      - id: retail-103
+        name: "Convenience Store - Airport"
+        type: retail
+        address: "789 Airport Rd, City"
+        timezone: "America/Sao_Paulo"
+        agents:
+          - pos-edge
+        config:
+          posTerminals: 3
+          operatingHours:
+            open: "00:00"
+            close: "23:59"
+          is24Hours: true
+        alertConfig:
+          transactionFailureThreshold: 5
+
+  alert-rules.yaml: |
+    # Alert rules for all location types
+    rules:
+      # Common alerts
+      - name: pos_offline
+        condition: "heartbeat_age > 120s"
+        severity: critical
+        message: "POS terminal offline for more than 2 minutes"
+      
+      - name: transaction_failure_spike
+        condition: "failure_rate > 10%"
+        severity: high
+        message: "High transaction failure rate detected"
+      
+      # Gas station alerts
+      - name: tank_low
+        condition: "tank_level < 20%"
+        severity: medium
+        locationTypes: [gas_station]
+        message: "Fuel tank level low, schedule refill"
+      
+      - name: tank_critical
+        condition: "tank_level < 10%"
+        severity: critical
+        locationTypes: [gas_station]
+        message: "Fuel tank critically low!"
+      
+      - name: pump_offline
+        condition: "pump_status == 'offline'"
+        severity: high
+        locationTypes: [gas_station]
+        message: "Pump went offline unexpectedly"
+      
+      # Fast-food alerts
+      - name: kitchen_queue_high
+        condition: "queue_depth > 10"
+        severity: high
+        locationTypes: [fast_food]
+        message: "Kitchen queue backing up"
+      
+      - name: long_wait_time
+        condition: "avg_wait_time > 300s"
+        severity: medium
+        locationTypes: [fast_food]
+        message: "Average wait time exceeding 5 minutes"
+      
+      - name: equipment_offline
+        condition: "equipment_status == 'offline'"
+        severity: critical
+        locationTypes: [fast_food]
+        message: "Kitchen equipment offline"

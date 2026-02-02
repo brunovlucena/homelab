@@ -1,0 +1,15 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# ⚡ Knative Dependencies Phase
+# RabbitMQ and Knative dependencies
+# Depends on knative-operator being ready in 01-core
+
+resources:
+  - ../../../../infrastructure/rabbitmq-topology-operator
+  - ../../../../infrastructure/rabbitmq-source
+  - ../../../../infrastructure/rabbitmq-broker
+  - ../../../../infrastructure/rabbitmq-clusters
+  # - ../../../../infrastructure/knative-instances  # Disabled
+

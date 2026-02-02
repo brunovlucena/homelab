@@ -1,0 +1,19 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: agent-redteam
+
+resources:
+  # Basic smoke test
+  - k6-smoke.yaml
+  
+  # Attack simulation tests
+  - k6-attack-sequential.yaml
+  - k6-attack-parallel.yaml
+  
+  # Vulnerability assessment
+  - k6-vulnerability-assessment.yaml
+  
+  # Chaos testing
+  - k6-random-exploit-chaos.yaml

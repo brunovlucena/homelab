@@ -1,0 +1,52 @@
+---
+# Service Account for knative-lambda-operator builds in demo-mag7-battle namespace
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: knative-lambda-operator
+  namespace: demo-mag7-battle
+  labels:
+    app.kubernetes.io/name: demo-mag7-battle
+    app.kubernetes.io/component: build
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# Service Account for running lambda functions
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: knative-lambda-function
+  namespace: demo-mag7-battle
+  labels:
+    app.kubernetes.io/name: demo-mag7-battle
+    app.kubernetes.io/component: function
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# Role for build operations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lambda-build-role
+  namespace: demo-mag7-battle
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets", "pods", "pods/log"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lambda-build-binding
+  namespace: demo-mag7-battle
+subjects:
+  - kind: ServiceAccount
+    name: knative-lambda-operator
+    namespace: demo-mag7-battle
+roleRef:
+  kind: Role
+  name: lambda-build-role
+  apiGroup: rbac.authorization.k8s.io

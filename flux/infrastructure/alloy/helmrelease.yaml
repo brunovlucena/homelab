@@ -1,0 +1,171 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: alloy
+  namespace: alloy
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: alloy
+      version: ">=0.9.0 <1.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+      interval: 12h
+  install:
+    crds: Create
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    # Use local registry
+    image:
+      registry: localhost:5001
+      repository: grafana-alloy
+      # Fallback: docker.io/grafana/alloy
+      tag: v1.7.5
+    
+    # Alloy configuration
+    alloy:
+      configMap:
+        create: true
+        content: |
+          // Logging configuration
+          logging {
+            level  = "info"
+            format = "logfmt"
+          }
+
+          // Discovery: Kubernetes pods
+          discovery.kubernetes "pods" {
+            role = "pod"
+          }
+
+          // Discovery: Kubernetes nodes
+          discovery.kubernetes "nodes" {
+            role = "node"
+          }
+
+          // Relabel pods for log collection
+          discovery.relabel "pod_logs" {
+            targets = discovery.kubernetes.pods.targets
+
+            // Keep only running pods
+            rule {
+              source_labels = ["__meta_kubernetes_pod_phase"]
+              action        = "keep"
+              regex         = "Running"
+            }
+
+            // Add namespace label
+            rule {
+              source_labels = ["__meta_kubernetes_namespace"]
+              target_label  = "namespace"
+            }
+
+            // Add pod name label
+            rule {
+              source_labels = ["__meta_kubernetes_pod_name"]
+              target_label  = "pod"
+            }
+
+            // Add container name label
+            rule {
+              source_labels = ["__meta_kubernetes_pod_container_name"]
+              target_label  = "container"
+            }
+
+            // Set the path for logs
+            rule {
+              source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+              target_label  = "__path__"
+              separator     = "/"
+              replacement   = "/var/log/pods/*$1/*.log"
+            }
+          }
+
+          // Loki write endpoint
+          loki.source.kubernetes "pod_logs" {
+            targets    = discovery.relabel.pod_logs.output
+            forward_to = [loki.write.endpoint.receiver]
+          }
+
+          // Forward logs to Loki
+          loki.write "endpoint" {
+            endpoint {
+              url = "http://loki-gateway.loki.svc.cluster.local/loki/api/v1/push"
+            }
+          }
+
+          // Prometheus remote write for metrics
+          prometheus.remote_write "metrics" {
+            endpoint {
+              url = "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+            }
+          }
+
+          // Self-monitoring metrics
+          prometheus.exporter.self "alloy" { }
+
+          prometheus.scrape "alloy" {
+            targets    = prometheus.exporter.self.alloy.targets
+            forward_to = [prometheus.remote_write.metrics.receiver]
+          }
+
+    # Controller configuration
+    controller:
+      type: daemonset
+      
+    # Resource limits
+    resources:
+      # requests:
+      #   cpu: 50m
+      #   memory: 128Mi
+      limits:
+        # cpu: 200m
+        memory: 256Mi
+
+    # Service account
+    serviceAccount:
+      create: true
+      name: alloy
+
+    # RBAC
+    rbac:
+      create: true
+
+    # Service monitor for Prometheus
+    serviceMonitor:
+      enabled: true
+      labels:
+        release: kube-prometheus-stack
+
+    # Mount points for log collection
+    extraVolumes:
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+
+    extraVolumeMounts:
+      - name: varlog
+        mountPath: /var/log
+        readOnly: true
+      - name: varlibdockercontainers
+        mountPath: /var/lib/docker/containers
+        readOnly: true
+
+    # Security context
+    securityContext:
+      privileged: false
+      runAsUser: 0
+      runAsGroup: 0
+

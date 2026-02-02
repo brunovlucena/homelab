@@ -1,0 +1,289 @@
+# =============================================================================
+# Pro Cluster Configuration
+# =============================================================================
+# Purpose: Production-like cluster (lighter footprint)
+# Total Nodes: 3 (1 control-plane + 2 workers)
+# Network: 10.247.0.0/16 (pods), 10.99.0.0/16 (services)
+# =============================================================================
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: pro
+networking:
+  # Pro cluster private network CIDRs (non-overlapping with studio)
+  podSubnet: "10.247.0.0/16"
+  serviceSubnet: "10.99.0.0/16"
+  # API server configuration for remote access (from studio machine)
+  apiServerAddress: "0.0.0.0"  # Listen on all interfaces (required for remote access)
+  apiServerPort: 51617
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry]
+    config_path = "/etc/containerd/certs.d"
+
+nodes:
+# =============================================================================
+# Control Plane Node - All Workloads
+# =============================================================================
+# This single node hosts all services:
+# - Platform: Flux, cert-manager, metrics-server, Linkerd, Flagger, headlamp, k6-operator
+# - AI Agents: agent-jamie, agent-bruno, agent-auditor, aigoat, garak, agent-kamaji, agent-mary-kay, agent-whatsapp-seller
+# - Serverless: Knative Serving/Eventing, knative-lambda, RabbitMQ
+# - Observability: Prometheus, Grafana, Loki, Tempo, Alloy, AlertManager, Pushgateway
+# - Data: PostgreSQL, MongoDB, Redis, MinIO, RabbitMQ, ScyllaDB
+# - Ingress: Cloudflare tunnel, homepage, localstack
+- role: control-plane
+  image: localhost:5001/kindest-node:v1.34.0
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true,tier=control-plane,workload-type=all,resource-profile=high-io,persistence=required,criticality=critical,bruno.dev/monitoring=enabled,bruno.dev/network-policy=strict,bruno.dev/backup=enabled,role=serverless"
+  - |
+    kind: ClusterConfiguration
+    networking:
+      podSubnet: "10.247.0.0/16"
+      serviceSubnet: "10.99.0.0/16"
+    apiServer:
+      certSANs:
+      - 10.0.0.2
+      - 0.0.0.0
+  # Combined labels from all worker nodes - single node hosts all workloads
+  labels:
+    role: serverless  # Required for Knative/RabbitMQ components
+    tier: infrastructure
+    workload-type: all
+    resource-profile: high-io
+    persistence: required
+    criticality: critical
+    bruno.dev/monitoring: enabled
+    bruno.dev/network-policy: strict
+    bruno.dev/backup: enabled
+  extraMounts:
+  - hostPath: /var/run/docker.sock
+    containerPath: /var/run/docker.sock
+  # Combined port mappings from all worker nodes
+  # Note: Using offset of 3000 to avoid conflicts with studio cluster (32xxx range)
+  extraPortMappings:
+  # Platform ports
+  - containerPort: 30001  # headlamp UI
+    hostPort: 33001
+    protocol: TCP
+  - containerPort: 30002  # metrics-server
+    hostPort: 33002
+    protocol: TCP
+  - containerPort: 30003  # flagger
+    hostPort: 33003
+    protocol: TCP
+  - containerPort: 30004  # k6-operator
+    hostPort: 33004
+    protocol: TCP
+  - containerPort: 30005  # linkerd-viz web
+    hostPort: 33005
+    protocol: TCP
+  - containerPort: 30006  # linkerd-viz metrics-api
+    hostPort: 33006
+    protocol: TCP
+  - containerPort: 30007  # linkerd-viz tap
+    hostPort: 33007
+    protocol: TCP
+  - containerPort: 30008  # flux source-controller
+    hostPort: 33008
+    protocol: TCP
+  - containerPort: 30009  # flux notification-controller
+    hostPort: 33009
+    protocol: TCP
+  - containerPort: 30010  # pulumi-operator
+    hostPort: 33010
+    protocol: TCP
+  # AI Agents ports
+  - containerPort: 30120  # agent-jamie
+    hostPort: 33120
+    protocol: TCP
+  - containerPort: 30121  # agent-bruno
+    hostPort: 33121
+    protocol: TCP
+  - containerPort: 30122  # agent-auditor
+    hostPort: 33122
+    protocol: TCP
+  - containerPort: 30123  # agent-auditor UI
+    hostPort: 33123
+    protocol: TCP
+  - containerPort: 30124  # aigoat
+    hostPort: 33124
+    protocol: TCP
+  - containerPort: 30125  # garak
+    hostPort: 33125
+    protocol: TCP
+  - containerPort: 30126  # agent-kamaji
+    hostPort: 33126
+    protocol: TCP
+  - containerPort: 30127  # agent-mary-kay
+    hostPort: 33127
+    protocol: TCP
+  - containerPort: 30128  # agent-whatsapp-seller
+    hostPort: 33128
+    protocol: TCP
+  - containerPort: 30129  # future agent
+    hostPort: 33129
+    protocol: TCP
+  - containerPort: 30192  # agent-sre
+    hostPort: 33192
+    protocol: TCP
+  # Serverless ports
+  - containerPort: 30130  # knative serving
+    hostPort: 33130
+    protocol: TCP
+  - containerPort: 30131  # knative eventing
+    hostPort: 33131
+    protocol: TCP
+  - containerPort: 30132  # knative-lambda
+    hostPort: 33132
+    protocol: TCP
+  - containerPort: 30133  # RabbitMQ broker
+    hostPort: 33133
+    protocol: TCP
+  # Observability ports
+  - containerPort: 30040  # grafana
+    hostPort: 33040
+    protocol: TCP
+  - containerPort: 30041  # prometheus
+    hostPort: 33041
+    protocol: TCP
+  - containerPort: 30042  # loki
+    hostPort: 33042
+    protocol: TCP
+  - containerPort: 30043  # tempo
+    hostPort: 33043
+    protocol: TCP
+  - containerPort: 4317   # tempo otlp grpc
+    hostPort: 33431
+    protocol: TCP
+  - containerPort: 4318   # tempo otlp http
+    hostPort: 33432
+    protocol: TCP
+  - containerPort: 30044  # alloy
+    hostPort: 33044
+    protocol: TCP
+  - containerPort: 30045  # alertmanager
+    hostPort: 33045
+    protocol: TCP
+  - containerPort: 30046  # pushgateway
+    hostPort: 33046
+    protocol: TCP
+  - containerPort: 30081  # flyteadmin grpc API (NodePort via flyteadmin-nodeport service)
+    hostPort: 33081
+    protocol: TCP
+  # Infrastructure ports
+  - containerPort: 30082  # vault
+    hostPort: 33082
+    protocol: TCP
+  # Data ports
+  - containerPort: 30060  # minio
+    hostPort: 33060
+    protocol: TCP
+  - containerPort: 30061  # minio console
+    hostPort: 33061
+    protocol: TCP
+  - containerPort: 30062  # postgres
+    hostPort: 33062
+    protocol: TCP
+  - containerPort: 30063  # mongodb
+    hostPort: 33063
+    protocol: TCP
+  - containerPort: 30064  # redis
+    hostPort: 33064
+    protocol: TCP
+  - containerPort: 30065  # rabbitmq
+    hostPort: 33065
+    protocol: TCP
+  - containerPort: 30066  # scylladb
+    hostPort: 33066
+    protocol: TCP
+  # Ingress ports (using different ports to avoid conflict with studio cluster)
+  - containerPort: 80      # http
+    hostPort: 8380
+    protocol: TCP
+  - containerPort: 443     # https
+    hostPort: 8743
+    protocol: TCP
+  - containerPort: 30070   # cloudflare-tunnel
+    hostPort: 33070
+    protocol: TCP
+  - containerPort: 30071   # homepage
+    hostPort: 33071
+    protocol: TCP
+  - containerPort: 30072   # localstack
+    hostPort: 33072
+    protocol: TCP
+  # Pi-hole ports
+  - containerPort: 30053   # pihole web UI
+    hostPort: 30053
+    protocol: TCP
+  - containerPort: 30054   # pihole DNS TCP
+    hostPort: 30054
+    protocol: TCP
+  - containerPort: 30055   # pihole DNS UDP
+    hostPort: 30055
+    protocol: UDP
+
+# =============================================================================
+# Worker Node 1 - Workload Processing
+# =============================================================================
+# This worker node handles workload pods to reduce pressure on control-plane
+# Helps with pod scheduling when control-plane hits pod limits
+- role: worker
+  image: localhost:5001/kindest-node:v1.34.0
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "tier=worker,workload-type=all,resource-profile=high-io,bruno.dev/monitoring=enabled,role=serverless"
+  labels:
+    role: serverless
+    tier: worker
+    workload-type: all
+    resource-profile: high-io
+    bruno.dev/monitoring: enabled
+  extraMounts:
+  - hostPath: /var/run/docker.sock
+    containerPath: /var/run/docker.sock
+
+# =============================================================================
+# Worker Node 2 - Workload Processing
+# =============================================================================
+# Second worker node for additional capacity and pod scheduling flexibility
+- role: worker
+  image: localhost:5001/kindest-node:v1.34.0
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "tier=worker,workload-type=all,resource-profile=high-io,bruno.dev/monitoring=enabled,role=serverless"
+  labels:
+    role: serverless
+    tier: worker
+    workload-type: all
+    resource-profile: high-io
+    bruno.dev/monitoring: enabled
+  extraMounts:
+  - hostPath: /var/run/docker.sock
+    containerPath: /var/run/docker.sock
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pro
+  namespace: kube-system
+spec:
+  type: NodePort
+  port: 30000
+  nodePort: 33000
+  protocol: TCP
+  selector:
+    app: pro
+

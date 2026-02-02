@@ -1,0 +1,46 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: flux-system-alerts
+  namespace: prometheus
+  labels:
+    app: flux-system
+    prometheus: kube-prometheus-stack
+spec:
+  groups:
+    - name: flux
+      interval: 30s
+      rules:
+        - alert: FluxComponentAbsent
+          annotations:
+            description: "Flux component {{ $labels.app }} has disappeared from Prometheus target discovery."
+            summary: "Flux component is down"
+          expr: |
+            absent(up{namespace="flux-system"})
+          for: 10m
+          labels:
+            severity: critical
+
+        - alert: FluxReconciliationFailure
+          annotations:
+            description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.namespace }} has been failing to reconcile."
+            summary: "Flux reconciliation failing"
+            lambda_function: "flux-reconcile-kustomization"
+            lambda_parameters: '{"name": "{{ $labels.name }}", "namespace": "{{ $labels.namespace }}"}'
+          expr: |
+            gotk_reconcile_condition{status="False",type="Ready"} == 1
+          for: 10m
+          labels:
+            severity: warning
+
+        - alert: FluxReconciliationSuspended
+          annotations:
+            description: "{{ $labels.kind }} {{ $labels.name }} in namespace {{ $labels.namespace }} is suspended."
+            summary: "Flux reconciliation suspended"
+          expr: |
+            gotk_suspend_status == 1
+          for: 5m
+          labels:
+            severity: info
+

@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trm-finetune-config
+  namespace: ml-platform
+data:
+  # Data collection settings
+  NOTIFI_SERVICES_PATH: "/workspace/notifi/repos/notifi-services"
+  PROMETHEUS_URL: "http://prometheus.monitoring.svc:9090"
+  LOKI_URL: "http://loki.monitoring.svc:3100"
+  TEMPO_URL: "http://tempo.tempo.svc:3200"
+  DATA_DAYS: "30"
+  
+  # Training settings
+  EPOCHS: "50000"
+  EVAL_INTERVAL: "5000"
+  LR: "1e-4"
+  L_LAYERS: "2"
+  H_CYCLES: "3"
+  L_CYCLES: "6"
+  GLOBAL_BATCH_SIZE: "128"
+  
+  # Output settings
+  OUTPUT_DIR: "/tmp/trm-model"
+  RUN_NAME: "trm-homelab-finetune"
+  MINIO_BUCKET: "trm-models"
+  
+  # TRM repository
+  TRM_REPO_PATH: "/workspace/TinyRecursiveModels"
+

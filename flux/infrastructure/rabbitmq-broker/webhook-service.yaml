@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    rabbitmq.eventing.knative.dev/release: "v1.17.6"
+    role: rabbitmq-broker-webhook
+  name: rabbitmq-broker-webhook
+  namespace: knative-eventing
+spec:
+  ports:
+    - name: https-webhook
+      port: 443
+      targetPort: 8443
+  selector:
+    role: rabbitmq-broker-webhook
+

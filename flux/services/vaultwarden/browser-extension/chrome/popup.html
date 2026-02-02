@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 320px;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+    }
+    .header {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    input {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button {
+      padding: 10px;
+      background: #175DDC;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    button:hover {
+      background: #1349A6;
+    }
+    .error {
+      color: #d32f2f;
+      font-size: 12px;
+      margin-top: -8px;
+    }
+    .vault-view {
+      display: none;
+    }
+    .password-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .password-item {
+      padding: 12px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+    .password-item:hover {
+      background: #f5f5f5;
+    }
+    .password-name {
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .password-username {
+      font-size: 12px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div id="loginView">
+    <div class="header">Vaultwarden</div>
+    <form class="login-form" id="loginForm">
+      <input type="email" id="email" placeholder="Email" required>
+      <input type="password" id="password" placeholder="Password" required>
+      <div class="error" id="error"></div>
+      <button type="submit">Login</button>
+    </form>
+  </div>
+  
+  <div id="vaultView" class="vault-view">
+    <div class="header">My Vault</div>
+    <div class="password-list" id="passwordList"></div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

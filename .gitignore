@@ -1,0 +1,119 @@
+# =============================================================================
+# Homelab Infrastructure - GitIgnore
+# =============================================================================
+
+# SealedSecrets key backups (NEVER commit these!)
+secure-backup/
+*.key
+*.key.yaml
+*sealed-secrets-key*.yaml
+
+# Local development
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Environment files with secrets
+.env
+.env.local
+*.secret
+
+# Plain Kubernetes secrets (only sealed secrets should be committed)
+flux/infrastructure/**/*-secrets.yaml
+!flux/infrastructure/**/*-sealed.yaml
+!flux/infrastructure/**/sealed-secrets.yaml
+pub-sealed-secrets.pem
+
+# Kubernetes config (may contain credentials)
+kubeconfig
+*.kubeconfig
+
+# Terraform/Pulumi state (handled in subdirectories)
+*.tfstate
+*.tfstate.backup
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.test
+*.out
+
+# Go compiled binaries (knative-lambda)
+flux/infrastructure/knative-lambda/src/builder/service
+flux/infrastructure/knative-lambda/src/metrics-pusher/service
+flux/infrastructure/knative-lambda/src/sidecar/service
+flux/infrastructure/knative-lambda/src/operator/bin/
+**/bin/manager
+
+# All Go/Rust binaries
+**/main
+**/service
+**/kamaji
+**/*-api
+**/*-service
+**/*-cli
+**/futboss
+**/bruno-site-api
+
+# Cloudflare tunnel operator binary
+flux/infrastructure/cloudflare-tunnel-operator/src/main
+
+# ML checkpoints (large model files)
+**/checkpoints/**/step_*
+**/checkpoints/**/*.pt
+**/checkpoints/**/*.pth
+**/checkpoints/**/*.ckpt
+**/checkpoints/**/*.safetensors
+
+# Pulumi compiled binaries and caches
+pulumi/.pulumi-bin*
+pulumi/**/.pulumi-bin*
+pulumi/.pulumi/
+pulumi/**/.pulumi/
+pulumi/kamaji
+pulumi/**/kamaji
+*.pulumi-bin*
+**/*.pulumi-bin*
+
+# Large backups (never commit)
+*.backup
+*.bak
+
+# CI/lint binaries (install in CI, do not commit)
+actionlint
+
+# JavaScript package directories (everywhere)
+node_modules/
+**/node_modules/
+
+# Allow Linkerd trust anchor assets committed for multi-cluster sharing
+!flux/infrastructure/bootstrap/linkerd/trust-anchor/
+!flux/infrastructure/bootstrap/linkerd/trust-anchor/*.key
+
+flux/ai/agent-restaurant/src/shared-lib/
+# FutBoss AI - ignore build artifacts but allow source code
+flux/ai/futboss-ai/apps/*/node_modules/
+flux/ai/futboss-ai/apps/*/venv/
+flux/ai/futboss-ai/apps/*/__pycache__/
+flux/ai/futboss-ai/apps/*/.pytest_cache/
+flux/ai/futboss-ai/apps/*/dist/
+flux/ai/futboss-ai/apps/*/build/
+flux/ai/futboss-ai/packages/*/node_modules/
+flux/ai/futboss-ai/packages/*/dist/
+flux/ai/futboss-ai/packages/*/build/
+
+# Allow .memory directories (Cursor memory files should be committed)
+!.memory/
+!.memory/**

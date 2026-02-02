@@ -1,0 +1,18 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 Grafana Service Account Automation
+#
+#  Creates and manages Grafana service accounts through GitOps.
+#  Service account tokens are stored as Kubernetes secrets.
+#
+#  Part of BVL-319: Automate Service Account Creation
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - rbac.yaml
+  - configmap.yaml
+  - service-account-job.yaml

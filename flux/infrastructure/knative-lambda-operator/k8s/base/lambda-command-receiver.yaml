@@ -1,0 +1,86 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🌐 LAMBDA COMMAND RECEIVER - LambdaFunction
+#
+#  Purpose: Receive command CloudEvents and create/manage LambdaFunction CRDs
+#
+#  The operator creates all necessary components:
+#  - Broker (lambda-broker) - shared namespace broker
+#  - Triggers - route command events to receiver
+#  - Knative Service - auto-scaling receiver service
+#
+#  Architecture:
+#    External Services → Broker → RabbitMQ Queue → Trigger → Receiver Service
+#                                 (buffered)                   (auto-scaled)
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: lambda-command-receiver
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: lambda-command-receiver
+    app.kubernetes.io/component: cloudevents-receiver
+    app.kubernetes.io/part-of: knative-lambda
+  annotations:
+    # Signal to operator: use operator image directly in receiver mode
+    lambda.knative.io/use-operator-image: "true"
+    lambda.knative.io/receiver-mode: "true"
+spec:
+  # Operator will detect this LambdaFunction and use operator image directly
+  # with --mode=receiver instead of building from source
+  source:
+    type: inline
+    inline:
+      code: |
+        # This LambdaFunction uses the operator image directly in receiver mode
+        # The operator will detect the annotation and skip build, using the
+        # image version from OPERATOR_VERSION env var (set in overlay kustomization.yaml)
+        # args: [--mode=receiver, --default-namespace=knative-lambda, --rate-limit=50, --burst-size=100]
+      dependencies: |
+        {}
+  runtime:
+    language: go
+    version: "1.22"
+    handler: main.Handler
+  scaling:
+    minReplicas: 0
+    maxReplicas: 20
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: "5m"
+  resources:
+    requests:
+      # cpu: 100m
+      memory: 128Mi
+    limits:
+      # cpu: 500m
+      memory: 256Mi
+  env:
+    - name: POD_NAMESPACE
+      value: knative-lambda
+    - name: MODE
+      value: receiver
+    - name: DEFAULT_NAMESPACE
+      value: knative-lambda
+    - name: RATE_LIMIT
+      value: "50"
+    - name: BURST_SIZE
+      value: "100"
+    - name: DEBUG
+      value: "true"
+  build:
+    timeout: "15m"
+    registry: localhost:5001
+    insecure: true
+  # Eventing configuration - creates broker and triggers
+  eventing:
+    enabled: true
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+      queueType: quorum
+      parallelism: 10
+    dlq:
+      enabled: true
+

@@ -1,0 +1,135 @@
+---
+# 🔄 Flux System Namespace
+# Dedicated namespace for Flux CD components
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: flux-system
+  labels:
+    app.kubernetes.io/name: flux-system
+    app.kubernetes.io/part-of: flux
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# 🚀 Job to install Flux CD using the flux CLI
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flux-install
+  namespace: flux-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled  # Never delete this job
+spec:
+  ttlSecondsAfterFinished: 300  # Clean up after 5 minutes
+  template:
+    metadata:
+      labels:
+        app: flux-install
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: flux-installer
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: install-flux
+        image: localhost:5001/flux-cli:v2.4.0
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 65532
+          seccompProfile:
+            type: RuntimeDefault
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "🔄 Installing Flux CD..."
+          
+          # Pre-flight checks
+          echo "✅ Running pre-flight checks..."
+          flux check --pre || {
+            echo "⚠️  Pre-flight checks failed, but continuing with installation..."
+          }
+          
+          # Install Flux with specific components and optimized resources
+          echo "🎯 Installing Flux CD components with optimized resources..."
+          flux install \
+            --components source-controller,kustomize-controller,helm-controller,notification-controller \
+            --registry localhost:5001 \
+            --toleration-keys node-role.kubernetes.io/control-plane
+          
+          # Apply resource patches for faster reconciliation
+          echo "⚡ Applying resource optimizations for faster reconciliation..."
+          kubectl patch deployment source-controller -n flux-system --type='json' -p='[
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": "256Mi"},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "1Gi"}
+          ]' 2>/dev/null || echo "   ⚠️  Could not patch source-controller resources"
+          
+          kubectl patch deployment kustomize-controller -n flux-system --type='json' -p='[
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": "256Mi"},
+            {"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "1Gi"}
+          ]' 2>/dev/null || echo "   ⚠️  Could not patch kustomize-controller resources"
+          
+          # Wait for Flux controllers to be ready (faster than fixed sleep)
+          echo "⏳ Waiting for Flux controllers to be ready..."
+          
+          # Wait for source-controller (most critical)
+          echo "   Waiting for source-controller..."
+          kubectl wait --for=condition=available deployment/source-controller \
+            -n flux-system --timeout=120s 2>/dev/null || {
+            echo "   ⚠️  source-controller not ready yet, continuing..."
+          }
+          
+          # Wait for kustomize-controller
+          echo "   Waiting for kustomize-controller..."
+          kubectl wait --for=condition=available deployment/kustomize-controller \
+            -n flux-system --timeout=60s 2>/dev/null || {
+            echo "   ⚠️  kustomize-controller not ready yet, continuing..."
+          }
+          
+          # Wait for helm-controller
+          echo "   Waiting for helm-controller..."
+          kubectl wait --for=condition=available deployment/helm-controller \
+            -n flux-system --timeout=60s 2>/dev/null || {
+            echo "   ⚠️  helm-controller not ready yet, continuing..."
+          }
+          
+          # Verify installation
+          echo "🔍 Verifying Flux installation..."
+          flux check || {
+            echo "⚠️  Flux check reported some issues, but installation is complete."
+            echo "    You may need to wait a bit longer for all components to be ready."
+          }
+          
+          echo "✅ Flux CD installed successfully!"
+---
+# ServiceAccount for Flux installer
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flux-installer
+  namespace: flux-system
+---
+# ClusterRole for Flux installation (requires cluster-admin)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: flux-installer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin  # Flux installation requires cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: flux-installer
+  namespace: flux-system
+
+

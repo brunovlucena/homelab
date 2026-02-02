@@ -1,0 +1,98 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 RBAC - Agent Tools Service Account
+#
+#  Broad permissions to manage K8s resources on behalf of other agents
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-tools-sa
+  namespace: ai
+imagePullSecrets:
+  - name: ghcr-secret
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-tools-k8s-manager
+rules:
+  # Core resources
+  - apiGroups: [""]
+    resources: [pods, pods/log, services, configmaps, secrets, namespaces, serviceaccounts, persistentvolumeclaims, events, endpoints]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Apps
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets, replicasets]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Batch
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Autoscaling
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Networking
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, networkpolicies]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Knative Serving
+  - apiGroups: [serving.knative.dev]
+    resources: [services, configurations, revisions, routes]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Knative Eventing
+  - apiGroups: [eventing.knative.dev]
+    resources: [brokers, triggers, eventtypes]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Lambda
+  - apiGroups: [lambda.knative.io]
+    resources: [lambdafunctions, lambdaagents]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Flux
+  - apiGroups: [kustomize.toolkit.fluxcd.io]
+    resources: [kustomizations]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [helm.toolkit.fluxcd.io]
+    resources: [helmreleases]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [source.toolkit.fluxcd.io]
+    resources: [gitrepositories, helmrepositories, ocirepositories]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Cert-manager
+  - apiGroups: [cert-manager.io]
+    resources: [certificates, certificaterequests, issuers, clusterissuers]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # Monitoring
+  - apiGroups: [monitoring.coreos.com]
+    resources: [prometheusrules, servicemonitors, podmonitors, alertmanagerconfigs]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # RabbitMQ
+  - apiGroups: [rabbitmq.com]
+    resources: [rabbitmqclusters, queues, exchanges, bindings, policies, users, vhosts, permissions]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # External Secrets
+  - apiGroups: [external-secrets.io]
+    resources: [externalsecrets, secretstores, clustersecretstores]
+    verbs: [create, delete, get, list, patch, update, watch]
+  # K6
+  - apiGroups: [k6.io]
+    resources: [testruns, privateloadzones]
+    verbs: [create, delete, get, list, patch, update, watch]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-tools-k8s-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: agent-tools-k8s-manager
+subjects:
+  - kind: ServiceAccount
+    name: agent-tools-sa
+    namespace: ai

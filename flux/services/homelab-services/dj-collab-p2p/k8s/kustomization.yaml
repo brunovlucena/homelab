@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: dj-collab-p2p
+
+resources:
+  - namespace.yaml
+  - server.yaml
+  # - signaling.yaml  # Missing file
+  # - mongodb.yaml  # Missing file
+  # - redis.yaml  # Missing file
+  # - ipfs.yaml  # Missing file
+  - configmap.yaml
+  - secret.yaml
+
+commonLabels:
+  app: dj-collab-p2p
+  managed-by: flux

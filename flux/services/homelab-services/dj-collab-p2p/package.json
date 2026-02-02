@@ -1,0 +1,35 @@
+{
+  "name": "dj-collab-p2p",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multiplayer DJ collaboration game with P2P streaming",
+  "scripts": {
+    "install": "pnpm install -r",
+    "dev:server": "cd apps/server && go run main.go",
+    "dev:desktop": "cd apps/desktop && pnpm dev",
+    "dev:web": "cd apps/web && pnpm dev",
+    "dev:mobile:ios": "cd apps/mobile && pnpm ios",
+    "dev:mobile:android": "cd apps/mobile && pnpm android",
+    "dev:signaling": "cd apps/signaling && pnpm dev",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "test": "pnpm -r test",
+    "test:server": "cd apps/server && go test ./...",
+    "test:desktop": "cd apps/desktop && pnpm test",
+    "test:mobile": "cd apps/mobile && pnpm test",
+    "test:p2p": "cd tests && pnpm test",
+    "build": "pnpm -r build",
+    "build:server": "cd apps/server && go build -o bin/server main.go",
+    "build:desktop": "cd apps/desktop && pnpm build",
+    "build:web": "cd apps/web && pnpm build",
+    "build:mobile": "cd apps/mobile && pnpm build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

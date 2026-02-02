@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: medical-service-platform
+
+resources:
+  - ../base
+
+images:
+  - name: localhost:5001/medical-service-platform/medical-service
+    newTag: "0.1.0"
+
+patches:
+  - target:
+      kind: Deployment
+      name: medical-service
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env/7/value
+        value: "0.1.0"

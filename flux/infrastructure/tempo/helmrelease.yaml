@@ -1,0 +1,91 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: tempo
+  namespace: tempo
+spec:
+  interval: 5m
+  # ⏱️ Increased timeout for large chart downloads (GitHub CDN can be slow)
+  # Prevents failures during GitHub 504 Gateway Timeout issues
+  timeout: 15m
+  chart:
+    spec:
+      chart: tempo
+      version: 1.23.3
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+  values:
+    tempo:
+      repository: localhost:5001/tempo
+      tag: "2.8.2"
+      # Configure Tempo container port
+      server:
+        http_listen_port: 3200
+        grpc_listen_port: 9095
+      query_frontend:
+        mcp_server:
+          enabled: true
+      # Storage configuration for local development
+      storage:
+        trace:
+          backend: local
+          local:
+            path: /tmp/tempo/traces
+      retention: 24h
+      metrics_generator:
+        enabled: true
+        storage:
+          path: /tmp/tempo/generator/wal
+          remote_write:
+            - url: http://prometheus-operated.prometheus:9090/api/v1/write
+              send_exemplars: true
+      # Configure distributor for trace ingestion
+      distributor:
+        receivers:
+          # OTLP receivers (for OpenTelemetry)
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+              http:
+                endpoint: 0.0.0.0:4318
+          # OpenCensus receiver (for Linkerd proxy traces - B3 propagation)
+          opencensus:
+            endpoint: 0.0.0.0:55678
+    # Configure NodePort service for Tempo UI - matches kind.yaml port mapping
+    service:
+      type: NodePort
+      port: 3200
+      nodePort: 30043
+      # Additional ports for OTLP endpoints
+      additionalPorts:
+        - name: otlp-grpc
+          port: 4317
+          targetPort: 4317
+          nodePort: 30431
+          protocol: TCP
+        - name: otlp-http
+          port: 4318
+          targetPort: 4318
+          nodePort: 30432
+          protocol: TCP
+    # Disable ingress since we're using NodePort
+    ingress:
+      enabled: false
+    # Configure resources for homelab environment
+    resources:
+      # requests:
+      #   cpu: 50m
+      #   memory: 256Mi
+      limits:
+        # cpu: 100m      # Actual usage: 3.3m (homelab optimized)
+        memory: 512Mi  # Actual usage: 241Mi - reasonable
+    # Persistence for local storage
+    persistence:
+      enabled: true
+      storageClassName: standard
+      size: 10Gi
+

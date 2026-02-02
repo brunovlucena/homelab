@@ -1,0 +1,23 @@
+---
+# Additional NodePort service for flyteadmin grpc API
+# This provides a fixed NodePort (30081) for easier access in Kind clusters
+apiVersion: v1
+kind: Service
+metadata:
+  name: flyteadmin-nodeport
+  namespace: flyte
+  labels:
+    app.kubernetes.io/name: flyteadmin
+    app.kubernetes.io/component: admin
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/instance: flyte
+    app.kubernetes.io/name: flyteadmin
+  ports:
+    - name: grpc
+      port: 81
+      targetPort: 8089
+      nodePort: 30081
+      protocol: TCP
+

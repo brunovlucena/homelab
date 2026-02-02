@@ -1,0 +1,22 @@
+---
+# 📊 Phase 2: Observability (runs in PARALLEL with 03-knative-deps)
+# Both depend only on 01-core, enabling parallel deployment
+# Estimated time: ~2min (parallel with phase 3)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: studio-02-observability
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 30s
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./flux/clusters/studio/deploy/02-observability
+  prune: true
+  wait: true
+  timeout: 5m
+  dependsOn:
+    - name: studio-01-core
+

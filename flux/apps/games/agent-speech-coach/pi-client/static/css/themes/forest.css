@@ -1,0 +1,9 @@
+/* Forest Theme - Green */
+:root {
+    --primary-color: #2E7D32;
+    --header-bg: #2E7D32;
+    --chat-bg: #e8f5e9;
+    --user-message-bg: #388E3C;
+    --agent-message-bg: white;
+    --agent-message-text: #1B5E20;
+}

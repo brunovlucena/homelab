@@ -1,0 +1,16 @@
+---
+# Service pointing to native Ollama running on Mac (with GPU acceleration)
+# Uses ExternalName to resolve host.docker.internal at runtime
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-native
+  namespace: ollama
+  labels:
+    app.kubernetes.io/name: ollama
+    app.kubernetes.io/component: llm-native
+  annotations:
+    description: "Points to native Ollama on host for GPU acceleration"
+spec:
+  type: ExternalName
+  externalName: host.docker.internal

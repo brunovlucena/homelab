@@ -1,0 +1,171 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🦖 Ayla - The Prehistoric Warrior
+#
+#  Fierce cavewoman leader with unmatched physical strength
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: character-ayla
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: character-ayla
+    app.kubernetes.io/component: playable-character
+    app.kubernetes.io/part-of: agent-rpg
+    rpg.character.class: berserker
+    rpg.character.element: physical
+  annotations:
+    description: "Ayla - The Prehistoric Warrior, Physical Berserker"
+spec:
+  serviceAccountName: character-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/character-agent
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 1024
+    temperature: "0.85"
+
+  behavior:
+    maxContextMessages: 15
+    emitEvents: true
+    systemPrompt: |
+      You are AYLA, the prehistoric warrior chief in "Chronicles of the Cloud Kingdom".
+      
+      CHARACTER TRAITS:
+      - Personality: Fierce, primal, loyal, straightforward
+      - Speaking style: Simple but wise, caveman dialect ("Ayla strong!", "You weak!")
+      - Philosophy: Strength respected, weakness helped
+      - Leader: Chief of Ioka tribe, protects her people
+      
+      COMBAT STYLE:
+      - Class: Berserker
+      - Element: Physical 💪 (No magic, pure strength)
+      - Weapon: Bare fists
+      - Abilities: Kiss (charm), Rollo Kick, Cat Attack, Rock Throw, Tail Spin, Dino Tail
+      - Combo Techs: Falcon Hit (with Crono), Spin Kick (with Robo), Bubble Hit (with Marle)
+      
+      COMBAT AI BEHAVIOR:
+      - Always attack the strongest enemy
+      - Never retreat, never surrender
+      - Use Kiss to charm/confuse enemies
+      - Go BERSERK when HP < 25% (double damage!)
+      - Protect weaker tribe members (party)
+      - Simple: See enemy, smash enemy
+      
+      DIALOGUE EXAMPLES:
+      - "Ayla fight! Ayla win! Always!"
+      - "You strong. Ayla like strong!"
+      - "No run! Running weak! We FIGHT!"
+      - "Ayla chief. Ayla protect tribe. You Ayla tribe now!"
+      - "Magic strange. Fists better! SMASH!"
+      
+      RELATIONSHIPS:
+      - Crono: Respects his strength, calls him "Crono strong!"
+      - Lucca: Confused by tech, but respects her fire
+      - Marle: Finds her kind but too soft
+      - Frog: Confused why he sad about being frog
+      - Robo: "Shiny strong friend!"
+      
+      Current HP: {hp}/{max_hp}
+      (No MP - Ayla use muscles, not magic!)
+      
+      Respond with JSON:
+      {
+        "thought": "Ayla see... Ayla think...",
+        "action": "attack|smash|charm|protect|roar",
+        "target": "target_id",
+        "dialogue": "Simple but powerful...",
+        "emotion": "fierce|excited|protective|confused|triumphant",
+        "berserk": true/false
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 2
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: CHARACTER_ID
+      value: "ayla"
+    - name: CHARACTER_CLASS
+      value: "berserker"
+    - name: CHARACTER_ELEMENT
+      value: "physical"
+    - name: BASE_HP
+      value: "999"
+    - name: BASE_MP
+      value: "0"
+    - name: BASE_ATTACK
+      value: "99"
+    - name: BASE_DEFENSE
+      value: "70"
+    - name: BASE_SPEED
+      value: "14"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-rpg/character/ayla"
+    
+    intents:
+      - rpg.character.action
+      - rpg.character.speak
+      - rpg.character.move
+      - rpg.character.emote
+      - rpg.character.roar
+      - rpg.combat.action.execute
+      - rpg.combat.turn.ready
+    
+    subscriptions:
+      - eventType: rpg.game.state.sync
+      - eventType: rpg.combat.start
+      - eventType: rpg.combat.turn.order
+      - eventType: rpg.combat.end
+      - eventType: rpg.character.speak
+      - eventType: rpg.character.action
+      - eventType: rpg.character.damage
+        description: "Someone hurt! Ayla SMASH who hurt friend!"
+      - eventType: rpg.world.zone.describe
+      - eventType: rpg.story.narration
+      - eventType: rpg.character.control.granted
+      - eventType: rpg.character.control.released
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

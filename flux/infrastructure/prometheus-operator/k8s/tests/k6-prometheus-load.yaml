@@ -1,0 +1,250 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📊 K6 PROMETHEUS LOAD TEST
+#
+#  Purpose: Load test Prometheus API endpoints
+#  Coverage:
+#    - Health check endpoint
+#    - Instant queries (api/v1/query)
+#    - Range queries (api/v1/query_range)
+#    - Label queries (api/v1/labels)
+#    - Series queries (api/v1/series)
+#    - Metrics endpoint
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: prometheus-load-test
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: testing
+    test-type: load
+spec:
+  parallelism: 2
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: prometheus-load-test
+      file: prometheus-load-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: PROMETHEUS_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-load-test
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: testing
+    test-type: load
+data:
+  prometheus-load-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+
+    // Custom metrics
+    const querySuccessRate = new Rate('prometheus_query_success');
+    const queryCounter = new Counter('prometheus_queries_total');
+    const queryDuration = new Trend('prometheus_query_duration_ms');
+
+    // Test configuration
+    const PROMETHEUS_URL = __ENV.PROMETHEUS_URL || 'http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090';
+
+    // Common Prometheus queries
+    const testQueries = [
+      'up',
+      'rate(http_requests_total[5m])',
+      'node_cpu_seconds_total',
+      'kube_pod_status_phase',
+      'prometheus_http_requests_total',
+      'container_memory_usage_bytes',
+      'kube_deployment_status_replicas',
+      'go_goroutines',
+      'process_cpu_seconds_total',
+      'prometheus_tsdb_head_samples',
+    ];
+
+    export const options = {
+      scenarios: {
+        prometheus_load: {
+          executor: 'ramping-vus',
+          startVUs: 1,
+          stages: [
+            { duration: '30s', target: 5 },   // Ramp up to 5 VUs
+            { duration: '1m', target: 10 },   // Increase to 10 VUs
+            { duration: '1m', target: 10 },   // Stay at 10 VUs
+            { duration: '30s', target: 0 },    // Ramp down
+          ],
+        },
+      },
+      thresholds: {
+        http_req_duration: ['p(95)<2000'],    // 95% of requests should be below 2s
+        http_req_failed: ['rate<0.05'],       // Error rate should be below 5%
+        prometheus_query_success: ['rate>0.95'], // Query success rate > 95%
+      },
+    };
+
+    function queryPrometheus(query, isRange = false) {
+      const startTime = Date.now();
+      let url;
+      
+      if (isRange) {
+        const now = Math.floor(Date.now() / 1000);
+        const oneHourAgo = now - 3600;
+        url = `${PROMETHEUS_URL}/api/v1/query_range?query=${encodeURIComponent(query)}&start=${oneHourAgo}&end=${now}&step=60`;
+      } else {
+        url = `${PROMETHEUS_URL}/api/v1/query?query=${encodeURIComponent(query)}`;
+      }
+
+      const res = http.get(url, {
+        timeout: '30s',
+        tags: { query_type: isRange ? 'range' : 'instant' },
+      });
+
+      const duration = Date.now() - startTime;
+      queryDuration.add(duration);
+      queryCounter.add(1);
+
+      const success = res.status === 200;
+      querySuccessRate.add(success ? 1 : 0);
+
+      return { res, duration, success };
+    }
+
+    export default function () {
+      // Test 1: Health check
+      group('Prometheus Health Check', () => {
+        const healthRes = http.get(`${PROMETHEUS_URL}/-/healthy`, { timeout: '5s' });
+        check(healthRes, {
+          'health check status is 200': (r) => r.status === 200,
+          'health check response time < 500ms': (r) => r.timings.duration < 500,
+        });
+      });
+
+      // Test 2: Ready check
+      group('Prometheus Ready Check', () => {
+        const readyRes = http.get(`${PROMETHEUS_URL}/-/ready`, { timeout: '5s' });
+        check(readyRes, {
+          'ready check status is 200': (r) => r.status === 200,
+        });
+      });
+
+      // Test 3: Instant queries
+      group('Prometheus Instant Queries', () => {
+        const randomQuery = testQueries[Math.floor(Math.random() * testQueries.length)];
+        const { res, success } = queryPrometheus(randomQuery, false);
+
+        check(res, {
+          'instant query status is 200': (r) => r.status === 200,
+          'instant query returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && data.status === 'success';
+            } catch (e) {
+              return false;
+            }
+          },
+          'instant query has data': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data.data && data.data.result !== undefined;
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 4: Range queries
+      group('Prometheus Range Queries', () => {
+        const randomQuery = testQueries[Math.floor(Math.random() * testQueries.length)];
+        const { res, success } = queryPrometheus(randomQuery, true);
+
+        check(res, {
+          'range query status is 200': (r) => r.status === 200,
+          'range query returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && data.status === 'success';
+            } catch (e) {
+              return false;
+            }
+          },
+          'range query has matrix data': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data.data && data.data.resultType === 'matrix';
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 5: Labels query
+      group('Prometheus Labels Query', () => {
+        const labelsRes = http.get(`${PROMETHEUS_URL}/api/v1/labels`, { timeout: '10s' });
+        check(labelsRes, {
+          'labels query status is 200': (r) => r.status === 200,
+          'labels query returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && data.status === 'success' && Array.isArray(data.data);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 6: Series query
+      group('Prometheus Series Query', () => {
+        const seriesRes = http.get(`${PROMETHEUS_URL}/api/v1/series?match[]=up`, { timeout: '10s' });
+        check(seriesRes, {
+          'series query status is 200': (r) => r.status === 200,
+          'series query returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && data.status === 'success' && Array.isArray(data.data);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 7: Metrics endpoint
+      group('Prometheus Metrics Endpoint', () => {
+        const metricsRes = http.get(`${PROMETHEUS_URL}/metrics`, { timeout: '10s' });
+        check(metricsRes, {
+          'metrics endpoint status is 200': (r) => r.status === 200,
+          'metrics endpoint returns prometheus format': (r) => 
+            r.body.includes('# HELP') || r.body.includes('# TYPE'),
+        });
+      });
+
+      // Random sleep between iterations
+      sleep(Math.random() * 2 + 1);
+    }
+
+    export function handleSummary(data) {
+      return {
+        'stdout': JSON.stringify(data, null, 2),
+      };
+    }

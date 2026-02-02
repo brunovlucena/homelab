@@ -1,0 +1,69 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flagger
+  namespace: flagger-system
+spec:
+  interval: 5m
+  # ⏱️ Increased timeout for image pull delays
+  timeout: 10m
+  # 🔄 Retry configuration for resilience
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  chart:
+    spec:
+      chart: flagger
+      version: "1.39.x"
+      sourceRef:
+        kind: HelmRepository
+        name: flagger
+        namespace: flux-system
+      interval: 1h
+  values:
+    # 🖼️ Image - Use local registry
+    image:
+      repository: localhost:5001/flagger
+      # Fallback: ghcr.io/fluxcd/flagger
+      tag: 1.39.0
+    
+    # 🔗 Linkerd Integration
+    meshProvider: linkerd
+    
+    # 📊 Metrics Provider - Prometheus (kube-prometheus-stack)
+    metricsServer: http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090
+    
+    # 🎯 Enable Prometheus scraping
+    prometheus:
+      install: false  # We already have Prometheus
+    
+    # 🔍 Logging
+    logLevel: info
+    
+    # 🎛️ Resources (homelab optimized)
+    resources:
+      limits:
+        memory: 64Mi
+        # cpu: 100m
+      # requests:
+      #   memory: 32Mi
+      #   cpu: 50m
+    
+    # 🏥 Pod Security
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+    
+    securityContext:
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 65534
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+

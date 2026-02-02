@@ -1,0 +1,45 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  - ../base
+
+# Production environment
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+patches:
+  # Update image tags for all LambdaAgents
+  - target:
+      kind: LambdaAgent
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.2.0"
+  
+  # Scale up for production
+  - patch: |-
+      - op: replace
+        path: /spec/scaling/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 5
+    target:
+      kind: LambdaAgent
+      name: game-master
+  - patch: |-
+      - op: replace
+        path: /spec/scaling/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 3
+    target:
+      kind: LambdaAgent
+      labelSelector: "app.kubernetes.io/component=playable-character"
+
+commonLabels:
+  environment: pro

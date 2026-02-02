@@ -1,0 +1,137 @@
+name: 🌐 Cloudflare Tunnel Operator - CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'flux/infrastructure/cloudflare-tunnel-operator/**'
+      - '.github/workflows/operator-cloudflare-tunnel.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'flux/infrastructure/cloudflare-tunnel-operator/**'
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild images'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: cloudflare-tunnel-operator
+  GO_VERSION: '1.23'
+
+jobs:
+  lint-and-test:
+    name: 🔍 Lint & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flux/infrastructure/cloudflare-tunnel-operator/src
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: flux/infrastructure/cloudflare-tunnel-operator/src/go.sum
+
+      - name: 📦 Download dependencies
+        run: go mod download
+
+      - name: 🔍 Run go vet
+        run: go vet ./...
+
+      - name: 🎨 Check formatting
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "Code is not formatted. Run 'go fmt ./...'"
+            gofmt -l .
+            exit 1
+          fi
+
+      - name: 🧪 Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: 📊 Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: flux/infrastructure/cloudflare-tunnel-operator/src/coverage.out
+          flags: cloudflare-tunnel-operator
+          fail_ci_if_error: false
+
+  build-and-push:
+    name: 🐳 Build & Push
+    runs-on: [self-hosted]
+    needs: lint-and-test
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 📋 Read version
+        id: version
+        run: |
+          VERSION=$(cat flux/infrastructure/cloudflare-tunnel-operator/VERSION)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📋 Version: $VERSION"
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=v${{ steps.version.outputs.version }}
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+          flavor: |
+            latest=auto
+          labels: |
+            org.opencontainers.image.title=cloudflare-tunnel-operator
+            org.opencontainers.image.description=Kubernetes operator for managing Cloudflare Tunnel ingresses via CRDs
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./flux/infrastructure/cloudflare-tunnel-operator/src
+          file: ./flux/infrastructure/cloudflare-tunnel-operator/src/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=cloudflare-tunnel-operator
+          cache-to: type=gha,mode=max,scope=cloudflare-tunnel-operator
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+
+      - name: 📝 Summary
+        run: |
+          echo "## 🐳 Image Built Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** v${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** \`${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:v${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Platforms:** linux/amd64, linux/arm64" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,97 @@
+---
+# 🔍 Job to install Inspektor Gadget using kubectl gadget deploy
+# Provides eBPF-based observability for I/O, network, and system events
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: inspektor-gadget-install
+  namespace: gadget
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled  # Never delete this job
+spec:
+  template:
+    metadata:
+      labels:
+        app: inspektor-gadget-install
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: inspektor-gadget-installer
+      imagePullSecrets:
+      - name: ghcr-secret
+      containers:
+      - name: install-gadget
+        image: localhost:5001/kubectl:v1.34.0
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "🔍 Installing Inspektor Gadget..."
+          
+          # Download and install kubectl-gadget plugin
+          echo "📥 Downloading kubectl-gadget plugin..."
+          GADGET_VERSION="v0.35.0"
+          ARCH=$(uname -m)
+          case $ARCH in
+            x86_64) ARCH="amd64" ;;
+            aarch64) ARCH="arm64" ;;
+          esac
+          curl -sL "https://github.com/inspektor-gadget/inspektor-gadget/releases/download/${GADGET_VERSION}/kubectl-gadget-linux-${ARCH}-${GADGET_VERSION}.tar.gz" -o /tmp/kubectl-gadget.tar.gz
+          tar -xzf /tmp/kubectl-gadget.tar.gz -C /usr/local/bin kubectl-gadget
+          chmod +x /usr/local/bin/kubectl-gadget
+          
+          kubectl gadget version || true
+          
+          # Check if already installed
+          if kubectl get daemonset -n gadget gadget >/dev/null 2>&1; then
+            echo "🔄 Inspektor Gadget already installed, checking for updates..."
+            kubectl gadget deploy 2>/dev/null || true
+          else
+            echo "🚀 Deploying Inspektor Gadget..."
+            kubectl gadget deploy
+          fi
+          
+          echo "⏳ Waiting for Inspektor Gadget DaemonSet to be ready..."
+          kubectl rollout status daemonset/gadget -n gadget --timeout=300s
+          
+          echo "✅ Inspektor Gadget installed successfully"
+          kubectl gadget version
+        volumeMounts:
+        - name: kubeconfig
+          mountPath: /root/.kube
+          readOnly: true
+      volumes:
+      - name: kubeconfig
+        emptyDir: {}
+---
+# ServiceAccount for Inspektor Gadget installer
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: inspektor-gadget-installer
+  namespace: gadget
+---
+# ClusterRole for Inspektor Gadget installation
+# Needs broad permissions as it creates DaemonSet, RBAC, CRDs, etc.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: inspektor-gadget-installer
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["*"]
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: inspektor-gadget-installer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: inspektor-gadget-installer
+subjects:
+- kind: ServiceAccount
+  name: inspektor-gadget-installer
+  namespace: gadget

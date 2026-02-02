@@ -1,0 +1,240 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📊 CLOUDFLARE ARGO SMART ROUTING - Usage & Cost Alerts
+#
+#  Purpose: Monitor Argo Smart Routing bandwidth usage to avoid unexpected costs
+#  Related: BVL-23 - Enable Cloudflare Argo Smart Routing
+#
+#  Pricing:
+#    - FREE tier: 1GB/month included
+#    - After free tier: $5/month per 10GB
+#
+#  Alerts:
+#    - 80% of free tier (800MB) - warning to stay within free tier
+#    - Every 10GB increment (10GB, 20GB, 30GB, etc.) - cost tracking
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cloudflare-argo-rules
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: cloudflare-argo
+    app.kubernetes.io/instance: cloudflare-argo-rules
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  # =============================================================================
+  # 💰 ARGO SMART ROUTING FREE TIER ALERTS
+  # =============================================================================
+  - name: cloudflare.argo.free-tier
+    rules:
+    # Recording rule: Monthly Argo bandwidth usage (30 days rolling)
+    # Argo routes cache-miss traffic, so we track total bandwidth as proxy
+    # Note: When Argo is enabled, cache-miss requests use Argo's optimized routing
+    - record: cloudflare:argo_bandwidth_monthly_bytes
+      expr: |
+        sum(
+          increase(cloudflare_zone_bandwidth_total{zone="lucena.cloud"}[30d])
+        ) or vector(0)
+
+    # Recording rule: Monthly Argo bandwidth in GB (for easier reading)
+    - record: cloudflare:argo_bandwidth_monthly_gb
+      expr: |
+        cloudflare:argo_bandwidth_monthly_bytes / 1073741824
+
+    # Alert: 80% of free tier consumed (800MB of 1GB)
+    # This gives you 20% buffer to stay within free tier
+    - alert: CloudflareArgoFreeTierWarning
+      expr: |
+        cloudflare:argo_bandwidth_monthly_bytes > 858993459
+      for: 5m
+      labels:
+        severity: warning
+        service: cloudflare
+        component: argo-smart-routing
+        cost: free-tier
+      annotations:
+        summary: "Cloudflare Argo Smart Routing approaching free tier limit"
+        description: |
+          Argo Smart Routing has used {{ $value | humanize1024 }}B this month.
+          Free tier limit is 1GB/month. You have ~20% remaining.
+          Consider reviewing traffic patterns or preparing for paid usage ($5/10GB).
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/argo-free-tier-warning.md"
+        dashboard_url: "https://dash.cloudflare.com/?to=/:account/lucena.cloud/traffic"
+
+    # Alert: Free tier exceeded (1GB)
+    # You're now being charged $5/10GB
+    - alert: CloudflareArgoFreeTierExceeded
+      expr: |
+        cloudflare:argo_bandwidth_monthly_bytes > 1073741824
+      for: 5m
+      labels:
+        severity: warning
+        service: cloudflare
+        component: argo-smart-routing
+        cost: paid
+      annotations:
+        summary: "Cloudflare Argo Smart Routing free tier exceeded"
+        description: |
+          Argo Smart Routing has used {{ $value | humanize1024 }}B this month.
+          Free tier (1GB) exceeded. You are now being charged $5 per 10GB.
+          Check Cloudflare dashboard for exact billing information.
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/argo-free-tier-exceeded.md"
+        dashboard_url: "https://dash.cloudflare.com/?to=/:account/lucena.cloud/traffic"
+
+  # =============================================================================
+  # 💵 ARGO SMART ROUTING COST TRACKING ALERTS (per 10GB)
+  # =============================================================================
+  - name: cloudflare.argo.cost-tracking
+    rules:
+    # Alert: 10GB consumed ($5 cost)
+    - alert: CloudflareArgo10GBConsumed
+      expr: |
+        cloudflare:argo_bandwidth_monthly_bytes > 10737418240
+      for: 5m
+      labels:
+        severity: info
+        service: cloudflare
+        component: argo-smart-routing
+        cost: "$5"
+        tier: "10GB"
+      annotations:
+        summary: "Cloudflare Argo: 10GB bandwidth consumed this month"
+        description: |
+          Argo Smart Routing has used {{ $value | humanize1024 }}B this month (10GB+).
+          Estimated monthly cost: ~$5 (first 10GB after free tier)
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/argo-cost-tracking.md"
+
+    # Alert: 20GB consumed ($10 cost)
+    - alert: CloudflareArgo20GBConsumed
+      expr: |
+        cloudflare:argo_bandwidth_monthly_bytes > 21474836480
+      for: 5m
+      labels:
+        severity: info
+        service: cloudflare
+        component: argo-smart-routing
+        cost: "$10"
+        tier: "20GB"
+      annotations:
+        summary: "Cloudflare Argo: 20GB bandwidth consumed this month"
+        description: |
+          Argo Smart Routing has used {{ $value | humanize1024 }}B this month (20GB+).
+          Estimated monthly cost: ~$10
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/argo-cost-tracking.md"
+
+    # Alert: 30GB consumed ($15 cost)
+    - alert: CloudflareArgo30GBConsumed
+      expr: |
+        cloudflare:argo_bandwidth_monthly_bytes > 32212254720
+      for: 5m
+      labels:
+        severity: info
+        service: cloudflare
+        component: argo-smart-routing
+        cost: "$15"
+        tier: "30GB"
+      annotations:
+        summary: "Cloudflare Argo: 30GB bandwidth consumed this month"
+        description: |
+          Argo Smart Routing has used {{ $value | humanize1024 }}B this month (30GB+).
+          Estimated monthly cost: ~$15
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/argo-cost-tracking.md"
+
+    # Alert: 50GB consumed ($25 cost) - warning severity
+    - alert: CloudflareArgo50GBConsumed
+      expr: |
+        cloudflare:argo_bandwidth_monthly_bytes > 53687091200
+      for: 5m
+      labels:
+        severity: warning
+        service: cloudflare
+        component: argo-smart-routing
+        cost: "$25"
+        tier: "50GB"
+      annotations:
+        summary: "Cloudflare Argo: 50GB bandwidth consumed this month"
+        description: |
+          Argo Smart Routing has used {{ $value | humanize1024 }}B this month (50GB+).
+          Estimated monthly cost: ~$25. Consider reviewing traffic patterns.
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/argo-cost-tracking.md"
+
+    # Alert: 100GB consumed ($50 cost) - warning severity
+    - alert: CloudflareArgo100GBConsumed
+      expr: |
+        cloudflare:argo_bandwidth_monthly_bytes > 107374182400
+      for: 5m
+      labels:
+        severity: warning
+        service: cloudflare
+        component: argo-smart-routing
+        cost: "$50"
+        tier: "100GB"
+      annotations:
+        summary: "Cloudflare Argo: 100GB bandwidth consumed this month"
+        description: |
+          Argo Smart Routing has used {{ $value | humanize1024 }}B this month (100GB+).
+          Estimated monthly cost: ~$50. High traffic month - review optimization opportunities.
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/argo-cost-tracking.md"
+
+  # =============================================================================
+  # 📈 ARGO SMART ROUTING PERFORMANCE ALERTS
+  # =============================================================================
+  - name: cloudflare.argo.performance
+    rules:
+    # Recording rule: Daily bandwidth rate
+    - record: cloudflare:argo_bandwidth_daily_bytes
+      expr: |
+        sum(
+          increase(cloudflare_zone_bandwidth_total{zone="lucena.cloud"}[24h])
+        ) or vector(0)
+
+    # Alert: Unusual bandwidth spike (>3x normal daily rate)
+    # Helps catch DDoS attacks or unexpected traffic surges
+    # Compare today's daily bandwidth against 7-day rolling average
+    - alert: CloudflareArgoUnusualBandwidthSpike
+      expr: |
+        sum(increase(cloudflare_zone_bandwidth_total{zone="lucena.cloud"}[24h])) or vector(0)
+        > 
+        3 * avg_over_time((sum(increase(cloudflare_zone_bandwidth_total{zone="lucena.cloud"}[24h])) or vector(0))[7d:])
+      for: 30m
+      labels:
+        severity: warning
+        service: cloudflare
+        component: argo-smart-routing
+        performance: bandwidth-spike
+      annotations:
+        summary: "Cloudflare Argo: Unusual bandwidth spike detected"
+        description: |
+          Daily Argo bandwidth ({{ $value | humanize1024 }}B) is more than 3x the 7-day average.
+          This could indicate a traffic surge, DDoS attack, or misconfiguration.
+          Review Cloudflare Analytics for traffic patterns.
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/argo-bandwidth-spike.md"
+        dashboard_url: "https://dash.cloudflare.com/?to=/:account/lucena.cloud/analytics"
+
+    # Alert: Argo metrics not being collected
+    - alert: CloudflareArgoMetricsMissing
+      expr: |
+        absent(cloudflare_zone_bandwidth_total{zone="lucena.cloud"})
+      for: 15m
+      labels:
+        severity: warning
+        service: cloudflare
+        component: argo-smart-routing
+        monitoring: metrics-missing
+      annotations:
+        summary: "Cloudflare Argo metrics not available"
+        description: |
+          Cloudflare zone metrics for lucena.cloud are not being collected.
+          This could indicate:
+          - Cloudflare exporter is down
+          - API token permissions issue
+          - Zone configuration problem
+          
+          Check cloudflare-exporter pod status and logs.
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/cloudflare-metrics-missing.md"

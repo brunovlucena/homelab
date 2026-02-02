@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* FutBoss AI - Global Styles */
+/* Author: Bruno Lucena (bruno@lucena.cloud) */
+
+body {
+  @apply bg-dark text-white min-h-screen;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-darker;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-primary/50 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-primary;
+}
+
+/* Button styles */
+.btn-primary {
+  @apply bg-primary hover:bg-primary/80 text-dark font-bold py-2 px-4 rounded-lg transition-colors;
+}
+
+.btn-secondary {
+  @apply bg-secondary hover:bg-secondary/80 text-white font-bold py-2 px-4 rounded-lg transition-colors;
+}
+
+/* Card styles */
+.card {
+  @apply bg-darker border border-primary/20 rounded-xl p-4;
+}
+
+/* Attribute bar */
+.attr-bar {
+  @apply h-2 rounded-full bg-gray-700;
+}
+
+.attr-bar-fill {
+  @apply h-full rounded-full transition-all duration-300;
+}
+
+.attr-high {
+  @apply bg-green-500;
+}
+
+.attr-mid {
+  @apply bg-yellow-500;
+}
+
+.attr-low {
+  @apply bg-red-500;
+}
+

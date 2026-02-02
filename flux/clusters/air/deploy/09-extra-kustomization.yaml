@@ -1,0 +1,19 @@
+---
+# 🎁 Phase 9: Extra Infrastructure (optional/additional components)
+# Estimated time: ~1-2min
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: air-09-extra
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 30s
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./flux/clusters/air/deploy/09-extra
+  prune: true
+  wait: true
+  timeout: 5m
+

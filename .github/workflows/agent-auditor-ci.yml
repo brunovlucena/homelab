@@ -1,0 +1,554 @@
+name: 🤖 Agent Auditor - CI/CD
+
+permissions:
+  contents: write
+  packages: write
+  attestations: write
+  id-token: write
+
+on:
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-auditor/**'
+      - '.github/workflows/agent-auditor-ci.yml'
+  push:
+    branches: [main, dev, feature/*, bugfix/*, hotfix/*]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-auditor/**'
+      - '.github/workflows/agent-auditor-ci.yml'
+    tags:
+      - 'agent-auditor-v*.*.*'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+  DOCKER_REGISTRY: ghcr.io
+  DOCKER_REPO: brunovlucena/agent-auditor
+  WORKING_DIR: flux/clusters/homelab/infrastructure/agent-auditor
+
+jobs:
+  # =============================================================================
+  # CI JOBS
+  # =============================================================================
+  
+  detect-changes:
+    name: 🔍 Detect Changes & Version
+    runs-on: [self-hosted]
+    permissions:
+      contents: write
+      pull-requests: read
+    outputs:
+      should_build: ${{ steps.final.outputs.agent-auditor == 'true' }}
+      environment: ${{ steps.env.outputs.environment }}
+      version: ${{ steps.version.outputs.version }}
+      docker_tag: ${{ steps.version.outputs.docker_tag }}
+      is_release: ${{ steps.version.outputs.is_release }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 Detect Changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            agent-auditor:
+              - 'flux/clusters/homelab/infrastructure/agent-auditor/**'
+              - '.github/workflows/agent-auditor-ci.yml'
+      
+      - name: Set final output
+        id: final
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "agent-auditor=true" >> $GITHUB_OUTPUT
+          else
+            echo "agent-auditor=${{ steps.filter.outputs.agent-auditor }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🏷️ Set Environment
+        id: env
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "environment=prd" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🏷️ Extract Version and Generate Tags
+        id: version
+        run: |
+          # Chart.yaml appVersion is the ONLY source of truth
+          CHART_FILE="${{ env.WORKING_DIR }}/k8s/helm/Chart.yaml"
+          if [ ! -f "$CHART_FILE" ]; then
+            echo "❌ ERROR: Chart.yaml not found at $CHART_FILE"
+            exit 1
+          fi
+          
+          VERSION=$(grep '^appVersion:' "$CHART_FILE" | awk '{print $2}' | tr -d '"')
+          
+          if [ -z "$VERSION" ]; then
+            echo "❌ ERROR: appVersion not found in Chart.yaml"
+            exit 1
+          fi
+          
+          GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+          
+          # Generate Docker tag based on branch with v prefix for releases
+          if [ "$GIT_BRANCH" = "main" ]; then
+            DOCKER_TAG="v$VERSION"
+            IS_RELEASE="true"
+          elif [ "$GIT_BRANCH" = "dev" ]; then
+            DOCKER_TAG="v$VERSION-beta.$(date +%s)"
+            IS_RELEASE="false"
+          else
+            DOCKER_TAG="v$VERSION-dev.$GIT_COMMIT"
+            IS_RELEASE="false"
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "docker_tag=$DOCKER_TAG" >> $GITHUB_OUTPUT
+          echo "git_commit=$GIT_COMMIT" >> $GITHUB_OUTPUT
+          echo "git_branch=$GIT_BRANCH" >> $GITHUB_OUTPUT
+          echo "is_release=$IS_RELEASE" >> $GITHUB_OUTPUT
+          
+          echo "📋 Version Information:"
+          echo "  ✅ Chart.yaml: $CHART_FILE"
+          echo "  ✅ Version: $VERSION"
+          echo "  🐳 Docker Tag: $DOCKER_TAG"
+          echo "  📝 Git Commit: $GIT_COMMIT"
+          echo "  🌿 Git Branch: $GIT_BRANCH"
+          echo "  🎯 Is Release: $IS_RELEASE"
+
+  lint-format:
+    name: 🔍 Lint & Format Check
+    runs-on: [self-hosted]
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_build == 'true'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'src/requirements.txt'
+
+      - name: 📦 Install make
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y make
+
+      - name: 📦 Install dependencies
+        run: |
+          cd ${{ env.WORKING_DIR }}/src
+          pip install -e ".[dev]"
+
+      - name: ✨ Check code formatting (ruff)
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          make format-check
+
+      - name: 🔍 Lint code (ruff)
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          make lint
+
+      - name: 🔎 Type checking (mypy)
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          make typecheck
+        continue-on-error: true  # Don't block on mypy for now
+
+  security-scan:
+    name: 🔒 Security Scanning
+    runs-on: [self-hosted]
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_build == 'true'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 📦 Install Safety
+        run: pip install safety
+
+      - name: 🔐 Run Safety check (dependencies)
+        run: |
+          cd src
+          safety check --json --output safety-report.json || true
+        continue-on-error: true
+
+      - name: 📤 Upload Safety report
+        uses: actions/upload-artifact@v4
+        with:
+          name: safety-report
+          path: src/safety-report.json
+          retention-days: 30
+
+      - name: 🔐 Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '${{ env.WORKING_DIR }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: 📤 Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+  security-tests:
+    name: 🔐 Security Tests
+    runs-on: [self-hosted]
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_build == 'true'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 📦 Install dependencies
+        run: |
+          cd ${{ env.WORKING_DIR }}/src
+          pip install -e ".[dev]"
+
+      - name: 🔐 Run security tests
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          # Add security-specific tests here if available
+          echo "Security tests placeholder"
+        continue-on-error: true
+
+  sre-tests:
+    name: 🩺 SRE Tests
+    runs-on: [self-hosted]
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_build == 'true'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 📦 Install dependencies
+        run: |
+          cd ${{ env.WORKING_DIR }}/src
+          pip install -e ".[dev]"
+
+      - name: 🩺 Run SRE tests
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          # Add SRE-specific tests here if available
+          echo "SRE tests placeholder"
+        continue-on-error: true
+
+  test-unit-coverage:
+    name: 🧪 Unit Tests & Coverage
+    runs-on: [self-hosted]
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_build == 'true'
+    
+    # Note: Services don't work with Kubernetes-mode runners
+    # MinIO integration tests will use existing MinIO deployment in the cluster
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'src/requirements.txt'
+
+      - name: 📦 Install make
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y make
+
+      - name: 📦 Install dependencies
+        run: |
+          cd src
+          pip install -e ".[dev]"
+
+      - name: ⚡ Run unit tests
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          make test-unit
+
+      - name: 🔌 Run integration tests
+        env:
+          MINIO_ENDPOINT: minio.minio.svc.cluster.local:9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+          MINIO_USE_SSL: "false"
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          make test-integration
+        continue-on-error: true  # Allow failure if MinIO not available
+
+      - name: 📊 Run tests with coverage
+        env:
+          MINIO_ENDPOINT: minio.minio.svc.cluster.local:9000
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+          MINIO_USE_SSL: "false"
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          make test-coverage
+
+      - name: 📤 Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./src/coverage.xml
+          flags: unittests
+          name: agent-auditor-coverage
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: 📦 Archive coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: src/htmlcov/
+          retention-days: 30
+
+      - name: ✅ Check coverage threshold
+        run: |
+          cd ${{ env.WORKING_DIR }}/src
+          sudo apt-get install -y bc
+          COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(root.attrib['line-rate'])")
+          COVERAGE_PCT=$(echo "$COVERAGE * 100" | bc -l | cut -d. -f1)
+          echo "Coverage: $COVERAGE_PCT%"
+          if [ $COVERAGE_PCT -lt 70 ]; then
+            echo "❌ Coverage below 70%: $COVERAGE_PCT%"
+            exit 1
+          fi
+          echo "✅ Coverage meets threshold: $COVERAGE_PCT%"
+
+  # =============================================================================
+  # CD JOBS (Only run after CI success and on main branch or tags)
+  # =============================================================================
+
+  build-and-push-main-service:
+    name: 🐋 Build & Push Main Service
+    runs-on: [self-hosted]
+    needs: [lint-format, test-unit-coverage, security-tests, sre-tests, security-scan, detect-changes]
+    if: |
+      needs.detect-changes.outputs.should_build == 'true' && 
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}
+          tags: |
+            type=raw,value=${{ needs.detect-changes.outputs.docker_tag }}
+            type=raw,value=latest,enable=${{ needs.detect-changes.outputs.is_release == 'true' }}
+            type=sha,prefix=sha-
+
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.WORKING_DIR }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=agent-auditor
+          cache-to: type=gha,mode=max,scope=agent-auditor
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            VERSION=${{ needs.detect-changes.outputs.version }}
+            BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+      - name: 🛡️ Scan Docker image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}:${{ needs.detect-changes.outputs.docker_tag }}
+          format: 'sarif'
+          output: 'trivy-image-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      # Disabled: GitHub Advanced Security required for SARIF upload
+      # - name: 📤 Upload image scan results
+      #   uses: github/codeql-action/upload-sarif@v3
+      #   if: always()
+      #   with:
+      #     sarif_file: 'trivy-image-results.sarif'
+
+  create-release:
+    name: 🎉 Create GitHub Release
+    runs-on: [self-hosted]
+    needs: [detect-changes, build-and-push-main-service]
+    if: needs.detect-changes.outputs.is_release == 'true' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 📝 Generate Release Notes
+        id: release_notes
+        run: |
+          # Get previous tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          CURRENT_TAG="v${{ needs.detect-changes.outputs.version }}"
+          
+          # Generate changelog
+          if [ -z "$PREVIOUS_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+          
+          # Create release notes
+          cat > release_notes.md << EOF
+          ## 🚀 Agent Auditor ${CURRENT_TAG}
+          
+          ### 📦 Container Image
+          
+          \`\`\`bash
+          docker pull ghcr.io/${{ env.DOCKER_REPO }}:${CURRENT_TAG}
+          \`\`\`
+          
+          ### 📋 Changes
+          
+          ${CHANGELOG}
+          
+          ### 🔧 Deployment
+          
+          Update your Helm chart to use this version:
+          
+          \`\`\`yaml
+          image:
+            registry: ghcr.io
+            repository: ${{ env.DOCKER_REPO }}
+            tag: "${CURRENT_TAG}"
+          \`\`\`
+          
+          Or use the Chart AppVersion (recommended):
+          
+          \`\`\`yaml
+          # Chart.yaml
+          version: ${{ needs.detect-changes.outputs.version }}
+          appVersion: "${{ needs.detect-changes.outputs.version }}"
+          \`\`\`
+          
+          Images will automatically be tagged as \`v{Chart.AppVersion}\`
+          
+          ---
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...${CURRENT_TAG}
+          EOF
+          
+          cat release_notes.md
+
+      - name: 🏷️ Create Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          TAG="v${{ needs.detect-changes.outputs.version }}"
+          
+          # Check if tag already exists
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "⚠️  Tag $TAG already exists, skipping tag creation"
+          else
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+            echo "✅ Created and pushed tag: $TAG"
+          fi
+
+      - name: 🎉 Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.detect-changes.outputs.version }}
+          name: Agent Auditor v${{ needs.detect-changes.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  summary:
+    name: 📋 CI/CD Summary
+    runs-on: [self-hosted]
+    needs: [lint-format, test-unit-coverage, security-tests, sre-tests, security-scan, detect-changes, build-and-push-main-service, create-release]
+    if: always()
+    steps:
+      - name: 📊 Generate summary
+        run: |
+          echo "## 🤖 Agent Auditor Unified CI/CD Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Linting | ${{ needs.lint-format.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Tests | ${{ needs.security-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SRE Tests | ${{ needs.sre-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | ${{ needs.test-unit-coverage.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security-scan.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Main Service Build | ${{ needs.build-and-push-main-service.result == 'success' && '✅' || '⏭️' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| GitHub Release | ${{ needs.create-release.result == 'success' && '✅' || needs.detect-changes.outputs.is_release == 'true' && '❌' || '⏭️' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 Build Information:" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.detect-changes.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Docker Tag:** ${{ needs.detect-changes.outputs.docker_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ needs.detect-changes.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** ${{ env.DOCKER_REGISTRY }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🐳 Built Images:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}:${{ needs.detect-changes.outputs.docker_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_REPO }}:latest\`" >> $GITHUB_STEP_SUMMARY

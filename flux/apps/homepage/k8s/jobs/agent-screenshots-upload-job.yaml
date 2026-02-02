@@ -1,0 +1,395 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📸 AGENT SCREENSHOTS UPLOAD JOB - Capture and upload agent dashboards to MinIO
+#
+#  Purpose: Take screenshots of agent command centers and upload to MinIO for services page
+#  Target: Screenshots will be used on https://lucena.cloud/services
+#
+#  Note: Init container syncs secret from minio namespace if needed
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# MinIO credentials secret (fallback - init container syncs from minio namespace)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-credentials
+  namespace: homepage
+type: Opaque
+data:
+  access-key: bWluaW9hZG1pbg==
+  root-password: dWFXNUZOUEF3aGl4b0dHSkRQTzg1eUpn
+  root-user: bWluaW9hZG1pbg==
+  secret-key: dWFXNUZOUEF3aGl4b0dHSkRQTzg1eUpn
+---
+# ServiceAccount and RBAC permissions for screenshot upload job
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-screenshots-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: agent-screenshots
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-screenshots-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: agent-screenshots
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-screenshots-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: agent-screenshots
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agent-screenshots-upload
+subjects:
+- kind: ServiceAccount
+  name: agent-screenshots-upload
+  namespace: homepage
+---
+# Role in minio namespace to read secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-screenshots-upload
+  namespace: minio
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: agent-screenshots
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-screenshots-upload
+  namespace: minio
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: agent-screenshots
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agent-screenshots-upload
+subjects:
+- kind: ServiceAccount
+  name: agent-screenshots-upload
+  namespace: homepage
+---
+# ConfigMap with screenshot URLs and settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-screenshots-config
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: agent-screenshots
+data:
+  urls.json: |
+    {
+      "screenshots": [
+        {
+          "name": "restaurant-command-center",
+          "url": "http://restaurant.lucena.cloud",
+          "description": "Restaurant Command Center",
+          "viewport": {"width": 2560, "height": 1600},
+          "waitFor": 5000
+        },
+        {
+          "name": "devops-command-center",
+          "url": "http://kube-prometheus-stack-grafana.prometheus.svc.cluster.local:3000",
+          "description": "DevOps Automation Hub",
+          "viewport": {"width": 2560, "height": 1600},
+          "waitFor": 5000
+        },
+        {
+          "name": "healthcare-command-center",
+          "url": "http://kube-prometheus-stack-grafana.prometheus.svc.cluster.local:3000/d/node-cluster-rsrc-use",
+          "description": "Healthcare AI System",
+          "viewport": {"width": 2560, "height": 1600},
+          "waitFor": 5000
+        },
+        {
+          "name": "ecommerce-command-center",
+          "url": "http://kube-prometheus-stack-grafana.prometheus.svc.cluster.local:3000/alerting/list",
+          "description": "E-Commerce Platform",
+          "viewport": {"width": 2560, "height": 1600},
+          "waitFor": 5000
+        }
+      ]
+    }
+  screenshot-script.py: |
+    #!/usr/bin/env python3
+    """
+    Agent Screenshots Capture Script
+    Takes screenshots of agent command centers using Playwright
+    """
+    import json
+    import os
+    import sys
+    import asyncio
+    from pathlib import Path
+    from playwright.async_api import async_playwright
+    
+    async def take_screenshot(page, config):
+        """Take a screenshot based on configuration"""
+        name = config['name']
+        url = config['url']
+        viewport = config.get('viewport', {'width': 1920, 'height': 1080})
+        wait_for = config.get('waitFor', 3000)
+        
+        print(f"📸 Taking screenshot: {name}")
+        print(f"   URL: {url}")
+        
+        try:
+            # Set viewport
+            await page.set_viewport_size(viewport)
+            
+            # Navigate to URL
+            await page.goto(url, wait_until='networkidle', timeout=30000)
+            
+            # Wait for additional content to load
+            await page.wait_for_timeout(wait_for)
+            
+            # Take screenshot
+            output_path = f"/screenshots/{name}.png"
+            await page.screenshot(path=output_path, full_page=True)
+            
+            print(f"✅ Screenshot saved: {output_path}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Failed to capture {name}: {str(e)}")
+            return False
+    
+    async def main():
+        """Main screenshot capture process"""
+        print("🚀 Starting agent screenshots capture...")
+        
+        # Load configuration
+        config_file = "/config/urls.json"
+        if not os.path.exists(config_file):
+            print(f"❌ Config file not found: {config_file}")
+            sys.exit(1)
+        
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        
+        screenshots = config.get('screenshots', [])
+        print(f"📋 Found {len(screenshots)} screenshots to capture")
+        
+        # Create screenshots directory
+        os.makedirs('/screenshots', exist_ok=True)
+        
+        # Launch browser
+        async with async_playwright() as p:
+            print("🌐 Launching browser...")
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu'
+                ]
+            )
+            
+            context = await browser.new_context(
+                ignore_https_errors=True,
+                java_script_enabled=True
+            )
+            
+            page = await context.new_page()
+            
+            # Take screenshots
+            success_count = 0
+            for screenshot_config in screenshots:
+                if await take_screenshot(page, screenshot_config):
+                    success_count += 1
+            
+            await browser.close()
+        
+        print(f"\n🎉 Screenshot capture complete!")
+        print(f"   Success: {success_count}/{len(screenshots)}")
+        
+        # List captured files
+        screenshots_dir = Path('/screenshots')
+        if screenshots_dir.exists():
+            files = list(screenshots_dir.glob('*.png'))
+            print(f"\n📁 Captured files:")
+            for file in files:
+                size_kb = file.stat().st_size / 1024
+                print(f"   - {file.name} ({size_kb:.1f} KB)")
+    
+    if __name__ == "__main__":
+        asyncio.run(main())
+---
+# Job to capture screenshots and upload to MinIO
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent-screenshots-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: agent-screenshots
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: agent-screenshots-upload
+      initContainers:
+        - name: ensure-minio-secret
+          image: localhost:5001/kubectl:v1.34.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "🔐 Syncing minio-credentials secret from minio namespace..."
+              
+              # Wait for secret in minio namespace (source)
+              MAX_WAIT=60
+              WAITED=0
+              while ! kubectl get secret minio-credentials -n minio &>/dev/null; do
+                if [ $WAITED -ge $MAX_WAIT ]; then
+                  echo "❌ Timeout waiting for minio-credentials in minio namespace"
+                  exit 1
+                fi
+                echo "⏳ Waiting for minio-credentials in minio namespace... (${WAITED}s/${MAX_WAIT}s)"
+                sleep 2
+                WAITED=$((WAITED + 2))
+              done
+              
+              echo "📋 Found secret in minio namespace, syncing to homepage..."
+              
+              # Extract credentials from minio namespace
+              ACCESS_KEY=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.access-key}' | base64 -d)
+              SECRET_KEY=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.secret-key}' | base64 -d)
+              ROOT_USER=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.root-user}' | base64 -d || echo "$ACCESS_KEY")
+              ROOT_PASSWORD=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.root-password}' | base64 -d || echo "$SECRET_KEY")
+              
+              # Always sync/update secret in homepage namespace (ensures it's up-to-date)
+              kubectl create secret generic minio-credentials \
+                --from-literal=access-key="${ACCESS_KEY}" \
+                --from-literal=secret-key="${SECRET_KEY}" \
+                --from-literal=root-user="${ROOT_USER}" \
+                --from-literal=root-password="${ROOT_PASSWORD}" \
+                --namespace=homepage \
+                --dry-run=client -o yaml | kubectl apply -f -
+              
+              echo "✅ Secret minio-credentials synced to homepage namespace"
+      containers:
+        - name: capture-screenshots
+          image: mcr.microsoft.com/playwright/python:v1.49.0-noble
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "📸 Setting up screenshot capture environment..."
+              
+              # Install Python dependencies
+              pip install --quiet playwright
+              
+              # Ensure Playwright browsers are installed
+              playwright install chromium
+              
+              # Run screenshot capture (no chmod needed - ConfigMap mounts are read-only)
+              python3 /config/screenshot-script.py
+              
+              echo "✅ Screenshot capture complete!"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: screenshots
+              mountPath: /screenshots
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+        - name: upload-to-minio
+          image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              
+              # Wait for screenshots to be captured
+              echo "⏳ Waiting for screenshots to be ready..."
+              while [ ! -d "/screenshots" ] || [ -z "$(ls -A /screenshots 2>/dev/null)" ]; do
+                sleep 2
+              done
+              
+              echo "📤 Uploading agent screenshots to MinIO..."
+              
+              # Configure MinIO client
+              mc alias set minio http://minio.minio.svc.cluster.local:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
+              
+              # Create bucket if not exists
+              mc mb -p minio/homepage-assets || true
+              
+              # Set public read policy on agent screenshots
+              mc anonymous set download minio/homepage-assets/agent-screenshots/
+              
+              # Upload all screenshots
+              if [ -d "/screenshots" ] && [ "$(ls -A /screenshots)" ]; then
+                echo "📤 Uploading screenshots..."
+                mc cp --recursive /screenshots/ minio/homepage-assets/agent-screenshots/
+                echo "✅ Uploaded screenshots to minio/homepage-assets/agent-screenshots/"
+                
+                # List contents to verify
+                echo "📋 Contents of homepage-assets/agent-screenshots/:"
+                mc ls minio/homepage-assets/agent-screenshots/ || echo "⚠️  Directory empty or not found"
+              else
+                echo "⚠️  No screenshots found in /screenshots directory"
+                exit 1
+              fi
+              
+              echo "🎉 Agent screenshots upload complete!"
+              echo "🌐 Screenshots are now available at: http://minio.minio.svc.cluster.local:9000/homepage-assets/agent-screenshots/"
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+          volumeMounts:
+            - name: screenshots
+              mountPath: /screenshots
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: agent-screenshots-config
+            defaultMode: 0755
+        - name: screenshots
+          emptyDir: {}

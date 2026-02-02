@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""
+Lambda Runtime Wrapper for Python
+Handles CloudEvents and calls user handler
+Emits response.success/error CloudEvents with ResponseMetrics for observability
+
+Metrics emitted in CloudEvent data:
+- durationMs: Execution duration in milliseconds
+- coldStart: Whether this was a cold start invocation
+- memoryUsedMb: Memory usage (if available)
+"""
+
+import os
+import sys
+import json
+import traceback
+import uuid
+import time
+import resource
+from datetime import datetime
+from cloudevents.http import from_http, to_binary, CloudEvent
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# METRICS TRACKING
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Cold start tracking - first invocation is a cold start
+_is_cold_start = True
+_invocation_count = 0
+_total_duration_ms = 0
+_error_count = 0
+
+# Function metadata
+FUNCTION_NAME = "{{ .FunctionName }}"
+FUNCTION_NAMESPACE = os.environ.get('FUNCTION_NAMESPACE', os.environ.get('NAMESPACE', 'knative-lambda'))
+
+# CloudEvent types for response events (must match operator's expectations)
+EVENT_TYPE_RESPONSE_SUCCESS = "io.knative.lambda.response.success"
+EVENT_TYPE_RESPONSE_ERROR = "io.knative.lambda.response.error"
+
+def get_memory_usage_mb():
+    """Get current memory usage in MB"""
+    try:
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        # maxrss is in KB on Linux, bytes on macOS
+        if sys.platform == 'darwin':
+            return usage.ru_maxrss / (1024 * 1024)
+        return usage.ru_maxrss / 1024
+    except Exception:
+        return 0
+
+def log_json(level, msg, **extra):
+    """Structured JSON logging for Loki/observability"""
+    entry = {
+        "level": level,
+        "ts": datetime.utcnow().isoformat() + "Z",
+        "function": FUNCTION_NAME,
+        "namespace": FUNCTION_NAMESPACE,
+        "msg": msg,
+        **extra
+    }
+    print(json.dumps(entry), file=sys.stderr)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# HANDLER LOADING
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+handler_func = None
+handler_module = None
+import_error = None
+
+try:
+    # Parse handler format: "module.function" -> import module, get function
+    handler_parts = "{{ .Handler }}".rsplit('.', 1)
+    if len(handler_parts) != 2:
+        raise ValueError(f"Invalid handler format: {{ .Handler }}. Expected 'module.function'")
+    
+    module_name, func_name = handler_parts
+    # Import the module dynamically
+    handler_module = __import__(module_name, fromlist=[func_name])
+    
+    # Try to get the handler function
+    if hasattr(handler_module, func_name) and callable(getattr(handler_module, func_name)):
+        handler_func = getattr(handler_module, func_name)
+    elif hasattr(handler_module, 'handler') and callable(handler_module.handler):
+        handler_func = handler_module.handler
+    elif hasattr(handler_module, 'main') and callable(handler_module.main):
+        handler_func = handler_module.main
+    else:
+        # No handler found - create a pass-through wrapper
+        log_json("info", "No handler function found in module, creating pass-through wrapper")
+        def passthrough_handler(event):
+            return {
+                "success": True,
+                "message": "Module executed successfully",
+                "event": event,
+                "timestamp": datetime.utcnow().isoformat(),
+                "module_attributes": [attr for attr in dir(handler_module) if not attr.startswith('_')]
+            }
+        handler_func = passthrough_handler
+    
+    log_json("info", "Handler loaded successfully", handler="{{ .Handler }}")
+        
+except (ImportError, AttributeError, ValueError, TypeError) as e:
+    import_error = str(e)
+    log_json("error", f"Failed to import handler {{ .Handler }}", error=str(e))
+    # Create error handler that returns the import error
+    def error_handler(event):
+        return {
+            "success": False,
+            "error": f"Failed to load module: {import_error}",
+            "event": event
+        }
+    handler_func = error_handler
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# HEALTH ENDPOINTS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@app.route('/health', methods=['GET'])
+@app.route('/healthz', methods=['GET'])
+@app.route('/readyz', methods=['GET'])
+def health_check():
+    """Health check endpoint for Kubernetes probes"""
+    return jsonify({
+        "status": "healthy",
+        "function": FUNCTION_NAME,
+        "namespace": FUNCTION_NAMESPACE,
+        "invocations": _invocation_count,
+        "errors": _error_count
+    }), 200
+
+@app.route('/metrics', methods=['GET'])
+def metrics_endpoint():
+    """Prometheus metrics endpoint for scraping"""
+    labels = f'function="{FUNCTION_NAME}",namespace="{FUNCTION_NAMESPACE}"'
+    lines = [
+        '# HELP knative_lambda_function_invocations_total Total invocations',
+        '# TYPE knative_lambda_function_invocations_total counter',
+        f'knative_lambda_function_invocations_total{{{labels},status="success"}} {_invocation_count - _error_count}',
+        f'knative_lambda_function_invocations_total{{{labels},status="error"}} {_error_count}',
+        '# HELP knative_lambda_function_cold_starts_total Total cold starts',
+        '# TYPE knative_lambda_function_cold_starts_total counter',
+        f'knative_lambda_function_cold_starts_total{{{labels}}} 1' if _invocation_count > 0 else f'knative_lambda_function_cold_starts_total{{{labels}}} 0',
+    ]
+    return '\n'.join(lines) + '\n', 200, {'Content-Type': 'text/plain'}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# MAIN REQUEST HANDLER
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@app.route('/', methods=['POST'])
+def handle_request():
+    global _is_cold_start, _invocation_count, _total_duration_ms, _error_count
+    
+    start_time = time.time()
+    was_cold_start = _is_cold_start
+    _is_cold_start = False
+    _invocation_count += 1
+    
+    # Extract correlation ID from headers
+    correlation_id = request.headers.get('X-Correlation-ID') or \
+                     request.headers.get('Ce-Id') or \
+                     str(uuid.uuid4())
+    
+    # Extract invocation ID (use Ce-Id or generate)
+    invocation_id = request.headers.get('Ce-Id', str(uuid.uuid4()))
+    
+    try:
+        # Parse CloudEvent from HTTP request
+        event = from_http(request.headers, request.get_data())
+        
+        # Log invocation start
+        log_json("info", "Invocation started",
+                 correlation_id=correlation_id,
+                 event_id=event.get('id'),
+                 event_type=event.get('type'),
+                 event_source=event.get('source'),
+                 cold_start=was_cold_start)
+        
+        # Extract data payload
+        event_data = event.data if event.data else {}
+        
+        # Call user handler
+        result = handler_func(event_data)
+        
+        # Calculate duration
+        duration_ms = int((time.time() - start_time) * 1000)
+        _total_duration_ms += duration_ms
+        memory_mb = get_memory_usage_mb()
+        
+        # Log success
+        log_json("info", "Invocation completed",
+                 correlation_id=correlation_id,
+                 event_id=event.get('id'),
+                 duration_ms=duration_ms,
+                 cold_start=was_cold_start,
+                 status="success")
+        
+        # Create success response CloudEvent with ResponseMetrics
+        # This matches the operator's ResponseEventData structure
+        response_data = {
+            "functionName": FUNCTION_NAME,
+            "namespace": FUNCTION_NAMESPACE,
+            "invocationId": invocation_id,
+            "correlationId": correlation_id,
+            "result": {
+                "statusCode": 200,
+                "body": result
+            },
+            "metrics": {
+                "durationMs": duration_ms,
+                "coldStart": was_cold_start,
+                "memoryUsedMb": int(memory_mb)
+            }
+        }
+        
+        response_event = CloudEvent({
+            "type": EVENT_TYPE_RESPONSE_SUCCESS,
+            "source": f"io.knative.lambda/{FUNCTION_NAME}",
+            "id": str(uuid.uuid4()),
+            "specversion": "1.0",
+            "subject": FUNCTION_NAME,
+        }, response_data)
+        
+        headers, body = to_binary(response_event)
+        response_headers = dict(headers)
+        response_headers['X-Correlation-ID'] = correlation_id
+        return body, 200, response_headers
+        
+    except Exception as e:
+        _error_count += 1
+        duration_ms = int((time.time() - start_time) * 1000)
+        _total_duration_ms += duration_ms
+        memory_mb = get_memory_usage_mb()
+        error_type = type(e).__name__
+        
+        # Log error
+        log_json("error", "Invocation failed",
+                 correlation_id=correlation_id,
+                 duration_ms=duration_ms,
+                 cold_start=was_cold_start,
+                 error_type=error_type,
+                 error_message=str(e),
+                 stack=traceback.format_exc())
+        
+        # Create error response CloudEvent with ResponseMetrics
+        response_data = {
+            "functionName": FUNCTION_NAME,
+            "namespace": FUNCTION_NAMESPACE,
+            "invocationId": invocation_id,
+            "correlationId": correlation_id,
+            "error": {
+                "code": error_type,
+                "message": str(e),
+                "retryable": error_type not in ['ValueError', 'TypeError', 'ImportError'],
+                "stack": traceback.format_exc()
+            },
+            "metrics": {
+                "durationMs": duration_ms,
+                "coldStart": was_cold_start,
+                "memoryUsedMb": int(memory_mb)
+            }
+        }
+        
+        error_event = CloudEvent({
+            "type": EVENT_TYPE_RESPONSE_ERROR,
+            "source": f"io.knative.lambda/{FUNCTION_NAME}",
+            "id": str(uuid.uuid4()),
+            "specversion": "1.0",
+            "subject": FUNCTION_NAME,
+        }, response_data)
+        
+        headers, body = to_binary(error_event)
+        response_headers = dict(headers)
+        response_headers['X-Correlation-ID'] = correlation_id
+        return body, 500, response_headers
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    log_json("info", "Lambda runtime started",
+             port=port,
+             function=FUNCTION_NAME,
+             namespace=FUNCTION_NAMESPACE)
+    app.run(host='0.0.0.0', port=port)

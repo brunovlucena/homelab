@@ -1,0 +1,163 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  ⛽ Pump Agent - Gas Station Fuel Operations
+#
+#  Monitors pumps, tank levels, and fuel transactions
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: pump-agent
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: pump-agent
+    app.kubernetes.io/component: fuel-operations
+    app.kubernetes.io/part-of: agent-pos-edge
+    pos.agent.role: pump
+    pos.location.type: gas-station
+  annotations:
+    description: "Fuel pump and tank monitoring for gas stations"
+spec:
+  serviceAccountName: pos-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/pump-agent
+    tag: "v0.3.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:1b"
+    maxTokens: 512
+    temperature: "0.2"
+
+  behavior:
+    maxContextMessages: 10
+    emitEvents: true
+    systemPrompt: |
+      You are a PUMP AGENT monitoring gas station fuel operations.
+      
+      YOUR ROLE:
+      - Monitor all fuel pumps status
+      - Track fuel tank levels
+      - Process fuel transactions
+      - Predict refill needs
+      - Detect safety issues
+      
+      PUMP STATUSES:
+      - available: Ready for customer
+      - in_use: Currently dispensing
+      - reserved: Pre-pay transaction
+      - offline: Out of service
+      - maintenance: Scheduled maintenance
+      
+      ALERT CONDITIONS:
+      - Tank level < 20%: MEDIUM alert (order fuel)
+      - Tank level < 10%: HIGH alert (urgent refill)
+      - Pump offline unexpectedly: HIGH alert
+      - Pump error during transaction: CRITICAL alert
+      - Fuel leak detected: CRITICAL alert (safety)
+      
+      PREDICTIVE ANALYTICS:
+      - Track consumption rate per fuel type
+      - Predict time until tank empty
+      - Recommend optimal refill schedule
+      
+      Respond with:
+      {
+        "action": "status_update|alert|predict",
+        "pumpId": "pump-XX",
+        "tankId": "tank-XX",
+        "fuelType": "regular|premium|diesel",
+        "level": <percentage>,
+        "prediction": {
+          "hoursUntilEmpty": <number>,
+          "recommendedRefillDate": "ISO date"
+        }
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 50
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "300m"
+      memory: "256Mi"
+
+  env:
+    - name: AGENT_ROLE
+      value: "pump"
+    - name: TANK_LOW_THRESHOLD_PERCENT
+      value: "20"
+    - name: TANK_CRITICAL_THRESHOLD_PERCENT
+      value: "10"
+    - name: PUMP_POLL_INTERVAL_SECONDS
+      value: "5"
+    - name: TANK_POLL_INTERVAL_SECONDS
+      value: "60"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-pos-edge/pump"
+    
+    intents:
+      - pos.pump.transaction.start
+      - pos.pump.transaction.end
+      - pos.pump.status
+      - pos.tank.level
+      - pos.tank.alert.low
+      - pos.tank.refill.predict
+      - pos.pump.safety.alert
+    
+    subscriptions:
+      # Payment from POS triggers pump
+      - eventType: pos.transaction.started
+        description: "Pre-pay transaction activates pump"
+      
+      # Sensor data from pump hardware
+      - eventType: pos.pump.sensor.reading
+        description: "Pump sensor data"
+      - eventType: pos.tank.sensor.reading
+        description: "Tank level sensor data"
+      
+      # Configuration from command center
+      - eventType: pos.command.config.push
+        description: "Configuration updates"
+      
+      # Maintenance schedules
+      - eventType: pos.command.maintenance.schedule
+        description: "Scheduled pump maintenance"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true
+    allowedTargetNamespaces:
+      - agent-pos-edge

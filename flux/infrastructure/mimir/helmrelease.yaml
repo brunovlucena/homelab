@@ -1,0 +1,173 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: mimir
+  namespace: mimir
+spec:
+  suspend: true
+  interval: 30m
+  chart:
+    spec:
+      chart: mimir-distributed
+      version: ">=6.0.0 <7.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+      interval: 12h
+  install:
+    crds: Create
+    remediation:
+      retries: 3
+  upgrade:
+    crds: Skip
+    remediation:
+      retries: 3
+  values:
+    # Mimir configuration
+    mimir:
+      image:
+        registry: localhost:5001
+        repository: mimir
+        # Fallback: docker.io/grafana/mimir
+        tag: "2.15.0"
+      
+      # Common configuration
+      commonConfig:
+        replication_factor: 1
+      
+      # Storage configuration
+      storage:
+        backend: filesystem
+        filesystem:
+          dir: /var/mimir/data
+      
+      # Limits configuration for homelab
+      limits_config:
+        ingestion_rate: 10000
+        ingestion_burst_size: 20000
+        max_global_series_per_user: 500000
+        max_global_series_per_metric: 20000
+        max_query_parallelism: 32
+        max_query_length: 721h
+        max_query_series: 10000
+        retention_period: 720h  # 30 days
+    
+    # Minimal distributed setup for homelab (1 replica of each component)
+    distributor:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+      affinity: {}
+    
+    ingester:
+      replicas: 1
+      persistence:
+        enabled: true
+        size: 20Gi
+        storageClass: standard
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+      affinity: {}
+    
+    querier:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+      affinity: {}
+    
+    queryFrontend:
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+      affinity: {}
+    
+    storeGateway:
+      replicas: 1
+      persistence:
+        enabled: true
+        size: 10Gi
+        storageClass: standard
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 200m
+          memory: 512Mi
+      affinity: {}
+    
+    compactor:
+      replicas: 1
+      persistence:
+        enabled: true
+        size: 10Gi
+        storageClass: standard
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 200m
+          memory: 512Mi
+      affinity: {}
+    
+    # Gateway configuration
+    gateway:
+      enabled: true
+      replicas: 1
+      image:
+        registry: localhost:5001
+        repository: nginx-unprivileged
+        # Fallback: docker.io/nginxinc/nginx-unprivileged
+        tag: "1.29-alpine"
+      # Expose Mimir via NodePort for Cursor access
+      service:
+        type: NodePort
+        nodePort: 30044
+        port: 80
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+      # Disable anti-affinity for single-node cluster
+      affinity: {}
+    
+    # Monitoring
+    monitoring:
+      serviceMonitor:
+        enabled: true
+        labels:
+          release: kube-prometheus-stack
+      selfMonitoring:
+        enabled: false
+        grafanaAgent:
+          installOperator: false
+    
+    # Test configuration
+    test:
+      enabled: false

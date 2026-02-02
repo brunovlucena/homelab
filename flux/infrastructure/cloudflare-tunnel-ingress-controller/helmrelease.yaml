@@ -1,0 +1,58 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# STRRL Cloudflare Tunnel Ingress Controller
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Replaces the custom cloudflare-tunnel-operator with a standard Kubernetes
+# Ingress controller that uses Cloudflare Tunnel
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cloudflare-tunnel-ingress-controller
+  namespace: cloudflare-tunnel-ingress-controller
+spec:
+  interval: 1h0m0s
+  chart:
+    spec:
+      chart: cloudflare-tunnel-ingress-controller
+      sourceRef:
+        kind: HelmRepository
+        name: strrl
+        namespace: flux-system
+      version: ">=0.0.0"
+  install:
+    crds: Create
+  upgrade:
+    crds: CreateReplace
+  values:
+    cloudflare:
+      # Use existing secret from cloudflare-tunnel namespace
+      # The secret will be synced by the secret-sync job
+      secretRef:
+        name: cloudflare-api
+        apiTokenKey: api-token
+        accountIDKey: account-id
+        tunnelNameKey: tunnel-name
+    
+    # Controller configuration
+    controller:
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+      # Security context - must be set at controller level
+      # Note: Image uses non-numeric user "nonroot", so we set runAsUser explicitly
+      # Do NOT set runAsNonRoot: true as it conflicts with non-numeric users
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsUser: 65532  # nonroot user UID (common for distroless images)
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop:
+            - ALL

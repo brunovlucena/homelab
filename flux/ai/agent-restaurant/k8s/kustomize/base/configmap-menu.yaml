@@ -1,0 +1,173 @@
+# 🍽️ Restaurant Menu Configuration
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: restaurant-menu
+  namespace: ai
+data:
+  menu.yaml: |
+    restaurant:
+      name: "Ristorante Stellare"
+      style: "Fine Italian Dining"
+      
+    categories:
+      - name: "Antipasti"
+        items:
+          - id: "bruschetta-trio"
+            name: "Bruschetta Trio"
+            price: 18
+            description: "Three artisan bruschettas with tomato basil, mushroom truffle, and burrata"
+            presentation: |
+              A celebration of Italian simplicity - sun-ripened tomatoes from San Marzano,
+              wild mushrooms kissed with black truffle oil, and creamy burrata from Puglia,
+              all resting on bread grilled over olive wood.
+            allergens: ["gluten", "dairy"]
+            dietary: ["vegetarian"]
+            
+          - id: "carpaccio-manzo"
+            name: "Carpaccio di Manzo"
+            price: 24
+            description: "Thinly sliced beef tenderloin with arugula, capers, and aged parmesan"
+            presentation: |
+              Paper-thin slices of prime beef tenderloin, dressed moments ago with
+              our house-aged olive oil, crowned with shaved 36-month Parmigiano
+              and peppery wild arugula from our garden.
+            allergens: ["dairy"]
+            dietary: []
+            
+      - name: "Primi"
+        items:
+          - id: "risotto-porcini"
+            name: "Risotto ai Porcini"
+            price: 32
+            description: "Carnaroli rice with wild porcini mushrooms and truffle oil"
+            presentation: |
+              Chef Marco's signature - Carnaroli rice from the Po Valley,
+              stirred for eighteen minutes with hand-foraged porcini from
+              the Apennine mountains, finished with aged Parmigiano and
+              a delicate drizzle of black truffle oil.
+            allergens: ["dairy"]
+            dietary: ["vegetarian", "gluten-free"]
+            wine_pairing: "2020 Gavi di Gavi"
+            
+          - id: "tagliatelle-ragu"
+            name: "Tagliatelle al Ragù"
+            price: 28
+            description: "Fresh egg pasta with slow-cooked Bolognese sauce"
+            presentation: |
+              Hand-rolled tagliatelle, cut this morning by Nonna's recipe,
+              embraced by our ragù - beef, pork, and veal simmered for
+              six hours with San Marzano tomatoes and a whisper of cream.
+            allergens: ["gluten", "dairy", "eggs"]
+            dietary: []
+            wine_pairing: "2018 Chianti Classico Riserva"
+            
+      - name: "Secondi"
+        items:
+          - id: "branzino"
+            name: "Branzino alla Griglia"
+            price: 42
+            description: "Grilled Mediterranean sea bass with lemon and herbs"
+            presentation: |
+              Wild-caught branzino from the Adriatic, simply grilled to let
+              the sea speak for itself. Finished with Sicilian lemon, our
+              garden herbs, and the finest Ligurian olive oil.
+            allergens: ["fish"]
+            dietary: ["gluten-free"]
+            wine_pairing: "2021 Vermentino di Sardegna"
+            
+          - id: "ossobuco"
+            name: "Ossobuco alla Milanese"
+            price: 48
+            description: "Braised veal shank with saffron risotto"
+            presentation: |
+              A Milanese masterpiece - veal shank braised for four hours
+              until it surrenders to your fork. Accompanied by risotto
+              tinted gold with precious saffron threads from L'Aquila.
+              The marrow is the chef's gift - please enjoy it on the toast.
+            allergens: ["dairy"]
+            dietary: ["gluten-free"]
+            wine_pairing: "2017 Barbaresco"
+            
+      - name: "Dolci"
+        items:
+          - id: "tiramisu"
+            name: "Tiramisù della Casa"
+            price: 14
+            description: "Classic tiramisu with mascarpone and espresso"
+            presentation: |
+              Our interpretation of Italy's beloved dessert - layers of
+              savoiardi soaked in Illy espresso, clouds of mascarpone,
+              and a gentle dusting of Valrhona cocoa. A sweet ending
+              to your Italian journey.
+            allergens: ["dairy", "eggs", "gluten"]
+            dietary: ["vegetarian"]
+            
+    wine_list:
+      white:
+        - name: "Gavi di Gavi"
+          vintage: 2020
+          region: "Piedmont"
+          grape: "Cortese"
+          price_bottle: 65
+          price_glass: 16
+          notes: "Crisp minerality, citrus, white flowers"
+          
+        - name: "Vermentino di Sardegna"
+          vintage: 2021
+          region: "Sardinia"
+          grape: "Vermentino"
+          price_bottle: 55
+          price_glass: 14
+          notes: "Fresh, herbal, Mediterranean herbs"
+          
+      red:
+        - name: "Chianti Classico Riserva"
+          vintage: 2018
+          region: "Tuscany"
+          grape: "Sangiovese"
+          price_bottle: 75
+          price_glass: 18
+          notes: "Cherry, leather, elegant tannins"
+          
+        - name: "Barbaresco"
+          vintage: 2017
+          region: "Piedmont"
+          grape: "Nebbiolo"
+          price_bottle: 120
+          price_glass: 28
+          notes: "Rose, tar, truffle, structured"
+          
+        - name: "Barolo"
+          vintage: 2016
+          region: "Piedmont"
+          grape: "Nebbiolo"
+          price_bottle: 180
+          notes: "Complex, ethereal, long finish"
+          
+    tables:
+      - id: "table-01"
+        capacity: 2
+        location: "window"
+        features: ["romantic", "view"]
+      - id: "table-02"
+        capacity: 2
+        location: "window"
+        features: ["romantic", "view"]
+      - id: "table-03"
+        capacity: 4
+        location: "main"
+        features: ["family"]
+      - id: "table-04"
+        capacity: 4
+        location: "main"
+        features: ["family"]
+      - id: "table-05"
+        capacity: 6
+        location: "private"
+        features: ["business", "quiet"]
+      - id: "table-06"
+        capacity: 8
+        location: "private"
+        features: ["celebration", "large-party"]

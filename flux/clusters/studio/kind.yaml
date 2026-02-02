@@ -1,0 +1,411 @@
+# =============================================================================
+# Studio Cluster Configuration
+# =============================================================================
+# Purpose: Cluster for testing all services
+# Total Nodes: 4 (1 control-plane + 3 workers)
+# Network: 10.246.0.0/16 (pods), 10.98.0.0/16 (services)
+#
+# Active Agents (30+):
+#   - agent-bruno, agent-medical, agent-redteam, agent-tools
+#   - agent-chat (command-center, location, media, messaging-hub, voice)
+#   - agent-contracts (contract-fetcher, exploit-generator, notifi-adapter, vuln-scanner)
+#   - agent-pos-edge (command-center, kitchen, pos-edge, pump)
+#   - agent-restaurant (chef-marco, host-maximilian, sommelier-isabella, waiter-pierre)
+#   - agent-store-multibrands (ai-seller-*, order-processor, product-catalog, etc)
+#
+# AI Infrastructure:
+#   - Ollama (host.docker.internal:11434) - GPU accelerated
+#   - Models: llama3.2:3b, gemma3n:e4b, qwen3:8b, qwen2.5-coder:7b
+# =============================================================================
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: studio
+networking:
+  # Studio cluster private network CIDRs (non-overlapping with pro)
+  podSubnet: "10.246.0.0/16"
+  serviceSubnet: "10.98.0.0/16"
+  # API server configuration for remote access
+  apiServerAddress: "0.0.0.0"  # Listen on all interfaces (required for remote access)
+  apiServerPort: 52612 # old 6443           # Default Kubernetes API port
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry]
+    config_path = "/etc/containerd/certs.d"
+
+nodes:
+# =============================================================================
+# Control Plane Node - All Workloads
+# =============================================================================
+# This single node hosts all services:
+# - Platform: Flux, cert-manager, metrics-server, Linkerd, Flagger, headlamp, k6-operator
+# - AI Agents: agent-jamie, agent-bruno, agent-auditor, aigoat, garak, agent-kamaji, agent-mary-kay, agent-whatsapp-seller
+# - Serverless: Knative Serving/Eventing, knative-lambda, RabbitMQ
+# - Observability: Prometheus, Grafana, Loki, Tempo, Alloy, AlertManager, Pushgateway
+# - Data: PostgreSQL, MongoDB, Redis, MinIO, RabbitMQ, ScyllaDB
+# - Ingress: Cloudflare tunnel, homepage, localstack
+- role: control-plane
+  image: localhost:5001/kindest-node:v1.34.0
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true,tier=control-plane,workload-type=all,resource-profile=high-io,persistence=required,criticality=critical,bruno.dev/monitoring=enabled,bruno.dev/network-policy=strict,bruno.dev/backup=enabled,role=serverless"
+  - |
+    kind: ClusterConfiguration
+    networking:
+      podSubnet: "10.246.0.0/16"
+      serviceSubnet: "10.98.0.0/16"
+    apiServer:
+      certSANs:
+      - 10.0.0.1
+      - 0.0.0.0
+  # Combined labels from all worker nodes - single node hosts all workloads
+  labels:
+    role: serverless  # Required for Knative/RabbitMQ components
+    tier: infrastructure
+    workload-type: all
+    resource-profile: high-io
+    persistence: required
+    criticality: critical
+    bruno.dev/monitoring: enabled
+    bruno.dev/network-policy: strict
+    bruno.dev/backup: enabled
+  extraMounts:
+  - hostPath: /var/run/docker.sock
+    containerPath: /var/run/docker.sock
+  # Combined port mappings from all worker nodes
+  # Note: Using offset of 2000 to avoid conflicts with studio cluster (30000+ range)
+  extraPortMappings:
+  # Platform ports
+  - containerPort: 30001  # headlamp UI
+    hostPort: 32001
+    protocol: TCP
+  - containerPort: 30002  # metrics-server
+    hostPort: 32002
+    protocol: TCP
+  - containerPort: 30003  # flagger
+    hostPort: 32003
+    protocol: TCP
+  - containerPort: 30004  # k6-operator
+    hostPort: 32004
+    protocol: TCP
+  - containerPort: 30005  # linkerd-viz web
+    hostPort: 32005
+    protocol: TCP
+  - containerPort: 30006  # linkerd-viz metrics-api
+    hostPort: 32006
+    protocol: TCP
+  - containerPort: 30007  # linkerd-viz tap
+    hostPort: 32007
+    protocol: TCP
+  - containerPort: 30008  # flux source-controller
+    hostPort: 32008
+    protocol: TCP
+  - containerPort: 30009  # flux notification-controller
+    hostPort: 32009
+    protocol: TCP
+  - containerPort: 30010  # pulumi-operator
+    hostPort: 32010
+    protocol: TCP
+  # AI Agents ports
+  - containerPort: 30120  # agent-jamie
+    hostPort: 32120
+    protocol: TCP
+  - containerPort: 30121  # agent-bruno
+    hostPort: 32121
+    protocol: TCP
+  - containerPort: 30122  # agent-auditor
+    hostPort: 32122
+    protocol: TCP
+  - containerPort: 30123  # agent-auditor UI
+    hostPort: 32123
+    protocol: TCP
+  - containerPort: 30124  # aigoat
+    hostPort: 32124
+    protocol: TCP
+  - containerPort: 30125  # garak
+    hostPort: 32125
+    protocol: TCP
+  - containerPort: 30126  # agent-kamaji
+    hostPort: 32126
+    protocol: TCP
+  - containerPort: 30127  # agent-mary-kay
+    hostPort: 32127
+    protocol: TCP
+  - containerPort: 30128  # agent-whatsapp-seller
+    hostPort: 32128
+    protocol: TCP
+  - containerPort: 30129  # agent-medical
+    hostPort: 32129
+    protocol: TCP
+  - containerPort: 30140  # agent-chat command-center
+    hostPort: 32140
+    protocol: TCP
+  - containerPort: 30141  # agent-chat messaging-hub
+    hostPort: 32141
+    protocol: TCP
+  - containerPort: 30142  # agent-chat voice-agent
+    hostPort: 32142
+    protocol: TCP
+  - containerPort: 30143  # agent-chat media-agent
+    hostPort: 32143
+    protocol: TCP
+  - containerPort: 30144  # agent-chat location-agent
+    hostPort: 32144
+    protocol: TCP
+  - containerPort: 30150  # agent-pos-edge command-center
+    hostPort: 32150
+    protocol: TCP
+  - containerPort: 30151  # agent-pos-edge kitchen-agent
+    hostPort: 32151
+    protocol: TCP
+  - containerPort: 30152  # agent-pos-edge pump-agent
+    hostPort: 32152
+    protocol: TCP
+  - containerPort: 30153  # agent-pos-edge pos-edge
+    hostPort: 32153
+    protocol: TCP
+  - containerPort: 30160  # agent-restaurant chef-marco
+    hostPort: 32160
+    protocol: TCP
+  - containerPort: 30161  # agent-restaurant host-maximilian
+    hostPort: 32161
+    protocol: TCP
+  - containerPort: 30162  # agent-restaurant sommelier-isabella
+    hostPort: 32162
+    protocol: TCP
+  - containerPort: 30163  # agent-restaurant waiter-pierre
+    hostPort: 32163
+    protocol: TCP
+  - containerPort: 30170  # agent-store-multibrands ai-seller-tech
+    hostPort: 32170
+    protocol: TCP
+  - containerPort: 30171  # agent-store-multibrands ai-seller-fashion
+    hostPort: 32171
+    protocol: TCP
+  - containerPort: 30172  # agent-store-multibrands ai-seller-beauty
+    hostPort: 32172
+    protocol: TCP
+  - containerPort: 30173  # agent-store-multibrands ai-seller-gaming
+    hostPort: 32173
+    protocol: TCP
+  - containerPort: 30174  # agent-store-multibrands ai-seller-home
+    hostPort: 32174
+    protocol: TCP
+  - containerPort: 30175  # agent-store-multibrands order-processor
+    hostPort: 32175
+    protocol: TCP
+  - containerPort: 30176  # agent-store-multibrands whatsapp-gateway
+    hostPort: 32176
+    protocol: TCP
+  - containerPort: 30180  # agent-contracts vuln-scanner
+    hostPort: 32180
+    protocol: TCP
+  - containerPort: 30181  # agent-contracts exploit-generator
+    hostPort: 32181
+    protocol: TCP
+  - containerPort: 30182  # agent-contracts contract-fetcher
+    hostPort: 32182
+    protocol: TCP
+  - containerPort: 30183  # agent-contracts notifi-adapter
+    hostPort: 32183
+    protocol: TCP
+  - containerPort: 30190  # agent-redteam
+    hostPort: 32190
+    protocol: TCP
+  - containerPort: 30191  # agent-tools
+    hostPort: 32191
+    protocol: TCP
+  - containerPort: 30192  # agent-sre
+    hostPort: 32192
+    protocol: TCP
+  # Serverless ports
+  - containerPort: 30130  # knative serving
+    hostPort: 32130
+    protocol: TCP
+  - containerPort: 30131  # knative eventing
+    hostPort: 32131
+    protocol: TCP
+  - containerPort: 30132  # knative-lambda
+    hostPort: 32132
+    protocol: TCP
+  - containerPort: 30133  # RabbitMQ broker
+    hostPort: 32133
+    protocol: TCP
+  # Observability ports
+  - containerPort: 30040  # grafana
+    hostPort: 32040
+    protocol: TCP
+  - containerPort: 30041  # prometheus
+    hostPort: 32041
+    protocol: TCP
+  - containerPort: 30042  # loki
+    hostPort: 32042
+    protocol: TCP
+  - containerPort: 30043  # tempo
+    hostPort: 32043
+    protocol: TCP
+  - containerPort: 4317   # tempo otlp grpc
+    hostPort: 32431
+    protocol: TCP
+  - containerPort: 4318   # tempo otlp http
+    hostPort: 32432
+    protocol: TCP
+  - containerPort: 30044  # alloy
+    hostPort: 32044
+    protocol: TCP
+  - containerPort: 30045  # alertmanager
+    hostPort: 32045
+    protocol: TCP
+  - containerPort: 30046  # pushgateway
+    hostPort: 32046
+    protocol: TCP
+  - containerPort: 30081  # flyteadmin grpc API (NodePort via flyteadmin-nodeport service)
+    hostPort: 32081
+    protocol: TCP
+  # Infrastructure ports
+  - containerPort: 30082  # vault
+    hostPort: 32082
+    protocol: TCP
+  # Data ports
+  - containerPort: 30060  # minio
+    hostPort: 32060
+    protocol: TCP
+  - containerPort: 30061  # minio console
+    hostPort: 32061
+    protocol: TCP
+  - containerPort: 30062  # postgres
+    hostPort: 32062
+    protocol: TCP
+  - containerPort: 30063  # mongodb
+    hostPort: 32063
+    protocol: TCP
+  - containerPort: 30064  # redis
+    hostPort: 32064
+    protocol: TCP
+  - containerPort: 30065  # rabbitmq
+    hostPort: 32065
+    protocol: TCP
+  - containerPort: 30066  # scylladb
+    hostPort: 32066
+    protocol: TCP
+  # Ingress ports (using different ports to avoid conflict with studio cluster)
+  - containerPort: 80      # http
+    hostPort: 8280
+    protocol: TCP
+  - containerPort: 443     # https
+    hostPort: 8643
+    protocol: TCP
+  - containerPort: 30070   # cloudflare-tunnel
+    hostPort: 32070
+    protocol: TCP
+  - containerPort: 30071   # telepresence
+    hostPort: 32071
+    protocol: TCP
+  - containerPort: 8443    # telepresence agent-injector
+    hostPort: 32844
+    protocol: TCP
+  - containerPort: 8081    # telepresence traffic-manager
+    hostPort: 32808
+    protocol: TCP
+  - containerPort: 30072   # localstack
+    hostPort: 32072
+    protocol: TCP
+  # Pi-hole ports
+  - containerPort: 30053   # pihole web UI
+    hostPort: 30053
+    protocol: TCP
+  - containerPort: 30054   # pihole DNS TCP
+    hostPort: 30054
+    protocol: TCP
+  - containerPort: 30055   # pihole DNS UDP
+    hostPort: 30055
+    protocol: UDP
+
+# =============================================================================
+# Worker Node 1 - Workload Processing
+# =============================================================================
+# This worker node handles workload pods to reduce pressure on control-plane
+# Helps with pod scheduling when control-plane hits pod limits
+- role: worker
+  image: localhost:5001/kindest-node:v1.34.0
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+	kubectl port-forward -n postgres svc/postgres 5432:5432 > /tmp/tp-postgres.log 2>&1 & \
+		echo "✅ postgres port-forward started (PID: $$!)"; \
+        node-labels: "tier=worker,workload-type=all,resource-profile=high-io,bruno.dev/monitoring=enabled,role=serverless"
+  labels:
+    role: serverless
+    tier: worker
+    workload-type: all
+    resource-profile: high-io
+    bruno.dev/monitoring: enabled
+  extraMounts:
+  - hostPath: /var/run/docker.sock
+    containerPath: /var/run/docker.sock
+
+# =============================================================================
+# Worker Node 2 - Workload Processing
+# =============================================================================
+# Second worker node for additional capacity and pod scheduling flexibility
+- role: worker
+  image: localhost:5001/kindest-node:v1.34.0
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "tier=worker,workload-type=all,resource-profile=high-io,bruno.dev/monitoring=enabled,role=serverless"
+  labels:
+    role: serverless
+    tier: worker
+    workload-type: all
+    resource-profile: high-io
+    bruno.dev/monitoring: enabled
+  extraMounts:
+  - hostPath: /var/run/docker.sock
+    containerPath: /var/run/docker.sock
+
+# =============================================================================
+# Worker Node 3 - AI Agents & High Memory Workloads
+# =============================================================================
+# Third worker node dedicated for AI agents and memory-intensive services
+# Added to handle 268+ pods and growing agent ecosystem
+- role: worker
+  image: localhost:5001/kindest-node:v1.34.0
+  kubeadmConfigPatches:
+  - |
+    kind: JoinConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "tier=worker,workload-type=ai-agents,resource-profile=high-memory,bruno.dev/monitoring=enabled,role=serverless,ai-workload=true"
+  labels:
+    role: serverless
+    tier: worker
+    workload-type: ai-agents
+    resource-profile: high-memory
+    bruno.dev/monitoring: enabled
+    ai-workload: "true"
+  extraMounts:
+  - hostPath: /var/run/docker.sock
+    containerPath: /var/run/docker.sock
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: studio
+  namespace: kube-system
+spec:
+  type: NodePort
+  port: 30000
+  nodePort: 32000
+  protocol: TCP
+  selector:
+    app: studio
+

@@ -1,0 +1,63 @@
+---
+# Linkerd Viz Web Dashboard - NodePort service for Cursor access
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-nodeport
+  namespace: linkerd-viz
+  labels:
+    app: web
+    linkerd.io/extension: viz
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 8084
+      targetPort: 8084
+      nodePort: 30005
+      protocol: TCP
+  selector:
+    app: web
+    linkerd.io/extension: viz
+---
+# Linkerd Viz Metrics API - NodePort service for Cursor access
+apiVersion: v1
+kind: Service
+metadata:
+  name: metrics-api-nodeport
+  namespace: linkerd-viz
+  labels:
+    app: metrics-api
+    linkerd.io/extension: viz
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 8085
+      targetPort: 8085
+      nodePort: 30006
+      protocol: TCP
+  selector:
+    app: metrics-api
+    linkerd.io/extension: viz
+---
+# Linkerd Viz Tap - NodePort service for Cursor access
+apiVersion: v1
+kind: Service
+metadata:
+  name: tap-nodeport
+  namespace: linkerd-viz
+  labels:
+    app: tap
+    linkerd.io/extension: viz
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 8088
+      targetPort: 8088
+      nodePort: 30007
+      protocol: TCP
+  selector:
+    app: tap
+    linkerd.io/extension: viz

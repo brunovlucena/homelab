@@ -1,0 +1,17 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: agent-medical
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: agent-medical
+      app.kubernetes.io/component: web
+
+resources:
+  - deployment.yaml
+  - cloudflare-tunnel-ingress.yaml
+
+commonLabels:
+  app.kubernetes.io/version: "1.0.0"

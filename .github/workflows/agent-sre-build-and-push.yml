@@ -1,0 +1,92 @@
+name: 🐳 Build and Push Agent-SRE Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'flux/ai/agent-sre/**'
+      - 'flux/ai/agent-sre/VERSION'
+      - '.github/workflows/agent-sre-build-and-push.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (defaults to VERSION file)'
+        required: false
+        type: string
+
+env:
+  REGISTRY: localhost:5001
+  IMAGE_NAME: agent-sre
+
+jobs:
+  build-and-push:
+    name: 🐳 Build and Push Docker Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: 📋 Read Version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(cat flux/ai/agent-sre/VERSION | tr -d '[:space:]')
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION"
+          echo "🏷️  Tag: v$VERSION"
+      
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: 🔐 Configure Registry Access
+        run: |
+          # For localhost:5001, we may need to configure access
+          # If using a remote registry, add authentication here
+          echo "REGISTRY=${{ env.REGISTRY }}" >> $GITHUB_ENV
+      
+      - name: 🏗️ Build Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./flux/ai/agent-sre
+          push: false  # Don't push from GitHub Actions (build on cluster)
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          platforms: linux/amd64,linux/arm64
+      
+      - name: 📊 Build Summary
+        run: |
+          echo "## 🐳 Docker Image Build" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | \`${{ steps.version.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Instructions" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To build and push on your cluster:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "cd flux/ai/agent-sre" >> $GITHUB_STEP_SUMMARY
+          echo "make build-local" >> $GITHUB_STEP_SUMMARY
+          echo "# Image will be available at: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+      
+      - name: ✅ Build Verification
+        run: |
+          echo "✅ Build completed successfully"
+          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}"
+          echo ""
+          echo "⚠️  Note: Image is built but not pushed from GitHub Actions"
+          echo "   Build the image on your cluster using: make build-local"

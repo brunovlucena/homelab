@@ -1,0 +1,52 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  - ../base
+
+# Studio environment - using ghcr.io for pre-built images
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+patches:
+  # Update image tags for all LambdaAgents
+  - target:
+      kind: LambdaAgent
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.2.0"
+  
+  # Use ghcr.io for studio
+  - patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: ghcr.io/brunovlucena/game-master
+    target:
+      kind: LambdaAgent
+      name: game-master
+  - patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: ghcr.io/brunovlucena/character-agent
+    target:
+      kind: LambdaAgent
+      labelSelector: "app.kubernetes.io/component=playable-character"
+  - patch: |-
+      - op: replace
+        path: /spec/build/registry
+        value: ghcr.io/brunovlucena
+      - op: replace
+        path: /spec/build/registryType
+        value: ghcr
+      - op: replace
+        path: /spec/build/insecure
+        value: false
+    target:
+      kind: LambdaFunction
+      name: rpg-game-server
+
+commonLabels:
+  environment: studio

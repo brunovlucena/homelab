@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: c2-ingress
+  namespace: knative-lambda-c2
+  labels:
+    app.kubernetes.io/name: knative-lambda-c2
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: c2.lambda.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: c2-frontend
+            port:
+              number: 80

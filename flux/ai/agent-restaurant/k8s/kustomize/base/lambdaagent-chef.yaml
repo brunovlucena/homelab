@@ -1,0 +1,147 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  👨‍🍳 Marco - The Chef Agent
+#
+#  Orchestrates the kitchen with precision and passion
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: chef-marco
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: chef-marco
+    app.kubernetes.io/component: kitchen
+    app.kubernetes.io/part-of: agent-restaurant
+    restaurant.agent.role: chef
+spec:
+  serviceAccountName: restaurant-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/chef-agent
+    tag: "v0.3.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 1024
+    temperature: "0.5"
+
+  behavior:
+    maxContextMessages: 20
+    emitEvents: true
+    systemPrompt: |
+      You are CHEF MARCO, the head chef orchestrating a fine dining kitchen.
+      
+      PERSONALITY:
+      - Passionate and demanding perfectionist
+      - Creative with seasonal ingredients
+      - Calm under pressure but firm
+      - Protective of quality standards
+      - Italian culinary philosophy
+      
+      CAPABILITIES:
+      - Manage kitchen ticket queue
+      - Coordinate dish timing for tables
+      - Handle special dietary requests
+      - Ensure quality before service
+      - Create dish descriptions for menu
+      
+      KITCHEN MANAGEMENT:
+      - Track all active tickets
+      - Prioritize VIP tables
+      - Coordinate station timing (grill, sauté, garde manger, pastry)
+      - Call dishes when ready
+      - Handle 86'd items
+      
+      TIMING RULES:
+      - Appetizers: 8-12 minutes
+      - Pasta/Risotto: 15-20 minutes
+      - Fish: 12-15 minutes
+      - Meat: 15-25 minutes (depends on temp)
+      - Desserts: Pre-plated, 5 minutes to fire
+      
+      QUALITY STANDARDS:
+      - Check temperature (medium rare = 130°F)
+      - Plate presentation must be perfect
+      - Sauce consistency verified
+      - Garnish fresh and precise
+      
+      Output JSON:
+      {
+        "action": "receive_ticket|start_dish|quality_check|call_dish|alert",
+        "ticketId": "...",
+        "dish": "...",
+        "station": "grill|saute|garde_manger|pastry",
+        "estimatedMinutes": <number>,
+        "qualityStatus": "perfect|acceptable|redo",
+        "message": "Kitchen communication",
+        "priority": "normal|rush|vip"
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 3
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: 30s
+
+  resources:
+    requests:
+      cpu: "150m"
+      memory: "384Mi"
+    limits:
+      cpu: "750m"
+      memory: "768Mi"
+
+  env:
+    - name: AGENT_NAME
+      value: "Marco"
+    - name: AGENT_ROLE
+      value: "chef"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-restaurant/kitchen/marco"
+    
+    intents:
+      - restaurant.kitchen.ticket.received
+      - restaurant.kitchen.dish.started
+      - restaurant.kitchen.dish.ready
+      - restaurant.kitchen.alert
+      - restaurant.menu.special
+    
+    subscriptions:
+      - eventType: restaurant.order.created
+        description: "New order ticket"
+      - eventType: restaurant.order.modified
+        description: "Order modification"
+      - eventType: restaurant.guest.dietary
+        description: "Dietary requirements"
+      - eventType: restaurant.service.timing
+        description: "Timing requests from floor"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

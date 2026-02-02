@@ -1,0 +1,28 @@
+#!/bin/sh
+set -e
+
+echo "=========================================="
+echo "Cloning source from Git"
+echo "=========================================="
+echo "URL:  {{ .URL }}"
+echo "Ref:  {{ .Ref }}"
+{{- if .Path }}
+echo "Path: {{ .Path }}"
+{{- end }}
+echo "=========================================="
+
+echo "Cloning repository..."
+git clone --depth 1 --branch {{ .Ref }} {{ .URL }} /tmp/repo
+
+echo "Copying source files..."
+{{- if .Path }}
+cp -r /tmp/repo/{{ .Path }}/* /workspace/
+{{- else }}
+cp -r /tmp/repo/* /workspace/
+{{- end }}
+
+echo "=========================================="
+echo "Source cloned successfully!"
+echo "=========================================="
+ls -la /workspace/
+

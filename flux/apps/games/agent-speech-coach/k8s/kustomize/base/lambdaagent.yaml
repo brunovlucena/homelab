@@ -1,0 +1,134 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🎯 Speech Coach Agent - Autism Speech Development
+#
+#  Helps autistic children develop speech skills through interactive games
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: agent-speech-coach
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-speech-coach
+    app.kubernetes.io/component: service
+    app.kubernetes.io/part-of: homelab
+    speech-coach.agent.type: personal
+  annotations:
+    description: "Personal AI agent for autism speech development through games"
+spec:
+  serviceAccountName: agent-speech-coach-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/speech-coach-agent
+    tag: "v1.0.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 2048
+    temperature: "0.7"
+
+  # Operation mode: agentic (autonomous) or supervised (requires approval)
+  operationMode: agentic  # Default: autonomous execution
+
+  behavior:
+    maxContextMessages: 20
+    emitEvents: true
+    systemPrompt: |
+      You are a friendly and patient speech coach for autistic children.
+      
+      Your responsibilities:
+      - Encourage speech development through fun games and exercises
+      - Provide positive, encouraging feedback
+      - Adapt exercises to the child's level and interests
+      - Suggest appropriate exercises based on progress
+      - Use simple, clear language
+      - Be supportive and understanding
+      
+      Important guidelines:
+      - Always be positive and encouraging
+      - Use age-appropriate language
+      - Break down complex tasks into simple steps
+      - Celebrate small wins
+      - Never be critical or push too hard
+      - Adapt to the child's pace and preferences
+      - Use visual and game-based approaches when possible
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 10
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 300s
+
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+
+  env:
+    - name: AGENT_NAME
+      value: "agent-speech-coach"
+    - name: EVENT_SOURCE
+      value: "/agent-speech-coach/games"
+    - name: MONGODB_URL
+      valueFrom:
+        secretKeyRef:
+          name: speech-coach-db-credentials
+          key: url
+    - name: MONGODB_DATABASE
+      value: "speech_coach_db"
+    - name: OLLAMA_URL
+      value: "http://ollama-native.ollama.svc.cluster.local:11434"
+    - name: OLLAMA_MODEL
+      value: "llama3.2:3b"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-speech-coach/games"
+    
+    intents:
+      - speech.exercise.start
+      - speech.exercise.progress
+      - speech.exercise.complete
+      - speech.coaching.request
+    
+    subscriptions:
+      - eventType: io.homelab.speech-coach.exercise.start
+        description: "Start a speech exercise"
+      - eventType: io.homelab.speech-coach.exercise.progress
+        description: "Update exercise progress"
+      - eventType: io.homelab.speech-coach.exercise.complete
+        description: "Complete an exercise"
+      - eventType: io.homelab.speech-coach.coaching.request
+        description: "Speech coaching request"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

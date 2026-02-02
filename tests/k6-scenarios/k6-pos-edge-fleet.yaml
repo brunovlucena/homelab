@@ -1,0 +1,725 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  ⛽🍔 K6 POS EDGE FLEET OPERATIONS
+#
+#  Purpose: Multi-location fleet management for retail operations
+#
+#  Location Types:
+#    • ⛽ Gas Stations - Pumps, POS, tank monitoring
+#    • 🍔 McDonald's - Kitchen, drive-thru, POS
+#    • 🏪 Retail Stores - Multi-lane POS, inventory
+#
+#  Agents Tested:
+#    • 🎛️ Command Center - Fleet orchestration
+#    • 📱 POS Edge - Transaction monitoring
+#    • 🍳 Kitchen Agent - Order queue (fast-food)
+#    • ⛽ Pump Agent - Fuel operations
+#
+#  Scenarios:
+#    1. Fleet Heartbeat - Location health monitoring
+#    2. Transaction Storm - High volume transactions
+#    3. Kitchen Rush Hour - McDonald's peak service
+#    4. Gas Station Operations - Fuel pump management
+#    5. Location Failover - Offline/recovery handling
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: pos-edge-fleet-operations
+  namespace: agent-pos-edge
+  labels:
+    app.kubernetes.io/name: agent-pos-edge
+    app.kubernetes.io/component: testing
+    test-type: fleet-operations
+spec:
+  parallelism: 4
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: pos-edge-fleet-script
+      file: fleet-operations.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: COMMAND_CENTER_URL
+        value: "http://command-center.agent-pos-edge.svc.cluster.local"
+      - name: POS_EDGE_URL
+        value: "http://pos-edge.agent-pos-edge.svc.cluster.local"
+      - name: KITCHEN_AGENT_URL
+        value: "http://kitchen-agent.agent-pos-edge.svc.cluster.local"
+      - name: PUMP_AGENT_URL
+        value: "http://pump-agent.agent-pos-edge.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pos-edge-fleet-script
+  namespace: agent-pos-edge
+  labels:
+    app.kubernetes.io/name: agent-pos-edge
+    app.kubernetes.io/component: testing
+data:
+  fleet-operations.js: |
+    import http from 'k6/http';
+    import { check, group, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CUSTOM METRICS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Fleet Metrics
+    const locationsActive = new Gauge('pos_locations_active');
+    const heartbeatsSent = new Counter('pos_heartbeats_sent');
+    const transactionsProcessed = new Counter('pos_transactions_processed');
+    const transactionValue = new Counter('pos_transaction_value_total');
+    const alertsRaised = new Counter('pos_alerts_raised');
+
+    // Gas Station Metrics
+    const pumpTransactions = new Counter('pos_pump_transactions');
+    const fuelDispensed = new Counter('pos_fuel_dispensed_liters');
+    const tankLevelChecks = new Counter('pos_tank_level_checks');
+    const lowFuelAlerts = new Counter('pos_low_fuel_alerts');
+
+    // Kitchen Metrics (Fast-Food)
+    const kitchenOrders = new Counter('pos_kitchen_orders');
+    const kitchenQueueDepth = new Gauge('pos_kitchen_queue_depth');
+    const avgWaitTime = new Trend('pos_kitchen_avg_wait_seconds');
+    const driveThruOrders = new Counter('pos_drive_thru_orders');
+
+    // Performance Metrics
+    const commandCenterLatency = new Trend('pos_command_center_latency_ms');
+    const posEdgeLatency = new Trend('pos_edge_latency_ms');
+    const kitchenLatency = new Trend('pos_kitchen_latency_ms');
+    const pumpLatency = new Trend('pos_pump_latency_ms');
+
+    // Quality Metrics
+    const operationalSuccess = new Rate('pos_operational_success');
+    const heartbeatSuccess = new Rate('pos_heartbeat_success');
+    const transactionSuccess = new Rate('pos_transaction_success');
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONFIGURATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    const COMMAND_CENTER_URL = __ENV.COMMAND_CENTER_URL || 'http://command-center.agent-pos-edge.svc.cluster.local';
+    const POS_EDGE_URL = __ENV.POS_EDGE_URL || 'http://pos-edge.agent-pos-edge.svc.cluster.local';
+    const KITCHEN_AGENT_URL = __ENV.KITCHEN_AGENT_URL || 'http://kitchen-agent.agent-pos-edge.svc.cluster.local';
+    const PUMP_AGENT_URL = __ENV.PUMP_AGENT_URL || 'http://pump-agent.agent-pos-edge.svc.cluster.local';
+
+    // Fleet Locations
+    const LOCATIONS = {
+      gas_stations: [
+        { id: 'gas-station-001', name: 'Shell Downtown', pumps: 8, cstore: true, region: 'north' },
+        { id: 'gas-station-002', name: 'Petrobras Highway', pumps: 12, cstore: true, region: 'south' },
+        { id: 'gas-station-003', name: 'Ipiranga Mall', pumps: 6, cstore: true, region: 'east' },
+        { id: 'gas-station-004', name: 'BR Station', pumps: 10, cstore: false, region: 'west' },
+      ],
+      fast_food: [
+        { id: 'mcdonalds-001', name: 'McDonalds Centro', lanes: 4, driveThru: true, region: 'north' },
+        { id: 'mcdonalds-002', name: 'McDonalds Shopping', lanes: 3, driveThru: false, region: 'south' },
+        { id: 'mcdonalds-003', name: 'McDonalds Express', lanes: 2, driveThru: true, region: 'east' },
+        { id: 'burgerking-001', name: 'BK Avenida', lanes: 3, driveThru: true, region: 'west' },
+      ],
+      retail: [
+        { id: 'retail-001', name: 'Minimarket Central', lanes: 2, selfCheckout: false, region: 'north' },
+        { id: 'retail-002', name: 'Convenience 24h', lanes: 1, selfCheckout: false, region: 'south' },
+        { id: 'retail-003', name: 'Smart Store', lanes: 4, selfCheckout: true, region: 'east' },
+      ],
+    };
+
+    // Products for transactions
+    const PRODUCTS = {
+      gas_station: [
+        { name: 'Fuel - Regular', unit: 'liter', pricePerUnit: 5.89 },
+        { name: 'Fuel - Premium', unit: 'liter', pricePerUnit: 6.49 },
+        { name: 'Fuel - Diesel', unit: 'liter', pricePerUnit: 5.29 },
+        { name: 'Snacks', unit: 'item', pricePerUnit: 8.50 },
+        { name: 'Beverages', unit: 'item', pricePerUnit: 6.00 },
+        { name: 'Car Wash', unit: 'service', pricePerUnit: 35.00 },
+      ],
+      fast_food: [
+        { name: 'Big Mac Combo', price: 39.90 },
+        { name: 'McChicken', price: 18.90 },
+        { name: 'Quarter Pounder', price: 32.90 },
+        { name: 'Chicken Nuggets 10pc', price: 24.90 },
+        { name: 'McFlurry', price: 14.90 },
+        { name: 'Happy Meal', price: 29.90 },
+      ],
+      retail: [
+        { name: 'Water 500ml', price: 3.50 },
+        { name: 'Energy Drink', price: 12.90 },
+        { name: 'Chips', price: 8.50 },
+        { name: 'Chocolate', price: 6.90 },
+        { name: 'Cigarettes', price: 15.00 },
+      ],
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TEST OPTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export const options = {
+      scenarios: {
+        // Scenario 1: Fleet heartbeats (continuous)
+        fleet_heartbeats: {
+          executor: 'constant-vus',
+          vus: 11, // One per location
+          duration: '15m',
+          tags: { operation: 'heartbeat' },
+          exec: 'fleetHeartbeat',
+        },
+        // Scenario 2: Transaction storm
+        transaction_storm: {
+          executor: 'ramping-arrival-rate',
+          startRate: 10,
+          timeUnit: '1s',
+          preAllocatedVUs: 50,
+          maxVUs: 100,
+          stages: [
+            { duration: '1m', target: 30 },
+            { duration: '3m', target: 80 },
+            { duration: '2m', target: 100 },
+            { duration: '2m', target: 50 },
+            { duration: '1m', target: 10 },
+          ],
+          startTime: '30s',
+          tags: { operation: 'transaction' },
+          exec: 'transactionStorm',
+        },
+        // Scenario 3: Kitchen rush hour
+        kitchen_rush: {
+          executor: 'constant-arrival-rate',
+          rate: 30,
+          timeUnit: '1s',
+          duration: '8m',
+          preAllocatedVUs: 40,
+          startTime: '2m',
+          tags: { operation: 'kitchen' },
+          exec: 'kitchenRushHour',
+        },
+        // Scenario 4: Gas station operations
+        gas_operations: {
+          executor: 'constant-vus',
+          vus: 8, // Simulating pump activity
+          duration: '10m',
+          startTime: '1m',
+          tags: { operation: 'pump' },
+          exec: 'gasStationOperations',
+        },
+        // Scenario 5: Location failover
+        location_failover: {
+          executor: 'per-vu-iterations',
+          vus: 2,
+          iterations: 3,
+          maxDuration: '5m',
+          startTime: '10m',
+          tags: { operation: 'failover' },
+          exec: 'locationFailover',
+        },
+      },
+      thresholds: {
+        'pos_heartbeat_success': ['rate>0.95'],
+        'pos_transaction_success': ['rate>0.90'],
+        'pos_operational_success': ['rate>0.85'],
+        'pos_command_center_latency_ms': ['p(95)<5000'],
+        'pos_edge_latency_ms': ['p(95)<3000'],
+        'http_req_failed': ['rate<0.10'],
+      },
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HELPER FUNCTIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    function createCloudEvent(type, data, source) {
+      return {
+        specversion: '1.0',
+        id: `k6-pos-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        type: type,
+        source: source || '/k6-pos-fleet',
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+
+    function sendCloudEvent(url, event, timeout = '30s') {
+      return http.post(url, JSON.stringify(event), {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+          'Ce-Specversion': '1.0',
+        },
+        timeout: timeout,
+      });
+    }
+
+    function randomItem(array) {
+      return array[Math.floor(Math.random() * array.length)];
+    }
+
+    function randomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function getAllLocations() {
+      return [
+        ...LOCATIONS.gas_stations.map(l => ({ ...l, type: 'gas_station' })),
+        ...LOCATIONS.fast_food.map(l => ({ ...l, type: 'fast_food' })),
+        ...LOCATIONS.retail.map(l => ({ ...l, type: 'retail' })),
+      ];
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 1: FLEET HEARTBEAT
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function fleetHeartbeat() {
+      const allLocations = getAllLocations();
+      const location = allLocations[__VU % allLocations.length];
+
+      locationsActive.add(1);
+
+      group(`Heartbeat: ${location.id}`, () => {
+        const healthData = {
+          locationId: location.id,
+          locationType: location.type,
+          locationName: location.name,
+          region: location.region,
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          metrics: {
+            cpuUsage: randomInt(10, 80),
+            memoryUsage: randomInt(30, 70),
+            diskUsage: randomInt(20, 60),
+            networkLatency: randomInt(5, 50),
+          },
+        };
+
+        // Add type-specific data
+        if (location.type === 'gas_station') {
+          healthData.pumps = {
+            total: location.pumps,
+            active: randomInt(Math.floor(location.pumps * 0.5), location.pumps),
+            maintenance: randomInt(0, 2),
+          };
+        } else if (location.type === 'fast_food') {
+          healthData.kitchen = {
+            queueDepth: randomInt(0, 15),
+            avgWaitTime: randomInt(60, 300),
+            ordersInProgress: randomInt(1, 8),
+          };
+          healthData.driveThru = location.driveThru ? {
+            carsWaiting: randomInt(0, 8),
+            avgServiceTime: randomInt(90, 180),
+          } : null;
+        } else {
+          healthData.pos = {
+            lanesOpen: randomInt(1, location.lanes),
+            queueLength: randomInt(0, 5),
+          };
+        }
+
+        const event = createCloudEvent('pos.location.heartbeat', healthData, `/pos-edge/${location.id}`);
+
+        const start = Date.now();
+        const res = sendCloudEvent(COMMAND_CENTER_URL, event);
+        const duration = Date.now() - start;
+
+        commandCenterLatency.add(duration);
+        heartbeatsSent.add(1);
+
+        const success = check(res, {
+          'heartbeat accepted': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        heartbeatSuccess.add(success);
+        operationalSuccess.add(success);
+      });
+
+      // Heartbeat interval: 30s
+      sleep(30);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 2: TRANSACTION STORM
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function transactionStorm() {
+      const allLocations = getAllLocations();
+      const location = randomItem(allLocations);
+      const products = PRODUCTS[location.type] || PRODUCTS.retail;
+
+      group(`Transaction: ${location.id}`, () => {
+        // Generate transaction items
+        const itemCount = randomInt(1, 5);
+        const items = [];
+        let total = 0;
+
+        for (let i = 0; i < itemCount; i++) {
+          const product = randomItem(products);
+          const quantity = randomInt(1, 3);
+          const price = product.price || product.pricePerUnit * quantity;
+
+          items.push({
+            name: product.name,
+            quantity: quantity,
+            price: price,
+            unit: product.unit || 'item',
+          });
+          total += price;
+        }
+
+        const transactionData = {
+          transactionId: `TXN-${Date.now()}-${randomInt(1000, 9999)}`,
+          posId: `pos-${randomInt(1, location.lanes || 4)}`,
+          locationId: location.id,
+          locationType: location.type,
+          items: items,
+          total: total,
+          paymentType: randomItem(['card', 'cash', 'pix', 'debit']),
+          startedAt: new Date(Date.now() - randomInt(30, 120) * 1000).toISOString(),
+          completedAt: new Date().toISOString(),
+        };
+
+        const event = createCloudEvent('pos.transaction.completed', transactionData, `/pos-edge/${location.id}`);
+
+        const start = Date.now();
+        const res = sendCloudEvent(POS_EDGE_URL, event);
+        const duration = Date.now() - start;
+
+        posEdgeLatency.add(duration);
+        transactionsProcessed.add(1);
+        transactionValue.add(total);
+
+        const success = check(res, {
+          'transaction processed': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        transactionSuccess.add(success);
+        operationalSuccess.add(success);
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 3: KITCHEN RUSH HOUR
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function kitchenRushHour() {
+      const fastFoodLocations = LOCATIONS.fast_food;
+      const location = randomItem(fastFoodLocations);
+      const isDriveThru = location.driveThru && Math.random() > 0.4;
+
+      group(`Kitchen Order: ${location.id}`, () => {
+        // Generate order
+        const itemCount = randomInt(1, 4);
+        const items = [];
+        let total = 0;
+
+        for (let i = 0; i < itemCount; i++) {
+          const product = randomItem(PRODUCTS.fast_food);
+          const quantity = randomInt(1, 2);
+          items.push({
+            name: product.name,
+            quantity: quantity,
+            price: product.price * quantity,
+            modifications: Math.random() > 0.7 ? ['No onions', 'Extra sauce'][randomInt(0, 1)] : null,
+          });
+          total += product.price * quantity;
+        }
+
+        const orderData = {
+          orderId: `ORD-${Date.now()}-${randomInt(1000, 9999)}`,
+          locationId: location.id,
+          items: items,
+          total: total,
+          orderType: isDriveThru ? 'drive_thru' : 'counter',
+          priority: isDriveThru ? 'high' : 'normal',
+          estimatedPrepTime: randomInt(180, 420),
+        };
+
+        const event = createCloudEvent('pos.kitchen.order.received', orderData, `/pos-edge/${location.id}`);
+
+        const start = Date.now();
+        const res = sendCloudEvent(KITCHEN_AGENT_URL, event);
+        const duration = Date.now() - start;
+
+        kitchenLatency.add(duration);
+        kitchenOrders.add(1);
+
+        if (isDriveThru) {
+          driveThruOrders.add(1);
+        }
+
+        const success = check(res, {
+          'kitchen order accepted': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        operationalSuccess.add(success);
+
+        // Simulate queue depth and wait time
+        const queueDepth = randomInt(1, 15);
+        const waitTime = randomInt(60, 400);
+        kitchenQueueDepth.add(queueDepth);
+        avgWaitTime.add(waitTime);
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 4: GAS STATION OPERATIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function gasStationOperations() {
+      const gasStations = LOCATIONS.gas_stations;
+      const station = gasStations[__VU % gasStations.length];
+      const pumpId = randomInt(1, station.pumps);
+
+      // Alternate between pump transaction and tank check
+      const operation = Math.random() > 0.3 ? 'pump' : 'tank_check';
+
+      if (operation === 'pump') {
+        group(`Pump Transaction: ${station.id}`, () => {
+          const fuelType = randomItem(['Regular', 'Premium', 'Diesel']);
+          const liters = randomInt(10, 60);
+          const pricePerLiter = { Regular: 5.89, Premium: 6.49, Diesel: 5.29 }[fuelType];
+          const total = liters * pricePerLiter;
+
+          const pumpData = {
+            pumpId: `pump-${pumpId}`,
+            locationId: station.id,
+            transactionId: `PUMP-${Date.now()}-${randomInt(1000, 9999)}`,
+            fuelType: fuelType,
+            liters: liters,
+            pricePerLiter: pricePerLiter,
+            total: total,
+            paymentType: randomItem(['card', 'cash', 'fleet_card']),
+            startedAt: new Date(Date.now() - randomInt(120, 300) * 1000).toISOString(),
+            completedAt: new Date().toISOString(),
+          };
+
+          const event = createCloudEvent('pos.pump.transaction.end', pumpData, `/pos-edge/${station.id}/pump-${pumpId}`);
+
+          const start = Date.now();
+          const res = sendCloudEvent(PUMP_AGENT_URL, event);
+          const duration = Date.now() - start;
+
+          pumpLatency.add(duration);
+          pumpTransactions.add(1);
+          fuelDispensed.add(liters);
+          transactionValue.add(total);
+
+          const success = check(res, {
+            'pump transaction recorded': (r) => r.status >= 200 && r.status < 300,
+          });
+
+          transactionSuccess.add(success);
+          operationalSuccess.add(success);
+        });
+      } else {
+        group(`Tank Level Check: ${station.id}`, () => {
+          const tanks = [
+            { tankId: 'tank-regular', fuelType: 'Regular', capacity: 30000, level: randomInt(3000, 28000) },
+            { tankId: 'tank-premium', fuelType: 'Premium', capacity: 20000, level: randomInt(2000, 18000) },
+            { tankId: 'tank-diesel', fuelType: 'Diesel', capacity: 25000, level: randomInt(2500, 23000) },
+          ];
+
+          for (const tank of tanks) {
+            const levelPercent = (tank.level / tank.capacity) * 100;
+            const isLow = levelPercent < 20;
+
+            const tankData = {
+              tankId: tank.tankId,
+              locationId: station.id,
+              fuelType: tank.fuelType,
+              level: tank.level,
+              capacity: tank.capacity,
+              levelPercent: levelPercent.toFixed(1),
+              isLow: isLow,
+              timestamp: new Date().toISOString(),
+            };
+
+            const eventType = isLow ? 'pos.tank.alert.low' : 'pos.tank.level';
+            const event = createCloudEvent(eventType, tankData, `/pos-edge/${station.id}`);
+
+            const start = Date.now();
+            const res = sendCloudEvent(PUMP_AGENT_URL, event);
+            pumpLatency.add(Date.now() - start);
+
+            tankLevelChecks.add(1);
+            if (isLow) {
+              lowFuelAlerts.add(1);
+              alertsRaised.add(1);
+            }
+
+            check(res, { 'tank level reported': (r) => r.status >= 200 && r.status < 300 });
+          }
+        });
+      }
+
+      sleep(randomInt(5, 15));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SCENARIO 5: LOCATION FAILOVER
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function locationFailover() {
+      const allLocations = getAllLocations();
+      const location = randomItem(allLocations);
+
+      console.log(`\n⚠️ Simulating failover for: ${location.name}`);
+
+      group('Location Failover Test', () => {
+        // Stage 1: Location goes offline
+        const offlineEvent = createCloudEvent('pos.location.offline', {
+          locationId: location.id,
+          locationName: location.name,
+          lastSeen: new Date(Date.now() - 120000).toISOString(),
+          reason: 'connection_lost',
+          alertLevel: 'warning',
+        }, `/pos-edge/${location.id}`);
+
+        let start = Date.now();
+        let res = sendCloudEvent(COMMAND_CENTER_URL, offlineEvent);
+        commandCenterLatency.add(Date.now() - start);
+
+        const offlineOk = check(res, {
+          'offline event received': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        alertsRaised.add(1);
+        sleep(3);
+
+        // Stage 2: Location comes back online
+        const onlineEvent = createCloudEvent('pos.location.heartbeat', {
+          locationId: location.id,
+          locationType: location.type,
+          status: 'recovering',
+          timestamp: new Date().toISOString(),
+          recoveryMode: true,
+          bufferedTransactions: randomInt(5, 20),
+        }, `/pos-edge/${location.id}`);
+
+        start = Date.now();
+        res = sendCloudEvent(COMMAND_CENTER_URL, onlineEvent);
+        commandCenterLatency.add(Date.now() - start);
+
+        const recoveryOk = check(res, {
+          'recovery heartbeat accepted': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        sleep(2);
+
+        // Stage 3: Sync buffered transactions
+        const syncEvent = createCloudEvent('pos.location.sync.complete', {
+          locationId: location.id,
+          transactionsSynced: randomInt(5, 20),
+          syncDuration: randomInt(5, 30),
+          status: 'healthy',
+        }, `/pos-edge/${location.id}`);
+
+        start = Date.now();
+        res = sendCloudEvent(COMMAND_CENTER_URL, syncEvent);
+        commandCenterLatency.add(Date.now() - start);
+
+        const syncOk = check(res, {
+          'sync complete': (r) => r.status >= 200 && r.status < 300,
+        });
+
+        operationalSuccess.add(offlineOk && recoveryOk && syncOk);
+
+        if (offlineOk && recoveryOk && syncOk) {
+          console.log(`  ✅ Failover test passed for ${location.name}`);
+        } else {
+          console.log(`  ❌ Failover test failed for ${location.name}`);
+        }
+      });
+
+      sleep(5);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SUMMARY
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    export function handleSummary(data) {
+      const heartbeats = data.metrics['pos_heartbeats_sent'];
+      const transactions = data.metrics['pos_transactions_processed'];
+      const txValue = data.metrics['pos_transaction_value_total'];
+      const pump = data.metrics['pos_pump_transactions'];
+      const fuel = data.metrics['pos_fuel_dispensed_liters'];
+      const kitchen = data.metrics['pos_kitchen_orders'];
+      const driveThru = data.metrics['pos_drive_thru_orders'];
+      const alerts = data.metrics['pos_alerts_raised'];
+
+      const heartbeatRate = data.metrics['pos_heartbeat_success'];
+      const txRate = data.metrics['pos_transaction_success'];
+      const opRate = data.metrics['pos_operational_success'];
+
+      const ccLatency = data.metrics['pos_command_center_latency_ms'];
+      const posLatency = data.metrics['pos_edge_latency_ms'];
+      const kitchenLat = data.metrics['pos_kitchen_latency_ms'];
+      const pumpLat = data.metrics['pos_pump_latency_ms'];
+
+      const heartbeatCount = heartbeats && heartbeats.values ? heartbeats.values.count : 0;
+      const txCount = transactions && transactions.values ? transactions.values.count : 0;
+      const txTotal = txValue && txValue.values ? txValue.values.count : 0;
+      const pumpCount = pump && pump.values ? pump.values.count : 0;
+      const fuelTotal = fuel && fuel.values ? fuel.values.count : 0;
+      const kitchenCount = kitchen && kitchen.values ? kitchen.values.count : 0;
+      const driveThruCount = driveThru && driveThru.values ? driveThru.values.count : 0;
+      const alertCount = alerts && alerts.values ? alerts.values.count : 0;
+
+      const hbSuccess = heartbeatRate && heartbeatRate.values ? heartbeatRate.values.rate : 0;
+      const txSuccess = txRate && txRate.values ? txRate.values.rate : 0;
+      const opSuccess = opRate && opRate.values ? opRate.values.rate : 0;
+
+      const ccP95 = ccLatency && ccLatency.values ? ccLatency.values['p(95)'] : 0;
+      const posP95 = posLatency && posLatency.values ? posLatency.values['p(95)'] : 0;
+
+      const passed = hbSuccess >= 0.95 && txSuccess >= 0.90 && opSuccess >= 0.85;
+
+      console.log('\n' + '═'.repeat(70));
+      console.log('⛽🍔 POS EDGE FLEET OPERATIONS TEST RESULTS');
+      console.log('═'.repeat(70));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('─'.repeat(70));
+      console.log('📊 FLEET STATISTICS');
+      console.log('   Heartbeats Sent:        ' + heartbeatCount);
+      console.log('   Transactions Processed: ' + txCount);
+      console.log('   Transaction Value:      $' + txTotal.toFixed(2));
+      console.log('   Alerts Raised:          ' + alertCount);
+      console.log('─'.repeat(70));
+      console.log('⛽ GAS STATION OPERATIONS');
+      console.log('   Pump Transactions:      ' + pumpCount);
+      console.log('   Fuel Dispensed:         ' + fuelTotal.toFixed(0) + ' liters');
+      console.log('─'.repeat(70));
+      console.log('🍔 KITCHEN OPERATIONS');
+      console.log('   Kitchen Orders:         ' + kitchenCount);
+      console.log('   Drive-Thru Orders:      ' + driveThruCount);
+      console.log('─'.repeat(70));
+      console.log('⏱️ RESPONSE TIMES (P95)');
+      console.log('   Command Center:         ' + (ccP95 || 0).toFixed(0) + 'ms');
+      console.log('   POS Edge:               ' + (posP95 || 0).toFixed(0) + 'ms');
+      console.log('─'.repeat(70));
+      console.log('📈 SUCCESS RATES');
+      console.log('   Heartbeat Success:      ' + (hbSuccess * 100).toFixed(1) + '%');
+      console.log('   Transaction Success:    ' + (txSuccess * 100).toFixed(1) + '%');
+      console.log('   Overall Operations:     ' + (opSuccess * 100).toFixed(1) + '%');
+      console.log('═'.repeat(70) + '\n');
+
+      return {};
+    }

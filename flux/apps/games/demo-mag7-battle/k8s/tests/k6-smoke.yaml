@@ -1,0 +1,148 @@
+---
+# k6 Smoke Test for demo-mag7-battle
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: mag7-battle-smoke
+  namespace: demo-mag7-battle
+  labels:
+    app.kubernetes.io/name: demo-mag7-battle
+    test-type: smoke
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: mag7-battle-smoke-script
+      file: script.js
+  runner:
+    image: grafana/k6:0.47.0
+    env:
+      - name: DEFENDER_URL
+        value: "http://mag7-blueteam-defender.demo-mag7-battle.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: "256Mi"
+        cpu: "200m"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mag7-battle-smoke-script
+  namespace: demo-mag7-battle
+data:
+  script.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Counter, Gauge } from 'k6/metrics';
+    
+    // Game metrics
+    const exploitsBlocked = new Counter('mag7_exploits_blocked');
+    const mag7Damage = new Counter('mag7_damage_dealt');
+    const mag7Health = new Gauge('mag7_health');
+    
+    export const options = {
+      stages: [
+        { duration: '10s', target: 2 },
+        { duration: '30s', target: 2 },
+        { duration: '10s', target: 0 },
+      ],
+      thresholds: {
+        http_req_duration: ['p(95)<1000'],
+        http_req_failed: ['rate<0.1'],
+      },
+    };
+    
+    const BASE_URL = __ENV.DEFENDER_URL || 'http://mag7-blueteam-defender.demo-mag7-battle.svc.cluster.local';
+    
+    const EXPLOITS = ['blue-001', 'blue-002', 'vuln-001', 'vuln-003', 'vuln-004', 'blue-006'];
+    
+    export function setup() {
+      console.log('🐉 MAG7 Battle k6 Test Starting');
+      
+      // Start game
+      const res = http.post(`${BASE_URL}`, JSON.stringify({ game_start: true }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'ce-type': 'game',
+          'ce-source': '/k6-smoke',
+          'ce-id': 'setup',
+          'ce-specversion': '1.0',
+        },
+      });
+      
+      check(res, { 'game started': (r) => r.status === 200 });
+      console.log('Game started!');
+      
+      return { startTime: Date.now() };
+    }
+    
+    export default function() {
+      // Block a random exploit
+      const exploitId = EXPLOITS[Math.floor(Math.random() * EXPLOITS.length)];
+      const isCritical = Math.random() < 0.3;
+      
+      const res = http.post(`${BASE_URL}`, JSON.stringify({
+        exploit_id: exploitId,
+        severity: isCritical ? 'critical' : 'high',
+      }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'ce-type': 'exploit',
+          'ce-source': '/k6-smoke',
+          'ce-id': `k6-${__VU}-${__ITER}`,
+          'ce-specversion': '1.0',
+        },
+      });
+      
+      check(res, {
+        'request successful': (r) => r.status === 200,
+      });
+      
+      if (res.status === 200) {
+        try {
+          const data = JSON.parse(res.body);
+          const body = JSON.parse(data.body);
+          
+          exploitsBlocked.add(1);
+          mag7Damage.add(body.defense && body.defense.damage_dealt ? body.defense.damage_dealt : 0);
+          mag7Health.add(body.mag7 && body.mag7.health ? body.mag7.health : 0);
+          
+          if (body.status === 'victory') {
+            console.log('🎉 MAG7 DEFEATED!');
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      
+      sleep(0.5);
+    }
+    
+    export function teardown(data) {
+      const duration = (Date.now() - data.startTime) / 1000;
+      console.log(`Test completed in ${duration.toFixed(1)}s`);
+      
+      // Get final status
+      const res = http.post(`${BASE_URL}`, JSON.stringify({ action: 'status' }), {
+        headers: {
+          'Content-Type': 'application/json',
+          'ce-type': 'status',
+          'ce-source': '/k6-smoke',
+          'ce-id': 'teardown',
+          'ce-specversion': '1.0',
+        },
+      });
+      
+      if (res.status === 200) {
+        try {
+          const data = JSON.parse(res.body);
+          const body = JSON.parse(data.body);
+          console.log('Final MAG7 Health: ' + (body.mag7 && body.mag7.health ? body.mag7.health : 'unknown'));
+        } catch (e) {}
+      }
+    }

@@ -1,0 +1,57 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🛠️ AgentChat - Pro (Development) Overlay
+#
+#  Development environment configuration
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  - ../base
+
+patches:
+  # Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+  # so we use patches instead of kustomize images: section
+  # Update image tags for all LambdaAgents
+  - target:
+      kind: LambdaAgent
+    patch: |-
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.2.0"
+  
+  # Reduce replicas for development
+  - patch: |-
+      - op: replace
+        path: /spec/scaling/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 3
+    target:
+      group: lambda.knative.io
+      version: v1alpha1
+      kind: LambdaAgent
+      name: messaging-hub
+  
+  # Enable debug logging
+  - patch: |-
+      - op: replace
+        path: /spec/observability/logging/level
+        value: debug
+    target:
+      group: lambda.knative.io
+      version: v1alpha1
+      kind: LambdaAgent
+
+commonLabels:
+  environment: development
+  cluster: pro
+
+commonAnnotations:
+  flux.weave.works/automated: "false"

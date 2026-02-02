@@ -1,0 +1,35 @@
+---
+# Test Deployment: High CPU Usage
+# Purpose: Test scale-deployment LambdaFunction for horizontal scaling
+# Expected: LambdaFunction should scale deployment to handle load
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-high-cpu
+  namespace: ai
+  labels:
+    app: test-high-cpu
+    test.agent-sre.io/scenario: high-cpu
+    test.agent-sre.io/lambda-function: scale-deployment
+spec:
+  replicas: 1  # Start with 1, should scale to more
+  selector:
+    matchLabels:
+      app: test-high-cpu
+  template:
+    metadata:
+      labels:
+        app: test-high-cpu
+    spec:
+      containers:
+      - name: test-container
+        image: busybox:latest
+        command: ["/bin/sh", "-c", "while true; do :; done"]  # CPU intensive
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "512Mi"
+

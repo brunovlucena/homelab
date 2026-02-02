@@ -1,0 +1,100 @@
+---
+# LambdaFunction: Flux Reconcile Kustomization
+# Remediation function for FluxReconciliationFailure alert
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: flux-reconcile-kustomization
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: flux-reconcile-kustomization
+    app.kubernetes.io/component: remediation
+    app.kubernetes.io/part-of: agent-sre
+    remediation.agent-sre.io/alert: FluxReconciliationFailure
+    remediation.agent-sre.io/kind: Kustomization
+spec:
+  source:
+    type: inline
+    inline:
+      code: |
+        import os
+        import subprocess
+        import json
+        from typing import Dict, Any
+        
+        def handler(event: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            Reconcile Flux Kustomization resource.
+            
+            Parameters:
+            - name: Kustomization name (required)
+            - namespace: Namespace (default: flux-system)
+            """
+            name = event.get('name')
+            namespace = event.get('namespace', 'flux-system')
+            
+            if not name:
+                return {
+                    'status': 'error',
+                    'message': 'name parameter is required'
+                }
+            
+            try:
+                # Execute flux reconcile command
+                result = subprocess.run(
+                    ['flux', 'reconcile', 'kustomization', name, '-n', namespace],
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                
+                if result.returncode == 0:
+                    return {
+                        'status': 'success',
+                        'message': f'Kustomization {name} reconciled successfully',
+                        'output': result.stdout
+                    }
+                else:
+                    return {
+                        'status': 'error',
+                        'message': f'Reconciliation failed: {result.stderr}',
+                        'output': result.stdout
+                    }
+            except subprocess.TimeoutExpired:
+                return {
+                    'status': 'error',
+                    'message': 'Reconciliation timed out after 60 seconds'
+                }
+            except Exception as e:
+                return {
+                    'status': 'error',
+                    'message': f'Unexpected error: {str(e)}'
+                }
+      dependencies: |
+        {}
+  runtime:
+    language: python
+    version: "3.11"
+    handler: main.handler
+  scaling:
+    minReplicas: 0
+    maxReplicas: 10
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 30s
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  env:
+    - name: FLUX_NAMESPACE
+      value: "flux-system"
+  build:
+    timeout: "10m"
+    registry: localhost:5001
+    insecure: true
+  eventing:
+    enabled: false  # Called directly by agent-sre
+

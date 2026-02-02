@@ -1,0 +1,183 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 HOMEPAGE BLOG IMAGES UPLOAD JOB - Upload blog post images to MinIO
+#
+#  Purpose: Upload all blog post graphs and images to MinIO for CDN serving
+#  Images: All PNG files from public/blog-posts/graphs/
+#
+#  Note: Init container syncs secret from minio namespace if needed
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# MinIO credentials secret (fallback - init container syncs from minio namespace)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-credentials
+  namespace: homepage
+type: Opaque
+data:
+  access-key: bWluaW9hZG1pbg==
+  root-password: dWFXNUZOUEF3aGl4b0dHSkRQTzg1eUpn
+  root-user: bWluaW9hZG1pbg==
+  secret-key: dWFXNUZOUEF3aGl4b0dHSkRQTzg1eUpn
+---
+# ServiceAccount and RBAC permissions for upload job
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: blog-images-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: blog-images-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: blog-images-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: blog-images-upload
+subjects:
+- kind: ServiceAccount
+  name: blog-images-upload
+  namespace: homepage
+---
+# ConfigMap with blog post images (base64 encoded PNGs)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blog-images
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+binaryData:
+  # Images will be added here via kubectl create configmap --from-file
+---
+# Job to upload images to MinIO
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: blog-images-upload
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: blog-images-upload
+      initContainers:
+        - name: ensure-minio-secret
+          image: localhost:5001/kubectl:v1.34.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "🔐 Syncing minio-credentials secret from minio namespace..."
+              
+              # Wait for secret in minio namespace (source)
+              MAX_WAIT=60
+              WAITED=0
+              while ! kubectl get secret minio-credentials -n minio &>/dev/null; do
+                if [ $WAITED -ge $MAX_WAIT ]; then
+                  echo "❌ Timeout waiting for minio-credentials in minio namespace"
+                  exit 1
+                fi
+                echo "⏳ Waiting for minio-credentials in minio namespace... (${WAITED}s/${MAX_WAIT}s)"
+                sleep 2
+                WAITED=$((WAITED + 2))
+              done
+              
+              echo "📋 Found secret in minio namespace, syncing to homepage..."
+              
+              # Extract credentials from minio namespace
+              ACCESS_KEY=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.access-key}' | base64 -d)
+              SECRET_KEY=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.secret-key}' | base64 -d)
+              ROOT_USER=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.root-user}' | base64 -d || echo "$ACCESS_KEY")
+              ROOT_PASSWORD=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.root-password}' | base64 -d || echo "$SECRET_KEY")
+              
+              # Always sync/update secret in homepage namespace (ensures it's up-to-date)
+              kubectl create secret generic minio-credentials \
+                --from-literal=access-key="${ACCESS_KEY}" \
+                --from-literal=secret-key="${SECRET_KEY}" \
+                --from-literal=root-user="${ROOT_USER}" \
+                --from-literal=root-password="${ROOT_PASSWORD}" \
+                --namespace=homepage \
+                --dry-run=client -o yaml | kubectl apply -f -
+              
+              echo "✅ Secret minio-credentials synced to homepage namespace"
+      containers:
+        - name: upload
+          image: minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "📤 Uploading blog images to MinIO..."
+              
+              # Configure MinIO client
+              mc alias set minio http://minio.minio.svc.cluster.local:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
+              
+              # Create bucket if not exists
+              mc mb -p minio/homepage-blog || true
+              
+              # Set public read policy on blog images
+              mc anonymous set download minio/homepage-blog/images/
+              
+              # Upload all images from /images directory
+              if [ -d "/images" ] && [ "$(ls -A /images)" ]; then
+                echo "📤 Uploading images..."
+                mc cp --recursive /images/ minio/homepage-blog/images/
+                echo "✅ Uploaded images to minio/homepage-blog/images/"
+                
+                # List contents to verify
+                echo "📋 Contents of homepage-blog/images/:"
+                mc ls minio/homepage-blog/images/ || echo "⚠️  Directory empty or not found"
+              else
+                echo "⚠️  No images found in /images directory"
+              fi
+              
+              echo "🎉 Blog images upload complete!"
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+          volumeMounts:
+            - name: images
+              mountPath: /images
+      volumes:
+        - name: images
+          configMap:
+            name: blog-images

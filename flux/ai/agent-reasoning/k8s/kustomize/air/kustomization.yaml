@@ -1,0 +1,25 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+
+# 📝 Air environment - using local registry for testing
+patches:
+  - target:
+      kind: Service
+      apiVersion: serving.knative.dev/v1
+      name: agent-reasoning
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: localhost:5001/agent-reasoning:latest
+      - op: replace
+        path: /spec/template/spec/containers/0/env/1/value
+        value: "cpu"  # Air cluster uses CPU (no GPU)
+
+# 📝 Air-specific labels
+commonLabels:
+  environment: air
+  bruno.dev/cluster: air

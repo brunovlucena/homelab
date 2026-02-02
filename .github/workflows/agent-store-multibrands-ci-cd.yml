@@ -1,0 +1,41 @@
+# ============================================================================
+# 🏪 Agent-Store-Multibrands - CI/CD
+# ============================================================================
+# Multi-brand store management agent.
+# Uses reusable workflow for standardized CI/CD.
+# ============================================================================
+
+name: 🏪 Agent-Store-Multibrands - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-store-multibrands/**'
+      - '.github/workflows/agent-store-multibrands-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agent-store-multibrands/**'
+      - '.github/workflows/agent-store-multibrands-ci-cd.yml'
+    tags:
+      - 'agent-store-multibrands-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-cd:
+    name: 🏪 Agent-Store-Multibrands
+    uses: ./.github/workflows/_reusable-agent-cicd.yml
+    with:
+      agent-name: agent-store-multibrands
+      working-directory: flux/ai/agent-store-multibrands
+      image-name: agent-store-multibrands/ai-seller
+      dockerfile: src/ai_seller/Dockerfile
+      python-version: '3.12'
+      run-tests: true
+      run-lint: true
+      copy-shared-lib: true
+    secrets: inherit

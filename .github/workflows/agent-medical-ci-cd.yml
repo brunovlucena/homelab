@@ -1,0 +1,48 @@
+# ============================================================================
+# 🏥 Agent-Medical - CI/CD
+# ============================================================================
+# HIPAA-compliant medical records agent.
+# Uses reusable workflow for standardized CI/CD.
+# ============================================================================
+
+name: 🏥 Agent-Medical - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-medical/**'
+      - '.github/workflows/agent-medical-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agent-medical/**'
+      - '.github/workflows/agent-medical-ci-cd.yml'
+    tags:
+      - 'agent-medical-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+
+jobs:
+  ci-cd:
+    name: 🏥 Agent-Medical
+    uses: ./.github/workflows/_reusable-agent-cicd.yml
+    with:
+      agent-name: agent-medical
+      working-directory: flux/ai/agent-medical
+      image-name: medical-agent
+      dockerfile: src/medical_agent/Dockerfile
+      python-version: '3.12'
+      run-tests: true
+      run-lint: true
+      copy-shared-lib: true
+    secrets: inherit

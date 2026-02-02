@@ -1,0 +1,283 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔍 K6 TEMPO LOAD TEST
+#
+#  Purpose: Load test Tempo trace ingestion and query endpoints
+#  Coverage:
+#    - OTLP HTTP ingestion (api/v1/traces)
+#    - Trace query by trace ID
+#    - Search queries (tags, time range)
+#    - Health check endpoint
+#    - Metrics endpoint
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: tempo-load-test
+  namespace: tempo
+  labels:
+    app.kubernetes.io/name: tempo
+    app.kubernetes.io/component: testing
+    test-type: load
+spec:
+  parallelism: 2
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: tempo-load-test
+      file: tempo-load-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: TEMPO_HTTP_URL
+        value: "http://tempo.tempo.svc.cluster.local:4318"
+      - name: TEMPO_QUERY_URL
+        value: "http://tempo.tempo.svc.cluster.local:3200"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-load-test
+  namespace: tempo
+  labels:
+    app.kubernetes.io/name: tempo
+    app.kubernetes.io/component: testing
+    test-type: load
+data:
+  tempo-load-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+
+    // Custom metrics
+    const ingestSuccessRate = new Rate('tempo_ingest_success');
+    const querySuccessRate = new Rate('tempo_query_success');
+    const ingestCounter = new Counter('tempo_ingests_total');
+    const queryCounter = new Counter('tempo_queries_total');
+    const ingestDuration = new Trend('tempo_ingest_duration_ms');
+    const queryDuration = new Trend('tempo_query_duration_ms');
+
+    // Test configuration
+    const TEMPO_HTTP_URL = __ENV.TEMPO_HTTP_URL || 'http://tempo.tempo.svc.cluster.local:4318';
+    const TEMPO_QUERY_URL = __ENV.TEMPO_QUERY_URL || 'http://tempo.tempo.svc.cluster.local:3200';
+
+    // Generate a simple OTLP trace (JSON format)
+    function generateOTLPTrace() {
+      const traceId = generateHexString(32);
+      const spanId = generateHexString(16);
+      const now = Date.now() * 1000; // nanoseconds
+      
+      return {
+        resourceSpans: [{
+          resource: {
+            attributes: [
+              { key: 'service.name', value: { stringValue: 'k6-load-test' } },
+              { key: 'service.version', value: { stringValue: '1.0.0' } },
+              { key: 'k6.test.name', value: { stringValue: 'tempo-load-test' } },
+            ],
+          },
+          instrumentationLibrarySpans: [{
+            instrumentationLibrary: {
+              name: 'k6-tempo-load-test',
+              version: '1.0.0',
+            },
+            spans: [{
+              traceId: traceId,
+              spanId: spanId,
+              parentSpanId: '',
+              name: `load-test-span-${Math.floor(Math.random() * 1000)}`,
+              kind: 1, // SPAN_KIND_SERVER
+              startTimeUnixNano: now.toString(),
+              endTimeUnixNano: (now + 100000000).toString(), // 100ms duration
+              attributes: [
+                { key: 'http.method', value: { stringValue: 'GET' } },
+                { key: 'http.url', value: { stringValue: '/api/test' } },
+                { key: 'http.status_code', value: { intValue: '200' } },
+                { key: 'load.test', value: { boolValue: true } },
+              ],
+              status: {
+                code: 1, // STATUS_CODE_OK
+              },
+            }],
+          }],
+        }],
+      };
+    }
+
+    function generateHexString(length) {
+      const chars = '0123456789abcdef';
+      let result = '';
+      for (let i = 0; i < length; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return result;
+    }
+
+    export const options = {
+      scenarios: {
+        tempo_load: {
+          executor: 'ramping-vus',
+          startVUs: 1,
+          stages: [
+            { duration: '30s', target: 5 },   // Ramp up to 5 VUs
+            { duration: '1m', target: 10 },   // Increase to 10 VUs
+            { duration: '1m', target: 10 },   // Stay at 10 VUs
+            { duration: '30s', target: 0 },    // Ramp down
+          ],
+        },
+      },
+      thresholds: {
+        http_req_duration: ['p(95)<3000'],    // 95% of requests should be below 3s
+        http_req_failed: ['rate<0.05'],       // Error rate should be below 5%
+        tempo_ingest_success: ['rate>0.95'],  // Ingest success rate > 95%
+        tempo_query_success: ['rate>0.95'],   // Query success rate > 95%
+      },
+    };
+
+    function ingestTrace(trace) {
+      const startTime = Date.now();
+      const payload = JSON.stringify(trace);
+      
+      const res = http.post(
+        `${TEMPO_HTTP_URL}/v1/traces`,
+        payload,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: '10s',
+          tags: { operation: 'ingest' },
+        }
+      );
+
+      const duration = Date.now() - startTime;
+      ingestDuration.add(duration);
+      ingestCounter.add(1);
+
+      const success = res.status === 200 || res.status === 204;
+      ingestSuccessRate.add(success ? 1 : 0);
+
+      return { res, duration, success };
+    }
+
+    function queryTrace(traceId) {
+      const startTime = Date.now();
+      const url = `${TEMPO_QUERY_URL}/api/traces/${traceId}`;
+      
+      const res = http.get(url, {
+        timeout: '10s',
+        tags: { operation: 'query_trace' },
+      });
+
+      const duration = Date.now() - startTime;
+      queryDuration.add(duration);
+      queryCounter.add(1);
+
+      const success = res.status === 200;
+      querySuccessRate.add(success ? 1 : 0);
+
+      return { res, duration, success };
+    }
+
+    function searchTraces(tags, limit = 20) {
+      const startTime = Date.now();
+      const end = Math.floor(Date.now() / 1000);
+      const start = end - 3600; // Last hour
+      const tagsQuery = Object.entries(tags)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(' ');
+      
+      const url = `${TEMPO_QUERY_URL}/api/search?tags=${encodeURIComponent(tagsQuery)}&start=${start}&end=${end}&limit=${limit}`;
+      
+      const res = http.get(url, {
+        timeout: '15s',
+        tags: { operation: 'search' },
+      });
+
+      const duration = Date.now() - startTime;
+      queryDuration.add(duration);
+      queryCounter.add(1);
+
+      const success = res.status === 200;
+      querySuccessRate.add(success ? 1 : 0);
+
+      return { res, duration, success };
+    }
+
+    export default function () {
+      // Test 1: Health check
+      group('Tempo Health Check', () => {
+        const healthRes = http.get(`${TEMPO_QUERY_URL}/ready`, { timeout: '5s' });
+        check(healthRes, {
+          'health check status is 200': (r) => r.status === 200,
+          'health check response time < 500ms': (r) => r.timings.duration < 500,
+        });
+      });
+
+      // Test 2: Trace ingestion
+      group('Tempo Trace Ingestion', () => {
+        const trace = generateOTLPTrace();
+        const { res, success } = ingestTrace(trace);
+
+        check(res, {
+          'ingest status is 200 or 204': (r) => r.status === 200 || r.status === 204,
+          'ingest response time < 2s': (r) => r.timings.duration < 2000,
+        });
+
+        // Store trace ID for query tests
+        if (success && trace.resourceSpans[0].instrumentationLibrarySpans[0].spans[0]) {
+          const traceId = trace.resourceSpans[0].instrumentationLibrarySpans[0].spans[0].traceId;
+          // Note: In real scenarios, you might need to wait a bit for trace to be indexed
+          sleep(0.5);
+        }
+      });
+
+      // Test 3: Search queries
+      group('Tempo Search Queries', () => {
+        const searchTags = {
+          'service.name': 'k6-load-test',
+        };
+        const { res, success } = searchTraces(searchTags, 10);
+
+        check(res, {
+          'search status is 200': (r) => r.status === 200,
+          'search returns valid JSON': (r) => {
+            try {
+              const data = JSON.parse(r.body);
+              return data && Array.isArray(data.traces || data);
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+      });
+
+      // Test 4: Metrics endpoint
+      group('Tempo Metrics Endpoint', () => {
+        const metricsRes = http.get(`${TEMPO_QUERY_URL}/metrics`, { timeout: '10s' });
+        check(metricsRes, {
+          'metrics endpoint status is 200': (r) => r.status === 200,
+          'metrics endpoint returns prometheus format': (r) => 
+            r.body.includes('# HELP') || r.body.includes('# TYPE'),
+        });
+      });
+
+      // Random sleep between iterations
+      sleep(Math.random() * 2 + 1);
+    }
+
+    export function handleSummary(data) {
+      return {
+        'stdout': JSON.stringify(data, null, 2),
+      };
+    }

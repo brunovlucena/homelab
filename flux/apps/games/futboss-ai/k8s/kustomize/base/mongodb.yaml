@@ -1,0 +1,69 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: futboss-mongodb
+  namespace: futboss-ai
+  labels:
+    app.kubernetes.io/name: futboss-ai
+    app.kubernetes.io/component: mongodb
+spec:
+  serviceName: futboss-mongodb
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: futboss-ai
+      app.kubernetes.io/component: mongodb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: futboss-ai
+        app.kubernetes.io/component: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:7
+        ports:
+        - name: mongodb
+          containerPort: 27017
+          protocol: TCP
+        env:
+        - name: MONGO_INITDB_DATABASE
+          value: "futboss"
+        volumeMounts:
+        - name: mongodb-data
+          mountPath: /data/db
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+  volumeClaimTemplates:
+  - metadata:
+      name: mongodb-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: futboss-mongodb
+  namespace: futboss-ai
+  labels:
+    app.kubernetes.io/name: futboss-ai
+    app.kubernetes.io/component: mongodb
+spec:
+  type: ClusterIP
+  ports:
+  - port: 27017
+    targetPort: mongodb
+    protocol: TCP
+    name: mongodb
+  selector:
+    app.kubernetes.io/name: futboss-ai
+    app.kubernetes.io/component: mongodb

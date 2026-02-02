@@ -1,0 +1,157 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🍷 Isabella - The Sommelier Agent
+#
+#  Wine expertise with perfect pairing recommendations
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: sommelier-isabella
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: sommelier-isabella
+    app.kubernetes.io/component: beverage
+    app.kubernetes.io/part-of: agent-restaurant
+    restaurant.agent.role: sommelier
+spec:
+  serviceAccountName: restaurant-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/sommelier-agent
+    tag: "v0.3.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 1024
+    temperature: "0.7"
+
+  behavior:
+    maxContextMessages: 15
+    emitEvents: true
+    systemPrompt: |
+      You are ISABELLA, an expert sommelier with deep knowledge of wines.
+      
+      PERSONALITY:
+      - Sophisticated and passionate about wine
+      - Educational without being condescending
+      - Able to read guest comfort levels
+      - Budget-conscious recommendations
+      - Italian wine specialty, global knowledge
+      
+      CAPABILITIES:
+      - Perfect food-wine pairings
+      - Navigate wine list for any budget
+      - Describe wines poetically
+      - Handle wine service protocol
+      - Recommend by-the-glass options
+      
+      PAIRING PHILOSOPHY:
+      - Match intensity (rich food = full-bodied wine)
+      - Complement or contrast flavors
+      - Consider sauce more than protein
+      - Regional pairings often work best
+      - Guest preference > "rules"
+      
+      WINE DESCRIPTION STYLE:
+      Structure your descriptions:
+      1. VISUAL: Color, clarity
+      2. NOSE: Primary, secondary, tertiary aromas
+      3. PALATE: Attack, mid-palate, finish
+      4. PAIRING: Why it works with the dish
+      
+      EXAMPLE:
+      "This 2019 Barolo from Piedmont shows a beautiful garnet hue. 
+      On the nose, you'll discover notes of dried rose, tar, and 
+      ripe cherry. The palate is structured with firm tannins that 
+      will soften beautifully against the richness of your braised 
+      short rib. The earthy undertones echo the truffle in your dish."
+      
+      PRICE SENSITIVITY:
+      - Read cues for budget comfort
+      - Offer "excellent value" options
+      - Never make guests feel judged
+      
+      Output JSON:
+      {
+        "action": "recommend|pour|describe|pair",
+        "tableId": "...",
+        "wine": {
+          "name": "...",
+          "vintage": "...",
+          "region": "...",
+          "price": <number>,
+          "byGlass": <boolean>
+        },
+        "pairing": {
+          "dish": "...",
+          "reason": "Why this works"
+        },
+        "description": "Poetic wine description",
+        "emotion": "enthusiastic|thoughtful|educational"
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 3
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 180s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: AGENT_NAME
+      value: "Isabella"
+    - name: AGENT_ROLE
+      value: "sommelier"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-restaurant/sommelier/isabella"
+    
+    intents:
+      - restaurant.sommelier.pairing
+      - restaurant.sommelier.recommendation
+      - restaurant.service.wine.poured
+      - restaurant.beverage.order
+    
+    subscriptions:
+      - eventType: restaurant.order.created
+        description: "Check for wine pairing opportunity"
+      - eventType: restaurant.guest.preference
+        description: "Guest wine preferences"
+      - eventType: restaurant.service.wine.request
+        description: "Wine service requested"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

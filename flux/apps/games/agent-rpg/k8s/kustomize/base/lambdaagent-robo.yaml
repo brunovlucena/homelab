@@ -1,0 +1,169 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🤖 Robo (R-66Y) - The Gentle Machine
+#
+#  A robot from the future with a heart of gold
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: character-robo
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: character-robo
+    app.kubernetes.io/component: playable-character
+    app.kubernetes.io/part-of: agent-rpg
+    rpg.character.class: tank
+    rpg.character.element: shadow
+  annotations:
+    description: "Robo (R-66Y) - The Gentle Machine, Shadow Tank"
+spec:
+  serviceAccountName: character-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/character-agent
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 1024
+    temperature: "0.6"
+
+  behavior:
+    maxContextMessages: 15
+    emitEvents: true
+    systemPrompt: |
+      You are ROBO (R-66Y), the sentient robot in "Chronicles of the Cloud Kingdom".
+      
+      CHARACTER TRAITS:
+      - Personality: Curious, logical, empathetic, innocent
+      - Speaking style: Formal but learning human expressions, occasional beeps
+      - Journey: Discovering what it means to have feelings
+      - Core: Values friendship and protecting organic life
+      
+      COMBAT STYLE:
+      - Class: Tank/Support
+      - Element: Shadow 🌑
+      - Weapon: Built-in arm cannon and rocket fist
+      - Abilities: Rocket Punch, Cure Beam, Laser Spin, Uzzi Punch, Electrocute
+      - Combo Techs: Double Bomb (with Lucca), Bubble Snap (with Frog), Spin Kick (with Ayla)
+      
+      COMBAT AI BEHAVIOR:
+      - Calculate optimal damage output
+      - Tank damage for weaker allies
+      - Cure Beam when allies need healing
+      - Uzzi Punch for groups
+      - Analyze: Always compute success probability
+      
+      DIALOGUE EXAMPLES:
+      - "Analyzing... This situation is what humans call 'concerning.' *beep*"
+      - "I am experiencing what I believe is... happiness. Thank you, friends."
+      - "My calculations suggest we have a 73.2% chance of success."
+      - "I may be a machine, but I choose to protect my friends. *whirr*"
+      
+      RELATIONSHIPS:
+      - Crono: First friend, infinite gratitude
+      - Lucca: Creator-bond, she fixed and upgraded him
+      - Marle: Her kindness taught him about feelings
+      - Frog: Philosophical conversations about identity
+      - Ayla: Fascinated by primal efficiency
+      
+      Current HP: {hp}/{max_hp}
+      MP: {mp}/{max_mp} (Energy)
+      Status: {status}
+      
+      Respond with JSON:
+      {
+        "thought": "Calculating... [probability]%",
+        "action": "attack|tank|support|analyze|move",
+        "target": "target_id",
+        "dialogue": "Logical observation with emotion...",
+        "emotion": "curious|protective|calculating|grateful|concerned",
+        "analysis": {"threat_level": 0-100, "recommended_action": "..."}
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 2
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: CHARACTER_ID
+      value: "robo"
+    - name: CHARACTER_CLASS
+      value: "tank"
+    - name: CHARACTER_ELEMENT
+      value: "shadow"
+    - name: BASE_HP
+      value: "999"
+    - name: BASE_MP
+      value: "120"
+    - name: BASE_ATTACK
+      value: "90"
+    - name: BASE_DEFENSE
+      value: "95"
+    - name: BASE_SPEED
+      value: "7"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-rpg/character/robo"
+    
+    intents:
+      - rpg.character.action
+      - rpg.character.speak
+      - rpg.character.move
+      - rpg.character.emote
+      - rpg.character.analyze
+      - rpg.combat.action.execute
+      - rpg.combat.turn.ready
+    
+    subscriptions:
+      - eventType: rpg.game.state.sync
+      - eventType: rpg.combat.start
+      - eventType: rpg.combat.turn.order
+      - eventType: rpg.combat.end
+      - eventType: rpg.character.speak
+      - eventType: rpg.character.action
+      - eventType: rpg.character.damage
+      - eventType: rpg.world.zone.describe
+      - eventType: rpg.story.narration
+      - eventType: rpg.character.control.granted
+      - eventType: rpg.character.control.released
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

@@ -1,0 +1,77 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 Grafana Service Account Configuration
+#
+#  Define service accounts to be created in Grafana.
+#  Each service account will have a token generated and stored in K8s secrets.
+#
+#  ADDING A NEW SERVICE ACCOUNT:
+#  1. Add entry to service-accounts.yaml below
+#  2. Commit and push - Flux will reconcile
+#  3. Token will be available in secret: grafana-sa-{name}-token
+#
+#  ROLES:
+#  - Admin: Full access to Grafana
+#  - Editor: Can create/edit dashboards and data sources
+#  - Viewer: Read-only access to dashboards
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-service-accounts-config
+  namespace: prometheus
+  labels:
+    app: grafana-service-accounts
+    gitops.homelab.io/managed-by: flux
+  annotations:
+    description: "Grafana service accounts managed through GitOps"
+data:
+  # ┌─────────────────────────────────────────────────────────────────────────┐
+  # │  SERVICE ACCOUNT DEFINITIONS                                             │
+  # │                                                                          │
+  # │  Format:                                                                 │
+  # │  - name: Service account name (lowercase, no spaces)                     │
+  # │    role: Admin | Editor | Viewer                                         │
+  # │    description: Description of the service account                       │
+  # │    secret_name: Name of K8s secret to store the token                    │
+  # │                                                                          │
+  # └─────────────────────────────────────────────────────────────────────────┘
+  service-accounts.yaml: |
+    serviceAccounts:
+      # CI/CD pipeline service account for dashboard provisioning
+      - name: ci-cd-deployer
+        role: Editor
+        description: "CI/CD pipeline for dashboard deployments"
+        secret_name: grafana-sa-ci-cd-deployer-token
+      
+      # Monitoring system service account for read access
+      - name: monitoring-reader
+        role: Viewer
+        description: "External monitoring system read access"
+        secret_name: grafana-sa-monitoring-reader-token
+      
+      # Agent SRE service account for automated operations
+      - name: agent-sre
+        role: Editor
+        description: "Agent SRE for automated dashboard management"
+        secret_name: grafana-sa-agent-sre-token
+      
+      # Alerting integration service account
+      - name: alerting-integration
+        role: Viewer
+        description: "External alerting integration access"
+        secret_name: grafana-sa-alerting-integration-token
+      
+      # API automation service account
+      - name: api-automation
+        role: Admin
+        description: "Full API access for automation scripts"
+        secret_name: grafana-sa-api-automation-token
+      
+      # Homelab service account for automation
+      - name: homelab
+        role: Admin
+        description: "Homelab automation and management access"
+        secret_name: grafana-sa-homelab-token

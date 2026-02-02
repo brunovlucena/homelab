@@ -1,0 +1,77 @@
+# ============================================================================
+# 🌐 Agent-Webinterface - CI/CD
+# ============================================================================
+# Next.js web interface for AI agents.
+# ============================================================================
+
+name: 🌐 Agent-Webinterface - CI/CD
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+on:
+  push:
+    branches: [main, feature/*, bugfix/*]
+    paths:
+      - 'flux/ai/agent-webinterface/**'
+      - '.github/workflows/agent-webinterface-ci-cd.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'flux/ai/agent-webinterface/**'
+  workflow_dispatch:
+
+env:
+  WORKING_DIR: flux/ai/agent-webinterface
+
+jobs:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Detect Changes
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  detect:
+    name: 🔍 Detect Changes
+    uses: ./.github/workflows/_reusable-detect-changes.yml
+    with:
+      working-directory: flux/ai/agent-webinterface
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Lint & Build
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  lint:
+    name: 🔍 Lint & Build
+    uses: ./.github/workflows/_reusable-nodejs-ci.yml
+    with:
+      working-directory: flux/ai/agent-webinterface
+      node-version: '20'
+      run-tests: false
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Docker Build & Push
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  build:
+    name: 🏗️ Build & Push
+    needs: [detect, lint]
+    if: |
+      needs.detect.outputs.should_deploy == 'true' &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped')
+    uses: ./.github/workflows/_reusable-docker-build.yml
+    with:
+      image-name: agent-webinterface
+      dockerfile: Dockerfile
+      context: flux/ai/agent-webinterface
+      version: ${{ needs.detect.outputs.docker_tag }}
+      push: ${{ github.event_name != 'pull_request' }}
+    secrets: inherit
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Security Scan
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  security:
+    name: 🔒 Security
+    uses: ./.github/workflows/_reusable-security-scan.yml
+    with:
+      scan-path: flux/ai/agent-webinterface
+      scan-type: fs
+    secrets: inherit

@@ -1,0 +1,470 @@
+name: 🚨 Agent Auditor - Incident Response Automation
+
+on:
+  issues:
+    types: [opened, labeled, closed]
+  issue_comment:
+    types: [created]
+
+env:
+  PROJECT_NUMBER: 1  # Update with your actual project number
+  ORG: brunovlucena
+
+jobs:
+  incident-tracker:
+    name: 🔍 Track and Categorize Incidents
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'opened' &&
+      contains(github.event.issue.labels.*.name, 'incident')
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: 📊 Add to Incident Response Project
+        uses: actions/add-to-project@v0.5.0
+        with:
+          project-url: https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 🏷️ Categorize and Prioritize Incident
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title.toLowerCase();
+            const body = (issue.body || '').toLowerCase();
+            
+            let severity = 'low';
+            let category = 'general';
+            let additionalLabels = ['incident'];
+            let sloMinutes = 240; // 4 hours default
+            
+            // Detect severity from title/body
+            if (title.includes('p0') || title.includes('critical') || body.includes('production down')) {
+              severity = 'p0';
+              sloMinutes = 30;
+              additionalLabels.push('sev-critical', 'p0');
+            } else if (title.includes('p1') || title.includes('high') || body.includes('service degraded')) {
+              severity = 'p1';
+              sloMinutes = 60;
+              additionalLabels.push('sev-high', 'p1');
+            } else if (title.includes('p2') || title.includes('medium')) {
+              severity = 'p2';
+              sloMinutes = 120;
+              additionalLabels.push('sev-medium', 'p2');
+            } else {
+              severity = 'p3';
+              additionalLabels.push('sev-low', 'p3');
+            }
+            
+            // Categorize by system
+            if (title.includes('security') || body.includes('security breach')) {
+              category = 'security';
+              additionalLabels.push('security-incident');
+              // Security incidents get elevated SLO
+              sloMinutes = Math.min(sloMinutes, 30);
+            } else if (title.includes('ml') || title.includes('rag') || body.includes('model')) {
+              category = 'ml-system';
+              additionalLabels.push('ml-incident');
+            } else if (title.includes('mobile') || title.includes('ios') || title.includes('android')) {
+              category = 'mobile';
+              additionalLabels.push('mobile-incident');
+            } else if (title.includes('api') || title.includes('backend')) {
+              category = 'backend';
+              additionalLabels.push('backend-incident');
+            } else if (title.includes('k8s') || title.includes('kubernetes') || body.includes('cluster')) {
+              category = 'infrastructure';
+              additionalLabels.push('infra-incident');
+            }
+            
+            // Add labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: additionalLabels
+            });
+            
+            // Calculate SLO deadline
+            const createdAt = new Date(issue.created_at);
+            const sloDeadline = new Date(createdAt.getTime() + sloMinutes * 60000);
+            
+            // Create incident response comment
+            const comment = `🚨 **Incident Response Activated**
+            
+            **Severity**: ${severity.toUpperCase()}
+            **Category**: ${category}
+            **SLO**: Response within ${sloMinutes} minutes
+            **Deadline**: ${sloDeadline.toISOString()}
+            
+            ## 📋 Incident Response Checklist
+            
+            **Immediate Actions** (within ${Math.min(15, sloMinutes)} min):
+            - [ ] Acknowledge incident (comment "ACK" below)
+            - [ ] Assess impact (users affected, services down)
+            - [ ] Start investigation timer
+            - [ ] Notify on-call team ${severity === 'p0' ? '(Page immediately!)' : ''}
+            
+            **Investigation** (within ${sloMinutes} min):
+            - [ ] Review logs (Loki)
+            - [ ] Check metrics (Prometheus/Grafana)
+            - [ ] Analyze traces (Tempo)
+            - [ ] Identify root cause
+            - [ ] Document findings in this issue
+            
+            **Resolution**:
+            - [ ] Implement fix or workaround
+            - [ ] Verify resolution
+            - [ ] Monitor for recurrence (24h)
+            - [ ] Update runbooks if needed
+            
+            **Post-Incident**:
+            - [ ] Write postmortem (link below)
+            - [ ] Create follow-up tasks
+            - [ ] Update Agent Auditor RAG with incident data
+            - [ ] Schedule blameless retrospective
+            
+            ${severity === 'p0' ? '⚠️ **P0 CRITICAL**: Page on-call immediately! All hands on deck!' : ''}
+            ${category === 'security' ? '🔒 **SECURITY INCIDENT**: Follow security incident response protocol!' : ''}
+            
+            ---
+            
+            **Agent Auditor Integration**:
+            This incident will be automatically:
+            - Logged to LanceDB for RAG
+            - Added to incident history
+            - Used for future similar incident detection
+            
+            **Related Runbooks**:
+            - 🔍 [Investigation Guide](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/sre/RUNBOOKS.md)
+            - 📊 [Observability Guide](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/04-architecture/SYSTEM_DESIGN.md)
+            
+            **Quick Links**:
+            - 📈 [Grafana Dashboard](https://grafana.example.com) 
+            - 📋 [Loki Logs](https://grafana.example.com/loki)
+            - 🔍 [Tempo Traces](https://grafana.example.com/tempo)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: comment
+            });
+            
+            // Set assignees based on category
+            const teamMap = {
+              'security': [], // Add @security-team members
+              'ml-system': [], // Add @ml-team members  
+              'mobile': [], // Add @mobile-team members
+              'backend': [], // Add @backend-team members
+              'infrastructure': [] // Add @sre-team members
+            };
+            
+            const team = teamMap[category] || [];
+            if (team.length > 0) {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                assignees: team
+              });
+            }
+
+  incident-slo-monitor:
+    name: ⏰ Monitor Incident SLO
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.labels &&
+      contains(github.event.issue.labels.*.name, 'incident')
+    permissions:
+      issues: write
+    steps:
+      - name: 📊 Check SLO Status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const comment = context.payload.comment;
+            
+            // Check if this is an acknowledgment
+            const isAck = comment.body.toLowerCase().includes('ack');
+            
+            if (isAck) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `✅ **Incident Acknowledged** by @${comment.user.login}
+                
+                **Acknowledged At**: ${new Date(comment.created_at).toISOString()}
+                **Response Time**: ${Math.round((new Date(comment.created_at) - new Date(issue.created_at)) / 60000)} minutes
+                
+                Investigation in progress...`
+              });
+              
+              // Add "acknowledged" label
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['incident-acknowledged']
+              });
+            }
+            
+            // Check SLO breach
+            const createdAt = new Date(issue.created_at);
+            const now = new Date();
+            const elapsedMinutes = (now - createdAt) / 60000;
+            
+            // Determine SLO based on severity
+            let sloMinutes = 240; // default 4 hours
+            if (issue.labels.find(l => l.name === 'p0')) sloMinutes = 30;
+            else if (issue.labels.find(l => l.name === 'p1')) sloMinutes = 60;
+            else if (issue.labels.find(l => l.name === 'p2')) sloMinutes = 120;
+            
+            const isBreached = elapsedMinutes > sloMinutes;
+            const hasAck = issue.labels.find(l => l.name === 'incident-acknowledged');
+            
+            if (isBreached && !hasAck && issue.state === 'open') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `⚠️ **SLO BREACH ALERT**
+                
+                This incident has exceeded its response SLO:
+                - **SLO**: ${sloMinutes} minutes
+                - **Elapsed**: ${Math.round(elapsedMinutes)} minutes
+                - **Breached By**: ${Math.round(elapsedMinutes - sloMinutes)} minutes
+                
+                **Required Actions**:
+                1. Escalate to on-call lead
+                2. Page additional resources if needed
+                3. Post status update every 30 minutes
+                4. Consider declaring major incident
+                
+                🚨 **This will be tracked in SLO metrics and reported to leadership.**`
+              });
+              
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['slo-breach']
+              });
+            }
+
+  incident-to-postmortem:
+    name: 📝 Create Postmortem from Incident
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'closed' &&
+      contains(github.event.issue.labels.*.name, 'incident')
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: 📄 Generate Postmortem Template
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const incident = context.payload.issue;
+            const severity = incident.labels.find(l => l.name.includes('sev-'))?.name || 'unknown';
+            const category = incident.labels.find(l => l.name.includes('-incident'))?.name || 'general';
+            
+            const createdAt = new Date(incident.created_at);
+            const closedAt = new Date(incident.closed_at);
+            const durationMinutes = Math.round((closedAt - createdAt) / 60000);
+            
+            // Create postmortem issue
+            const postmortem = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `📝 Postmortem: ${incident.title}`,
+              body: `# Postmortem: ${incident.title}
+            
+            **Incident**: #${incident.number}
+            **Date**: ${createdAt.toISOString().split('T')[0]}
+            **Duration**: ${durationMinutes} minutes
+            **Severity**: ${severity}
+            **Category**: ${category}
+            
+            ## 🎯 Summary
+            
+            [Provide 2-3 sentence summary of what happened]
+            
+            ## ⏱️ Timeline
+            
+            | Time | Event |
+            |------|-------|
+            | ${createdAt.toISOString()} | Incident detected |
+            | [Fill in] | First response |
+            | [Fill in] | Root cause identified |
+            | [Fill in] | Fix deployed |
+            | ${closedAt.toISOString()} | Incident resolved |
+            
+            ## 🔍 Root Cause Analysis
+            
+            ### What Happened?
+            
+            [Detailed explanation of the incident]
+            
+            ### Why Did It Happen?
+            
+            [Root cause analysis - the "5 Whys"]
+            
+            1. Why did X fail?
+            2. Why did that cause Y?
+            3. Why didn't monitoring catch it?
+            4. Why wasn't there a safeguard?
+            5. Why was the process inadequate?
+            
+            ## 📊 Impact
+            
+            - **Users Affected**: [Number/percentage]
+            - **Services Affected**: [List services]
+            - **Data Loss**: [None/Amount]
+            - **Duration**: ${durationMinutes} minutes
+            - **Revenue Impact**: [Estimate if applicable]
+            
+            ## ✅ What Went Well
+            
+            - [Thing that helped]
+            - [Detection that worked]
+            - [Response that was effective]
+            
+            ## ❌ What Went Poorly
+            
+            - [Thing that made it worse]
+            - [Detection that failed]
+            - [Response that was slow]
+            
+            ## 🔧 Action Items
+            
+            ### Immediate (This Week)
+            - [ ] [Action item 1]
+            - [ ] [Action item 2]
+            
+            ### Short-term (This Month)
+            - [ ] [Action item 3]
+            - [ ] [Action item 4]
+            
+            ### Long-term (This Quarter)
+            - [ ] [Action item 5]
+            - [ ] [Action item 6]
+            
+            ## 📚 Lessons Learned
+            
+            **For Agent Auditor RAG**:
+            - [Lesson 1: What should Agent Auditor learn from this?]
+            - [Lesson 2: How to detect similar incidents?]
+            - [Lesson 3: What runbook updates needed?]
+            
+            ## 🔗 References
+            
+            - **Original Incident**: #${incident.number}
+            - **Related PRs**: [List PRs with fixes]
+            - **Grafana Dashboards**: [Links]
+            - **Log Analysis**: [Links]
+            
+            ---
+            
+            **Retrospective Meeting**: [Schedule date/time]
+            **Attendees**: [List required attendees]
+            **Follow-up**: [Date for follow-up review]`,
+              labels: ['postmortem', severity, category, 'documentation'],
+              assignees: incident.assignees.map(a => a.login)
+            });
+            
+            // Link postmortem back to incident
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: incident.number,
+              body: `📝 **Postmortem Created**
+              
+              Postmortem issue: #${postmortem.data.number}
+              
+              Please complete the postmortem within 5 business days.
+              
+              **Required**:
+              - Root cause analysis
+              - Action items with owners
+              - Lessons learned for Agent Auditor RAG
+              - Schedule blameless retrospective`
+            });
+            
+            // Add incident to Agent Auditor knowledge base (placeholder)
+            console.log(`📚 TODO: Add incident #${incident.number} to Agent Auditor RAG system`);
+            console.log(`   - Title: ${incident.title}`);
+            console.log(`   - Category: ${category}`);
+            console.log(`   - Resolution: ${durationMinutes} minutes`);
+
+  incident-runbook-update:
+    name: 📖 Suggest Runbook Updates
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'runbook-update-needed'
+    permissions:
+      issues: write
+    steps:
+      - name: 📝 Create Runbook Update Task
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const incident = context.payload.issue;
+            
+            const runbookIssue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `📖 Update Runbook: ${incident.title}`,
+              body: `Based on incident #${incident.number}, we need to update our runbooks.
+              
+              **Related Incident**: #${incident.number}
+              **Category**: ${incident.labels.find(l => l.name.includes('-incident'))?.name || 'general'}
+              
+              ## 📋 Runbook Updates Needed
+              
+              - [ ] Add detection procedures
+              - [ ] Document resolution steps
+              - [ ] Update troubleshooting guide
+              - [ ] Add monitoring checks
+              - [ ] Create alerts if missing
+              
+              ## 🤖 Agent Auditor Integration
+              
+              - [ ] Add incident pattern to RAG system
+              - [ ] Create automated detection logic
+              - [ ] Update investigation prompts
+              - [ ] Document common causes
+              
+              ## 📚 Files to Update
+              
+              - \`docs/03-for-engineers/sre/RUNBOOKS.md\`
+              - \`docs/03-for-engineers/sre/WORKFLOWS.md\`
+              - Agent Auditor knowledge base (LanceDB)
+              
+              **Assignee**: SRE Team Lead
+              **Due Date**: Within 2 weeks of incident resolution`,
+              labels: ['runbook', 'documentation', 'sre'],
+            });
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: incident.number,
+              body: `📖 **Runbook Update Task Created**: #${runbookIssue.data.number}
+              
+              This incident requires runbook documentation updates.`
+            });
+

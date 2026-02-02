@@ -1,0 +1,371 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"runtime"
+	"sync/atomic"
+	"time"
+
+	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+
+	app "{{ .Handler }}"
+)
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CONSTANTS AND TYPES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const (
+	// CloudEvent types for response events (must match operator's expectations)
+	EventTypeResponseSuccess = "io.knative.lambda.response.success"
+	EventTypeResponseError   = "io.knative.lambda.response.error"
+
+	// Function metadata
+	FunctionName = "{{ .FunctionName }}"
+)
+
+// HandlerFunc is the expected handler signature
+type HandlerFunc func(map[string]interface{}) (interface{}, error)
+
+// ResponseMetrics contains metrics for the function invocation
+type ResponseMetrics struct {
+	DurationMs   int64 `json:"durationMs"`
+	ColdStart    bool  `json:"coldStart"`
+	MemoryUsedMb int64 `json:"memoryUsedMb,omitempty"`
+}
+
+// ResultData represents successful execution result
+type ResultData struct {
+	StatusCode int         `json:"statusCode"`
+	Body       interface{} `json:"body,omitempty"`
+}
+
+// ErrorData represents error details
+type ErrorData struct {
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	Retryable bool   `json:"retryable"`
+	Stack     string `json:"stack,omitempty"`
+}
+
+// ResponseEventData matches the operator's ResponseEventData structure
+type ResponseEventData struct {
+	FunctionName  string           `json:"functionName"`
+	Namespace     string           `json:"namespace"`
+	InvocationID  string           `json:"invocationId"`
+	CorrelationID string           `json:"correlationId,omitempty"`
+	Result        *ResultData      `json:"result,omitempty"`
+	Error         *ErrorData       `json:"error,omitempty"`
+	Metrics       *ResponseMetrics `json:"metrics,omitempty"`
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// METRICS TRACKING
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+var (
+	handler           HandlerFunc
+	functionNamespace string
+	isColdStart       = true
+	invocationCount   int64
+	errorCount        int64
+)
+
+func init() {
+	// Get namespace from environment
+	functionNamespace = os.Getenv("FUNCTION_NAMESPACE")
+	if functionNamespace == "" {
+		functionNamespace = os.Getenv("NAMESPACE")
+	}
+	if functionNamespace == "" {
+		functionNamespace = "knative-lambda"
+	}
+
+	// Try to use app.Handler if it exists and has the right signature
+	handler = app.Handler
+}
+
+func getMemoryUsageMB() int64 {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return int64(m.Alloc / 1024 / 1024)
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// STRUCTURED LOGGING
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+type logEntry struct {
+	Level     string `json:"level"`
+	Ts        string `json:"ts"`
+	Function  string `json:"function"`
+	Namespace string `json:"namespace"`
+	Msg       string `json:"msg"`
+	// Optional fields
+	CorrelationID string `json:"correlation_id,omitempty"`
+	EventID       string `json:"event_id,omitempty"`
+	DurationMs    int64  `json:"duration_ms,omitempty"`
+	ColdStart     bool   `json:"cold_start,omitempty"`
+	Status        string `json:"status,omitempty"`
+	ErrorType     string `json:"error_type,omitempty"`
+	ErrorMessage  string `json:"error_message,omitempty"`
+}
+
+func logJSON(level, msg string, extra map[string]interface{}) {
+	entry := map[string]interface{}{
+		"level":     level,
+		"ts":        time.Now().UTC().Format(time.RFC3339Nano),
+		"function":  FunctionName,
+		"namespace": functionNamespace,
+		"msg":       msg,
+	}
+	for k, v := range extra {
+		entry[k] = v
+	}
+	data, _ := json.Marshal(entry)
+	fmt.Println(string(data))
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MAIN
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	r.Use(gin.Recovery())
+
+	// Endpoints
+	r.POST("/", handleRequest)
+	r.GET("/health", healthHandler)
+	r.GET("/healthz", healthHandler)
+	r.GET("/readyz", healthHandler)
+	r.GET("/metrics", metricsHandler)
+
+	logJSON("info", "Lambda runtime started", map[string]interface{}{
+		"port": port,
+	})
+
+	if err := r.Run(":" + port); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// HEALTH AND METRICS ENDPOINTS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+func healthHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"status":      "healthy",
+		"function":    FunctionName,
+		"namespace":   functionNamespace,
+		"invocations": atomic.LoadInt64(&invocationCount),
+		"errors":      atomic.LoadInt64(&errorCount),
+	})
+}
+
+func metricsHandler(c *gin.Context) {
+	invocations := atomic.LoadInt64(&invocationCount)
+	errors := atomic.LoadInt64(&errorCount)
+
+	labels := fmt.Sprintf(`function="%s",namespace="%s"`, FunctionName, functionNamespace)
+	coldStarts := int64(0)
+	if invocations > 0 {
+		coldStarts = 1
+	}
+
+	metrics := fmt.Sprintf(`# HELP knative_lambda_function_invocations_total Total invocations
+# TYPE knative_lambda_function_invocations_total counter
+knative_lambda_function_invocations_total{%s,status="success"} %d
+knative_lambda_function_invocations_total{%s,status="error"} %d
+# HELP knative_lambda_function_cold_starts_total Total cold starts
+# TYPE knative_lambda_function_cold_starts_total counter
+knative_lambda_function_cold_starts_total{%s} %d
+`, labels, invocations-errors, labels, errors, labels, coldStarts)
+
+	c.Data(http.StatusOK, "text/plain", []byte(metrics))
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MAIN REQUEST HANDLER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+func handleRequest(c *gin.Context) {
+	startTime := time.Now()
+	wasColdStart := isColdStart
+	isColdStart = false
+	atomic.AddInt64(&invocationCount, 1)
+
+	// Extract correlation ID
+	correlationID := c.GetHeader("X-Correlation-ID")
+	if correlationID == "" {
+		correlationID = c.GetHeader("Ce-Id")
+	}
+	if correlationID == "" {
+		correlationID = uuid.New().String()
+	}
+
+	// Extract invocation ID
+	invocationID := c.GetHeader("Ce-Id")
+	if invocationID == "" {
+		invocationID = uuid.New().String()
+	}
+
+	// Parse CloudEvent from request body
+	body, err := c.GetRawData()
+	if err != nil {
+		sendErrorResponse(c, correlationID, invocationID, wasColdStart, startTime, "ReadBodyError", err)
+		return
+	}
+
+	// Try to parse as CloudEvent
+	event := cloudevents.NewEvent()
+	if err := json.Unmarshal(body, &event); err != nil {
+		// If not a CloudEvent, treat body as data directly
+		event.SetType("io.knative.lambda.invoke.direct")
+		event.SetSource("direct")
+		event.SetData(cloudevents.ApplicationJSON, body)
+	}
+
+	// Log invocation start
+	logJSON("info", "Invocation started", map[string]interface{}{
+		"correlation_id": correlationID,
+		"event_id":       event.ID(),
+		"event_type":     event.Type(),
+		"event_source":   event.Source(),
+		"cold_start":     wasColdStart,
+	})
+
+	// Extract data payload
+	var eventData map[string]interface{}
+	if err := json.Unmarshal(event.Data(), &eventData); err != nil {
+		eventData = make(map[string]interface{})
+	}
+
+	// Call user handler
+	var resultData interface{}
+	if handler != nil {
+		resultData, err = handler(eventData)
+		if err != nil {
+			sendErrorResponse(c, correlationID, invocationID, wasColdStart, startTime, "HandlerError", err)
+			return
+		}
+	} else {
+		// Passthrough handler for modules without Handler function
+		resultData = map[string]interface{}{
+			"success":   true,
+			"message":   "Module executed successfully (no handler defined)",
+			"event":     eventData,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+		}
+	}
+
+	// Calculate metrics
+	durationMs := time.Since(startTime).Milliseconds()
+	memoryMB := getMemoryUsageMB()
+
+	// Log success
+	logJSON("info", "Invocation completed", map[string]interface{}{
+		"correlation_id": correlationID,
+		"event_id":       event.ID(),
+		"duration_ms":    durationMs,
+		"cold_start":     wasColdStart,
+		"status":         "success",
+	})
+
+	// Create success response CloudEvent with ResponseMetrics
+	responseData := ResponseEventData{
+		FunctionName:  FunctionName,
+		Namespace:     functionNamespace,
+		InvocationID:  invocationID,
+		CorrelationID: correlationID,
+		Result: &ResultData{
+			StatusCode: 200,
+			Body:       resultData,
+		},
+		Metrics: &ResponseMetrics{
+			DurationMs:   durationMs,
+			ColdStart:    wasColdStart,
+			MemoryUsedMb: memoryMB,
+		},
+	}
+
+	responseEvent := cloudevents.NewEvent()
+	responseEvent.SetID(uuid.New().String())
+	responseEvent.SetType(EventTypeResponseSuccess)
+	responseEvent.SetSource(fmt.Sprintf("io.knative.lambda/%s", FunctionName))
+	responseEvent.SetSubject(FunctionName)
+	responseEvent.SetData(cloudevents.ApplicationJSON, responseData)
+
+	// Send response
+	c.Header("X-Correlation-ID", correlationID)
+	c.Header("Ce-Id", responseEvent.ID())
+	c.Header("Ce-Type", responseEvent.Type())
+	c.Header("Ce-Source", responseEvent.Source())
+	c.Header("Ce-Specversion", "1.0")
+	c.JSON(http.StatusOK, responseData)
+}
+
+func sendErrorResponse(c *gin.Context, correlationID, invocationID string, wasColdStart bool, startTime time.Time, errorType string, err error) {
+	atomic.AddInt64(&errorCount, 1)
+
+	durationMs := time.Since(startTime).Milliseconds()
+	memoryMB := getMemoryUsageMB()
+
+	// Determine if retryable
+	retryable := errorType != "ValueError" && errorType != "TypeError" && errorType != "ImportError"
+
+	// Log error
+	logJSON("error", "Invocation failed", map[string]interface{}{
+		"correlation_id": correlationID,
+		"duration_ms":    durationMs,
+		"cold_start":     wasColdStart,
+		"error_type":     errorType,
+		"error_message":  err.Error(),
+	})
+
+	// Create error response CloudEvent with ResponseMetrics
+	responseData := ResponseEventData{
+		FunctionName:  FunctionName,
+		Namespace:     functionNamespace,
+		InvocationID:  invocationID,
+		CorrelationID: correlationID,
+		Error: &ErrorData{
+			Code:      errorType,
+			Message:   err.Error(),
+			Retryable: retryable,
+		},
+		Metrics: &ResponseMetrics{
+			DurationMs:   durationMs,
+			ColdStart:    wasColdStart,
+			MemoryUsedMb: memoryMB,
+		},
+	}
+
+	responseEvent := cloudevents.NewEvent()
+	responseEvent.SetID(uuid.New().String())
+	responseEvent.SetType(EventTypeResponseError)
+	responseEvent.SetSource(fmt.Sprintf("io.knative.lambda/%s", FunctionName))
+	responseEvent.SetSubject(FunctionName)
+	responseEvent.SetData(cloudevents.ApplicationJSON, responseData)
+
+	// Send error response
+	c.Header("X-Correlation-ID", correlationID)
+	c.Header("Ce-Id", responseEvent.ID())
+	c.Header("Ce-Type", responseEvent.Type())
+	c.Header("Ce-Source", responseEvent.Source())
+	c.Header("Ce-Specversion", "1.0")
+	c.JSON(http.StatusInternalServerError, responseData)
+}

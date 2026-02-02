@@ -1,0 +1,25 @@
+---
+# Test Pod: Pending (Node Selector Mismatch)
+# Purpose: Test pod-check-status LambdaFunction
+# Expected: LambdaFunction should identify Pending status and reason
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pending
+  namespace: ai
+  labels:
+    app: test-pending
+    test.agent-sre.io/scenario: pending
+    test.agent-sre.io/lambda-function: pod-check-status
+spec:
+  nodeSelector:
+    nonexistent-label: "nonexistent-value"  # Will never match a node
+  containers:
+  - name: test-container
+    image: busybox:latest
+    command: ["/bin/sh", "-c", "sleep infinity"]
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+

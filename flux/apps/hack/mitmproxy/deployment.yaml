@@ -1,0 +1,231 @@
+---
+# Redis deployment for caching
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: mitmproxy
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+      volumes:
+        - name: redis-data
+          emptyDir: {}
+
+---
+# Audio Analyzer Service deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: audio-analyzer
+  namespace: mitmproxy
+  labels:
+    app: audio-analyzer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: audio-analyzer
+  template:
+    metadata:
+      labels:
+        app: audio-analyzer
+    spec:
+      containers:
+        - name: audio-analyzer
+          # Build this image from audio-analyzer/ directory
+          # Or use a pre-built image if available
+          image: ghcr.io/homelab/audio-analyzer:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: REDIS_URL
+              value: "redis://redis.mitmproxy.svc.cluster.local:6379"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+---
+# Main mitmproxy deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mitmproxy
+  namespace: mitmproxy
+  labels:
+    app: mitmproxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mitmproxy
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mitmproxy
+      annotations:
+        # Force restart when configmap changes
+        checksum/config: "{{ include (print $.Template.BasePath \"/configmap.yaml\") . | sha256sum }}"
+    spec:
+      initContainers:
+        # Install Python dependencies for addons
+        - name: init-deps
+          image: mitmproxy/mitmproxy:11.1.0
+          command:
+            - sh
+            - -c
+            - |
+              pip install --target=/deps redis requests
+          volumeMounts:
+            - name: python-deps
+              mountPath: /deps
+        # Generate CA certificates if they don't exist
+        - name: init-certs
+          image: mitmproxy/mitmproxy:11.1.0
+          command:
+            - sh
+            - -c
+            - |
+              if [ ! -f /home/mitmproxy/.mitmproxy/mitmproxy-ca.pem ]; then
+                echo "Generating new CA certificate..."
+                mitmdump --set confdir=/home/mitmproxy/.mitmproxy -k &
+                sleep 3
+                kill $!
+                echo "CA certificate generated."
+              else
+                echo "CA certificate already exists."
+              fi
+              ls -la /home/mitmproxy/.mitmproxy/
+          volumeMounts:
+            - name: mitmproxy-data
+              mountPath: /home/mitmproxy/.mitmproxy
+      containers:
+        - name: mitmproxy
+          image: mitmproxy/mitmproxy:11.1.0
+          imagePullPolicy: IfNotPresent
+          # Use mitmweb for web interface
+          command:
+            - sh
+            - -c
+            - |
+              export PYTHONPATH=/deps:$PYTHONPATH
+              exec mitmweb \
+                --web-host 0.0.0.0 \
+                --web-port 8081 \
+                --listen-host 0.0.0.0 \
+                --listen-port 8080 \
+                --set confdir=/home/mitmproxy/.mitmproxy \
+                --set block_global=false \
+                --scripts /addons/youtube_ssai_bypass.py \
+                --scripts /addons/general_adblock.py
+          ports:
+            # Proxy port
+            - name: proxy
+              containerPort: 8080
+              protocol: TCP
+            # Web interface port
+            - name: web
+              containerPort: 8081
+              protocol: TCP
+          env:
+            - name: TZ
+              valueFrom:
+                configMapKeyRef:
+                  name: mitmproxy-config
+                  key: TZ
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: mitmproxy-config
+                  key: REDIS_URL
+            - name: SPONSORBLOCK_API
+              valueFrom:
+                configMapKeyRef:
+                  name: mitmproxy-config
+                  key: SPONSORBLOCK_API
+            - name: AUDIO_ANALYZER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: mitmproxy-config
+                  key: AUDIO_ANALYZER_URL
+          volumeMounts:
+            - name: mitmproxy-data
+              mountPath: /home/mitmproxy/.mitmproxy
+            - name: addons
+              mountPath: /addons
+            - name: python-deps
+              mountPath: /deps
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            tcpSocket:
+              port: proxy
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: proxy
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: mitmproxy-data
+          persistentVolumeClaim:
+            claimName: mitmproxy-data
+        - name: addons
+          configMap:
+            name: mitmproxy-addons
+            defaultMode: 0755
+        - name: python-deps
+          emptyDir: {}

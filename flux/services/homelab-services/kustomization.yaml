@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Note: namespace is NOT set globally to avoid conflicts with sub-kustomizations
+# Each sub-kustomization manages its own namespace
+
+resources:
+  # Infraestrutura compartilhada (namespace defined here to avoid conflicts)
+  - shared-infra/namespace.yaml
+  - shared-infra/secrets-job.yaml
+  - shared-infra/mongodb.yaml
+  - shared-infra/redis.yaml
+  # - shared-infra/ipfs.yaml  # Missing file - commented out
+  # - shared-infra/minio.yaml  # Missing file - commented out
+  # - shared-infra/postgresql.yaml  # Missing file - commented out
+
+  # Gateway (explicitly set namespace to avoid transformation)
+  - gateway/kong.yaml
+  - gateway/configmap.yaml
+
+  # Serviços (each manages its own namespace - no transformation)
+  # Temporarily exclude dj-collab-p2p to fix namespace conflict
+  # - dj-collab-p2p/k8s
+  - spotify-p2p
+  - rekordbox-cloud
+
+  # Cloudflare Tunnel Ingress (explicitly set namespace to avoid transformation)
+  - cloudflare-tunnel/cloudflaretunnelingress.yaml
+
+  # Mobile API (explicitly set namespace to avoid transformation)
+  - mobile-api/deployment.yaml
+
+commonLabels:
+  app: homelab-services
+  managed-by: flux

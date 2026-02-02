@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: garak
+  labels:
+    name: garak
+    app.kubernetes.io/name: garak
+    app.kubernetes.io/component: security-testing
+

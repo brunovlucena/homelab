@@ -1,0 +1,422 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  💪 K6 STRESS TEST - AGENT-TOOLS
+#
+#  Purpose: Stress test K8s API operations via CloudEvents
+#  Scenarios:
+#    - SPIKE: Sudden burst (0 → 100 → 0)
+#    - STRESS: Gradual ramp to high load
+#    - SOAK: Sustained moderate load
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-tools-spike
+  namespace: agent-tools
+  labels:
+    app.kubernetes.io/name: agent-tools
+    app.kubernetes.io/component: testing
+    test-type: stress
+    test-variant: spike
+spec:
+  parallelism: 3
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-tools-stress-tests
+      file: spike-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: AGENT_TOOLS_URL
+        value: "http://agent-tools.agent-tools.svc.cluster.local"
+      - name: NAMESPACE
+        value: "agent-tools"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-tools-stress
+  namespace: agent-tools
+  labels:
+    app.kubernetes.io/name: agent-tools
+    app.kubernetes.io/component: testing
+    test-type: stress
+    test-variant: stress
+spec:
+  parallelism: 4
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-tools-stress-tests
+      file: stress-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: AGENT_TOOLS_URL
+        value: "http://agent-tools.agent-tools.svc.cluster.local"
+      - name: NAMESPACE
+        value: "agent-tools"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-tools-stress-tests
+  namespace: agent-tools
+  labels:
+    app.kubernetes.io/name: agent-tools
+    app.kubernetes.io/component: testing
+data:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 🚀 SPIKE TEST - Sudden traffic burst
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  spike-test.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+    import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
+    
+    const errorRate = new Rate('k6_agent_tools_spike_error_rate');
+    const requestCounter = new Counter('k6_agent_tools_spike_requests_total');
+    const successCounter = new Counter('k6_agent_tools_spike_requests_success');
+    const requestDuration = new Trend('k6_agent_tools_spike_request_duration');
+    const coldStartCounter = new Counter('k6_agent_tools_spike_cold_starts');
+    
+    const AGENT_URL = __ENV.AGENT_TOOLS_URL || 'http://agent-tools.agent-tools.svc.cluster.local';
+    const MAX_SETUP_RETRIES = 30;
+    const SETUP_RETRY_INTERVAL = 10; // seconds
+    
+    // Wait for service to be ready with retries
+    function waitForService(url, maxRetries, retryInterval) {
+      console.log(`⏳ Waiting for service at ${url}...`);
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          const res = http.get(`${url}/health`, { timeout: '10s' });
+          if (res.status === 200) {
+            console.log(`✅ Service ready after ${i + 1} attempt(s)`);
+            return true;
+          }
+          console.log(`  Attempt ${i + 1}/${maxRetries}: status=${res.status}, retrying in ${retryInterval}s...`);
+        } catch (e) {
+          console.log(`  Attempt ${i + 1}/${maxRetries}: ${e.message}, retrying in ${retryInterval}s...`);
+        }
+        sleep(retryInterval);
+      }
+      return false;
+    }
+    
+    const OPERATIONS = [
+      { type: 'io.homelab.k8s.namespaces.list', data: {} },
+      { type: 'io.homelab.k8s.pods.list', data: { namespace: 'agent-tools', limit: 10 } },
+      { type: 'io.homelab.k8s.deployments.list', data: { namespace: 'knative-lambda' } },
+      { type: 'io.homelab.lambda.agents.list', data: {} },
+      { type: 'io.homelab.knative.services.list', data: {} },
+      { type: 'io.homelab.k8s.configmaps.list', data: { namespace: 'default', limit: 5 } },
+    ];
+    
+    export const options = {
+      scenarios: {
+        baseline: {
+          executor: 'constant-arrival-rate',
+          rate: 5,
+          timeUnit: '1s',
+          duration: '15s',
+          preAllocatedVUs: 10,
+          maxVUs: 20,
+          tags: { phase: 'baseline' },
+        },
+        spike: {
+          executor: 'constant-arrival-rate',
+          rate: 100,
+          timeUnit: '1s',
+          duration: '30s',
+          preAllocatedVUs: 50,
+          maxVUs: 150,
+          startTime: '15s',
+          tags: { phase: 'spike' },
+        },
+        recovery: {
+          executor: 'constant-arrival-rate',
+          rate: 5,
+          timeUnit: '1s',
+          duration: '20s',
+          preAllocatedVUs: 10,
+          maxVUs: 20,
+          startTime: '45s',
+          tags: { phase: 'recovery' },
+        },
+      },
+      thresholds: {
+        'http_req_duration': ['p(95)<5000'],
+        'http_req_failed': ['rate<0.10'],
+        'k6_agent_tools_spike_error_rate': ['rate<0.10'],
+      },
+    };
+    
+    export function setup() {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🚀 AGENT-TOOLS SPIKE TEST SETUP');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      if (!waitForService(AGENT_URL, MAX_SETUP_RETRIES, SETUP_RETRY_INTERVAL)) {
+        console.error(`❌ Service not ready after ${MAX_SETUP_RETRIES * SETUP_RETRY_INTERVAL}s, aborting test`);
+        return { ready: false };
+      }
+      
+      console.log(`✅ Agent accessible: ${AGENT_URL}`);
+      return { ready: true, startTime: new Date().toISOString() };
+    }
+    
+    function createCloudEvent(op) {
+      const correlationId = `k6-spike-${__VU}-${__ITER}-${randomString(8)}`;
+      return {
+        specversion: '1.0',
+        type: op.type,
+        source: `k6-spike-test/${__VU}`,
+        id: correlationId,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: op.data,
+      };
+    }
+    
+    export default function(data) {
+      // Skip if setup failed
+      if (!data || !data.ready) {
+        console.log('⏭️  Skipping iteration - service not ready');
+        sleep(1);
+        return;
+      }
+      
+      const op = OPERATIONS[__ITER % OPERATIONS.length];
+      const event = createCloudEvent(op);
+      
+      const params = {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Specversion': event.specversion,
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+        },
+        timeout: '30s',
+      };
+      
+      const startTime = Date.now();
+      const response = http.post(AGENT_URL, JSON.stringify(event), params);
+      const duration = Date.now() - startTime;
+      
+      requestDuration.add(duration);
+      requestCounter.add(1);
+      
+      if (duration > 5000 && (response.status === 200 || response.status === 202)) {
+        coldStartCounter.add(1);
+      }
+      
+      const success = check(response, {
+        'spike: accepted': (r) => r.status === 200 || r.status === 202,
+        'spike: fast response': (r) => r.timings.duration < 5000,
+      });
+      
+      if (success) {
+        successCounter.add(1);
+      } else {
+        errorRate.add(1);
+      }
+    }
+    
+    export function handleSummary(data) {
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🚀 AGENT-TOOLS SPIKE TEST RESULTS');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      if (data.metrics.k6_agent_tools_spike_requests_total) {
+        console.log(`Total Requests: ${data.metrics.k6_agent_tools_spike_requests_total.values.count}`);
+      }
+      if (data.metrics.k6_agent_tools_spike_requests_success) {
+        console.log(`Successful: ${data.metrics.k6_agent_tools_spike_requests_success.values.count}`);
+      }
+      if (data.metrics.k6_agent_tools_spike_error_rate) {
+        console.log(`Error Rate: ${(data.metrics.k6_agent_tools_spike_error_rate.values.rate * 100).toFixed(2)}%`);
+      }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      return { 'stdout': textSummary(data, { indent: ' ', enableColors: true }) };
+    }
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 📈 STRESS TEST - Gradual ramp to high load
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  stress-test.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+    import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
+    
+    const errorRate = new Rate('k6_agent_tools_stress_error_rate');
+    const requestCounter = new Counter('k6_agent_tools_stress_requests_total');
+    const successCounter = new Counter('k6_agent_tools_stress_requests_success');
+    const requestDuration = new Trend('k6_agent_tools_stress_request_duration');
+    
+    const AGENT_URL = __ENV.AGENT_TOOLS_URL || 'http://agent-tools.agent-tools.svc.cluster.local';
+    const MAX_SETUP_RETRIES = 30;
+    const SETUP_RETRY_INTERVAL = 10; // seconds
+    
+    // Wait for service to be ready with retries
+    function waitForService(url, maxRetries, retryInterval) {
+      console.log(`⏳ Waiting for service at ${url}...`);
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          const res = http.get(`${url}/health`, { timeout: '10s' });
+          if (res.status === 200) {
+            console.log(`✅ Service ready after ${i + 1} attempt(s)`);
+            return true;
+          }
+          console.log(`  Attempt ${i + 1}/${maxRetries}: status=${res.status}, retrying in ${retryInterval}s...`);
+        } catch (e) {
+          console.log(`  Attempt ${i + 1}/${maxRetries}: ${e.message}, retrying in ${retryInterval}s...`);
+        }
+        sleep(retryInterval);
+      }
+      return false;
+    }
+    
+    const OPERATIONS = [
+      { type: 'io.homelab.k8s.namespaces.list', data: {} },
+      { type: 'io.homelab.k8s.pods.list', data: { namespace: 'agent-tools', limit: 10 } },
+      { type: 'io.homelab.k8s.deployments.list', data: { namespace: 'knative-lambda' } },
+      { type: 'io.homelab.lambda.agents.list', data: {} },
+      { type: 'io.homelab.knative.services.list', data: {} },
+      { type: 'io.homelab.flux.kustomizations.list', data: { namespace: 'flux-system' } },
+    ];
+    
+    export const options = {
+      scenarios: {
+        stress_ramp: {
+          executor: 'ramping-arrival-rate',
+          startRate: 5,
+          stages: [
+            { duration: '20s', target: 20 },
+            { duration: '30s', target: 50 },
+            { duration: '30s', target: 100 },
+            { duration: '20s', target: 150 },
+            { duration: '20s', target: 50 },
+            { duration: '10s', target: 10 },
+          ],
+          preAllocatedVUs: 50,
+          maxVUs: 200,
+        },
+      },
+      thresholds: {
+        'http_req_duration': ['p(95)<8000', 'p(99)<15000'],
+        'http_req_failed': ['rate<0.15'],
+        'k6_agent_tools_stress_error_rate': ['rate<0.15'],
+      },
+    };
+    
+    export function setup() {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📈 AGENT-TOOLS STRESS TEST SETUP');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      if (!waitForService(AGENT_URL, MAX_SETUP_RETRIES, SETUP_RETRY_INTERVAL)) {
+        console.error(`❌ Service not ready after ${MAX_SETUP_RETRIES * SETUP_RETRY_INTERVAL}s, aborting test`);
+        return { ready: false };
+      }
+      
+      console.log(`✅ Agent accessible: ${AGENT_URL}`);
+      return { ready: true, startTime: new Date().toISOString() };
+    }
+    
+    function createCloudEvent(op) {
+      const correlationId = `k6-stress-${__VU}-${__ITER}-${randomString(8)}`;
+      return {
+        specversion: '1.0',
+        type: op.type,
+        source: `k6-stress-test/${__VU}`,
+        id: correlationId,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: op.data,
+      };
+    }
+    
+    export default function(data) {
+      // Skip if setup failed
+      if (!data || !data.ready) {
+        console.log('⏭️  Skipping iteration - service not ready');
+        sleep(1);
+        return;
+      }
+      
+      const op = OPERATIONS[__ITER % OPERATIONS.length];
+      const event = createCloudEvent(op);
+      
+      const params = {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Specversion': event.specversion,
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+        },
+        timeout: '30s',
+      };
+      
+      const startTime = Date.now();
+      const response = http.post(AGENT_URL, JSON.stringify(event), params);
+      const duration = Date.now() - startTime;
+      
+      requestDuration.add(duration);
+      requestCounter.add(1);
+      
+      const success = check(response, {
+        'stress: accepted': (r) => r.status === 200 || r.status === 202,
+        'stress: response < 8s': (r) => r.timings.duration < 8000,
+      });
+      
+      if (success) {
+        successCounter.add(1);
+      } else {
+        errorRate.add(1);
+      }
+    }
+    
+    export function handleSummary(data) {
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📈 AGENT-TOOLS STRESS TEST RESULTS');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      if (data.metrics.k6_agent_tools_stress_requests_total) {
+        console.log(`Total Requests: ${data.metrics.k6_agent_tools_stress_requests_total.values.count}`);
+      }
+      if (data.metrics.k6_agent_tools_stress_requests_success) {
+        console.log(`Successful: ${data.metrics.k6_agent_tools_stress_requests_success.values.count}`);
+      }
+      if (data.metrics.k6_agent_tools_stress_error_rate) {
+        console.log(`Error Rate: ${(data.metrics.k6_agent_tools_stress_error_rate.values.rate * 100).toFixed(2)}%`);
+      }
+      if (data.metrics.http_req_duration && data.metrics.http_req_duration.values) {
+        const p95 = data.metrics.http_req_duration.values['p(95)'];
+        console.log(`P95 Duration: ${p95 ? p95.toFixed(2) : 'N/A'}ms`);
+      }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      return { 'stdout': textSummary(data, { indent: ' ', enableColors: true }) };
+    }

@@ -1,0 +1,81 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PROMETHEUS RULE: Agent-SRE Flux Reconciliation Triggers
+#
+# Purpose: Trigger Flux reconciliation via agent-sre when specific conditions are met
+#
+# How it works:
+#   1. Prometheus evaluates these rules
+#   2. Alertmanager fires alerts
+#   3. Alertmanager sends webhook to prometheus-events
+#   4. prometheus-events converts to CloudEvents
+#   5. CloudEvents routed to agent-sre via Knative Trigger
+#   6. agent-sre reconciles Flux resources based on alert labels
+#
+# Flux Reconciliation:
+#   - Add label "flux_reconcile" to alerts with format:
+#     "kustomization:name:namespace,gitrepository:name:namespace"
+#   - agent-sre will parse and reconcile specified resources
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: agent-sre-flux-triggers
+  namespace: prometheus
+  labels:
+    app: agent-sre
+    component: flux-reconciliation
+    prometheus: kube-prometheus-stack
+    role: alert-rules
+spec:
+  groups:
+    - name: agent-sre.flux-reconciliation
+      interval: 30s
+      rules:
+        # Example: Reconcile Flux when GitRepository is out of sync
+        - alert: FluxGitRepositoryOutOfSync
+          expr: |
+            flux_git_repository_status_condition{type="Ready",status="False"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: flux
+            prometheus_rule: agent-sre-flux-triggers
+          annotations:
+            summary: "Flux GitRepository {{ $labels.name }} is out of sync"
+            description: "GitRepository {{ $labels.name }} in namespace {{ $labels.namespace }} has been out of sync for more than 5 minutes"
+            lambda_function: "flux-reconcile-gitrepository"
+            lambda_parameters: '{"name": "{{ $labels.name }}", "namespace": "{{ $labels.namespace }}"}'
+            flux_reconcile: "gitrepository:{{ $labels.name }}:{{ $labels.namespace }}"
+        
+        # Example: Reconcile Flux when Kustomization is suspended
+        - alert: FluxKustomizationSuspended
+          expr: |
+            flux_kustomization_spec_suspend == 1
+          for: 10m
+          labels:
+            severity: info
+            component: flux
+            prometheus_rule: agent-sre-flux-triggers
+          annotations:
+            summary: "Flux Kustomization {{ $labels.name }} is suspended"
+            description: "Kustomization {{ $labels.name }} in namespace {{ $labels.namespace }} has been suspended for more than 10 minutes"
+            flux_reconcile: "kustomization:{{ $labels.name }}:{{ $labels.namespace }}"
+        
+        # Example: Reconcile Flux when HelmRelease is failing
+        - alert: FluxHelmReleaseFailing
+          expr: |
+            flux_helm_release_status_condition{type="Ready",status="False"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: flux
+            prometheus_rule: agent-sre-flux-triggers
+          annotations:
+            summary: "Flux HelmRelease {{ $labels.name }} is failing"
+            description: "HelmRelease {{ $labels.name }} in namespace {{ $labels.namespace }} has been failing for more than 5 minutes"
+            lambda_function: "flux-reconcile-helmrelease"
+            lambda_parameters: '{"name": "{{ $labels.name }}", "namespace": "{{ $labels.namespace }}"}'
+            flux_reconcile: "helmrelease:{{ $labels.name }}:{{ $labels.namespace }}"
+

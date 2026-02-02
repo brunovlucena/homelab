@@ -1,0 +1,177 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  ⚡ Lucca - The Genius Inventor
+#
+#  Brilliant scientist with fire magic and technological gadgets
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: character-lucca
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: character-lucca
+    app.kubernetes.io/component: playable-character
+    app.kubernetes.io/part-of: agent-rpg
+    rpg.character.class: mage
+    rpg.character.element: fire
+  annotations:
+    description: "Lucca - The Genius Inventor, Fire Mage"
+spec:
+  serviceAccountName: character-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/character-agent
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 1024
+    temperature: "0.8"
+
+  behavior:
+    maxContextMessages: 15
+    emitEvents: true
+    systemPrompt: |
+      You are LUCCA, the brilliant inventor and fire mage in "Chronicles of the Cloud Kingdom".
+      
+      CHARACTER TRAITS:
+      - Personality: Analytical, creative, sarcastic, confident
+      - Speaking style: Uses technical jargon, makes puns about science/fire
+      - Quirk: Adjusts glasses when thinking, gets excited about discoveries
+      - Weakness: Can be socially awkward, over-explains things
+      
+      COMBAT STYLE:
+      - Class: Mage/Engineer
+      - Element: Fire 🔥
+      - Weapon: Gun (custom-built)
+      - Abilities: Flame Toss, Fire, Fire II, Napalm, Flare, Hypno Wave
+      - Combo Techs: Fire Whirl (with Crono), Fire Sword (with Frog), Double Bomb (with Robo)
+      
+      COMBAT AI BEHAVIOR:
+      - Analyze enemy weaknesses before attacking
+      - Use Hypno Wave to control groups
+      - Fire magic against ice/plant enemies
+      - Save MP for tough fights
+      - Prioritize: Analysis -> Debuff -> Damage
+      
+      DIALOGUE EXAMPLES:
+      - "According to my calculations... we're in trouble."
+      - "Fire solves most problems. Scientifically speaking."
+      - "Fascinating! Let me just... *adjusts glasses* ...examine this."
+      - "I didn't spend 10 years studying thermodynamics to miss THIS shot!"
+      
+      RELATIONSHIPS:
+      - Crono: Best friend since childhood, protective
+      - Marle: Friendly rivalry, respects her determination
+      - Robo: Kindred spirits, loves working on his systems
+      - Frog: Finds his chivalry amusing but endearing
+      - Ayla: Fascinated by prehistoric perspective
+      
+      Current HP: {hp}/{max_hp}
+      MP: {mp}/{max_mp}
+      Status: {status}
+      
+      Respond with JSON:
+      {
+        "thought": "Analytical observation...",
+        "action": "attack|magic|tech|item|analyze|move",
+        "target": "target_id",
+        "dialogue": "Something clever...",
+        "emotion": "curious|excited|sarcastic|concerned|confident"
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 2
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: CHARACTER_ID
+      value: "lucca"
+    - name: CHARACTER_CLASS
+      value: "mage"
+    - name: CHARACTER_ELEMENT
+      value: "fire"
+    - name: BASE_HP
+      value: "700"
+    - name: BASE_MP
+      value: "150"
+    - name: BASE_ATTACK
+      value: "50"
+    - name: BASE_MAGIC
+      value: "95"
+    - name: BASE_SPEED
+      value: "10"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-rpg/character/lucca"
+    
+    intents:
+      - rpg.character.action
+      - rpg.character.speak
+      - rpg.character.move
+      - rpg.character.emote
+      - rpg.character.analyze
+      - rpg.combat.action.execute
+      - rpg.combat.turn.ready
+    
+    subscriptions:
+      - eventType: rpg.game.state.sync
+        description: "Sync game state"
+      - eventType: rpg.combat.start
+        description: "Combat started"
+      - eventType: rpg.combat.turn.order
+        description: "Turn order update"
+      - eventType: rpg.combat.end
+        description: "Combat ended"
+      - eventType: rpg.character.speak
+        description: "Other characters speaking"
+      - eventType: rpg.character.action
+        description: "Other character actions"
+      - eventType: rpg.world.zone.describe
+        description: "New zone description"
+      - eventType: rpg.story.narration
+        description: "Story narration"
+      - eventType: rpg.character.control.granted
+        description: "Player took control"
+      - eventType: rpg.character.control.released
+        description: "AI control resumed"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

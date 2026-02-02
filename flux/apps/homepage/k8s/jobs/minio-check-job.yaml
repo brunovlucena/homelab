@@ -1,0 +1,109 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔍 MinIO Check Job - Verify image exists in MinIO
+#
+#  Purpose: Check if a specific image exists in MinIO bucket
+#
+#  Usage:
+#    kubectl apply -f minio-check-job.yaml
+#    kubectl logs -f job/minio-check -n homepage
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-check
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/component: blog
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: minio-access
+      initContainers:
+        - name: sync-secret
+          image: localhost:5001/kubectl:v1.34.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "🔐 Syncing minio-credentials secret from minio namespace..."
+              
+              # Wait for secret in minio namespace (source)
+              MAX_WAIT=60
+              WAITED=0
+              while ! kubectl get secret minio-credentials -n minio &>/dev/null; do
+                if [ $WAITED -ge $MAX_WAIT ]; then
+                  echo "❌ Timeout waiting for minio-credentials in minio namespace"
+                  exit 1
+                fi
+                echo "⏳ Waiting for minio-credentials in minio namespace... (${WAITED}s/${MAX_WAIT}s)"
+                sleep 2
+                WAITED=$((WAITED + 2))
+              done
+              
+              echo "📋 Found secret in minio namespace, syncing to homepage..."
+              
+              # Extract credentials from minio namespace
+              ACCESS_KEY=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.access-key}' | base64 -d)
+              SECRET_KEY=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.secret-key}' | base64 -d)
+              ROOT_USER=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.root-user}' | base64 -d || echo "$ACCESS_KEY")
+              ROOT_PASSWORD=$(kubectl get secret minio-credentials -n minio -o jsonpath='{.data.root-password}' | base64 -d || echo "$SECRET_KEY")
+              
+              # Always sync/update secret in homepage namespace
+              kubectl create secret generic minio-credentials \
+                --from-literal=access-key="${ACCESS_KEY}" \
+                --from-literal=secret-key="${SECRET_KEY}" \
+                --from-literal=root-user="${ROOT_USER}" \
+                --from-literal=root-password="${ROOT_PASSWORD}" \
+                --namespace=homepage \
+                --dry-run=client -o yaml | kubectl apply -f -
+              
+              echo "✅ Secret minio-credentials synced to homepage namespace"
+      containers:
+        - name: check
+          # Use alpine image with minio/mc installed, or use an image that has both shell and mc
+          image: alpine:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "📦 Installing MinIO client..."
+              apk add --no-cache curl >/dev/null 2>&1
+              curl -o /usr/local/bin/mc -L https://dl.min.io/client/mc/release/linux-amd64/mc
+              chmod +x /usr/local/bin/mc
+              
+              echo "🔍 Checking MinIO for three-scales-framework images..."
+              
+              # Configure MinIO client
+              mc alias set minio http://minio.minio.svc.cluster.local:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
+              
+              # Check for images
+              echo "📋 Checking for three-scales-framework.* files..."
+              if mc ls minio/homepage-blog/images/graphs/three-scales-framework.* 2>&1; then
+                echo "✅ Images found in MinIO"
+                mc ls minio/homepage-blog/images/graphs/three-scales-framework.*
+              else
+                echo "⚠️  Images not found or bucket does not exist"
+                exit 1
+              fi
+              
+              echo "🎉 Check complete!"
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+

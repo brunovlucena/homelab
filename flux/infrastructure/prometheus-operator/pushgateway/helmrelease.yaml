@@ -1,0 +1,41 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: prometheus-pushgateway
+  namespace: prometheus
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: prometheus-pushgateway
+      version: "2.15.0"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+      interval: 12h
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    image:
+      repository: localhost:5001/pushgateway
+      tag: v1.11.0
+    
+    serviceMonitor:
+      enabled: true
+      namespace: prometheus
+    
+    # Expose Pushgateway via NodePort for Cursor access
+    service:
+      type: NodePort
+      nodePort: 30046
+      port: 9091
+    
+    resources:
+      limits:
+        memory: 128Mi

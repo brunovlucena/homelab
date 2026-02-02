@@ -1,0 +1,65 @@
+---
+# ClusterIP service for internal DNS resolution
+apiVersion: v1
+kind: Service
+metadata:
+  name: pihole-dns
+  namespace: pihole
+  labels:
+    app: pihole
+spec:
+  type: ClusterIP
+  selector:
+    app: pihole
+  ports:
+    - name: dns-tcp
+      port: 53
+      targetPort: 53
+      protocol: TCP
+    - name: dns-udp
+      port: 53
+      targetPort: 53
+      protocol: UDP
+---
+# NodePort service for the web interface (accessible via Kind port mapping)
+apiVersion: v1
+kind: Service
+metadata:
+  name: pihole-web
+  namespace: pihole
+  labels:
+    app: pihole
+spec:
+  type: NodePort
+  selector:
+    app: pihole
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: 30053
+      protocol: TCP
+---
+# NodePort service for external DNS access
+apiVersion: v1
+kind: Service
+metadata:
+  name: pihole-dns-external
+  namespace: pihole
+  labels:
+    app: pihole
+spec:
+  type: NodePort
+  selector:
+    app: pihole
+  ports:
+    - name: dns-tcp
+      port: 53
+      targetPort: 53
+      nodePort: 30054
+      protocol: TCP
+    - name: dns-udp
+      port: 53
+      targetPort: 53
+      nodePort: 30055
+      protocol: UDP

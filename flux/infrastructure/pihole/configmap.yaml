@@ -1,0 +1,12 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pihole-config
+  namespace: pihole
+data:
+  # Set the appropriate timezone for your location
+  # https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+  TZ: "America/Sao_Paulo"
+  # If using Docker's default `bridge` network setting the dns listening mode should be set to 'ALL'
+  FTLCONF_dns_listeningMode: "all"

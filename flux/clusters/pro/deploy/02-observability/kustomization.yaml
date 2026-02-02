@@ -1,0 +1,14 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 📊 Pro-1-Node Cluster - Observability Phase
+# Monitoring, logging, and tracing components
+# Depends on core infrastructure being ready
+
+resources:
+  - ../../../../infrastructure/prometheus-operator
+  - ../../../../infrastructure/loki
+  - ../../../../infrastructure/alloy
+  - ../../../../infrastructure/tempo
+  - ../../../../infrastructure/linkerd-viz

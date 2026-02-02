@@ -1,0 +1,139 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: grafana-rules
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: grafana
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  # =============================================================================
+  # 🚨 CRITICAL ALERTS - IMMEDIATE ATTENTION REQUIRED
+  # =============================================================================
+  - name: grafana.critical
+    interval: 30s
+    rules:
+    - alert: GrafanaServiceDown
+      expr: |
+        up{job="kube-prometheus-stack-grafana"} == 0
+        or
+        absent(up{job="kube-prometheus-stack-grafana"})
+      for: 2m
+      labels:
+        severity: critical
+        service: grafana
+        component: monitoring
+        namespace: prometheus
+      annotations:
+        summary: "Grafana service is down"
+        description: "Grafana service at grafana.lucena.cloud has been down for more than 2 minutes. Monitoring and dashboards are unavailable."
+        runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/grafana-down.md"
+        dashboard_url: "https://grafana.lucena.cloud"
+        
+    - alert: GrafanaPodDown
+      expr: |
+        kube_pod_status_phase{namespace="prometheus",pod=~"kube-prometheus-stack-grafana-.*",phase!="Running"} == 1
+      for: 3m
+      labels:
+        severity: critical
+        service: grafana
+        component: monitoring
+        namespace: prometheus
+      annotations:
+        summary: "Grafana pod is down"
+        description: "Grafana pod {{`{{ $labels.pod }}`}} in namespace {{`{{ $labels.namespace }}`}} is in {{`{{ $labels.phase }}`}} state for more than 3 minutes."
+        runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/grafana-pod-down.md"
+        
+    - alert: GrafanaHealthCheckFailing
+      expr: |
+        probe_success{job="kube-prometheus-stack-grafana"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        service: grafana
+        component: monitoring
+        namespace: prometheus
+      annotations:
+        summary: "Grafana health check is failing"
+        description: "Grafana health check has been failing for more than 2 minutes. Service may be unresponsive."
+        runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/grafana-health-check-failing.md"
+        
+    - alert: GrafanaHighErrorRate
+      expr: |
+        rate(probe_http_status_code{job="kube-prometheus-stack-grafana",code!~"2.."}[5m]) > 0
+      for: 3m
+      labels:
+        severity: critical
+        service: grafana
+        component: monitoring
+        namespace: prometheus
+      annotations:
+        summary: "Grafana high error rate"
+        description: "Grafana is experiencing errors with {{`{{ $value }}`}} non-2xx responses per second for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/grafana-high-error-rate.md"
+
+  # =============================================================================
+  # ⚠️ WARNING ALERTS - ATTENTION NEEDED SOON
+  # =============================================================================
+  - name: grafana.warning
+    interval: 1m
+    rules:
+    - alert: GrafanaHighResponseTime
+      expr: |
+        histogram_quantile(0.95, rate(probe_http_duration_seconds_bucket{job="kube-prometheus-stack-grafana"}[5m])) > 2
+      for: 5m
+      labels:
+        severity: warning
+        service: grafana
+        component: monitoring
+        namespace: prometheus
+      annotations:
+        summary: "Grafana high response time"
+        description: "Grafana 95th percentile response time is {{`{{ $value }}`}}s for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/grafana-high-response-time.md"
+        
+    - alert: GrafanaHighMemoryUsage
+      expr: |
+        container_memory_usage_bytes{namespace="prometheus",pod=~"kube-prometheus-stack-grafana-.*"} / 
+        container_spec_memory_limit_bytes{namespace="prometheus",pod=~"kube-prometheus-stack-grafana-.*"} > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        service: grafana
+        component: monitoring
+        namespace: prometheus
+      annotations:
+        summary: "Grafana high memory usage"
+        description: "Grafana pod {{`{{ $labels.pod }}`}} memory usage is {{`{{ $value | humanizePercentage }}`}} of limit for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/grafana-high-memory.md"
+        
+    - alert: GrafanaHighCPUUsage
+      expr: |
+        rate(container_cpu_usage_seconds_total{namespace="prometheus",pod=~"kube-prometheus-stack-grafana-.*"}[5m]) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        service: grafana
+        component: monitoring
+        namespace: prometheus
+      annotations:
+        summary: "Grafana high CPU usage"
+        description: "Grafana pod {{`{{ $labels.pod }}`}} CPU usage is {{`{{ $value | humanizePercentage }}`}} for the last 5 minutes."
+        runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/grafana-high-cpu.md"
+        
+    - alert: GrafanaPodCrashLooping
+      expr: |
+        rate(kube_pod_container_status_restarts_total{namespace="prometheus",pod=~"kube-prometheus-stack-grafana-.*"}[15m]) > 0
+      for: 5m
+      labels:
+        severity: warning
+        service: grafana
+        component: monitoring
+        namespace: prometheus
+      annotations:
+        summary: "Grafana pod is crash looping"
+        description: "Grafana pod {{`{{ $labels.pod }}`}} is crash looping with {{`{{ $value }}`}} restarts in the last 15 minutes."
+        runbook_url: "https://github.com/brunovlucena/homelab/docs/runbooks/grafana-pod-crash-loop.md"

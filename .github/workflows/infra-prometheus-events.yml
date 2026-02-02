@@ -1,0 +1,232 @@
+# ============================================================================
+# 🚀 Prometheus Events - CI/CD Pipeline
+# ============================================================================
+# This workflow handles building and pushing the prometheus-events Docker image
+# to both localhost:5001 (for local development) and ghcr.io (for production).
+#
+# Triggers:
+#   - Push to main/develop/feature/bugfix branches
+#   - Pull requests affecting prometheus-events code
+#   - Manual dispatch
+# ============================================================================
+
+name: 🚀 Prometheus Events - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/infrastructure/prometheus-events/**'
+      - '.github/workflows/infra-prometheus-events.yml'
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'bugfix/**'
+    paths:
+      - 'flux/infrastructure/prometheus-events/**'
+      - '.github/workflows/infra-prometheus-events.yml'
+    tags:
+      - 'prometheus-events-v*.*.*'
+
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/prometheus-events
+  WORKING_DIR: flux/infrastructure/prometheus-events
+
+permissions:
+  contents: read
+  pull-requests: read
+  packages: write
+  attestations: write
+  id-token: write
+
+jobs:
+  detect-changes:
+    name: 🔍 Detect Changes & Version
+    runs-on: [self-hosted]
+    outputs:
+      should_build: ${{ steps.should_build.outputs.should_build }}
+      version: ${{ steps.version.outputs.version }}
+      docker_tag: ${{ steps.version.outputs.docker_tag }}
+      is_release: ${{ steps.version.outputs.is_release }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 Detect Changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            prometheus-events:
+              - 'flux/infrastructure/prometheus-events/**'
+
+      - name: Set should_build output
+        id: should_build
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ steps.filter.outputs.prometheus-events }}" == "true" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🏷️ Extract Version and Generate Tags
+        id: version
+        run: |
+          VERSION_FILE="${{ env.WORKING_DIR }}/VERSION"
+          if [ ! -f "$VERSION_FILE" ]; then
+            echo "❌ ERROR: VERSION file not found at $VERSION_FILE"
+            exit 1
+          fi
+          
+          VERSION=$(cat "$VERSION_FILE" | tr -d '[:space:]')
+          
+          if [ -z "$VERSION" ]; then
+            echo "❌ ERROR: VERSION file is empty"
+            exit 1
+          fi
+          
+          GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+          
+          # Generate Docker tag based on branch with v prefix for releases
+          if [ "$GIT_BRANCH" = "main" ]; then
+            DOCKER_TAG="v$VERSION"
+            IS_RELEASE="true"
+          elif [ "$GIT_BRANCH" = "develop" ]; then
+            DOCKER_TAG="v$VERSION-beta.$(date +%s)"
+            IS_RELEASE="false"
+          else
+            DOCKER_TAG="v$VERSION-dev.$GIT_COMMIT"
+            IS_RELEASE="false"
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "docker_tag=$DOCKER_TAG" >> $GITHUB_OUTPUT
+          echo "git_commit=$GIT_COMMIT" >> $GITHUB_OUTPUT
+          echo "git_branch=$GIT_BRANCH" >> $GITHUB_OUTPUT
+          echo "is_release=$IS_RELEASE" >> $GITHUB_OUTPUT
+          
+          echo "📋 Version Information:"
+          echo "  ✅ VERSION file: $VERSION_FILE"
+          echo "  ✅ Version: $VERSION"
+          echo "  🐳 Docker Tag: $DOCKER_TAG"
+          echo "  📝 Git Commit: $GIT_COMMIT"
+          echo "  🌿 Git Branch: $GIT_BRANCH"
+          echo "  🎯 Is Release: $IS_RELEASE"
+
+  build:
+    name: 🐳 Build & Push
+    runs-on: [self-hosted]
+    timeout-minutes: 30
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.should_build == 'true'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏗️ Build and Push Docker Image
+        uses: ./.github/workflows/_reusable-docker-build.yml
+        with:
+          image-name: prometheus-events
+          context: ${{ env.WORKING_DIR }}
+          dockerfile: ${{ env.WORKING_DIR }}/Dockerfile
+          version: ${{ needs.detect-changes.outputs.version }}
+          docker-tag: ${{ needs.detect-changes.outputs.docker_tag }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          push-to-local: true
+          local-registry: localhost:5001
+          cache-scope: prometheus-events
+          scan-image: true
+          attest: true
+
+      - name: 📋 Image Summary
+        run: |
+          echo "## 🐳 Built Image" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| GHCR Image | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Local Image | \`localhost:5001/prometheus-events\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | \`${{ needs.detect-changes.outputs.docker_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Platforms | \`linux/amd64, linux/arm64\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ needs.detect-changes.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Update Kustomization (GitOps)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  update-kustomization:
+    name: 📝 Update GitOps
+    runs-on: [self-hosted]
+    timeout-minutes: 10
+    needs: [build, detect-changes]
+    if: needs.detect-changes.outputs.should_build == 'true' && needs.detect-changes.outputs.is_release == 'true'
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📝 Update image tag in kustomization
+        run: |
+          TAG="${{ needs.detect-changes.outputs.docker_tag }}"
+          
+          echo "🔄 Updating kustomization files with tag ${TAG}"
+          
+          # Update base kustomization.yaml
+          if [ -f "${{ env.WORKING_DIR }}/k8s/base/kustomization.yaml" ]; then
+            sed -i "s|newTag: v.*|newTag: ${TAG}|g" "${{ env.WORKING_DIR }}/k8s/base/kustomization.yaml"
+            echo "✅ Updated ${{ env.WORKING_DIR }}/k8s/base/kustomization.yaml"
+          fi
+          
+          # Update all overlay kustomization.yaml files
+          for overlay in ${{ env.WORKING_DIR }}/k8s/overlays/*/kustomization.yaml; do
+            if [ -f "$overlay" ]; then
+              sed -i "s|newTag: v.*|newTag: ${TAG}|g" "$overlay"
+              echo "✅ Updated $overlay"
+            fi
+          done
+          
+          echo ""
+          echo "📋 Updated kustomization files:"
+          grep -A2 "newTag:" ${{ env.WORKING_DIR }}/k8s/base/kustomization.yaml || true
+
+      - name: 📤 Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          TAG="${{ needs.detect-changes.outputs.docker_tag }}"
+          VERSION="${{ needs.detect-changes.outputs.version }}"
+
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "ci(prometheus-events): update image to ${TAG}
+
+            🤖 Automated commit by GitHub Actions
+
+            - Image: localhost:5001/prometheus-events:${TAG}
+            - Version: ${VERSION}
+            - Commit: ${{ github.sha }}
+
+            [skip ci]"
+            git push
+            echo "✅ Pushed kustomization update"
+          else
+            echo "ℹ️ No changes to commit"
+          fi
+

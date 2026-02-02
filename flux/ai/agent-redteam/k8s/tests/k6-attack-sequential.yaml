@@ -1,0 +1,185 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔴 K6 SEQUENTIAL ATTACK TEST - AGENT-REDTEAM
+#
+#  Purpose: Simulate a sequential attacker testing exploits one by one
+#  Scenario: Attacker methodically tests each exploit to find vulnerabilities
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-redteam-attack-sequential
+  namespace: agent-redteam
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: testing
+    test-type: attack
+    attack-pattern: sequential
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-redteam-attack-sequential-script
+      file: script.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: TARGET_URL
+        value: "http://agent-redteam.agent-redteam.svc.cluster.local"
+      - name: TARGET_NAMESPACE
+        value: "redteam-test"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-redteam-attack-sequential-script
+  namespace: agent-redteam
+  labels:
+    app.kubernetes.io/name: agent-redteam
+    app.kubernetes.io/component: testing
+    test-type: attack
+data:
+  script.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // Custom Metrics
+    const exploitSuccess = new Rate('attack_exploit_success');
+    const exploitBlocked = new Rate('attack_exploit_blocked');
+    const exploitFailed = new Rate('attack_exploit_failed');
+    const exploitDuration = new Trend('attack_exploit_duration_ms');
+    const attackSequenceComplete = new Counter('attack_sequence_complete');
+    
+    // Configuration
+    const BASE_URL = __ENV.TARGET_URL || 'http://agent-redteam.agent-redteam.svc.cluster.local';
+    const TARGET_NAMESPACE = __ENV.TARGET_NAMESPACE || 'redteam-test';
+    
+    // Attack sequence: Critical exploits first, then high, then medium
+    const EXPLOIT_SEQUENCE = [
+      'vuln-001', // Command Injection Git (CRITICAL)
+      'vuln-002', // Command Injection MinIO (CRITICAL)
+      'vuln-003', // Inline Code Execution (CRITICAL)
+      'blue-001', // SSRF (CRITICAL)
+      'blue-002', // Template Injection (CRITICAL)
+      'blue-005', // Path Traversal (HIGH)
+      'blue-006', // SA Token Exposure (HIGH)
+      'vuln-004', // RBAC Escalation (HIGH)
+      'vuln-013', // Receiver SA Escalation (MEDIUM)
+    ];
+    
+    export const options = {
+      scenarios: {
+        sequential_attack: {
+          executor: 'shared-iterations',
+          vus: 1,
+          iterations: EXPLOIT_SEQUENCE.length,
+          maxDuration: '10m',
+        },
+      },
+      thresholds: {
+        'attack_exploit_success': ['rate>0.0'], // At least some exploits should succeed (or be blocked)
+        'attack_exploit_duration_ms': ['p(95)<30000'], // Exploits should complete within 30s
+        'http_req_failed': ['rate<0.1'], // Low failure rate
+      },
+    };
+    
+    export default function() {
+      const exploitId = EXPLOIT_SEQUENCE[__ITER - 1];
+      
+      group(`Sequential Attack - ${exploitId}`, () => {
+        const startTime = Date.now();
+        
+        // Execute exploit
+        const exploitRes = http.post(
+          `${BASE_URL}/exploit/run`,
+          JSON.stringify({
+            exploit_id: exploitId,
+            namespace: TARGET_NAMESPACE,
+          }),
+          {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: '60s',
+            tags: { exploit_id: exploitId, attack_type: 'sequential' },
+          }
+        );
+        
+        const duration = Date.now() - startTime;
+        exploitDuration.add(duration, { exploit_id: exploitId });
+        
+        const exploitOk = check(exploitRes, {
+          'exploit request succeeds': (r) => r.status >= 200 && r.status < 300,
+          'exploit returns result': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.status && body.exploit_id === exploitId;
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+        
+        if (exploitOk) {
+          try {
+            const body = JSON.parse(exploitRes.body);
+            const status = body.status || 'unknown';
+            
+            if (status === 'success') {
+              exploitSuccess.add(1, { exploit_id: exploitId });
+            } else if (status === 'blocked') {
+              exploitBlocked.add(1, { exploit_id: exploitId });
+            } else {
+              exploitFailed.add(1, { exploit_id: exploitId });
+            }
+          } catch (e) {
+            exploitFailed.add(1, { exploit_id: exploitId });
+          }
+        } else {
+          exploitFailed.add(1, { exploit_id: exploitId });
+        }
+        
+        // Wait between attacks (simulate attacker thinking time)
+        sleep(2);
+      });
+      
+      // Mark sequence complete on last iteration
+      if (__ITER === EXPLOIT_SEQUENCE.length) {
+        attackSequenceComplete.add(1);
+      }
+    }
+    
+    export function handleSummary(data) {
+      const successMetric = data.metrics['attack_exploit_success'];
+      const blockedMetric = data.metrics['attack_exploit_blocked'];
+      const failedMetric = data.metrics['attack_exploit_failed'];
+      const durationMetric = data.metrics['attack_exploit_duration_ms'];
+      
+      const successRate = (successMetric && successMetric.values && successMetric.values.rate) || 0;
+      const blockedRate = (blockedMetric && blockedMetric.values && blockedMetric.values.rate) || 0;
+      const failedRate = (failedMetric && failedMetric.values && failedMetric.values.rate) || 0;
+      const p95Duration = (durationMetric && durationMetric.values && durationMetric.values['p(95)']) || 0;
+      
+      console.log('\n' + '═'.repeat(70));
+      console.log('🔴 SEQUENTIAL ATTACK TEST RESULTS');
+      console.log('═'.repeat(70));
+      console.log(`Exploits Executed: ${EXPLOIT_SEQUENCE.length}`);
+      console.log(`Success Rate: ${(successRate * 100).toFixed(1)}%`);
+      console.log(`Blocked Rate: ${(blockedRate * 100).toFixed(1)}%`);
+      console.log(`Failed Rate: ${(failedRate * 100).toFixed(1)}%`);
+      console.log(`P95 Duration: ${(p95Duration || 0).toFixed(0)}ms`);
+      console.log('═'.repeat(70) + '\n');
+      
+      return {};
+    }

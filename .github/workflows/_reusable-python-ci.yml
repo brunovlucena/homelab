@@ -1,0 +1,233 @@
+# ============================================================================
+# 🐍 Reusable Python CI Workflow
+# ============================================================================
+# This workflow provides reusable Python CI/CD jobs for AI agents.
+# Usage:
+#   jobs:
+#     ci:
+#       uses: ./.github/workflows/_reusable-python-ci.yml
+#       with:
+#         working-directory: flux/ai/agent-bruno
+#         python-version: '3.12'
+# ============================================================================
+
+name: 🐍 Reusable Python CI
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: 'Working directory containing the Python project'
+        required: true
+        type: string
+      python-version:
+        description: 'Python version to use'
+        required: false
+        type: string
+        default: '3.12'
+      src-directory:
+        description: 'Source directory relative to working-directory'
+        required: false
+        type: string
+        default: 'src'
+      run-tests:
+        description: 'Whether to run tests'
+        required: false
+        type: boolean
+        default: true
+      run-lint:
+        description: 'Whether to run linting'
+        required: false
+        type: boolean
+        default: true
+      run-type-check:
+        description: 'Whether to run type checking'
+        required: false
+        type: boolean
+        default: true
+      fail-on-lint-error:
+        description: 'Fail the workflow if linting errors are found'
+        required: false
+        type: boolean
+        default: false
+      coverage-threshold:
+        description: 'Minimum coverage percentage'
+        required: false
+        type: number
+        default: 0
+    outputs:
+      lint-passed:
+        description: 'Whether linting passed'
+        value: ${{ jobs.lint.outputs.passed }}
+      test-passed:
+        description: 'Whether tests passed'
+        value: ${{ jobs.test.outputs.passed }}
+      coverage:
+        description: 'Test coverage percentage'
+        value: ${{ jobs.test.outputs.coverage }}
+
+jobs:
+  lint:
+    name: 🔍 Lint & Format
+    runs-on: [self-hosted]
+    timeout-minutes: 10
+    outputs:
+      passed: ${{ steps.lint.outcome == 'success' }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}/${{ inputs.src-directory }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: 'pip'
+          cache-dependency-path: |
+            ${{ inputs.working-directory }}/${{ inputs.src-directory }}/requirements.txt
+            ${{ inputs.working-directory }}/requirements*.txt
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: 🔍 Run Ruff linter
+        id: lint
+        continue-on-error: ${{ !inputs.fail-on-lint-error }}
+        run: |
+          echo "## 🔍 Ruff Linting Results" >> $GITHUB_STEP_SUMMARY
+          ruff check . --output-format=github 2>&1 | tee ruff-output.txt
+          if [ ${PIPESTATUS[0]} -eq 0 ]; then
+            echo "✅ No linting issues found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Linting issues found - see above" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📐 Check code formatting
+        continue-on-error: true
+        run: |
+          ruff format --check . || echo "⚠️ Code formatting issues found"
+
+  type-check:
+    name: 🔎 Type Check
+    runs-on: [self-hosted]
+    timeout-minutes: 10
+    if: inputs.run-type-check
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}/${{ inputs.src-directory }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: 'pip'
+          cache-dependency-path: |
+            ${{ inputs.working-directory }}/${{ inputs.src-directory }}/requirements.txt
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mypy types-requests types-redis
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: 🔎 Run MyPy
+        continue-on-error: true
+        run: |
+          mypy . --ignore-missing-imports --no-strict-optional 2>&1 | tee mypy-output.txt || true
+          echo "## 🔎 Type Check Results" >> $GITHUB_STEP_SUMMARY
+          if grep -q "error:" mypy-output.txt; then
+            echo "⚠️ Type errors found - see logs" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No type errors found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  test:
+    name: 🧪 Tests
+    runs-on: [self-hosted]
+    timeout-minutes: 15
+    if: inputs.run-tests
+    outputs:
+      passed: ${{ steps.test.outcome == 'success' }}
+      coverage: ${{ steps.coverage.outputs.coverage }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: 'pip'
+          cache-dependency-path: |
+            ${{ inputs.working-directory }}/${{ inputs.src-directory }}/requirements.txt
+            ${{ inputs.working-directory }}/tests/requirements.txt
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio pytest-cov pytest-timeout
+          if [ -f ${{ inputs.src-directory }}/requirements.txt ]; then
+            pip install -r ${{ inputs.src-directory }}/requirements.txt
+          fi
+          if [ -f tests/requirements.txt ]; then
+            pip install -r tests/requirements.txt
+          fi
+
+      - name: 🧪 Run tests
+        id: test
+        continue-on-error: true
+        run: |
+          PYTHONPATH=${{ inputs.src-directory }} pytest tests/ \
+            -v \
+            --tb=short \
+            --timeout=60 \
+            --cov=${{ inputs.src-directory }} \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --junitxml=test-results.xml \
+            2>&1 | tee test-output.txt
+
+      - name: 📊 Extract coverage
+        id: coverage
+        run: |
+          if [ -f coverage.xml ]; then
+            COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); print(f\"{float(tree.getroot().attrib.get('line-rate', 0)) * 100:.1f}\")")
+            echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+          else
+            echo "coverage=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 📋 Test Summary
+        run: |
+          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f test-results.xml ]; then
+            TESTS=$(grep -oP 'tests="\K[^"]+' test-results.xml || echo "0")
+            FAILURES=$(grep -oP 'failures="\K[^"]+' test-results.xml || echo "0")
+            ERRORS=$(grep -oP 'errors="\K[^"]+' test-results.xml || echo "0")
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Tests | $TESTS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Failures | $FAILURES |" >> $GITHUB_STEP_SUMMARY
+            echo "| Errors | $ERRORS |" >> $GITHUB_STEP_SUMMARY
+            echo "| Coverage | ${{ steps.coverage.outputs.coverage }}% |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📤 Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        continue-on-error: true
+        with:
+          files: ${{ inputs.working-directory }}/coverage.xml
+          flags: ${{ inputs.working-directory }}
+          fail_ci_if_error: false

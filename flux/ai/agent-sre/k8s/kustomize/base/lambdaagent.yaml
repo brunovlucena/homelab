@@ -1,0 +1,147 @@
+---
+# Agent-SRE - AI-Powered SRE Health Report Generator and Flux Reconciliation Agent
+# LambdaAgent with scale-to-zero enabled
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: agent-sre
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-sre
+    app.kubernetes.io/component: ai-agent
+    app.kubernetes.io/part-of: homelab-ai
+spec:
+  # Pre-built Docker image
+  image:
+    repository: localhost:5001/agent-sre
+    tag: "v0.5.15"
+    port: 8000
+    # Note: imagePullSecrets not needed for localhost:5001 registry
+    # ghcr-secret is only needed for ghcr.io images
+    command:
+      - python
+      - -m
+      - src.sre_agent.main
+      - --server
+      - --port
+      - "8000"
+
+  # AI/LLM configuration
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "agent-sre:v20251224-abc12345"  # ← Use the model_version from workflow output
+
+  # Operation mode: agentic (autonomous) or supervised (requires approval)
+  operationMode: agentic  # Default: autonomous execution
+
+  # Agent behavior
+  behavior:
+    emitEvents: false  # Agent-SRE receives events, doesn't emit them
+
+  # Environment variables
+  # Note: OLLAMA_URL is automatically set by the AI spec
+  # Note: PORT is reserved by Knative, use image.port instead
+  env:
+    - name: PROMETHEUS_URL
+      value: "http://prometheus:9090"
+    - name: MODEL_NAME
+      value: "agent-sre:v20251224-abc12345"  # ← Use the model_version from workflow output
+    - name: MODEL_BACKEND
+      value: "ollama"
+    - name: REPORT_TIME_RANGE
+      value: "1h"
+    - name: FORCE_NEW_REVISION
+      value: "2026-01-02T15:30:00Z"
+    # LINEAR_API_KEY is optional - only needed if Linear integration is used
+    # - name: LINEAR_API_KEY
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: linear-api-key
+    #       key: api-key
+    - name: LINEAR_TEAM_KEY
+      value: "BVL"  # Your Linear team key
+    # JIRA credentials are optional - only needed if Jira integration is used
+    # - name: JIRA_URL
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: jira-credentials
+    #       key: jira-url
+    # - name: JIRA_EMAIL
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: jira-credentials
+    #       key: jira-email
+    # - name: JIRA_API_TOKEN
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: jira-credentials
+    #       key: jira-api-token
+    # - name: JIRA_PROJECT_KEY
+    #   value: "HOMELAB"  # Your Jira project key
+    # TRM Model Configuration
+    # Note: Model should be available at this path (via PVC, initContainer, or shared storage)
+    - name: TRM_MODEL_PATH
+      value: "/models/trm/checkpoints/Trm_data-ACT-torch/trm-runbook-extended/step_0"
+    - name: TRM_REPO_PATH
+      value: "/models/trm"
+
+  # Scaling - scale to zero when not in use
+  scaling:
+    minReplicas: 0  # Scale to zero
+    maxReplicas: 5
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: 30s
+
+  # Resources
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+
+  # Eventing - subscribe to Prometheus alert CloudEvents
+  eventing:
+    enabled: true
+    eventSource: "/agent-sre/prometheus-alerts"
+    
+    # Events this agent RECEIVES (operator creates Triggers)
+    subscriptions:
+      - eventType: io.homelab.prometheus.alert.fired
+        description: "Prometheus alerts for Flux reconciliation"
+      - eventType: io.homelab.prometheus.alert.resolved
+        description: "Prometheus alert resolution events"
+    
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  # Observability
+  observability:
+    tracing:
+      enabled: true
+      endpoint: tempo.tempo:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  # RBAC Permissions
+  permissions:
+    disableBrokerCreation: false  # Operator should create broker
+    disableTriggerCreation: false
+    disableFunctionCreation: false
+    allowedTargetNamespaces:
+      - ai
+      - flux-system  # For Flux reconciliation
+    eventControls:
+      allowEventDisable: true
+

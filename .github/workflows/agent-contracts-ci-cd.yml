@@ -1,0 +1,248 @@
+# ============================================================================
+# 🛡️ Agent-Contracts - CI/CD
+# ============================================================================
+# Smart contract security scanner (multi-service agent).
+# This agent has multiple services, so it uses a custom workflow structure.
+# ============================================================================
+
+name: 🛡️ Agent-Contracts - CI/CD
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-contracts/**'
+      - '.github/workflows/agent-contracts-ci-cd.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agent-contracts/**'
+      - '.github/workflows/agent-contracts-ci-cd.yml'
+    tags:
+      - 'agent-contracts-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+  attestations: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+  LOCAL_REGISTRY: localhost:5001
+  WORKING_DIR: flux/ai/agent-contracts
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Detect Changes
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  detect:
+    name: 🔍 Detect Changes
+    uses: ./.github/workflows/_reusable-detect-changes.yml
+    with:
+      working-directory: flux/ai/agent-contracts
+      paths-filter: |
+        fetcher:
+          - 'flux/ai/agent-contracts/src/contract_fetcher/**'
+          - 'flux/ai/agent-contracts/src/shared/**'
+        scanner:
+          - 'flux/ai/agent-contracts/src/vuln_scanner/**'
+          - 'flux/ai/agent-contracts/src/shared/**'
+        exploit:
+          - 'flux/ai/agent-contracts/src/exploit_generator/**'
+          - 'flux/ai/agent-contracts/src/shared/**'
+        notifi:
+          - 'flux/ai/agent-contracts/src/notifi_adapter/**'
+          - 'flux/ai/agent-contracts/src/shared/**'
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Python CI
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  python-ci:
+    name: 🐍 Python CI
+    uses: ./.github/workflows/_reusable-python-ci.yml
+    with:
+      working-directory: flux/ai/agent-contracts
+      python-version: '3.12'
+      src-directory: src
+      run-tests: true
+      run-lint: true
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Build Services (Matrix)
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  build:
+    name: 🏗️ Build ${{ matrix.service }}
+    runs-on: [self-hosted]
+    timeout-minutes: 30
+    needs: [detect, python-ci]
+    if: needs.detect.outputs.should_deploy == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: contract-fetcher
+            dockerfile: src/contract_fetcher/Dockerfile
+          - service: vuln-scanner
+            dockerfile: src/vuln_scanner/Dockerfile
+          - service: exploit-generator
+            dockerfile: src/exploit_generator/Dockerfile
+          - service: notifi-adapter
+            dockerfile: src/notifi_adapter/Dockerfile
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Copy shared-lib
+        run: |
+          cp -r flux/ai/shared-lib ${{ env.WORKING_DIR }}/src/shared-lib
+          echo "✅ Copied shared-lib"
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: 🐳 Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: 🔐 Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏠 Ensure Kind Registry is Running
+        id: local-registry
+        run: |
+          # Check if kind-registry container exists and is running
+          if ! docker ps --format '{{.Names}}' | grep -q '^kind-registry$'; then
+            echo "🔄 Starting Kind registry at ${{ env.LOCAL_REGISTRY }}..."
+            
+            # Remove old container if exists but not running
+            docker rm -f kind-registry 2>/dev/null || true
+            
+            # Start registry container
+            docker run -d \
+              --restart=always \
+              -p 5001:5000 \
+              --name kind-registry \
+              registry:2
+            
+            # Wait for registry to be ready
+            echo "⏳ Waiting for registry to be ready..."
+            for i in {1..30}; do
+              if curl -s http://localhost:5001/v2/ > /dev/null 2>&1; then
+                echo "✅ Kind registry is ready at localhost:5001"
+                break
+              fi
+              sleep 1
+            done
+          else
+            echo "✅ Kind registry is already running"
+          fi
+          
+          # Verify registry is accessible
+          if curl -s http://localhost:5001/v2/ > /dev/null 2>&1; then
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Warning: Registry at localhost:5001 is not responding"
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🏷️ Extract metadata (GHCR)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/agent-contracts/${{ matrix.service }}
+          tags: |
+            type=raw,value=${{ needs.detect.outputs.docker_tag }}
+            type=raw,value=latest,enable=${{ needs.detect.outputs.is_release == 'true' }}
+            type=sha,prefix=sha-,format=short
+
+      - name: 🏷️ Extract metadata (Local Registry)
+        id: local-meta
+        if: steps.local-registry.outputs.available == 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.LOCAL_REGISTRY }}/agent-contracts/${{ matrix.service }}
+          tags: |
+            type=raw,value=${{ needs.detect.outputs.docker_tag }}
+            type=raw,value=latest,enable=${{ needs.detect.outputs.is_release == 'true' }}
+            type=sha,prefix=sha-,format=short
+
+      - name: 🏗️ Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.WORKING_DIR }}/src
+          file: ${{ env.WORKING_DIR }}/${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ steps.local-registry.outputs.available == 'true' && steps.local-meta.outputs.tags || '' }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=agent-contracts-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=agent-contracts-${{ matrix.service }}
+          provenance: true
+          sbom: true
+
+      - name: 📋 Build Summary
+        run: |
+          echo "## 🏗️ Build Summary - ${{ matrix.service }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | \`${{ matrix.service }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| GHCR Image | \`${{ env.REGISTRY }}/agent-contracts/${{ matrix.service }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Local Image | \`${{ steps.local-registry.outputs.available == 'true' && format('{0}/agent-contracts/{1}', env.LOCAL_REGISTRY, matrix.service) || 'N/A' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | \`${{ needs.detect.outputs.docker_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pushed to GHCR | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pushed to Local | ${{ steps.local-registry.outputs.available == 'true' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Security Scan
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  security:
+    name: 🔒 Security
+    needs: [detect]
+    uses: ./.github/workflows/_reusable-security-scan.yml
+    with:
+      scan-path: flux/ai/agent-contracts
+      scan-type: fs
+    secrets: inherit
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Summary
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  summary:
+    name: 📋 Summary
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    needs: [detect, python-ci, build, security]
+    if: always()
+    steps:
+      - name: 📊 Generate Summary
+        run: |
+          echo "## 🛡️ Agent-Contracts CI/CD Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Detect | ${{ needs.detect.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Python CI | ${{ needs.python-ci.result == 'success' && '✅' || needs.python-ci.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result == 'success' && '✅' || needs.build.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | ${{ needs.security.result == 'success' && '✅' || needs.security.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ needs.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** \`${{ needs.detect.outputs.docker_tag }}\`" >> $GITHUB_STEP_SUMMARY

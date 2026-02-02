@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: knative-lambda-functions
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: knative-lambda-functions
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames:
+      - knative-lambda
+  selector:
+    matchExpressions:
+      - key: serving.knative.dev/service
+        operator: Exists
+  podMetricsEndpoints:
+    - port: user-port
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

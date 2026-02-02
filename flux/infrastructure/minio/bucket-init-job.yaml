@@ -1,0 +1,253 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: minio-bucket-init
+  namespace: minio
+  labels:
+    app: minio
+    component: bucket-init
+---
+# ============================================================================
+# Lambda Test Scripts ConfigMap
+# ============================================================================
+# These scripts are uploaded to MinIO for testing LambdaFunction CRs
+# ============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lambda-test-scripts
+  namespace: minio
+  labels:
+    app: minio
+    component: bucket-init
+data:
+  # ==========================================================================
+  # hello-python Lambda (main.py)
+  # ==========================================================================
+  hello-python-main.py: |
+    #!/usr/bin/env python3
+    """
+    Hello Python Lambda - HTTP server for Knative Serving
+    
+    This Lambda demonstrates:
+    - HTTP request handling
+    - JSON event processing
+    - CloudEvents support
+    """
+    import json
+    import os
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    from datetime import datetime
+    import sys
+
+    # Lambda handler function
+    def handler(event, context=None):
+        """
+        Main Lambda handler function.
+        
+        Args:
+            event: The event data (dict)
+            context: Optional context object
+            
+        Returns:
+            Response dict with statusCode, headers, and body
+        """
+        print(f"[{datetime.utcnow().isoformat()}] Received event: {json.dumps(event, indent=2)}")
+        
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json"
+            },
+            "body": json.dumps({
+                "message": "Hello from Python Lambda!",
+                "timestamp": datetime.utcnow().isoformat(),
+                "runtime": f"Python {sys.version}",
+                "handler": os.environ.get("HANDLER", "main.handler"),
+                "event_received": event
+            })
+        }
+
+    # HTTP Server for Knative
+    class LambdaHTTPHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self._handle_request()
+        
+        def do_GET(self):
+            self._handle_request()
+        
+        def _handle_request(self):
+            # Health check
+            if self.path == "/healthz":
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain")
+                self.end_headers()
+                self.wfile.write(b"OK")
+                return
+            
+            # Read request body
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
+            
+            try:
+                event = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                event = {"raw_body": body}
+            
+            # Add request metadata to event
+            event["_request"] = {
+                "method": self.command,
+                "path": self.path,
+                "headers": dict(self.headers)
+            }
+            
+            # Call handler
+            try:
+                result = handler(event)
+                self.send_response(result.get("statusCode", 200))
+                for key, value in result.get("headers", {}).items():
+                    self.send_header(key, value)
+                self.end_headers()
+                self.wfile.write(result.get("body", "").encode('utf-8'))
+            except Exception as e:
+                print(f"Error: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        
+        def log_message(self, format, *args):
+            print(f"[{datetime.utcnow().isoformat()}] {args[0]}")
+
+    if __name__ == "__main__":
+        PORT = int(os.environ.get("PORT", 8080))
+        server = HTTPServer(("", PORT), LambdaHTTPHandler)
+        print(f"[{datetime.utcnow().isoformat()}] Lambda server starting on port {PORT}")
+        print(f"[{datetime.utcnow().isoformat()}] Handler: {os.environ.get('HANDLER', 'main.handler')}")
+        server.serve_forever()
+
+  # ==========================================================================
+  # hello-python Lambda (requirements.txt)
+  # ==========================================================================
+  hello-python-requirements.txt: |
+    # No external dependencies needed for basic lambda
+    # Add dependencies here if needed:
+    # requests>=2.28.0
+    # boto3>=1.26.0
+
+---
+# ============================================================================
+# MinIO Bucket Initialization Job
+# ============================================================================
+# This job:
+# 1. Creates the lambda-functions bucket
+# 2. Uploads test Lambda code for hello-python
+# ============================================================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-bucket-init
+  namespace: minio
+  labels:
+    app: minio
+    component: bucket-init
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: minio
+        component: bucket-init
+    spec:
+      serviceAccountName: minio-bucket-init
+      restartPolicy: Never
+      initContainers:
+      - name: wait-for-minio
+        image: localhost:5001/busybox:1.36
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "=============================================="
+          echo "Waiting for MinIO to be ready..."
+          echo "=============================================="
+          until wget -q --spider http://minio.minio.svc.cluster.local:9000/minio/health/ready; do
+            echo "MinIO not ready, waiting..."
+            sleep 5
+          done
+          echo "MinIO is ready!"
+      containers:
+      - name: bucket-init
+        image: localhost:5001/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: root-user
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: root-password
+        volumeMounts:
+        - name: lambda-scripts
+          mountPath: /scripts
+          readOnly: true
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+
+          echo "=============================================="
+          echo "MinIO Bucket Initialization"
+          echo "=============================================="
+          echo ""
+
+          echo "Configuring MinIO client..."
+          mc alias set local http://minio.minio.svc.cluster.local:9000 "${MINIO_ROOT_USER}" "${MINIO_ROOT_PASSWORD}"
+          echo ""
+
+          echo "Creating lambda-functions bucket..."
+          mc mb --ignore-existing local/lambda-functions
+          echo ""
+
+          echo "Setting bucket policy to allow read/write..."
+          mc anonymous set download local/lambda-functions
+          echo ""
+
+          echo "=============================================="
+          echo "Uploading Lambda Test Scripts"
+          echo "=============================================="
+          echo ""
+
+          # Upload hello-python Lambda
+          echo "Uploading hello-python Lambda..."
+          mc cp /scripts/hello-python-main.py local/lambda-functions/hello-python/main.py
+          mc cp /scripts/hello-python-requirements.txt local/lambda-functions/hello-python/requirements.txt
+          echo ""
+
+          echo "=============================================="
+          echo "Bucket Contents"
+          echo "=============================================="
+          mc ls --recursive local/lambda-functions/
+          echo ""
+
+          echo "=============================================="
+          echo "Bucket initialization complete!"
+          echo "=============================================="
+          echo ""
+          echo "Lambda functions available:"
+          echo "  - hello-python: lambda-functions/hello-python/"
+          echo ""
+      volumes:
+      - name: lambda-scripts
+        configMap:
+          name: lambda-test-scripts

@@ -1,0 +1,27 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# KNATIVE TRIGGER: Agent-SRE CloudEvents
+#
+# Routes Prometheus alert CloudEvents from prometheus-events to agent-sre
+#
+# Event Types:
+#   - io.homelab.prometheus.alert.fired
+#   - io.homelab.prometheus.alert.resolved
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: agent-sre-prometheus-alerts
+  namespace: knative-lambda
+  labels:
+    app: agent-sre
+    component: cloudevents-handler
+spec:
+  broker: lambda-broker
+  filter:
+    attributes:
+      type: io.homelab.prometheus.alert.fired
+  subscriber:
+    uri: http://agent-sre.ai.svc.cluster.local
+

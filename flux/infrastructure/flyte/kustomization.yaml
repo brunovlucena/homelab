@@ -1,0 +1,17 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: flyte
+
+resources:
+  - k8s/namespace.yaml
+  - k8s/secret-init-job.yaml
+  - k8s/helmrelease.yaml
+  - k8s/flyteadmin-nodeport.yaml  # NodePort service for grpc API access (port 30081)
+  - k8s/minio-proxy-service.yaml  # Service to proxy minio.flyte to minio.minio
+  - k8s/create-project-job.yaml  # Job to create Flyte project
+  - k8s/flyte-execution-sa.yaml  # ServiceAccount with imagePullSecrets for execution pods
+  - k8s/ghcr-secret-init-production.yaml  # Job to create ghcr-secret in flyte namespace
+  - k8s/minio-secret-init-production.yaml  # Job to copy minio-credentials to flyte namespace
+  - workflows/test  # Workflow registration job

@@ -1,0 +1,41 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 K6 TEST - Create 50 Lambda Functions
+#
+#  Purpose: Load test for creating 50 LambdaFunction CRDs via Kubernetes API
+#  Duration: ~10 seconds
+#  Usage: kubectl apply -f k6-testrun-create-lambdas.yaml
+#
+#  ⚠️ WARNING: This will create 50 lambda functions. Ensure cleanup after test.
+#  🧹 CLEANUP: kubectl delete lambdafunctions -n knative-lambda -l test=k6-load-test
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: knative-lambda-create-lambdas
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: testing
+    test-type: create-lambdas
+spec:
+  parallelism: 2
+  script:
+    configMap:
+      name: knative-lambda-k6-tests
+      file: create-lambdas.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: BROKER_URL
+        value: "http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local"
+      - name: NAMESPACE
+        value: "knative-lambda"
+    serviceAccountName: knative-lambda-operator
+    resources:
+      limits:
+        # cpu: 500m
+        memory: 512Mi
+

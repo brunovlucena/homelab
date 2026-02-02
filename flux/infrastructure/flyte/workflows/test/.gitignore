@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Training artifacts
+data/
+models/
+*.pth
+*.pt
+*.bin
+*.safetensors
+*.jsonl
+
+# MLflow
+mlruns/
+.mlflow/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Flyte
+.flyte/
+flyte-package.tar.gz
+

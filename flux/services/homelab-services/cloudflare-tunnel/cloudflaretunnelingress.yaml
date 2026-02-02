@@ -1,0 +1,113 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Mobile API - Cloudflare Tunnel Ingress (STRRL Controller)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: homelab-services-mobile-api
+  namespace: homelab-services
+spec:
+  ingressClassName: cloudflare-tunnel
+  rules:
+    - host: api.music.lucena.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mobile-api
+                port:
+                  number: 8080
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Kong Gateway - Cloudflare Tunnel Ingress (STRRL Controller)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: homelab-services-gateway
+  namespace: homelab-services
+spec:
+  ingressClassName: cloudflare-tunnel
+  rules:
+    - host: music.lucena.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kong-gateway
+                port:
+                  number: 8000
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# DJ Collab P2P - Cloudflare Tunnel Ingress (STRRL Controller)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dj-collab-p2p
+  namespace: homelab-services
+spec:
+  ingressClassName: cloudflare-tunnel
+  rules:
+    - host: dj-collab.music.lucena.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dj-collab-p2p-server
+                namespace: dj-collab-p2p
+                port:
+                  number: 8080
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Spotify P2P - Cloudflare Tunnel Ingress (STRRL Controller)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spotify-p2p
+  namespace: homelab-services
+spec:
+  ingressClassName: cloudflare-tunnel
+  rules:
+    - host: spotify.music.lucena.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: spotify-p2p-server
+                namespace: spotify-p2p
+                port:
+                  number: 8080
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# rekordbox Cloud - Cloudflare Tunnel Ingress (STRRL Controller)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rekordbox-cloud
+  namespace: homelab-services
+spec:
+  ingressClassName: cloudflare-tunnel
+  rules:
+    - host: rekordbox.music.lucena.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rekordbox-cloud-server
+                namespace: rekordbox-cloud
+                port:
+                  number: 8080

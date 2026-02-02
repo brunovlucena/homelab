@@ -1,0 +1,23 @@
+# TRM Fine-Tuning Pipeline Requirements
+
+# Core dependencies
+flytekit>=1.10.0
+flytekitplugins-k8s>=1.10.0
+
+# Data collection
+httpx>=0.25.0
+aiohttp>=3.9.0
+
+# ML/Training
+torch>=2.1.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Utilities
+python-dateutil>=2.8.0
+pydantic>=2.0.0
+dataclasses-json>=0.6.0
+
+# Observability clients
+prometheus-client>=0.19.0
+

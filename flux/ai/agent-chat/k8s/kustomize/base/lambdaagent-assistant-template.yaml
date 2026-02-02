@@ -1,0 +1,199 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🤖 Agent-Assistant Template - Personal AI Assistant
+#
+#  Template for per-user agent assistants (deployed by Command Center)
+#  Replace {USER_ID}, {USER_NAME}, {USER_PREFERENCES} when deploying
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: agent-assistant-{USER_ID}
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-assistant
+    app.kubernetes.io/component: assistant
+    app.kubernetes.io/part-of: agent-chat
+    agentchat.role: assistant
+    agentchat.user-id: "{USER_ID}"
+  annotations:
+    description: "Personal AI assistant for {USER_NAME}"
+spec:
+  serviceAccountName: agent-assistant-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/assistant
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 4096
+    temperature: "0.7"
+
+  behavior:
+    maxContextMessages: 50
+    emitEvents: true
+    systemPrompt: |
+      You are {USER_NAME}'s personal AI assistant in AgentChat.
+      
+      YOUR CAPABILITIES:
+      - Have natural, helpful conversations
+      - Generate images: request via "io.agentchat.media.image.request"
+      - Send voice messages: request via "io.agentchat.voice.message.request"
+      - Alert when contacts are nearby: via Location Agent events
+      - Remember conversation context (last 50 messages)
+      
+      USER PROFILE:
+      - Name: {USER_NAME}
+      - User ID: {USER_ID}
+      - Preferences: {USER_PREFERENCES}
+      - Communication Style: Friendly, concise, helpful
+      
+      IMPORTANT RULES:
+      1. ALWAYS be helpful, respectful, and maintain privacy
+      2. Before sending messages ON BEHALF of the user, ASK for confirmation
+      3. Before sharing location, CONFIRM with the user
+      4. Keep responses contextual - reference previous messages
+      5. Adapt to {USER_NAME}'s communication style over time
+      6. Never share sensitive information with other users
+      7. If asked to do something harmful, politely decline
+      
+      RESPONSE FORMAT:
+      - Be concise unless detailed response is requested
+      - Use emojis appropriately (don't overdo it)
+      - Format code and lists clearly
+      - Provide actionable suggestions
+      
+      WHEN GENERATING CONTENT:
+      To generate an image, emit event:
+      {
+        "type": "io.agentchat.media.image.request",
+        "data": {
+          "prompt": "detailed description",
+          "userId": "{USER_ID}",
+          "chatId": "current_chat_id"
+        }
+      }
+      
+      To send voice message, emit event:
+      {
+        "type": "io.agentchat.voice.message.request",
+        "data": {
+          "text": "message to speak",
+          "userId": "{USER_ID}",
+          "useClonedVoice": true
+        }
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 1
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: 300s  # Scale down after 5 min inactive
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: AGENT_ROLE
+      value: "assistant"
+    - name: USER_ID
+      value: "{USER_ID}"
+    - name: USER_NAME
+      value: "{USER_NAME}"
+    - name: REDIS_URL
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: REDIS_URL
+    - name: POSTGRES_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: POSTGRES_HOST
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-chat/assistant/{USER_ID}"
+    
+    intents:
+      # Message responses
+      - io.agentchat.message.response
+      # Request content generation
+      - io.agentchat.voice.message.request
+      - io.agentchat.media.image.request
+      - io.agentchat.media.video.request
+      # User actions
+      - io.agentchat.assistant.action.confirm
+      - io.agentchat.assistant.reminder.set
+    
+    subscriptions:
+      # Messages from the user
+      - eventType: io.agentchat.message.sent
+        description: "User sent a message to their assistant"
+      # Voice clone ready notification
+      - eventType: io.agentchat.voice.clone.ready
+        description: "User's voice clone is ready to use"
+      # Location alerts
+      - eventType: io.agentchat.location.proximity.alert
+        description: "A contact is nearby"
+      # Generated content ready
+      - eventType: io.agentchat.voice.message.generated
+        description: "Voice message ready"
+      - eventType: io.agentchat.media.image.generated
+        description: "Generated image ready"
+      - eventType: io.agentchat.media.video.generated
+        description: "Generated video ready"
+
+    # Forward to other agents
+    forwards:
+      - eventTypes:
+          - io.agentchat.voice.message.request
+        targetAgent: voice-agent
+        targetNamespace: agent-chat
+        description: "Forward voice requests to Voice Agent"
+      - eventTypes:
+          - io.agentchat.media.image.request
+          - io.agentchat.media.video.request
+        targetAgent: media-agent
+        targetNamespace: agent-chat
+        description: "Forward media requests to Media Agent"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: false
+    disableFunctionCreation: true
+    allowedTargetNamespaces:
+      - agent-chat
+    eventControls:
+      allowEventDisable: false

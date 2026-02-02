@@ -1,0 +1,89 @@
+---
+# MinIO Bucket Initialization Job for Flyte
+# Creates the flyte-data bucket if it doesn't exist
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flyte-bucket-init
+  namespace: minio
+  labels:
+    app: minio
+    component: bucket-init
+    app.kubernetes.io/part-of: flyte
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: minio
+        component: bucket-init
+        app.kubernetes.io/part-of: flyte
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-for-minio
+          image: localhost:5001/busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "⏳ Waiting for MinIO to be ready..."
+              until wget -q --spider http://minio.minio.svc.cluster.local:9000/minio/health/ready; do
+                echo "   MinIO not ready, waiting..."
+                sleep 5
+              done
+              echo "✅ MinIO is ready!"
+      containers:
+        - name: bucket-init
+          image: localhost:5001/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: access-key
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secret-key
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              
+              echo "=============================================="
+              echo "Flyte MinIO Bucket Initialization"
+              echo "=============================================="
+              echo ""
+              
+              echo "Configuring MinIO client..."
+              mc alias set minio http://minio.minio.svc.cluster.local:9000 "${MINIO_ACCESS_KEY}" "${MINIO_SECRET_KEY}"
+              echo ""
+              
+              echo "Creating flyte-data bucket..."
+              mc mb --ignore-existing minio/flyte-data || true
+              echo ""
+              
+              echo "Setting bucket policy..."
+              mc anonymous set download minio/flyte-data || true
+              echo ""
+              
+              echo "=============================================="
+              echo "Bucket Contents"
+              echo "=============================================="
+              mc ls minio/flyte-data/ || echo "Bucket is empty"
+              echo ""
+              
+              echo "=============================================="
+              echo "Bucket initialization complete!"
+              echo "=============================================="
+              echo "Bucket: flyte-data"
+              echo "Endpoint: minio.minio.svc.cluster.local:9000"
+              echo ""

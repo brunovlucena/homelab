@@ -1,0 +1,19 @@
+# Agent Blueteam - Defense Runner Dependencies
+fastapi>=0.115.6  # Fixed CVE-2024-24762
+uvicorn>=0.32.1
+pydantic>=2.12.5  # Latest stable
+httpx>=0.28.1
+structlog>=24.4.0
+prometheus-client>=0.21.0
+kubernetes>=34.1.0  # Latest version
+PyYAML>=6.0.1
+
+# === OpenTelemetry ===
+opentelemetry-api>=1.25.0
+opentelemetry-sdk>=1.25.0
+opentelemetry-instrumentation-fastapi>=0.46b0
+opentelemetry-exporter-otlp>=1.25.0
+
+# === Agent Optimization (Queueing, Game, Control Theory) ===
+# Installed from local shared-lib during Docker build
+# -e /app/shared-lib

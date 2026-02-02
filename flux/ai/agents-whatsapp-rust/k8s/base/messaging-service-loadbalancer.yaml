@@ -1,0 +1,52 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Messaging Service - MetalLB LoadBalancer
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Exposes the messaging-service WebSocket endpoint via MetalLB (Layer 4)
+# 
+# ✅ Benefits over Cloudflare Tunnel:
+# - No connection duration limits
+# - Lower latency (TCP passthrough)
+# - Better for long-lived WebSocket connections
+# - No connection drops during tunnel restarts
+# 
+# ⚠️ IMPORTANT:
+# - Requires MetalLB to be installed and configured
+# - Requires router port forwarding (443 → MetalLB IP)
+# - Requires DNS configuration (messaging.lucena.cloud → Public IP)
+# - SSL/TLS termination handled by Ingress (see messaging-service-ingress.yaml)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: v1
+kind: Service
+metadata:
+  name: messaging-service-lb
+  namespace: homelab-services
+  labels:
+    app.kubernetes.io/name: messaging-service
+    app.kubernetes.io/part-of: agents-whatsapp-rust
+    app.kubernetes.io/component: loadbalancer
+  annotations:
+    # MetalLB will assign an IP from the configured pool
+    metallb.universe.tf/allow-shared-ip: "false"
+    # Optional: Request a specific IP (uncomment and set if needed)
+    # metallb.universe.tf/loadBalancerIPs: "192.168.1.200"
+spec:
+  type: LoadBalancer
+  ports:
+    # WebSocket Secure (WSS) - SSL/TLS termination at Ingress
+    - name: wss
+      port: 443
+      targetPort: 8080
+      protocol: TCP
+    # Optional: HTTP for health checks (if needed)
+    # - name: http
+    #   port: 80
+    #   targetPort: 8080
+    #   protocol: TCP
+  selector:
+    # Target the Knative service pods
+    serving.knative.dev/service: messaging-service
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3 hours - for long-lived WebSocket connections

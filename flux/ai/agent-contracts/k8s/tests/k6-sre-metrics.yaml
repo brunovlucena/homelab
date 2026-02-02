@@ -1,0 +1,453 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📊 K6 SRE METRICS VALIDATION - AGENT-CONTRACTS
+#
+#  Purpose: Validate SLOs and metrics for the smart contract security pipeline
+#  Coverage:
+#    - Service error rates < 5%
+#    - Response latency P95 < 5s
+#    - Pipeline throughput
+#    - Cold start rates < 20%
+#    - End-to-end processing time
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-contracts-sre-metrics
+  namespace: agent-contracts
+  labels:
+    app.kubernetes.io/name: agent-contracts
+    app.kubernetes.io/component: testing
+    test-type: sre-validation
+spec:
+  parallelism: 2
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-contracts-sre-metrics
+      file: sre-metrics-validation.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: CONTRACT_FETCHER_URL
+        value: "http://contract-fetcher.agent-contracts.svc.cluster.local"
+      - name: VULN_SCANNER_URL
+        value: "http://vuln-scanner.agent-contracts.svc.cluster.local"
+      - name: EXPLOIT_GENERATOR_URL
+        value: "http://exploit-generator.agent-contracts.svc.cluster.local"
+      - name: NOTIFI_ADAPTER_URL
+        value: "http://notifi-adapter.agent-contracts.svc.cluster.local"
+      - name: PROMETHEUS_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090"
+      - name: NAMESPACE
+        value: "agent-contracts"
+      # SLO Thresholds
+      - name: SLO_ERROR_RATE_PERCENT
+        value: "5"
+      - name: SLO_LATENCY_P95_MS
+        value: "5000"
+      - name: SLO_COLD_START_RATE_PERCENT
+        value: "20"
+      # Prometheus Remote Write
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-contracts-sre-metrics
+  namespace: agent-contracts
+  labels:
+    app.kubernetes.io/name: agent-contracts
+    app.kubernetes.io/component: testing
+    test-type: sre-validation
+data:
+  sre-metrics-validation.js: |
+    import http from 'k6/http';
+    import { check, group, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Custom Metrics for SRE Validation
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    // SLO Validation Metrics
+    const sloErrorRateViolation = new Rate('sre_slo_error_rate_violation');
+    const sloLatencyViolation = new Rate('sre_slo_latency_violation');
+    const sloColdStartViolation = new Rate('sre_slo_coldstart_violation');
+    
+    // Service Metrics
+    const serviceHealthy = new Gauge('sre_service_healthy');
+    const serviceLatency = new Trend('sre_service_latency_ms');
+    const serviceErrors = new Counter('sre_service_errors_total');
+    const serviceInvocations = new Counter('sre_service_invocations_total');
+    
+    // Pipeline Metrics
+    const pipelineLatency = new Trend('sre_pipeline_latency_ms');
+    const pipelineSuccess = new Rate('sre_pipeline_success_rate');
+    const contractsProcessed = new Counter('sre_contracts_processed_total');
+    const vulnerabilitiesFound = new Counter('sre_vulnerabilities_found_total');
+    
+    // Cold Start Metrics
+    const coldStartCounter = new Counter('sre_cold_starts_total');
+    const warmStartCounter = new Counter('sre_warm_starts_total');
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Configuration
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const SERVICES = {
+      contractFetcher: __ENV.CONTRACT_FETCHER_URL || 'http://contract-fetcher.agent-contracts.svc.cluster.local',
+      vulnScanner: __ENV.VULN_SCANNER_URL || 'http://vuln-scanner.agent-contracts.svc.cluster.local',
+      exploitGenerator: __ENV.EXPLOIT_GENERATOR_URL || 'http://exploit-generator.agent-contracts.svc.cluster.local',
+      notifiAdapter: __ENV.NOTIFI_ADAPTER_URL || 'http://notifi-adapter.agent-contracts.svc.cluster.local',
+    };
+    
+    const PROMETHEUS_URL = __ENV.PROMETHEUS_URL || 'http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090';
+    const NAMESPACE = __ENV.NAMESPACE || 'agent-contracts';
+    
+    // SLO Thresholds
+    const SLO = {
+      ERROR_RATE_PERCENT: parseFloat(__ENV.SLO_ERROR_RATE_PERCENT) || 5,
+      LATENCY_P95_MS: parseFloat(__ENV.SLO_LATENCY_P95_MS) || 5000,
+      COLD_START_RATE_PERCENT: parseFloat(__ENV.SLO_COLD_START_RATE_PERCENT) || 20,
+    };
+    
+    // Sample contracts for testing
+    const TEST_CONTRACTS = [
+      { chain: 'ethereum', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', name: 'USDT' },
+      { chain: 'ethereum', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', name: 'USDC' },
+      { chain: 'ethereum', address: '0x6B175474E89094C44Da98b954EescdeCB5CC75Fb', name: 'DAI' },
+    ];
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test Options
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export const options = {
+      scenarios: {
+        // Phase 1: Service health validation
+        health_validation: {
+          executor: 'constant-vus',
+          vus: 1,
+          duration: '20s',
+          tags: { phase: 'health_validation' },
+          exec: 'validateServiceHealth',
+        },
+        // Phase 2: SLO validation under load
+        slo_validation: {
+          executor: 'ramping-arrival-rate',
+          startRate: 2,
+          stages: [
+            { duration: '20s', target: 10 },
+            { duration: '40s', target: 20 },
+            { duration: '20s', target: 5 },
+          ],
+          preAllocatedVUs: 10,
+          maxVUs: 20,
+          tags: { phase: 'slo_validation' },
+          exec: 'validateSLOs',
+          startTime: '25s',
+        },
+        // Phase 3: Pipeline throughput test
+        pipeline_throughput: {
+          executor: 'constant-arrival-rate',
+          rate: 5,
+          duration: '60s',
+          preAllocatedVUs: 5,
+          maxVUs: 15,
+          tags: { phase: 'pipeline_throughput' },
+          exec: 'testPipelineThroughput',
+          startTime: '90s',
+        },
+      },
+      thresholds: {
+        // SLO Thresholds
+        'sre_slo_error_rate_violation': ['rate<0.05'],        // Error rate < 5%
+        'sre_slo_latency_violation': ['rate<0.05'],           // Latency violations < 5%
+        'sre_service_latency_ms': ['p(95)<5000'],             // P95 < 5s
+        'sre_pipeline_success_rate': ['rate>0.95'],           // Pipeline success > 95%
+        'http_req_failed': ['rate<0.05'],                     // HTTP failures < 5%
+      },
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Helper Functions
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function generateEventId() {
+      return `sre-test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
+    function sendCloudEvent(url, eventType, data, serviceName) {
+      const eventId = generateEventId();
+      const startTime = Date.now();
+      
+      const headers = {
+        'Content-Type': 'application/json',
+        'ce-specversion': '1.0',
+        'ce-type': eventType,
+        'ce-source': '/k6/sre-validation',
+        'ce-id': eventId,
+        'ce-time': new Date().toISOString(),
+      };
+      
+      const res = http.post(url, JSON.stringify(data), {
+        headers: headers,
+        timeout: '30s',
+        tags: { service: serviceName, event_type: eventType },
+      });
+      
+      const duration = Date.now() - startTime;
+      serviceLatency.add(duration, { service: serviceName });
+      serviceInvocations.add(1, { service: serviceName });
+      
+      // Check for cold start (latency > 2s typically indicates cold start)
+      if (duration > 2000) {
+        coldStartCounter.add(1, { service: serviceName });
+        sloColdStartViolation.add(1);
+      } else {
+        warmStartCounter.add(1, { service: serviceName });
+        sloColdStartViolation.add(0);
+      }
+      
+      // Check SLO violations
+      if (res.status >= 400) {
+        serviceErrors.add(1, { service: serviceName });
+        sloErrorRateViolation.add(1);
+      } else {
+        sloErrorRateViolation.add(0);
+      }
+      
+      if (duration > SLO.LATENCY_P95_MS) {
+        sloLatencyViolation.add(1);
+      } else {
+        sloLatencyViolation.add(0);
+      }
+      
+      return { res, duration, eventId };
+    }
+    
+    function queryPrometheus(query) {
+      const url = `${PROMETHEUS_URL}/api/v1/query?query=${encodeURIComponent(query)}`;
+      const res = http.get(url, { timeout: '10s' });
+      
+      if (res.status !== 200) {
+        console.warn(`Prometheus query failed: ${res.status}`);
+        return null;
+      }
+      
+      try {
+        const data = JSON.parse(res.body);
+        if (data.status === 'success' && data.data.result.length > 0) {
+          return parseFloat(data.data.result[0].value[1]);
+        }
+      } catch (e) {
+        console.warn(`Failed to parse Prometheus response: ${e}`);
+      }
+      
+      return null;
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test Scenarios
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function validateServiceHealth() {
+      group('Service Health Validation', () => {
+        for (const [name, url] of Object.entries(SERVICES)) {
+          const healthRes = http.get(`${url}/health`, {
+            timeout: '10s',
+            tags: { service: name },
+          });
+          
+          const healthy = check(healthRes, {
+            [`${name} health check passes`]: (r) => r.status === 200,
+          });
+          
+          serviceHealthy.add(healthy ? 1 : 0, { service: name });
+          
+          const readyRes = http.get(`${url}/ready`, {
+            timeout: '10s',
+            tags: { service: name },
+          });
+          
+          check(readyRes, {
+            [`${name} is ready`]: (r) => r.status === 200,
+          });
+        }
+      });
+      
+      // Query Prometheus for existing metrics
+      group('Prometheus Metrics Validation', () => {
+        // Check if services are exposing metrics
+        const errorRate = queryPrometheus(
+          `sum(rate(http_requests_total{namespace="${NAMESPACE}",status=~"5.."}[5m])) / sum(rate(http_requests_total{namespace="${NAMESPACE}"}[5m])) * 100`
+        );
+        
+        if (errorRate !== null) {
+          console.log(`Current error rate: ${errorRate.toFixed(2)}%`);
+          check(null, {
+            'Error rate within SLO': () => errorRate < SLO.ERROR_RATE_PERCENT,
+          });
+        }
+        
+        const p95Latency = queryPrometheus(
+          `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="${NAMESPACE}"}[5m])) by (le)) * 1000`
+        );
+        
+        if (p95Latency !== null) {
+          console.log(`Current P95 latency: ${p95Latency.toFixed(0)}ms`);
+          check(null, {
+            'P95 latency within SLO': () => p95Latency < SLO.LATENCY_P95_MS,
+          });
+        }
+      });
+      
+      sleep(2);
+    }
+    
+    export function validateSLOs() {
+      const contract = TEST_CONTRACTS[Math.floor(Math.random() * TEST_CONTRACTS.length)];
+      
+      group('Contract Fetcher SLO', () => {
+        const { res, duration } = sendCloudEvent(
+          SERVICES.contractFetcher,
+          'io.homelab.scan.request',
+          { chain: contract.chain, address: contract.address },
+          'contract-fetcher'
+        );
+        
+        check(res, {
+          'Contract fetcher responds successfully': (r) => r.status >= 200 && r.status < 300,
+          'Contract fetcher latency within SLO': () => duration < SLO.LATENCY_P95_MS,
+        });
+      });
+      
+      group('Vulnerability Scanner SLO', () => {
+        const { res, duration } = sendCloudEvent(
+          SERVICES.vulnScanner,
+          'io.homelab.contract.created',
+          {
+            chain: contract.chain,
+            address: contract.address,
+            source_code: 'pragma solidity ^0.8.0; contract Test { function withdraw() public { msg.sender.call{value: address(this).balance}(""); } }',
+            is_verified: true,
+          },
+          'vuln-scanner'
+        );
+        
+        check(res, {
+          'Vuln scanner responds successfully': (r) => r.status >= 200 && r.status < 300,
+          'Vuln scanner latency within SLO': () => duration < SLO.LATENCY_P95_MS,
+        });
+      });
+      
+      sleep(0.5);
+    }
+    
+    export function testPipelineThroughput() {
+      const contract = TEST_CONTRACTS[Math.floor(Math.random() * TEST_CONTRACTS.length)];
+      const pipelineStart = Date.now();
+      let pipelineSuccess = true;
+      
+      group('Full Pipeline Test', () => {
+        // Step 1: Fetch contract
+        const fetchResult = sendCloudEvent(
+          SERVICES.contractFetcher,
+          'io.homelab.scan.request',
+          { chain: contract.chain, address: contract.address },
+          'contract-fetcher'
+        );
+        
+        if (fetchResult.res.status >= 400) {
+          pipelineSuccess = false;
+        }
+        
+        // Step 2: Scan for vulnerabilities
+        const scanResult = sendCloudEvent(
+          SERVICES.vulnScanner,
+          'io.homelab.contract.created',
+          {
+            chain: contract.chain,
+            address: contract.address,
+            source_code: 'pragma solidity ^0.8.0; contract Test {}',
+            is_verified: true,
+          },
+          'vuln-scanner'
+        );
+        
+        if (scanResult.res.status >= 400) {
+          pipelineSuccess = false;
+        }
+        
+        contractsProcessed.add(1);
+      });
+      
+      const pipelineDuration = Date.now() - pipelineStart;
+      pipelineLatency.add(pipelineDuration);
+      pipelineSuccess.add(pipelineSuccess ? 1 : 0);
+      
+      sleep(0.2);
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Summary
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function handleSummary(data) {
+      function getMetricValue(metricName, valueName) {
+        var m = data.metrics[metricName];
+        if (m && m.values && m.values[valueName] !== undefined) {
+          return m.values[valueName];
+        }
+        return 0;
+      }
+      
+      var errorViolationRate = getMetricValue('sre_slo_error_rate_violation', 'rate');
+      var latencyViolationRate = getMetricValue('sre_slo_latency_violation', 'rate');
+      var coldStartViolationRate = getMetricValue('sre_slo_coldstart_violation', 'rate');
+      var p95Latency = getMetricValue('sre_service_latency_ms', 'p(95)');
+      var successRate = getMetricValue('sre_pipeline_success_rate', 'rate');
+      var contractsProcessed = getMetricValue('sre_contracts_processed_total', 'count');
+      var serviceInvocations = getMetricValue('sre_service_invocations_total', 'count');
+      var serviceErrors = getMetricValue('sre_service_errors_total', 'count');
+      
+      var allSLOsMet = 
+        errorViolationRate < 0.05 &&
+        latencyViolationRate < 0.05 &&
+        p95Latency < SLO.LATENCY_P95_MS;
+      
+      console.log('\n' + '═'.repeat(70));
+      console.log('📊 AGENT-CONTRACTS SRE METRICS VALIDATION RESULTS');
+      console.log('═'.repeat(70));
+      console.log('Overall Status: ' + (allSLOsMet ? '✅ ALL SLOs MET' : '❌ SLO VIOLATIONS DETECTED'));
+      console.log('');
+      console.log('┌─────────────────────────────────────────────────────────────────────┐');
+      console.log('│  SLO COMPLIANCE                                                     │');
+      console.log('├─────────────────────────────────────────────────────────────────────┤');
+      console.log('│  Error Rate SLO (<' + SLO.ERROR_RATE_PERCENT + '%):     ' + (errorViolationRate < 0.05 ? '✅ PASS' : '❌ FAIL') + ' (' + (errorViolationRate * 100).toFixed(2) + '% violations)     │');
+      console.log('│  Latency SLO (<' + SLO.LATENCY_P95_MS + 'ms):  ' + (latencyViolationRate < 0.05 ? '✅ PASS' : '❌ FAIL') + ' (P95: ' + p95Latency.toFixed(0) + 'ms)               │');
+      console.log('│  Cold Start SLO (<' + SLO.COLD_START_RATE_PERCENT + '%): ' + (coldStartViolationRate < 0.20 ? '✅ PASS' : '⚠️ WARN') + ' (' + (coldStartViolationRate * 100).toFixed(1) + '% cold starts)     │');
+      console.log('└─────────────────────────────────────────────────────────────────────┘');
+      console.log('');
+      console.log('┌─────────────────────────────────────────────────────────────────────┐');
+      console.log('│  PIPELINE METRICS                                                   │');
+      console.log('├─────────────────────────────────────────────────────────────────────┤');
+      console.log('│  Success Rate:       ' + (successRate * 100).toFixed(1) + '%                                        │');
+      console.log('│  Contracts Processed: ' + contractsProcessed + '                                          │');
+      console.log('│  Service Invocations: ' + serviceInvocations + '                                         │');
+      console.log('│  Service Errors:      ' + serviceErrors + '                                            │');
+      console.log('└─────────────────────────────────────────────────────────────────────┘');
+      console.log('═'.repeat(70) + '\n');
+      
+      return {};
+    }

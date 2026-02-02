@@ -1,0 +1,34 @@
+#!/bin/sh
+set -e
+
+echo "=========================================="
+echo "Downloading source from MinIO"
+echo "=========================================="
+echo "Endpoint: {{ .Endpoint }}"
+echo "Bucket:   {{ .Bucket }}"
+echo "Key:      {{ .Key }}"
+echo "=========================================="
+
+echo "Configuring MinIO client..."
+mc alias set source http://{{ .Endpoint }} "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY"
+
+echo "Downloading source files..."
+# Download to temp directory first
+mc cp --recursive source/{{ .Bucket }}/{{ .Key }} /tmp/source/
+
+echo "Flattening directory structure..."
+# Find the actual source files and copy to workspace root (flatten any subdirectories)
+cd /tmp/source
+# If there's a single subdirectory, use its contents; otherwise use current dir
+if [ "$(ls -d */ 2>/dev/null | wc -l)" -eq 1 ]; then
+    subdir=$(ls -d */ | head -1)
+    cp -r "${subdir}"* /workspace/
+else
+    cp -r * /workspace/
+fi
+
+echo "=========================================="
+echo "Source downloaded successfully!"
+echo "=========================================="
+ls -la /workspace/
+

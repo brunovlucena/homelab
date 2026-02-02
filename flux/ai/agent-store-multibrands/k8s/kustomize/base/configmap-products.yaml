@@ -1,0 +1,391 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📦 Product Catalog Configuration
+#
+#  Extended product catalog for multi-brand store
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: store-products
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: store-products
+    app.kubernetes.io/part-of: agent-store-multibrands
+data:
+  products.json: |
+    {
+      "fashion": [
+        {
+          "id": "fashion-001",
+          "name": "Vestido Floral Verão",
+          "description": "Vestido leve com estampa floral, perfeito para dias quentes",
+          "price": 199.90,
+          "category": "vestidos",
+          "tags": ["verão", "floral", "leve"],
+          "stock": 25,
+          "images": ["https://store.example.com/images/vestido-floral.jpg"]
+        },
+        {
+          "id": "fashion-002",
+          "name": "Jaqueta Jeans Clássica",
+          "description": "Jaqueta jeans atemporal que combina com tudo",
+          "price": 289.90,
+          "category": "jaquetas",
+          "tags": ["casual", "versátil", "clássico"],
+          "stock": 15
+        },
+        {
+          "id": "fashion-003",
+          "name": "Bolsa Tote Couro Sintético",
+          "description": "Bolsa espaçosa em couro sintético de alta qualidade",
+          "price": 159.90,
+          "category": "bolsas",
+          "tags": ["trabalho", "casual", "versátil"],
+          "stock": 30
+        },
+        {
+          "id": "fashion-004",
+          "name": "Vestido Midi Elegante",
+          "description": "Vestido midi com corte elegante para ocasiões especiais",
+          "price": 349.90,
+          "category": "vestidos",
+          "tags": ["festa", "elegante", "midi"],
+          "stock": 18
+        },
+        {
+          "id": "fashion-005",
+          "name": "Calça Pantalona Linho",
+          "description": "Calça pantalona em linho, confortável e estilosa",
+          "price": 229.90,
+          "category": "calças",
+          "tags": ["linho", "conforto", "verão"],
+          "stock": 22
+        },
+        {
+          "id": "fashion-006",
+          "name": "Blazer Oversized",
+          "description": "Blazer oversized moderno para looks descolados",
+          "price": 389.90,
+          "category": "blazers",
+          "tags": ["oversized", "moderno", "trabalho"],
+          "stock": 12
+        },
+        {
+          "id": "fashion-007",
+          "name": "Saia Plissada Midi",
+          "description": "Saia plissada midi em tecido fluido",
+          "price": 189.90,
+          "category": "saias",
+          "tags": ["plissada", "midi", "romântico"],
+          "stock": 20
+        },
+        {
+          "id": "fashion-008",
+          "name": "Top Cropped Tricot",
+          "description": "Top cropped em tricot para looks modernos",
+          "price": 119.90,
+          "category": "tops",
+          "tags": ["cropped", "tricot", "casual"],
+          "stock": 35
+        }
+      ],
+      "tech": [
+        {
+          "id": "tech-001",
+          "name": "Fone Bluetooth Pro Max",
+          "description": "Fone com cancelamento de ruído ativo e 40h de bateria",
+          "price": 599.90,
+          "category": "audio",
+          "tags": ["bluetooth", "cancelamento ruído", "premium"],
+          "stock": 20
+        },
+        {
+          "id": "tech-002",
+          "name": "Carregador Sem Fio 15W",
+          "description": "Carregador wireless compatível com todos os smartphones modernos",
+          "price": 129.90,
+          "category": "acessórios",
+          "tags": ["wireless", "rápido", "universal"],
+          "stock": 50
+        },
+        {
+          "id": "tech-003",
+          "name": "Smartwatch Fitness Pro",
+          "description": "Relógio inteligente com GPS, monitor cardíaco e 100+ modos de exercício",
+          "price": 899.90,
+          "category": "wearables",
+          "tags": ["fitness", "saúde", "gps"],
+          "stock": 12
+        },
+        {
+          "id": "tech-004",
+          "name": "Webcam 4K Ultra HD",
+          "description": "Webcam profissional 4K com microfone duplo e auto-foco",
+          "price": 449.90,
+          "category": "periféricos",
+          "tags": ["4k", "home office", "streaming"],
+          "stock": 25
+        },
+        {
+          "id": "tech-005",
+          "name": "Hub USB-C 7 em 1",
+          "description": "Hub multiportas com HDMI 4K, USB 3.0, SD card e carregamento",
+          "price": 249.90,
+          "category": "acessórios",
+          "tags": ["usb-c", "multiportas", "produtividade"],
+          "stock": 40
+        },
+        {
+          "id": "tech-006",
+          "name": "SSD Externo 1TB",
+          "description": "SSD portátil ultra rápido com USB 3.2 e resistência a quedas",
+          "price": 549.90,
+          "category": "armazenamento",
+          "tags": ["ssd", "portátil", "backup"],
+          "stock": 18
+        },
+        {
+          "id": "tech-007",
+          "name": "Ring Light Pro 18\"",
+          "description": "Ring light profissional com tripé ajustável e controle de temperatura",
+          "price": 329.90,
+          "category": "iluminação",
+          "tags": ["ring light", "streaming", "foto"],
+          "stock": 15
+        },
+        {
+          "id": "tech-008",
+          "name": "Tablet 10\" 128GB",
+          "description": "Tablet com tela Full HD, 128GB de armazenamento e caneta stylus",
+          "price": 1299.90,
+          "category": "tablets",
+          "tags": ["tablet", "stylus", "produtividade"],
+          "stock": 10
+        }
+      ],
+      "home": [
+        {
+          "id": "home-001",
+          "name": "Luminária LED Mesa Articulada",
+          "description": "Luminária com 3 intensidades de luz e braço articulado",
+          "price": 179.90,
+          "category": "iluminação",
+          "tags": ["led", "home office", "ajustável"],
+          "stock": 35
+        },
+        {
+          "id": "home-002",
+          "name": "Organizador Multiuso Bambu",
+          "description": "Organizador sustentável em bambu para escritório ou banheiro",
+          "price": 89.90,
+          "category": "organização",
+          "tags": ["sustentável", "bambu", "decoração"],
+          "stock": 45
+        },
+        {
+          "id": "home-003",
+          "name": "Difusor de Aromas 500ml",
+          "description": "Difusor ultrassônico com LED colorido e controle de intensidade",
+          "price": 149.90,
+          "category": "aromaterapia",
+          "tags": ["difusor", "aromas", "relaxamento"],
+          "stock": 30
+        },
+        {
+          "id": "home-004",
+          "name": "Almofadas Decorativas Kit 4",
+          "description": "Kit com 4 almofadas em tons neutros para sofá",
+          "price": 199.90,
+          "category": "decoração",
+          "tags": ["almofadas", "sofá", "neutro"],
+          "stock": 25
+        },
+        {
+          "id": "home-005",
+          "name": "Vasos Cerâmica Minimalista Set 3",
+          "description": "Conjunto de 3 vasos em cerâmica com design minimalista",
+          "price": 159.90,
+          "category": "decoração",
+          "tags": ["vasos", "cerâmica", "minimalista"],
+          "stock": 20
+        },
+        {
+          "id": "home-006",
+          "name": "Espelho Redondo Moldura Dourada",
+          "description": "Espelho decorativo redondo 60cm com moldura dourada",
+          "price": 289.90,
+          "category": "decoração",
+          "tags": ["espelho", "dourado", "decorativo"],
+          "stock": 12
+        },
+        {
+          "id": "home-007",
+          "name": "Manta Sofá Tricot",
+          "description": "Manta aconchegante em tricot para sofá ou cama",
+          "price": 179.90,
+          "category": "têxtil",
+          "tags": ["manta", "tricot", "conforto"],
+          "stock": 28
+        },
+        {
+          "id": "home-008",
+          "name": "Prateleira Flutuante 3 peças",
+          "description": "Conjunto de prateleiras flutuantes em MDF",
+          "price": 129.90,
+          "category": "móveis",
+          "tags": ["prateleira", "organização", "parede"],
+          "stock": 22
+        }
+      ],
+      "beauty": [
+        {
+          "id": "beauty-001",
+          "name": "Sérum Vitamina C 30ml",
+          "description": "Sérum antioxidante com vitamina C pura para pele radiante",
+          "price": 149.90,
+          "category": "skincare",
+          "tags": ["vitamina c", "antioxidante", "clareador"],
+          "stock": 40
+        },
+        {
+          "id": "beauty-002",
+          "name": "Kit Maquiagem Básico",
+          "description": "Kit completo com base, pó, blush e batom em tons neutros",
+          "price": 199.90,
+          "category": "maquiagem",
+          "tags": ["básico", "neutro", "iniciante"],
+          "stock": 25
+        },
+        {
+          "id": "beauty-003",
+          "name": "Paleta Sombras 18 Cores",
+          "description": "Paleta versátil com sombras matte e cintilantes",
+          "price": 129.90,
+          "category": "maquiagem",
+          "tags": ["sombras", "paleta", "olhos"],
+          "stock": 35
+        },
+        {
+          "id": "beauty-004",
+          "name": "Hidratante Facial Ácido Hialurônico",
+          "description": "Hidratante potente com ácido hialurônico para pele seca",
+          "price": 119.90,
+          "category": "skincare",
+          "tags": ["hidratante", "ácido hialurônico", "pele seca"],
+          "stock": 45
+        },
+        {
+          "id": "beauty-005",
+          "name": "Batom Matte Longa Duração",
+          "description": "Batom líquido matte com 12h de duração",
+          "price": 69.90,
+          "category": "maquiagem",
+          "tags": ["batom", "matte", "longa duração"],
+          "stock": 60
+        },
+        {
+          "id": "beauty-006",
+          "name": "Máscara de Cílios Volume",
+          "description": "Máscara de cílios para volume extremo e curvatura",
+          "price": 89.90,
+          "category": "maquiagem",
+          "tags": ["máscara", "cílios", "volume"],
+          "stock": 50
+        },
+        {
+          "id": "beauty-007",
+          "name": "Protetor Solar Facial FPS 50",
+          "description": "Protetor solar facial com toque seco e antienvelhecimento",
+          "price": 79.90,
+          "category": "skincare",
+          "tags": ["protetor solar", "fps 50", "anti-idade"],
+          "stock": 55
+        },
+        {
+          "id": "beauty-008",
+          "name": "Esponja de Maquiagem Kit 5",
+          "description": "Kit com 5 esponjas para aplicação perfeita de base",
+          "price": 49.90,
+          "category": "acessórios",
+          "tags": ["esponja", "maquiagem", "aplicação"],
+          "stock": 70
+        }
+      ],
+      "gaming": [
+        {
+          "id": "gaming-001",
+          "name": "Mouse Gamer RGB 16000 DPI",
+          "description": "Mouse gamer com sensor óptico de alta precisão e iluminação RGB",
+          "price": 249.90,
+          "category": "periféricos",
+          "tags": ["rgb", "precisão", "ergonômico"],
+          "stock": 30
+        },
+        {
+          "id": "gaming-002",
+          "name": "Teclado Mecânico Switch Blue",
+          "description": "Teclado mecânico com switches blue clicky e retroiluminação",
+          "price": 399.90,
+          "category": "periféricos",
+          "tags": ["mecânico", "blue switch", "rgb"],
+          "stock": 18
+        },
+        {
+          "id": "gaming-003",
+          "name": "Headset 7.1 Surround",
+          "description": "Headset gamer com som surround virtual 7.1 e microfone retrátil",
+          "price": 349.90,
+          "category": "audio",
+          "tags": ["7.1", "surround", "microfone"],
+          "stock": 22
+        },
+        {
+          "id": "gaming-004",
+          "name": "Mousepad XXL RGB",
+          "description": "Mousepad gamer XXL 90x40cm com bordas RGB personalizáveis",
+          "price": 179.90,
+          "category": "acessórios",
+          "tags": ["mousepad", "xxl", "rgb"],
+          "stock": 35
+        },
+        {
+          "id": "gaming-005",
+          "name": "Controle Sem Fio Pro",
+          "description": "Controle wireless com vibração HD e gatilhos adaptativos",
+          "price": 449.90,
+          "category": "controles",
+          "tags": ["wireless", "vibração", "pro"],
+          "stock": 15
+        },
+        {
+          "id": "gaming-006",
+          "name": "Cadeira Gamer Ergonômica",
+          "description": "Cadeira gamer com apoio lombar, braços 4D e reclinação 180°",
+          "price": 1299.90,
+          "category": "mobiliário",
+          "tags": ["cadeira", "ergonômica", "conforto"],
+          "stock": 8
+        },
+        {
+          "id": "gaming-007",
+          "name": "Monitor Gamer 27\" 165Hz",
+          "description": "Monitor IPS 27\" Full HD com 165Hz e 1ms de resposta",
+          "price": 1899.90,
+          "category": "monitores",
+          "tags": ["monitor", "165hz", "ips"],
+          "stock": 10
+        },
+        {
+          "id": "gaming-008",
+          "name": "Webcam Streamer 1080p 60fps",
+          "description": "Webcam para streaming com 1080p 60fps e foco automático",
+          "price": 399.90,
+          "category": "streaming",
+          "tags": ["webcam", "streaming", "1080p"],
+          "stock": 20
+        }
+      ]
+    }

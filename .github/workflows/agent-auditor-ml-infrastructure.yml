@@ -1,0 +1,400 @@
+name: 🧠 Agent Auditor - ML Infrastructure Tracker (Week 3-5)
+
+on:
+  issues:
+    types: [opened, labeled, closed, reopened]
+  pull_request:
+    types: [opened, labeled, review_requested, closed, synchronize]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-auditor/**'
+      - '.github/workflows/agent-auditor-ml-infrastructure.yml'
+    # Only run for PRs with ML infrastructure-related labels
+  issue_comment:
+    types: [created]
+
+env:
+  PROJECT_NUMBER: 1  # Update with your actual project number
+  ORG: brunovlucena
+  MIN_RAG_PRECISION: 0.80
+  MIN_MRR: 0.80
+
+jobs:
+  track-ml-infrastructure:
+    name: 🏗️ Track ML Infrastructure Tasks
+    runs-on: [self-hosted]
+    if: |
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'ml-infrastructure')) ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'ml-infrastructure') ||
+        contains(github.event.pull_request.labels.*.name, 'week-3-5') ||
+        contains(github.event.pull_request.labels.*.name, 'wandb') ||
+        contains(github.event.pull_request.labels.*.name, 'dvc') ||
+        contains(github.event.pull_request.labels.*.name, 'rag')
+      ))
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    steps:
+      - name: 📊 Add to ML Infrastructure Project
+        uses: actions/add-to-project@v0.5.0
+        with:
+          project-url: https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 🏷️ Categorize ML Task
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue || context.payload.pull_request;
+            const title = issue.title.toLowerCase();
+            const body = (issue.body || '').toLowerCase();
+            
+            let category = 'general';
+            let additionalLabels = ['week-3-5'];
+            
+            // Categorize based on content
+            if (title.includes('wandb') || title.includes('w&b') || body.includes('weights & biases')) {
+              category = 'model-versioning';
+              additionalLabels.push('wandb', 'mlops');
+            } else if (title.includes('dvc') || body.includes('data version')) {
+              category = 'data-versioning';
+              additionalLabels.push('dvc', 'data-management');
+            } else if (title.includes('drift') || body.includes('model drift')) {
+              category = 'model-monitoring';
+              additionalLabels.push('drift-detection', 'monitoring');
+            } else if (title.includes('rag') || title.includes('evaluation')) {
+              category = 'rag-evaluation';
+              additionalLabels.push('rag', 'evaluation');
+            } else if (title.includes('a/b') || title.includes('experiment')) {
+              category = 'experimentation';
+              additionalLabels.push('ab-testing', 'experiments');
+            }
+            
+            // Add labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: additionalLabels
+            });
+            
+            // Add ML infrastructure comment
+            const comment = `🧠 **ML Infrastructure Task Tracked**
+            
+            - **Category**: ${category}
+            - **Phase**: Week 3-5 (Nov 15 - Dec 5, 2025)
+            - **Team**: ML Engineer + Data Scientist
+            - **Budget**: Part of $32K ML infrastructure budget
+            
+            **📋 Week 5 Checkpoint Criteria**:
+            ${category === 'model-versioning' ? '- [ ] W&B integrated with model training pipeline\n- [ ] Model artifacts automatically versioned\n- [ ] Model registry operational' : ''}
+            ${category === 'data-versioning' ? '- [ ] DVC configured with MinIO backend\n- [ ] Data lineage tracking implemented\n- [ ] Reproducible data pipelines' : ''}
+            ${category === 'model-monitoring' ? '- [ ] Drift detection alerts configured\n- [ ] Automated monitoring dashboards\n- [ ] Alert thresholds defined' : ''}
+            ${category === 'rag-evaluation' ? '- [ ] Precision@5 >= 0.80\n- [ ] MRR >= 0.80\n- [ ] Evaluation on 60+ test queries' : ''}
+            ${category === 'experimentation' ? '- [ ] A/B testing framework operational\n- [ ] 20% traffic split capability\n- [ ] Statistical significance testing' : ''}
+            
+            ---
+            🔗 [ML Infrastructure Tracker](https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }})
+            📖 [ML Engineering Guide](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/ml-engineers/README.md)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: comment
+            });
+
+  validate-rag-performance:
+    name: 🎯 Validate RAG Performance Metrics
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'rag-evaluation') ||
+        contains(github.event.pull_request.labels.*.name, 'rag') ||
+        contains(github.event.pull_request.labels.*.name, 'ml-infrastructure') ||
+        contains(github.event.pull_request.labels.*.name, 'week-3-5')
+      )
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: 📊 Check RAG Evaluation Results
+        id: check-rag
+        working-directory: flux/clusters/homelab/infrastructure/agent-auditor
+        run: |
+          # Check if evaluation results exist
+          if [ -f "data/evaluation/results/latest.json" ]; then
+            echo "✅ Evaluation results found"
+            
+            # Extract metrics (you'll need to adjust based on your actual format)
+            precision=$(python3 -c "import json; print(json.load(open('data/evaluation/results/latest.json'))['precision_at_5'])")
+            mrr=$(python3 -c "import json; print(json.load(open('data/evaluation/results/latest.json'))['mrr'])")
+            query_count=$(python3 -c "import json; print(len(json.load(open('data/evaluation/results/latest.json'))['queries']))")
+            
+            echo "precision=$precision" >> $GITHUB_OUTPUT
+            echo "mrr=$mrr" >> $GITHUB_OUTPUT
+            echo "query_count=$query_count" >> $GITHUB_OUTPUT
+            echo "results_found=true" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ No evaluation results found"
+            echo "results_found=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🎯 Validate Metrics Against SLO
+        if: steps.check-rag.outputs.results_found == 'true'
+        uses: actions/github-script@v7
+        env:
+          PRECISION: ${{ steps.check-rag.outputs.precision }}
+          MRR: ${{ steps.check-rag.outputs.mrr }}
+          QUERY_COUNT: ${{ steps.check-rag.outputs.query_count }}
+        with:
+          script: |
+            const precision = parseFloat(process.env.PRECISION);
+            const mrr = parseFloat(process.env.MRR);
+            const queryCount = parseInt(process.env.QUERY_COUNT);
+            
+            const minPrecision = parseFloat(process.env.MIN_RAG_PRECISION);
+            const minMRR = parseFloat(process.env.MIN_MRR);
+            const minQueries = 60;
+            
+            const precisionPass = precision >= minPrecision;
+            const mrrPass = mrr >= minMRR;
+            const queriesPass = queryCount >= minQueries;
+            
+            const allPass = precisionPass && mrrPass && queriesPass;
+            
+            const comment = `## 🧠 RAG Evaluation Results
+            
+            | Metric | Value | Target | Status |
+            |--------|-------|--------|--------|
+            | Precision@5 | ${precision.toFixed(3)} | >= ${minPrecision} | ${precisionPass ? '✅' : '❌'} |
+            | MRR | ${mrr.toFixed(3)} | >= ${minMRR} | ${mrrPass ? '✅' : '❌'} |
+            | Test Queries | ${queryCount} | >= ${minQueries} | ${queriesPass ? '✅' : '❌'} |
+            
+            ### ${allPass ? '✅ **CHECKPOINT CRITERIA MET!**' : '❌ **DOES NOT MEET CHECKPOINT CRITERIA**'}
+            
+            ${allPass ? `
+            **Next Steps**:
+            - 🎉 Merge this PR
+            - 📊 Update production readiness score
+            - 🔄 Enable A/B testing for 20% traffic
+            - 📝 Document baseline metrics
+            ` : `
+            **Required Actions**:
+            ${!precisionPass ? `- ⚠️ Improve Precision@5 by ${((minPrecision - precision) * 100).toFixed(1)}%` : ''}
+            ${!mrrPass ? `- ⚠️ Improve MRR by ${((minMRR - mrr) * 100).toFixed(1)}%` : ''}
+            ${!queriesPass ? `- ⚠️ Add ${minQueries - queryCount} more test queries` : ''}
+            
+            **Suggestions**:
+            - Review embedding model quality
+            - Tune similarity threshold
+            - Expand test query coverage
+            - Check data preprocessing pipeline
+            `}
+            
+            ---
+            📊 [View Evaluation Data](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/data/evaluation/results/latest.json)
+            📖 [RAG System Documentation](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/04-architecture/RAG_SYSTEM.md)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: comment
+            });
+            
+            // Block merge if metrics don't meet criteria
+            if (!allPass) {
+              core.setFailed('RAG evaluation metrics do not meet Week 5 checkpoint criteria');
+            }
+
+  week5-checkpoint:
+    name: ✅ Week 5 Go/No-Go Checkpoint Validator
+    runs-on: [self-hosted]
+    if: |
+      (github.event_name == 'issues' &&
+       github.event.action == 'closed' &&
+       contains(github.event.issue.labels.*.name, 'week-5-checkpoint')) ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'ml-infrastructure') ||
+        contains(github.event.pull_request.labels.*.name, 'week-3-5')
+      ))
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: 📋 Validate ML Infrastructure Checkpoint
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Query all ML infrastructure tasks
+            const { data: mlTasks } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'ml-infrastructure',
+              milestone: 2, // Week 5 milestone
+              state: 'all'
+            });
+            
+            const totalTasks = mlTasks.length;
+            const completedTasks = mlTasks.filter(i => i.state === 'closed').length;
+            
+            // Check specific deliverables
+            const deliverables = {
+              wandb: mlTasks.some(t => t.labels.some(l => l.name === 'wandb') && t.state === 'closed'),
+              dvc: mlTasks.some(t => t.labels.some(l => l.name === 'dvc') && t.state === 'closed'),
+              drift: mlTasks.some(t => t.labels.some(l => l.name === 'drift-detection') && t.state === 'closed'),
+              rag: mlTasks.some(t => t.labels.some(l => l.name === 'rag-evaluation') && t.state === 'closed'),
+              abtest: mlTasks.some(t => t.labels.some(l => l.name === 'ab-testing') && t.state === 'closed')
+            };
+            
+            const checkpointPassed = Object.values(deliverables).every(v => v === true);
+            
+            const statusEmoji = checkpointPassed ? '✅' : '❌';
+            const statusText = checkpointPassed ? 'PASSED' : 'NOT PASSED';
+            
+            const checkpointReport = `## ${statusEmoji} Week 5 Go/No-Go Checkpoint Status: ${statusText}
+            
+            **Date**: ${new Date().toISOString().split('T')[0]}
+            **Deadline**: December 5, 2025 (Friday, 2:00 PM)
+            **Phase**: ML Infrastructure (Week 3-5)
+            
+            ### 📊 Deliverables Status
+            
+            | Deliverable | Status |
+            |-------------|--------|
+            | W&B Model Versioning | ${deliverables.wandb ? '✅' : '❌'} |
+            | DVC Data Versioning | ${deliverables.dvc ? '✅' : '❌'} |
+            | Model Drift Detection | ${deliverables.drift ? '✅' : '❌'} |
+            | RAG Evaluation Baseline (P@5 >= 0.80) | ${deliverables.rag ? '✅' : '❌'} |
+            | A/B Testing Framework (20% split) | ${deliverables.abtest ? '✅' : '❌'} |
+            
+            **Tasks Completed**: ${completedTasks} / ${totalTasks}
+            
+            ### 🎯 Overall Status
+            
+            ${checkpointPassed ? `
+            ✅ **CHECKPOINT PASSED!**
+            
+            **Next Steps**:
+            1. Close out ML infrastructure work items
+            2. Schedule Week 6 Mobile Requirements Sprint kickoff (Dec 6)
+            3. Begin backend API contract design
+            4. Document ML baselines for monitoring
+            5. Enable A/B testing in production
+            
+            🎉 **Congratulations to the ML team!**
+            
+            **Timeline**: On track for Week 7 mobile development start (Dec 13)
+            ` : `
+            ❌ **CHECKPOINT NOT PASSED**
+            
+            **Blocking Items**:
+            ${!deliverables.wandb ? '- 🔴 W&B model versioning not operational' : ''}
+            ${!deliverables.dvc ? '- 🔴 DVC data versioning not configured' : ''}
+            ${!deliverables.drift ? '- 🔴 Model drift detection not implemented' : ''}
+            ${!deliverables.rag ? '- 🔴 RAG evaluation baseline not met (need P@5 >= 0.80)' : ''}
+            ${!deliverables.abtest ? '- 🔴 A/B testing framework not ready' : ''}
+            
+            **⚠️ Timeline Impact**: 
+            - May delay mobile development start (Week 7)
+            - Risks iOS launch date (Jan 17, 2026)
+            - Consider parallel workstreams if possible
+            
+            **Required Actions**:
+            1. Daily standup until resolved
+            2. Prioritize blocking items
+            3. Consider bringing in additional ML resources
+            4. Update executive team on timeline risks
+            `}
+            
+            ---
+            
+            📊 [View ML Infrastructure Board](https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }})
+            📖 [ML Engineering Guide](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/ml-engineers/README.md)`;
+            
+            // Post checkpoint report
+            const { data: checkpointIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'week-5-checkpoint',
+              state: 'open'
+            });
+            
+            if (checkpointIssues.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: checkpointIssues[0].number,
+                body: checkpointReport
+              });
+              
+              if (checkpointPassed) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: checkpointIssues[0].number,
+                  state: 'closed',
+                  labels: ['week-5-checkpoint', 'checkpoint-passed']
+                });
+              }
+            }
+
+  model-drift-alert:
+    name: 🚨 Model Drift Detection Alert
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      contains(github.event.issue.labels.*.name, 'model-drift')
+    permissions:
+      issues: write
+    steps:
+      - name: 🔔 Escalate Drift Alert
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            
+            // Add high priority label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: ['high-priority', 'needs-investigation', 'ml-ops']
+            });
+            
+            const comment = `🚨 **Model Drift Alert Detected**
+            
+            This automated alert indicates that the ML model may be experiencing performance degradation.
+            
+            **📋 Investigation Checklist**:
+            - [ ] Review recent model performance metrics in W&B
+            - [ ] Check data distribution changes
+            - [ ] Verify feature engineering pipeline
+            - [ ] Review recent production data patterns
+            - [ ] Consider model retraining
+            - [ ] Validate evaluation baseline metrics
+            
+            **👥 Assignees**: @ml-team
+            **⏰ SLO**: Investigate within 24 hours
+            
+            ---
+            📊 [View W&B Dashboard](https://wandb.ai/agent-auditor)
+            📖 [Model Monitoring Guide](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/ml-engineers/user-stories/02-model-monitoring.md)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: comment
+            });
+

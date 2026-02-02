@@ -1,0 +1,26 @@
+{
+  "name": "@futboss/game-engine",
+  "version": "1.0.0",
+  "description": "Game engine for FutBoss AI match simulation",
+  "author": {
+    "name": "Bruno Lucena",
+    "email": "bruno@lucena.cloud"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@futboss/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0",
+    "@vitest/coverage-v8": "^1.2.0"
+  }
+}
+

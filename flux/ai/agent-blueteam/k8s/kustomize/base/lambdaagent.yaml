@@ -1,0 +1,132 @@
+---
+# Agent-Blueteam - Defensive Security Agent for Threat Mitigation
+# 🛡️ This agent monitors and defends against security threats
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: agent-blueteam
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-blueteam
+    app.kubernetes.io/component: security-defense
+    app.kubernetes.io/part-of: homelab-ai
+    security.homelab.io/blueteam: "true"
+  annotations:
+    description: "Defensive security agent for monitoring and mitigating threats"
+    mission: "🛡️ Defend the cluster against MAG7 and malicious exploits"
+spec:
+  # Pre-built Docker image
+  image:
+    repository: localhost:5001/defense-runner
+    tag: "v1.2.0"
+    port: 8080
+
+  # No AI needed - this is a defense automation runner
+  ai:
+    provider: none
+
+  # Operation mode: agentic (autonomous) or supervised (requires approval)
+  operationMode: agentic  # Default: autonomous execution
+
+  # Agent behavior
+  behavior:
+    emitEvents: true
+
+  # Environment variables
+  env:
+    - name: WATCH_NAMESPACE
+      value: "agent-redteam,redteam-test,demo-mag7"
+    - name: DEFENSE_MODE
+      value: "active"  # active | monitor | training
+    - name: BLOCK_THRESHOLD
+      value: "0.7"  # Confidence threshold to auto-block
+    - name: ALERT_ENDPOINT
+      value: "http://alertmanager.prometheus:9093/api/v1/alerts"
+
+  # Scaling - needs to be always ready
+  scaling:
+    minReplicas: 1
+    maxReplicas: 3
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 300s
+
+  # Resources - moderate for analysis
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+  # Eventing - operator creates Broker, Triggers automatically
+  eventing:
+    enabled: true
+    eventSource: "/agent-blueteam/defense-runner"
+    
+    # Events this agent EMITS
+    intents:
+      - threat.detected
+      - threat.blocked
+      - threat.mitigated
+      - defense.activated
+      - defense.deactivated
+      - mag7.damage
+      - mag7.defeated
+    
+    # Events this agent RECEIVES (monitors redteam events)
+    subscriptions:
+      # Monitor redteam exploit events
+      - eventType: io.homelab.exploit.executed
+        description: "Exploit executed - analyze and potentially block"
+      - eventType: io.homelab.exploit.success
+        description: "Exploit succeeded - CRITICAL - activate countermeasures"
+      - eventType: io.homelab.exploit.blocked
+        description: "Exploit already blocked - log for metrics"
+      # MAG7 boss events
+      - eventType: io.homelab.mag7.attack
+        description: "MAG7 dragon is attacking - defend!"
+      - eventType: io.homelab.mag7.spawn
+        description: "MAG7 spawned - prepare defenses"
+      # Game events
+      - eventType: io.homelab.demo.game.start
+        description: "Game started - initialize defenses"
+      - eventType: io.homelab.demo.game.wave
+        description: "New wave incoming - prepare defenses"
+      # Cross-agent events
+      - eventType: io.homelab.vuln.found
+        description: "Vulnerability found - prepare patch"
+      # k8s lifecycle events
+      - eventType: io.knative.lambda.lifecycle.function.created
+        description: "Function created - scan for threats"
+      - eventType: io.knative.lambda.notification.alert.critical
+        description: "Critical alert - activate emergency defenses"
+    
+    # Forward results to other agents
+    forwards:
+      - eventTypes:
+          - io.homelab.threat.blocked
+          - io.homelab.defense.activated
+        targetAgent: agent-bruno
+        targetNamespace: agent-bruno
+        description: "Notify agent-bruno of defense actions"
+    
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  # Observability
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true

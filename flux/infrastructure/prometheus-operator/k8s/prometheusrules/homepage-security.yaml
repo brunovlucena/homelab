@@ -1,0 +1,406 @@
+# ⚠️ IMPORTANT: This file is processed by KUSTOMIZE, NOT HELM!
+#
+# DO NOT use Helm template syntax like {{ .Release.Namespace }} or {{ .Release.Name }}
+# Kustomize does not understand Helm templates and will fail.
+#
+# This file contains comprehensive security monitoring and alerting for the Homepage service.
+# Reference: BVL-193 - SEC-013: Implement Security Monitoring and Alerting for Homepage
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: homepage-security-rules
+  namespace: prometheus
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/instance: homepage-security-rules
+    app.kubernetes.io/component: security-monitoring
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+  # =============================================================================
+  # 🔴 CRITICAL SECURITY ALERTS - IMMEDIATE RESPONSE REQUIRED
+  # =============================================================================
+  - name: homepage.security.critical
+    rules:
+    # Brute Force Attack Detection
+    - alert: HomepageBruteForceAttack
+      expr: |
+        rate(nginx_http_requests_total{namespace="homepage",status="401"}[5m]) > 1
+      for: 2m
+      labels:
+        severity: critical
+        service: homepage
+        component: security
+        security_category: authentication
+        threat_type: brute-force
+      annotations:
+        summary: "Brute force attack detected on Homepage"
+        description: "High rate of 401 authentication failures ({{ $value | humanize }} req/s) detected in the last 5 minutes. Possible brute force attack in progress."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/brute-force-attack.md"
+        action: "1. Check source IPs in logs 2. Consider enabling Cloudflare I'm Under Attack mode 3. Block attacking IPs"
+        
+    # DDoS Attack Detection
+    - alert: HomepageDDoSAttackDetected
+      expr: |
+        rate(nginx_http_requests_total{namespace="homepage"}[1m]) > 100
+      for: 2m
+      labels:
+        severity: critical
+        service: homepage
+        component: security
+        security_category: availability
+        threat_type: ddos
+      annotations:
+        summary: "Potential DDoS attack on Homepage"
+        description: "Abnormally high request rate ({{ $value | humanize }} req/s) detected. Potential DDoS attack in progress."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/ddos-attack.md"
+        action: "1. Enable Cloudflare I'm Under Attack mode 2. Review rate limits 3. Check origin server health"
+        
+    # Mass Rate Limit Violations
+    - alert: HomepageMassRateLimitViolations
+      expr: |
+        rate(nginx_http_requests_total{namespace="homepage",status="429"}[5m]) > 5
+      for: 2m
+      labels:
+        severity: critical
+        service: homepage
+        component: security
+        security_category: rate-limiting
+        threat_type: abuse
+      annotations:
+        summary: "Mass rate limit violations on Homepage"
+        description: "High rate of 429 responses ({{ $value | humanize }} req/s) indicating coordinated attack or misconfigured clients."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/rate-limit-violations.md"
+        action: "1. Identify source IPs 2. Increase rate limits if legitimate traffic 3. Block malicious actors"
+        
+    # SQL Injection/XSS Attack Detection
+    - alert: HomepageSQLInjectionAttack
+      expr: |
+        increase(nginx_http_requests_total{namespace="homepage",status="403",request_uri=~".*union.*|.*select.*|.*drop.*|.*insert.*|.*delete.*|.*script.*|.*javascript.*"}[10m]) > 10
+      for: 1m
+      labels:
+        severity: critical
+        service: homepage
+        component: security
+        security_category: injection
+        threat_type: sql-injection
+      annotations:
+        summary: "SQL Injection attack detected on Homepage"
+        description: "Multiple SQL injection attempts blocked ({{ $value }} attempts in last 10 minutes)."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/sql-injection.md"
+        action: "1. Review blocked requests 2. Verify WAF rules 3. Report to security team"
+        
+    # Path Traversal Attack Detection
+    - alert: HomepagePathTraversalAttack
+      expr: |
+        increase(nginx_http_requests_total{namespace="homepage",status="403",request_uri=~".*\\.\\./.*|.*%2e%2e.*|.*%252e%252e.*"}[10m]) > 5
+      for: 1m
+      labels:
+        severity: critical
+        service: homepage
+        component: security
+        security_category: path-traversal
+        threat_type: lfi-rfi
+      annotations:
+        summary: "Path traversal attack detected on Homepage"
+        description: "Path traversal attempts blocked ({{ $value }} attempts in last 10 minutes)."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/path-traversal.md"
+        action: "1. Review blocked requests 2. Verify file access rules 3. Check for data exfiltration"
+
+  # =============================================================================
+  # ⚠️ HIGH SEVERITY SECURITY ALERTS - URGENT ATTENTION REQUIRED
+  # =============================================================================
+  - name: homepage.security.high
+    rules:
+    # Rate Limit Threshold Warning
+    - alert: HomepageHighRateLimitHits
+      expr: |
+        rate(nginx_http_requests_total{namespace="homepage",status="429"}[5m]) > 0.5
+      for: 5m
+      labels:
+        severity: warning
+        service: homepage
+        component: security
+        security_category: rate-limiting
+      annotations:
+        summary: "Elevated rate limit hits on Homepage"
+        description: "Rate limit hits at {{ $value | humanize }} req/s for the last 5 minutes. Monitor for potential abuse."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/rate-limit-hits.md"
+        
+    # Forbidden Request Spike
+    - alert: HomepageForbiddenRequestSpike
+      expr: |
+        rate(nginx_http_requests_total{namespace="homepage",status="403"}[5m]) > 0.5
+      for: 5m
+      labels:
+        severity: warning
+        service: homepage
+        component: security
+        security_category: access-control
+      annotations:
+        summary: "Spike in forbidden requests on Homepage"
+        description: "High rate of 403 responses ({{ $value | humanize }} req/s) indicating blocked malicious requests."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/forbidden-requests.md"
+        
+    # Bad Request Pattern Detection
+    - alert: HomepageBadRequestPattern
+      expr: |
+        rate(nginx_http_requests_total{namespace="homepage",status="400"}[5m]) > 1
+      for: 5m
+      labels:
+        severity: warning
+        service: homepage
+        component: security
+        security_category: input-validation
+      annotations:
+        summary: "Unusual bad request pattern on Homepage"
+        description: "High rate of 400 Bad Request responses ({{ $value | humanize }} req/s) indicating potential attack probing."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/bad-request-pattern.md"
+        
+    # Suspicious Scanner Detection
+    - alert: HomepageSuspiciousScannerActivity
+      expr: |
+        increase(nginx_http_requests_total{namespace="homepage",status=~"403|404|405",request_uri=~".*wp-admin.*|.*wp-login.*|.*phpmyadmin.*|.*admin.*|.*\\.env.*|.*\\.git.*"}[10m]) > 5
+      for: 2m
+      labels:
+        severity: warning
+        service: homepage
+        component: security
+        security_category: reconnaissance
+        threat_type: scanner
+      annotations:
+        summary: "Suspicious scanner activity detected on Homepage"
+        description: "Scanner activity detected ({{ $value }} probe attempts in 10 minutes). Common vulnerability scanning patterns observed."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/scanner-activity.md"
+        
+    # API Abuse Detection
+    - alert: HomepageAPIAbuseDetected
+      expr: |
+        rate(nginx_http_requests_total{namespace="homepage",request_uri=~"/api/.*",status=~"4.."}[5m]) > 2
+      for: 5m
+      labels:
+        severity: warning
+        service: homepage
+        component: security
+        security_category: api-security
+      annotations:
+        summary: "API abuse pattern detected on Homepage"
+        description: "High rate of API errors ({{ $value | humanize }} req/s) indicating potential API abuse or attack."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/api-abuse.md"
+        
+    # Unusual Request Size Detection
+    - alert: HomepageUnusualRequestSize
+      expr: |
+        histogram_quantile(0.99, sum(rate(nginx_http_request_length_bucket{namespace="homepage"}[5m])) by (le)) > 10485760
+      for: 5m
+      labels:
+        severity: warning
+        service: homepage
+        component: security
+        security_category: dos
+      annotations:
+        summary: "Unusually large requests detected on Homepage"
+        description: "Large request bodies detected (99th percentile: {{ $value | humanize1024 }}B). Potential DoS or file upload abuse."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/large-requests.md"
+
+  # =============================================================================
+  # 📊 MEDIUM SEVERITY SECURITY ALERTS - MONITORING REQUIRED
+  # =============================================================================
+  - name: homepage.security.medium
+    rules:
+    # CORS Violation Detection
+    - alert: HomepageCORSViolation
+      expr: |
+        increase(nginx_http_requests_total{namespace="homepage",status="403",http_origin!~"https://lucena\\.cloud.*"}[10m]) > 3
+      for: 5m
+      labels:
+        severity: info
+        service: homepage
+        component: security
+        security_category: cors
+      annotations:
+        summary: "CORS violation detected on Homepage"
+        description: "Cross-origin requests blocked from unauthorized origins ({{ $value }} violations in 10 minutes)."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/cors-violation.md"
+        
+    # Suspicious User Agent Detection
+    - alert: HomepageSuspiciousUserAgent
+      expr: |
+        increase(nginx_http_requests_total{namespace="homepage",user_agent=~".*curl.*|.*wget.*|.*python-requests.*|.*sqlmap.*|.*nikto.*|.*nmap.*"}[10m]) > 20
+      for: 5m
+      labels:
+        severity: info
+        service: homepage
+        component: security
+        security_category: reconnaissance
+      annotations:
+        summary: "Suspicious user agent activity on Homepage"
+        description: "High activity from automated tools ({{ $value }} requests in 10 minutes). Could indicate reconnaissance."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/suspicious-user-agent.md"
+        
+    # HTTP Method Abuse Detection
+    - alert: HomepageHTTPMethodAbuse
+      expr: |
+        increase(nginx_http_requests_total{namespace="homepage",method=~"PUT|DELETE|PATCH|TRACE|OPTIONS",status=~"4.."}[10m]) > 10
+      for: 5m
+      labels:
+        severity: info
+        service: homepage
+        component: security
+        security_category: http-security
+      annotations:
+        summary: "HTTP method abuse detected on Homepage"
+        description: "Unusual HTTP methods being rejected ({{ $value }} attempts in 10 minutes). Possible attack probing."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/http-method-abuse.md"
+
+  # =============================================================================
+  # 🌐 CLOUDFLARE SECURITY METRICS - EDGE PROTECTION
+  # =============================================================================
+  - name: homepage.security.cloudflare
+    rules:
+    # Cloudflare Threat Score Alert
+    - alert: HomepageHighThreatScoreTraffic
+      expr: |
+        rate(cloudflare_zone_requests_total{zone="lucena.cloud",threat_score="high"}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: homepage
+        component: cloudflare
+        security_category: edge-security
+      annotations:
+        summary: "High threat score traffic on Homepage (Cloudflare)"
+        description: "Cloudflare detecting high threat score traffic ({{ $value | humanize }} req/s). Edge protection engaged."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/cloudflare-threat.md"
+        
+    # Cloudflare WAF Block Rate
+    - alert: HomepageCloudflareWAFBlocks
+      expr: |
+        rate(cloudflare_zone_requests_total{zone="lucena.cloud",waf_action="block"}[5m]) > 0.5
+      for: 5m
+      labels:
+        severity: warning
+        service: homepage
+        component: cloudflare
+        security_category: waf
+      annotations:
+        summary: "Cloudflare WAF blocking traffic on Homepage"
+        description: "WAF actively blocking traffic ({{ $value | humanize }} req/s). Review attack patterns."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/cloudflare-waf.md"
+        
+    # Cloudflare Bot Fight Detection
+    - alert: HomepageBotTrafficSpike
+      expr: |
+        rate(cloudflare_zone_requests_total{zone="lucena.cloud",bot_management_decision="block"}[5m]) > 1
+      for: 5m
+      labels:
+        severity: info
+        service: homepage
+        component: cloudflare
+        security_category: bot-protection
+      annotations:
+        summary: "Bot traffic spike detected on Homepage"
+        description: "Cloudflare Bot Fight Mode blocking traffic ({{ $value | humanize }} req/s)."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/bot-traffic.md"
+
+  # =============================================================================
+  # 🔗 SECURITY EVENT CORRELATION - MULTI-SIGNAL DETECTION
+  # =============================================================================
+  - name: homepage.security.correlation
+    rules:
+    # Correlated Attack Pattern - Multi-vector attack
+    - alert: HomepageCoordinatedAttack
+      expr: |
+        (
+          rate(nginx_http_requests_total{namespace="homepage",status="429"}[5m]) > 0.5
+          and
+          rate(nginx_http_requests_total{namespace="homepage",status="403"}[5m]) > 0.5
+          and
+          rate(nginx_http_requests_total{namespace="homepage",status="401"}[5m]) > 0.1
+        )
+      for: 3m
+      labels:
+        severity: critical
+        service: homepage
+        component: security
+        security_category: correlation
+        threat_type: coordinated-attack
+      annotations:
+        summary: "Coordinated attack detected on Homepage"
+        description: "Multiple attack vectors detected simultaneously - rate limits, forbidden requests, and auth failures. Likely coordinated attack."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/coordinated-attack.md"
+        action: "1. Enable I'm Under Attack mode 2. Review all traffic sources 3. Escalate to security team"
+        
+    # Anomaly Detection - Traffic Baseline Deviation
+    - alert: HomepageTrafficAnomaly
+      expr: |
+        (
+          sum(rate(nginx_http_requests_total{namespace="homepage"}[5m])) 
+          > 
+          3 * avg_over_time((sum(rate(nginx_http_requests_total{namespace="homepage"}[5m])) or vector(0))[1d:5m])
+        )
+      for: 10m
+      labels:
+        severity: warning
+        service: homepage
+        component: security
+        security_category: anomaly-detection
+      annotations:
+        summary: "Traffic anomaly detected on Homepage"
+        description: "Traffic rate is 3x above daily average. Investigate for potential attack or viral content."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/traffic-anomaly.md"
+        
+    # Error Rate Anomaly
+    - alert: HomepageErrorRateAnomaly
+      expr: |
+        (
+          sum(rate(nginx_http_requests_total{namespace="homepage",status=~"4..|5.."}[5m])) 
+          / 
+          (sum(rate(nginx_http_requests_total{namespace="homepage"}[5m])) or vector(1))
+        ) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        service: homepage
+        component: security
+        security_category: anomaly-detection
+      annotations:
+        summary: "Error rate anomaly on Homepage"
+        description: "Error rate exceeds 10% (current: {{ $value | humanizePercentage }}). Investigate for attack or service issues."
+        runbook_url: "https://github.com/brunovlucena/homepage/docs/runbooks/error-rate-anomaly.md"
+
+  # =============================================================================
+  # 📋 SECURITY RECORDING RULES - METRICS AGGREGATION
+  # =============================================================================
+  - name: homepage.security.recording
+    rules:
+    # Security Event Counters
+    - record: homepage:security:blocked_requests:rate5m
+      expr: sum(rate(nginx_http_requests_total{namespace="homepage",status="403"}[5m]))
+      
+    - record: homepage:security:rate_limited_requests:rate5m
+      expr: sum(rate(nginx_http_requests_total{namespace="homepage",status="429"}[5m]))
+      
+    - record: homepage:security:auth_failures:rate5m
+      expr: sum(rate(nginx_http_requests_total{namespace="homepage",status="401"}[5m]))
+      
+    - record: homepage:security:bad_requests:rate5m
+      expr: sum(rate(nginx_http_requests_total{namespace="homepage",status="400"}[5m]))
+      
+    # Security Event Rate Totals
+    - record: homepage:security:events_total:rate5m
+      expr: |
+        sum(rate(nginx_http_requests_total{namespace="homepage",status=~"400|401|403|429"}[5m]))
+        
+    # Attack Surface Metrics
+    - record: homepage:security:api_attack_surface:rate5m
+      expr: sum(rate(nginx_http_requests_total{namespace="homepage",request_uri=~"/api/.*",status=~"4.."}[5m]))
+      
+    # Origin vs Cloudflare Traffic Ratio (Cache Hit Proxy)
+    - record: homepage:security:origin_traffic_ratio
+      expr: |
+        sum(rate(nginx_http_requests_total{namespace="homepage"}[5m])) 
+        / 
+        (sum(rate(cloudflare_zone_requests_total{zone="lucena.cloud"}[5m])) or vector(1))

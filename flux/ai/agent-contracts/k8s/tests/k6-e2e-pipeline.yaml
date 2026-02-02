@@ -1,0 +1,536 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔗 K6 E2E PIPELINE TEST - AGENT-CONTRACTS
+#
+#  Purpose: End-to-end validation of the complete smart contract security pipeline
+#  Flow:
+#    1. Contract Fetcher → Fetch contract source from blockchain
+#    2. Vuln Scanner → Analyze for vulnerabilities
+#    3. Exploit Generator → Generate PoC exploits
+#    4. Notifi Adapter → Send alerts to notification channels
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-contracts-e2e-pipeline
+  namespace: agent-contracts
+  labels:
+    app.kubernetes.io/name: agent-contracts
+    app.kubernetes.io/component: testing
+    test-type: e2e
+spec:
+  parallelism: 2
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-contracts-e2e-pipeline
+      file: e2e-pipeline.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: CONTRACT_FETCHER_URL
+        value: "http://contract-fetcher.agent-contracts.svc.cluster.local"
+      - name: VULN_SCANNER_URL
+        value: "http://vuln-scanner.agent-contracts.svc.cluster.local"
+      - name: EXPLOIT_GENERATOR_URL
+        value: "http://exploit-generator.agent-contracts.svc.cluster.local"
+      - name: NOTIFI_ADAPTER_URL
+        value: "http://notifi-adapter.agent-contracts.svc.cluster.local"
+      - name: NAMESPACE
+        value: "agent-contracts"
+      # Prometheus Remote Write
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-contracts-e2e-pipeline
+  namespace: agent-contracts
+  labels:
+    app.kubernetes.io/name: agent-contracts
+    app.kubernetes.io/component: testing
+    test-type: e2e
+data:
+  e2e-pipeline.js: |
+    import http from 'k6/http';
+    import { check, group, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Custom Metrics
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    // Pipeline Metrics
+    const pipelineSuccess = new Rate('e2e_pipeline_success');
+    const pipelineLatency = new Trend('e2e_pipeline_latency_ms');
+    const pipelineStageLatency = new Trend('e2e_stage_latency_ms');
+    
+    // Stage Metrics
+    const fetchSuccess = new Rate('e2e_fetch_success');
+    const scanSuccess = new Rate('e2e_scan_success');
+    const exploitGenSuccess = new Rate('e2e_exploit_gen_success');
+    const alertSuccess = new Rate('e2e_alert_success');
+    
+    // Business Metrics
+    const contractsAnalyzed = new Counter('e2e_contracts_analyzed');
+    const vulnerabilitiesDetected = new Counter('e2e_vulnerabilities_detected');
+    const exploitsGenerated = new Counter('e2e_exploits_generated');
+    const alertsSent = new Counter('e2e_alerts_sent');
+    
+    // Error Tracking
+    const stageErrors = new Counter('e2e_stage_errors');
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Configuration
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const SERVICES = {
+      contractFetcher: __ENV.CONTRACT_FETCHER_URL || 'http://contract-fetcher.agent-contracts.svc.cluster.local',
+      vulnScanner: __ENV.VULN_SCANNER_URL || 'http://vuln-scanner.agent-contracts.svc.cluster.local',
+      exploitGenerator: __ENV.EXPLOIT_GENERATOR_URL || 'http://exploit-generator.agent-contracts.svc.cluster.local',
+      notifiAdapter: __ENV.NOTIFI_ADAPTER_URL || 'http://notifi-adapter.agent-contracts.svc.cluster.local',
+    };
+    
+    // Test contracts with known vulnerabilities for E2E testing
+    const TEST_SCENARIOS = [
+      {
+        name: 'Reentrancy Vulnerability',
+        contract: {
+          chain: 'ethereum',
+          address: '0x0000000000000000000000000000000000000001',
+          source_code: `
+    pragma solidity ^0.8.0;
+    
+    contract VulnerableBank {
+        mapping(address => uint256) public balances;
+        
+        function deposit() public payable {
+            balances[msg.sender] += msg.value;
+        }
+        
+        // VULNERABLE: Reentrancy attack vector
+        function withdraw() public {
+            uint256 amount = balances[msg.sender];
+            (bool success, ) = msg.sender.call{value: amount}("");
+            require(success);
+            balances[msg.sender] = 0;  // State updated AFTER external call
+        }
+    }`,
+          is_verified: true,
+        },
+        expectedVulns: ['reentrancy'],
+      },
+      {
+        name: 'Integer Overflow',
+        contract: {
+          chain: 'ethereum',
+          address: '0x0000000000000000000000000000000000000002',
+          source_code: `
+    pragma solidity ^0.7.0;
+    
+    contract VulnerableToken {
+        mapping(address => uint256) public balances;
+        
+        // VULNERABLE: No SafeMath, integer overflow possible
+        function transfer(address to, uint256 amount) public {
+            require(balances[msg.sender] >= amount);
+            balances[msg.sender] -= amount;
+            balances[to] += amount;  // Can overflow
+        }
+    }`,
+          is_verified: true,
+        },
+        expectedVulns: ['integer-overflow'],
+      },
+      {
+        name: 'Access Control',
+        contract: {
+          chain: 'ethereum',
+          address: '0x0000000000000000000000000000000000000003',
+          source_code: `
+    pragma solidity ^0.8.0;
+    
+    contract VulnerableAdmin {
+        address public owner;
+        
+        constructor() {
+            owner = msg.sender;
+        }
+        
+        // VULNERABLE: Missing access control
+        function setOwner(address newOwner) public {
+            owner = newOwner;
+        }
+        
+        function withdrawAll() public {
+            require(msg.sender == owner);
+            payable(owner).transfer(address(this).balance);
+        }
+    }`,
+          is_verified: true,
+        },
+        expectedVulns: ['missing-access-control'],
+      },
+      {
+        name: 'Secure Contract',
+        contract: {
+          chain: 'ethereum',
+          address: '0x0000000000000000000000000000000000000004',
+          source_code: `
+    pragma solidity ^0.8.0;
+    
+    import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+    import "@openzeppelin/contracts/access/Ownable.sol";
+    
+    contract SecureBank is ReentrancyGuard, Ownable {
+        mapping(address => uint256) public balances;
+        
+        function deposit() public payable {
+            balances[msg.sender] += msg.value;
+        }
+        
+        function withdraw() public nonReentrant {
+            uint256 amount = balances[msg.sender];
+            balances[msg.sender] = 0;
+            (bool success, ) = msg.sender.call{value: amount}("");
+            require(success, "Transfer failed");
+        }
+    }`,
+          is_verified: true,
+        },
+        expectedVulns: [],
+      },
+    ];
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test Options
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export const options = {
+      scenarios: {
+        // Sequential pipeline tests
+        e2e_pipeline: {
+          executor: 'per-vu-iterations',
+          vus: 2,
+          iterations: 8,  // 2 iterations per test scenario
+          maxDuration: '5m',
+          tags: { phase: 'e2e_pipeline' },
+        },
+      },
+      thresholds: {
+        'e2e_pipeline_success': ['rate>0.90'],      // 90% pipeline success
+        'e2e_pipeline_latency_ms': ['p(95)<30000'], // P95 < 30s for full pipeline
+        'e2e_fetch_success': ['rate>0.95'],         // 95% fetch success
+        'e2e_scan_success': ['rate>0.90'],          // 90% scan success
+        'http_req_failed': ['rate<0.1'],            // HTTP failures < 10%
+      },
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Helper Functions
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    function generateEventId() {
+      return `e2e-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
+    function sendCloudEvent(url, eventType, data, correlationId) {
+      const eventId = generateEventId();
+      
+      const headers = {
+        'Content-Type': 'application/json',
+        'ce-specversion': '1.0',
+        'ce-type': eventType,
+        'ce-source': '/k6/e2e-pipeline',
+        'ce-id': eventId,
+        'ce-time': new Date().toISOString(),
+      };
+      
+      if (correlationId) {
+        headers['ce-correlationid'] = correlationId;
+      }
+      
+      const res = http.post(url, JSON.stringify(data), {
+        headers: headers,
+        timeout: '60s',
+      });
+      
+      return { res, eventId };
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Main E2E Pipeline Test
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export default function() {
+      const scenario = TEST_SCENARIOS[__ITER % TEST_SCENARIOS.length];
+      const correlationId = `pipeline-${Date.now()}-${__VU}-${__ITER}`;
+      const pipelineStart = Date.now();
+      let pipelineFailed = false;
+      let detectedVulns = [];
+      
+      console.log(`\n🔄 Starting E2E pipeline for: ${scenario.name} (VU: ${__VU}, Iter: ${__ITER})`);
+      
+      // ════════════════════════════════════════════════════════════════════════
+      // Stage 1: Contract Fetcher
+      // ════════════════════════════════════════════════════════════════════════
+      group('Stage 1: Contract Fetcher', () => {
+        const stageStart = Date.now();
+        
+        const { res, eventId } = sendCloudEvent(
+          SERVICES.contractFetcher,
+          'io.homelab.scan.request',
+          {
+            chain: scenario.contract.chain,
+            address: scenario.contract.address,
+          },
+          correlationId
+        );
+        
+        const stageDuration = Date.now() - stageStart;
+        pipelineStageLatency.add(stageDuration, { stage: 'fetch' });
+        
+        const success = check(res, {
+          'Contract fetcher returns 2xx': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        fetchSuccess.add(success);
+        
+        if (!success) {
+          console.error(`❌ Contract fetch failed: ${res.status} - ${res.body}`);
+          stageErrors.add(1, { stage: 'fetch' });
+          pipelineFailed = true;
+        } else {
+          console.log(`✅ Contract fetched successfully (${stageDuration}ms)`);
+        }
+      });
+      
+      if (pipelineFailed) {
+        pipelineSuccess.add(0);
+        return;
+      }
+      
+      sleep(0.5);
+      
+      // ════════════════════════════════════════════════════════════════════════
+      // Stage 2: Vulnerability Scanner
+      // ════════════════════════════════════════════════════════════════════════
+      group('Stage 2: Vulnerability Scanner', () => {
+        const stageStart = Date.now();
+        
+        const { res, eventId } = sendCloudEvent(
+          SERVICES.vulnScanner,
+          'io.homelab.contract.created',
+          scenario.contract,
+          correlationId
+        );
+        
+        const stageDuration = Date.now() - stageStart;
+        pipelineStageLatency.add(stageDuration, { stage: 'scan' });
+        
+        const success = check(res, {
+          'Vuln scanner returns 2xx': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        scanSuccess.add(success);
+        
+        if (!success) {
+          console.error(`❌ Vulnerability scan failed: ${res.status} - ${res.body}`);
+          stageErrors.add(1, { stage: 'scan' });
+          pipelineFailed = true;
+        } else {
+          console.log(`✅ Vulnerability scan completed (${stageDuration}ms)`);
+          
+          // Parse response for vulnerabilities
+          try {
+            const data = JSON.parse(res.body);
+            if (data.vulnerabilities && data.vulnerabilities.length > 0) {
+              detectedVulns = data.vulnerabilities;
+              vulnerabilitiesDetected.add(data.vulnerabilities.length);
+              console.log(`   Found ${data.vulnerabilities.length} vulnerabilities`);
+            }
+          } catch (e) {
+            // Response may not contain vulnerability data in all cases
+          }
+        }
+        
+        contractsAnalyzed.add(1);
+      });
+      
+      if (pipelineFailed) {
+        pipelineSuccess.add(0);
+        return;
+      }
+      
+      sleep(0.5);
+      
+      // ════════════════════════════════════════════════════════════════════════
+      // Stage 3: Exploit Generator (only if vulnerabilities found)
+      // ════════════════════════════════════════════════════════════════════════
+      if (scenario.expectedVulns.length > 0) {
+        group('Stage 3: Exploit Generator', () => {
+          const stageStart = Date.now();
+          
+          const { res, eventId } = sendCloudEvent(
+            SERVICES.exploitGenerator,
+            'io.homelab.vulnerability.detected',
+            {
+              chain: scenario.contract.chain,
+              address: scenario.contract.address,
+              vulnerabilities: scenario.expectedVulns.map(v => ({
+                type: v,
+                severity: 'high',
+                description: `Detected ${v} vulnerability`,
+              })),
+              source_code: scenario.contract.source_code,
+            },
+            correlationId
+          );
+          
+          const stageDuration = Date.now() - stageStart;
+          pipelineStageLatency.add(stageDuration, { stage: 'exploit' });
+          
+          const success = check(res, {
+            'Exploit generator returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          });
+          
+          exploitGenSuccess.add(success);
+          
+          if (!success) {
+            console.error(`❌ Exploit generation failed: ${res.status} - ${res.body}`);
+            stageErrors.add(1, { stage: 'exploit' });
+            // Don't fail pipeline for exploit gen failures
+          } else {
+            console.log(`✅ Exploit generation completed (${stageDuration}ms)`);
+            exploitsGenerated.add(1);
+          }
+        });
+        
+        sleep(0.5);
+      }
+      
+      // ════════════════════════════════════════════════════════════════════════
+      // Stage 4: Notifi Adapter (alert on vulnerabilities)
+      // ════════════════════════════════════════════════════════════════════════
+      if (scenario.expectedVulns.length > 0) {
+        group('Stage 4: Notifi Adapter', () => {
+          const stageStart = Date.now();
+          
+          const { res, eventId } = sendCloudEvent(
+            SERVICES.notifiAdapter,
+            'io.homelab.alert.vulnerability',
+            {
+              severity: 'high',
+              chain: scenario.contract.chain,
+              address: scenario.contract.address,
+              vulnerabilities: scenario.expectedVulns,
+              message: `Security vulnerabilities detected in contract ${scenario.contract.address}`,
+            },
+            correlationId
+          );
+          
+          const stageDuration = Date.now() - stageStart;
+          pipelineStageLatency.add(stageDuration, { stage: 'alert' });
+          
+          const success = check(res, {
+            'Notifi adapter returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          });
+          
+          alertSuccess.add(success);
+          
+          if (!success) {
+            console.error(`❌ Alert sending failed: ${res.status} - ${res.body}`);
+            stageErrors.add(1, { stage: 'alert' });
+            // Don't fail pipeline for alert failures
+          } else {
+            console.log(`✅ Alert sent successfully (${stageDuration}ms)`);
+            alertsSent.add(1);
+          }
+        });
+      }
+      
+      // ════════════════════════════════════════════════════════════════════════
+      // Pipeline Complete
+      // ════════════════════════════════════════════════════════════════════════
+      const pipelineDuration = Date.now() - pipelineStart;
+      pipelineLatency.add(pipelineDuration);
+      pipelineSuccess.add(1);
+      
+      console.log(`\n✅ Pipeline completed for ${scenario.name} in ${pipelineDuration}ms`);
+      console.log(`   Expected vulns: ${scenario.expectedVulns.length}, Detected: ${detectedVulns.length}`);
+      
+      sleep(1);
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Summary
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function handleSummary(data) {
+      function getMetricValue(metricName, valueName) {
+        var m = data.metrics[metricName];
+        if (m && m.values && m.values[valueName] !== undefined) {
+          return m.values[valueName];
+        }
+        return 0;
+      }
+      
+      var pipelineSuccessRate = getMetricValue('e2e_pipeline_success', 'rate');
+      var p95Latency = getMetricValue('e2e_pipeline_latency_ms', 'p(95)');
+      var avgLatency = getMetricValue('e2e_pipeline_latency_ms', 'avg');
+      
+      var fetchRate = getMetricValue('e2e_fetch_success', 'rate');
+      var scanRate = getMetricValue('e2e_scan_success', 'rate');
+      var exploitRate = getMetricValue('e2e_exploit_gen_success', 'rate');
+      var alertRate = getMetricValue('e2e_alert_success', 'rate');
+      
+      var contractsAnalyzed = getMetricValue('e2e_contracts_analyzed', 'count');
+      var vulnsDetected = getMetricValue('e2e_vulnerabilities_detected', 'count');
+      var exploitsGenerated = getMetricValue('e2e_exploits_generated', 'count');
+      var alertsSent = getMetricValue('e2e_alerts_sent', 'count');
+      
+      var passed = pipelineSuccessRate >= 0.90;
+      
+      console.log('\n' + '═'.repeat(70));
+      console.log('🔗 AGENT-CONTRACTS E2E PIPELINE TEST RESULTS');
+      console.log('═'.repeat(70));
+      console.log('Overall Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('');
+      console.log('┌─────────────────────────────────────────────────────────────────────┐');
+      console.log('│  PIPELINE METRICS                                                   │');
+      console.log('├─────────────────────────────────────────────────────────────────────┤');
+      console.log('│  Pipeline Success Rate:  ' + (pipelineSuccessRate * 100).toFixed(1) + '%                                   │');
+      console.log('│  Average Latency:        ' + avgLatency.toFixed(0) + 'ms                                     │');
+      console.log('│  P95 Latency:            ' + p95Latency.toFixed(0) + 'ms                                     │');
+      console.log('└─────────────────────────────────────────────────────────────────────┘');
+      console.log('');
+      console.log('┌─────────────────────────────────────────────────────────────────────┐');
+      console.log('│  STAGE SUCCESS RATES                                                │');
+      console.log('├─────────────────────────────────────────────────────────────────────┤');
+      console.log('│  Contract Fetcher:   ' + (fetchRate * 100).toFixed(1) + '%                                        │');
+      console.log('│  Vuln Scanner:       ' + (scanRate * 100).toFixed(1) + '%                                        │');
+      console.log('│  Exploit Generator:  ' + (exploitRate * 100).toFixed(1) + '%                                        │');
+      console.log('│  Notifi Adapter:     ' + (alertRate * 100).toFixed(1) + '%                                        │');
+      console.log('└─────────────────────────────────────────────────────────────────────┘');
+      console.log('');
+      console.log('┌─────────────────────────────────────────────────────────────────────┐');
+      console.log('│  BUSINESS METRICS                                                   │');
+      console.log('├─────────────────────────────────────────────────────────────────────┤');
+      console.log('│  Contracts Analyzed:      ' + contractsAnalyzed + '                                       │');
+      console.log('│  Vulnerabilities Found:   ' + vulnsDetected + '                                       │');
+      console.log('│  Exploits Generated:      ' + exploitsGenerated + '                                       │');
+      console.log('│  Alerts Sent:             ' + alertsSent + '                                       │');
+      console.log('└─────────────────────────────────────────────────────────────────────┘');
+      console.log('═'.repeat(70) + '\n');
+      
+      return {};
+    }

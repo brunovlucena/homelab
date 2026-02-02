@@ -1,0 +1,32 @@
+---
+# Test Deployment: Unhealthy Pods
+# Purpose: Test pod-restart LambdaFunction with deployment type
+# Expected: LambdaFunction should restart the deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-unhealthy-deployment
+  namespace: ai
+  labels:
+    app: test-unhealthy-deployment
+    test.agent-sre.io/scenario: unhealthy-deployment
+    test.agent-sre.io/lambda-function: pod-restart
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-unhealthy-deployment
+  template:
+    metadata:
+      labels:
+        app: test-unhealthy-deployment
+    spec:
+      containers:
+      - name: test-container
+        image: busybox:latest
+        command: ["/bin/sh", "-c", "sleep 5 && exit 1"]  # Crashes after 5 seconds
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+

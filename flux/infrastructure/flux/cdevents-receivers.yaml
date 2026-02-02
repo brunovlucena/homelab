@@ -1,0 +1,194 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🌐 FLUX CDEVENTS RECEIVERS
+#
+#  Purpose: Receive CloudEvents from Knative Lambda and agent-contracts
+#           to trigger GitOps reconciliation
+#
+#  Architecture:
+#    Knative Lambda/agent-contracts → CloudEvents → Flux Receiver → Reconcile
+#
+#  Supported Event Types:
+#    - io.knative.lambda.lifecycle.* (function, build, service lifecycle)
+#    - io.homelab.* (agent-contracts security events)
+#
+#  Secrets Management:
+#    Secrets are created by Pulumi from environment variables:
+#    - FLUX_LAMBDA_WEBHOOK_TOKEN → lambda-webhook-token secret
+#    - FLUX_AGENT_CONTRACTS_WEBHOOK_TOKEN → agent-contracts-webhook-token secret
+#
+#    To configure:
+#    1. Set tokens in ~/.zshrc (see bruno/configs/.zshrc)
+#    2. Run: cd pulumi && pulumi config set fluxLambdaWebhookToken $FLUX_LAMBDA_WEBHOOK_TOKEN --secret
+#    3. Run: cd pulumi && pulumi config set fluxAgentContractsWebhookToken $FLUX_AGENT_CONTRACTS_WEBHOOK_TOKEN --secret
+#    4. Run: pulumi up
+#
+#  References:
+#    - https://fluxcd.io/flux/components/notification/receivers/
+#    - https://fluxcd.io/flux/components/notification/api/v1/
+#    - https://cdevents.dev/
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# RECEIVER 1: Lambda Lifecycle Events
+#
+# Triggers Flux reconciliation when Lambda functions are deployed/updated
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: notification.toolkit.fluxcd.io/v1
+kind: Receiver
+metadata:
+  name: lambda-lifecycle-receiver
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/name: lambda-lifecycle-receiver
+    app.kubernetes.io/component: cdevents-receiver
+    app.kubernetes.io/part-of: flux-system
+spec:
+  # CDEvents receiver type - validates CloudEvents using CDEvent Go-SDK
+  type: cdevents
+  
+  # CloudEvent types to accept
+  # These match the types defined in CLOUDEVENTS_SPECIFICATION.md
+  events:
+    - "io.knative.lambda.lifecycle.function.ready"
+    - "io.knative.lambda.lifecycle.function.created"
+    - "io.knative.lambda.lifecycle.function.updated"
+    - "io.knative.lambda.lifecycle.build.completed"
+    - "io.knative.lambda.lifecycle.service.ready"
+    - "io.knative.lambda.lifecycle.service.created"
+  
+  # Authentication secret reference
+  secretRef:
+    name: lambda-webhook-token
+  
+  # Flux resources to trigger reconciliation
+  # When any of the above events are received, these resources will reconcile
+  resources:
+    # Reconcile the main homelab GitRepository to pull latest configs
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
+      name: homelab
+      namespace: flux-system
+    
+    # Reconcile knative-lambda Kustomization to apply config updates
+    - apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
+      name: knative-lambda
+      namespace: flux-system
+    
+    # Reconcile lambda configs (ConfigMaps, Secrets, NetworkPolicies)
+    - apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
+      name: knative-lambda-configs
+      namespace: flux-system
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# RECEIVER 2: Build Complete Events (Image Automation)
+#
+# Triggers ImageRepository scan when Kaniko builds complete
+# Enables GitOps-driven image tag updates
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: notification.toolkit.fluxcd.io/v1
+kind: Receiver
+metadata:
+  name: build-complete-receiver
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/name: build-complete-receiver
+    app.kubernetes.io/component: cdevents-receiver
+    app.kubernetes.io/part-of: flux-system
+spec:
+  type: cdevents
+  
+  # Only build completion events
+  events:
+    - "io.knative.lambda.lifecycle.build.completed"
+  
+  secretRef:
+    name: lambda-webhook-token
+  
+  # Trigger ImageRepository scan to detect new tags
+  resources:
+    - apiVersion: image.toolkit.fluxcd.io/v1beta2
+      kind: ImageRepository
+      name: lambda-images
+      namespace: flux-system
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# RECEIVER 3: Security Alert Events (agent-contracts)
+#
+# Triggers security policy deployment when critical vulnerabilities detected
+# Enables automated incident response via GitOps
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: notification.toolkit.fluxcd.io/v1
+kind: Receiver
+metadata:
+  name: security-alert-receiver
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/name: security-alert-receiver
+    app.kubernetes.io/component: cdevents-receiver
+    app.kubernetes.io/part-of: flux-system
+spec:
+  type: cdevents
+  
+  # Security-related CloudEvents from agent-contracts
+  events:
+    - "io.homelab.exploit.validated"
+    - "io.homelab.vuln.found"
+  
+  secretRef:
+    name: agent-contracts-webhook-token
+  
+  # Flux resources for security response
+  resources:
+    # Deploy security policies (NetworkPolicies, WAF rules)
+    - apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
+      name: security-policies
+      namespace: flux-system
+    
+    # Update network isolation policies
+    - apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
+      name: network-policies
+      namespace: flux-system
+  
+  # NOTE: CEL resourceFilter requires Flux v2.3.0+
+  # Uncomment when cluster is upgraded:
+  # resourceFilter: |
+  #   request.body.data.severity == "critical" || 
+  #   request.body.type == "io.homelab.exploit.validated"
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# RECEIVER 4: Contract Scan Events (agent-contracts)
+#
+# Triggers scan configuration updates when new contracts are discovered
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: notification.toolkit.fluxcd.io/v1
+kind: Receiver
+metadata:
+  name: contract-scan-receiver
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/name: contract-scan-receiver
+    app.kubernetes.io/component: cdevents-receiver
+    app.kubernetes.io/part-of: flux-system
+spec:
+  type: cdevents
+  
+  # Contract lifecycle events
+  events:
+    - "io.homelab.contract.created"
+    - "io.homelab.scan.request"
+  
+  secretRef:
+    name: agent-contracts-webhook-token
+  
+  # Update scan configurations
+  resources:
+    - apiVersion: kustomize.toolkit.fluxcd.io/v1
+      kind: Kustomization
+      name: agent-contracts
+      namespace: flux-system

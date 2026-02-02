@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lucena-app
+  labels:
+    name: lucena-app
+    app.kubernetes.io/name: lucena-app
+    toolkit.fluxcd.io/tenant: bruno
+

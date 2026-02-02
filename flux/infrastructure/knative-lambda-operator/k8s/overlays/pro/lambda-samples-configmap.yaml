@@ -1,0 +1,145 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📦 LAMBDA SAMPLES CONFIGMAP
+#
+#  Contains sample lambda source code to be uploaded to MinIO
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lambda-samples
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: lambda-samples
+    app.kubernetes.io/component: samples
+    app.kubernetes.io/managed-by: knative-lambda-operator
+data:
+  # ============================================================================
+  # hello-python/main.py
+  # ============================================================================
+  hello-python-main.py: |
+    """
+    Hello Python Lambda Function
+
+    This is a sample lambda function that receives CloudEvents and returns a response.
+    The runtime wrapper will call the handler function with the event data.
+    """
+
+    import json
+    import os
+    from datetime import datetime
+
+
+    def handler(event: dict) -> dict:
+        """
+        Lambda handler function.
+        
+        Args:
+            event: The CloudEvent data payload (parsed JSON)
+        
+        Returns:
+            dict: Result to be included in response.success CloudEvent
+        
+        Raises:
+            Exception: Any exception triggers response.error CloudEvent
+        """
+        # Log the received event
+        print(f"Received event: {json.dumps(event, indent=2)}")
+        
+        # Get environment variables
+        environment = os.environ.get("ENVIRONMENT", "unknown")
+        log_level = os.environ.get("LOG_LEVEL", "info")
+        function_name = os.environ.get("FUNCTION_NAME", "hello-python")
+        
+        # Process the event
+        message = event.get("message", "Hello from Python Lambda!")
+        
+        # Build response
+        response = {
+            "message": f"Processed: {message}",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "function": function_name,
+            "environment": environment,
+            "logLevel": log_level,
+            "eventReceived": event,
+            "python_version": f"{__import__('sys').version_info.major}.{__import__('sys').version_info.minor}"
+        }
+        
+        print(f"Returning response: {json.dumps(response, indent=2)}")
+        
+        return response
+
+  # ============================================================================
+  # hello-python/requirements.txt
+  # ============================================================================
+  hello-python-requirements.txt: |
+    # Hello Python Lambda Dependencies
+    # Required by runtime wrapper (runtime.py)
+    cloudevents>=1.10.0
+    flask>=2.3.0
+
+  # ============================================================================
+  # hello-nodejs/index.js
+  # ============================================================================
+  hello-nodejs-index.js: |
+    /**
+     * Hello Node.js Lambda Function
+     * 
+     * This is a sample lambda function that receives CloudEvents and returns a response.
+     * The runtime wrapper will call the handler function with the event data.
+     */
+
+    /**
+     * Lambda handler function.
+     * 
+     * @param {Object} event - The CloudEvent data payload (parsed JSON)
+     * @returns {Object} Result to be included in response.success CloudEvent
+     * @throws {Error} Any error triggers response.error CloudEvent
+     */
+    exports.handler = async (event) => {
+        // Log the received event
+        console.log('Received event:', JSON.stringify(event, null, 2));
+        
+        // Get environment variables
+        const environment = process.env.ENVIRONMENT || 'unknown';
+        const logLevel = process.env.LOG_LEVEL || 'info';
+        const functionName = process.env.FUNCTION_NAME || 'hello-nodejs';
+        
+        // Process the event
+        const message = event.message || 'Hello from Node.js Lambda!';
+        
+        // Build response
+        const response = {
+            message: `Processed: ${message}`,
+            timestamp: new Date().toISOString(),
+            function: functionName,
+            environment: environment,
+            logLevel: logLevel,
+            eventReceived: event,
+            nodeVersion: process.version
+        };
+        
+        console.log('Returning response:', JSON.stringify(response, null, 2));
+        
+        return response;
+    };
+
+  # ============================================================================
+  # hello-nodejs/package.json
+  # ============================================================================
+  hello-nodejs-package.json: |
+    {
+      "name": "hello-nodejs",
+      "version": "1.0.0",
+      "description": "Hello Node.js Lambda Function",
+      "main": "index.js",
+      "scripts": {
+        "test": "node index.js"
+      },
+      "keywords": ["lambda", "knative", "cloudevents"],
+      "author": "",
+      "license": "MIT"
+    }
+

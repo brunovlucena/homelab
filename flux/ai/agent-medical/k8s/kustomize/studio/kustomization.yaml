@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  - ../base
+
+patches:
+  # Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+  # so we use patches instead of kustomize images: section
+  - target:
+      kind: LambdaAgent
+      name: agent-medical
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: "localhost:5001/agent-medical/medical-agent"
+      - op: replace
+        path: /spec/image/tag
+        value: "1.1.1"
+
+# 📝 Studio-specific labels
+commonLabels:
+  environment: studio

@@ -1,0 +1,41 @@
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: arc-runners-pro
+  namespace: github-runners
+spec:
+  interval: 5m
+  timeout: 10m
+  chart:
+    spec:
+      chart: gha-runner-scale-set
+      version: "0.13.0"
+      sourceRef:
+        kind: HelmRepository
+        name: actions-runner-controller
+        namespace: flux-system
+  values:
+    debug: true
+    runnerScaleSetName: self-hosted-pro
+
+    # GitHub configuration
+    githubConfigUrl: https://github.com/brunovlucena/homelab
+    githubConfigSecret: github-token
+
+    # Scaling configuration
+    minRunners: 1
+    maxRunners: 5
+
+    # Runner configuration
+    # runnerGroup: "default"
+    # Use runnerScaleSetName (self-hosted-pro) as label in workflows: runs-on: [self-hosted-pro]
+
+    # Use containerMode to enable Docker-in-Docker for building images
+    containerMode:
+      type: "dind"
+
+    # Controller service account
+    controllerServiceAccount:
+      namespace: github-runners
+      name: arc-controller-gha-rs-controller

@@ -1,0 +1,397 @@
+#!/usr/bin/env node
+/**
+ * Lambda Runtime with Prometheus Remote Write
+ * 
+ * Pushes RED metrics directly to Prometheus using remote write protocol:
+ * - knative_lambda_function_invocations_total (counter)
+ * - knative_lambda_function_errors_total (counter)  
+ * - knative_lambda_function_duration_seconds (histogram)
+ * - knative_lambda_function_cold_starts_total (counter)
+ */
+
+const express = require('express');
+const { CloudEvent, HTTP } = require('cloudevents');
+const http = require('http');
+const https = require('https');
+
+const app = express();
+app.use(express.raw({ type: '*/*' }));
+
+// Config
+const FUNCTION = '{{ .FunctionName }}';
+const NS = process.env.FUNCTION_NAMESPACE || process.env.NAMESPACE || 'knative-lambda';
+const REMOTE_WRITE_URL = process.env.PROMETHEUS_REMOTE_WRITE_URL || '';
+const PUSH_INTERVAL = parseInt(process.env.METRICS_PUSH_INTERVAL || '15000', 10);
+
+// Metrics state
+const m = {
+    inv_success: 0,
+    inv_error: 0,
+    errors: {},
+    dur_sum: 0,
+    dur_count: 0,
+    dur_buckets: {},
+    cold_starts: 0,
+    is_cold: true
+};
+
+const BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
+BUCKETS.forEach(b => m.dur_buckets[b] = 0);
+m.dur_buckets[Infinity] = 0;
+
+// Try to load snappy
+let snappy = null;
+try { snappy = require('snappyjs'); } catch(e) { console.log(`[${FUNCTION}] snappyjs not available, using uncompressed`); }
+
+// ════════════════════════════════════════════════════════════════════════════
+// PROTOBUF ENCODING (Prometheus remote write wire format)
+// Using BigInt for proper 64-bit integer support
+// ════════════════════════════════════════════════════════════════════════════
+
+function writeVarint64(value) {
+    // Handle 64-bit integers using BigInt for timestamps
+    const result = [];
+    let v = BigInt(value);
+    while (v > 127n) {
+        result.push(Number((v & 0x7fn) | 0x80n));
+        v >>= 7n;
+    }
+    result.push(Number(v));
+    return Buffer.from(result);
+}
+
+function writeVarint(value) {
+    // For small values (< 2^32), use regular encoding
+    if (value > 0x7FFFFFFF) {
+        return writeVarint64(value);
+    }
+    const result = [];
+    let v = value >>> 0;
+    while (v > 127) {
+        result.push((v & 0x7f) | 0x80);
+        v >>>= 7;
+    }
+    result.push(v);
+    return Buffer.from(result);
+}
+
+function writeDouble(value) {
+    const buf = Buffer.alloc(8);
+    buf.writeDoubleLE(value, 0);
+    return buf;
+}
+
+function writeString(str) {
+    const strBuf = Buffer.from(str, 'utf8');
+    return Buffer.concat([writeVarint(strBuf.length), strBuf]);
+}
+
+function writeTag(fieldNumber, wireType) {
+    return writeVarint((fieldNumber << 3) | wireType);
+}
+
+// Wire types
+const WIRE_VARINT = 0;
+const WIRE_64BIT = 1;
+const WIRE_LENGTH = 2;
+
+// Label message: { name: string (1), value: string (2) }
+function encodeLabel(name, value) {
+    const parts = [];
+    // Field 1: name (string)
+    parts.push(writeTag(1, WIRE_LENGTH));
+    parts.push(writeString(name));
+    // Field 2: value (string)
+    parts.push(writeTag(2, WIRE_LENGTH));
+    parts.push(writeString(value));
+    return Buffer.concat(parts);
+}
+
+// Sample message: { value: double (1), timestamp: int64 (2) }
+function encodeSample(value, timestampMs) {
+    const parts = [];
+    // Field 1: value (double - wire type 1)
+    parts.push(writeTag(1, WIRE_64BIT));
+    parts.push(writeDouble(value));
+    // Field 2: timestamp in ms (int64 - wire type 0)
+    parts.push(writeTag(2, WIRE_VARINT));
+    parts.push(writeVarint(timestampMs));
+    return Buffer.concat(parts);
+}
+
+// TimeSeries message: { labels: []Label (1), samples: []Sample (2) }
+function encodeTimeSeries(labels, samples) {
+    const parts = [];
+    // Field 1: labels (repeated Label)
+    for (const [name, value] of labels) {
+        const labelBuf = encodeLabel(name, value);
+        parts.push(writeTag(1, WIRE_LENGTH));
+        parts.push(writeVarint(labelBuf.length));
+        parts.push(labelBuf);
+    }
+    // Field 2: samples (repeated Sample)
+    for (const [val, ts] of samples) {
+        const sampleBuf = encodeSample(val, ts);
+        parts.push(writeTag(2, WIRE_LENGTH));
+        parts.push(writeVarint(sampleBuf.length));
+        parts.push(sampleBuf);
+    }
+    return Buffer.concat(parts);
+}
+
+// WriteRequest message: { timeseries: []TimeSeries (1) }
+function encodeWriteRequest(timeseriesList) {
+    const parts = [];
+    for (const ts of timeseriesList) {
+        parts.push(writeTag(1, WIRE_LENGTH));
+        parts.push(writeVarint(ts.length));
+        parts.push(ts);
+    }
+    return Buffer.concat(parts);
+}
+
+// Build and push metrics to Prometheus
+async function pushMetrics() {
+    if (!REMOTE_WRITE_URL) return;
+    
+    const ts = Date.now();
+    const baseLabels = [['__name__', ''], ['function', FUNCTION], ['namespace', NS]];
+    
+    const series = [];
+    
+    // Helper to create a metric
+    const metric = (name, extraLabels, value) => {
+        const labels = [['__name__', name], ['function', FUNCTION], ['namespace', NS], ...extraLabels];
+        return encodeTimeSeries(labels, [[value, ts]]);
+    };
+    
+    // Invocations
+    series.push(metric('knative_lambda_function_invocations_total', [['status', 'success']], m.inv_success));
+    series.push(metric('knative_lambda_function_invocations_total', [['status', 'error']], m.inv_error));
+    
+    // Errors by type
+    for (const [errType, count] of Object.entries(m.errors)) {
+        series.push(metric('knative_lambda_function_errors_total', [['error_type', errType]], count));
+    }
+    
+    // Duration histogram
+    for (const [le, count] of Object.entries(m.dur_buckets)) {
+        const leStr = le === Infinity ? '+Inf' : String(le);
+        series.push(metric('knative_lambda_function_duration_seconds_bucket', [['le', leStr]], count));
+    }
+    series.push(metric('knative_lambda_function_duration_seconds_sum', [], m.dur_sum));
+    series.push(metric('knative_lambda_function_duration_seconds_count', [], m.dur_count));
+    
+    // Cold starts
+    series.push(metric('knative_lambda_function_cold_starts_total', [], m.cold_starts));
+    
+    // Encode WriteRequest
+    let body = encodeWriteRequest(series);
+    
+    // Compress with snappy if available
+    if (snappy) {
+        try {
+            body = Buffer.from(snappy.compress(body));
+        } catch(e) {
+            console.error(`[${FUNCTION}] Snappy compression failed:`, e.message);
+        }
+    }
+    
+    // Send to Prometheus
+    try {
+        const url = new URL(REMOTE_WRITE_URL);
+        const client = url.protocol === 'https:' ? https : http;
+        
+        const req = client.request({
+            hostname: url.hostname,
+            port: url.port || (url.protocol === 'https:' ? 443 : 80),
+            path: url.pathname + url.search,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-protobuf',
+                'Content-Encoding': snappy ? 'snappy' : 'identity',
+                'X-Prometheus-Remote-Write-Version': '0.1.0',
+                'User-Agent': `knative-lambda/${FUNCTION}`
+            }
+        }, (res) => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+                // Success - silent
+            } else {
+                let respBody = '';
+                res.on('data', c => respBody += c);
+                res.on('end', () => {
+                    console.error(`[${FUNCTION}] Metrics push failed: ${res.statusCode} ${respBody.substring(0, 100)}`);
+                });
+            }
+        });
+        
+        req.on('error', (e) => {
+            console.error(`[${FUNCTION}] Metrics push error:`, e.message);
+        });
+        
+        req.write(body);
+        req.end();
+    } catch(e) {
+        console.error(`[${FUNCTION}] Metrics push exception:`, e.message);
+    }
+}
+
+// Record metrics helpers
+function recordInvocation(status, durSec) {
+    if (status === 'success') m.inv_success++; else m.inv_error++;
+    m.dur_sum += durSec;
+    m.dur_count++;
+    for (const b of BUCKETS) { if (durSec <= b) m.dur_buckets[b]++; }
+    m.dur_buckets[Infinity]++;
+}
+
+function recordError(type) {
+    m.errors[type] = (m.errors[type] || 0) + 1;
+}
+
+function recordColdStart() {
+    if (m.is_cold) { m.cold_starts++; m.is_cold = false; }
+}
+
+// /metrics endpoint for debugging/scraping
+app.get('/metrics', (req, res) => {
+    const labels = `function="${FUNCTION}",namespace="${NS}"`;
+    const lines = [
+        '# HELP knative_lambda_function_invocations_total Total invocations',
+        '# TYPE knative_lambda_function_invocations_total counter',
+        `knative_lambda_function_invocations_total{${labels},status="success"} ${m.inv_success}`,
+        `knative_lambda_function_invocations_total{${labels},status="error"} ${m.inv_error}`,
+        '# HELP knative_lambda_function_cold_starts_total Total cold starts',
+        '# TYPE knative_lambda_function_cold_starts_total counter',
+        `knative_lambda_function_cold_starts_total{${labels}} ${m.cold_starts}`,
+        '# HELP knative_lambda_function_duration_seconds Execution duration',
+        '# TYPE knative_lambda_function_duration_seconds histogram',
+    ];
+    for (const [le, count] of Object.entries(m.dur_buckets)) {
+        const leStr = le === Infinity ? '+Inf' : String(le);
+        lines.push(`knative_lambda_function_duration_seconds_bucket{${labels},le="${leStr}"} ${count}`);
+    }
+    lines.push(`knative_lambda_function_duration_seconds_sum{${labels}} ${m.dur_sum}`);
+    lines.push(`knative_lambda_function_duration_seconds_count{${labels}} ${m.dur_count}`);
+    res.set('Content-Type', 'text/plain').send(lines.join('\n') + '\n');
+});
+
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/healthz', (req, res) => res.json({ status: 'ok' }));
+
+// ════════════════════════════════════════════════════════════════════════════
+// STRUCTURED JSON LOGGING (for Loki/observability)
+// ════════════════════════════════════════════════════════════════════════════
+const log = (level, msg, extra = {}) => {
+    const entry = {
+        level,
+        ts: new Date().toISOString(),
+        function: FUNCTION,
+        namespace: NS,
+        msg,
+        ...extra
+    };
+    console.log(JSON.stringify(entry));
+};
+
+const logInfo = (msg, extra) => log('info', msg, extra);
+const logError = (msg, extra) => log('error', msg, extra);
+const logDebug = (msg, extra) => log('debug', msg, extra);
+
+// Handler loading
+let handler;
+try {
+    const mod = require('./index');
+    handler = mod.handler || mod.parse || mod.default || (typeof mod === 'function' ? mod : null);
+    if (!handler) handler = async (e) => ({ ok: true, event: e });
+    logInfo('Handler loaded successfully', { handler_type: typeof handler });
+} catch (err) {
+    recordError('import_failed');
+    logError('Failed to load handler', { error: err.message, stack: err.stack });
+    handler = async () => ({ error: err.message });
+}
+
+// CloudEvent handler
+app.post('/', async (req, res) => {
+    const start = Date.now();
+    const isCold = m.is_cold;
+    recordColdStart();
+    
+    // Extract correlation ID from headers
+    const correlationId = req.headers['x-correlation-id'] || 
+                          req.headers['ce-id'] || 
+                          `${FUNCTION}-${Date.now()}`;
+    
+    try {
+        const event = HTTP.toEvent({ headers: req.headers, body: req.body });
+        
+        // Log invocation start with CloudEvent context
+        logInfo('Invocation started', {
+            correlation_id: correlationId,
+            event_id: event.id,
+            event_type: event.type,
+            event_source: event.source,
+            event_subject: event.subject,
+            cold_start: isCold
+        });
+        
+        // Extract event data - pass directly to handler (consistent with Python/Go runtimes)
+        const eventData = event.data || {};
+        
+        // Log event data for debugging
+        logInfo('Handler invocation', {
+            hasData: !!eventData,
+            dataKeys: Object.keys(eventData || {})
+        });
+        
+        const result = await handler(eventData);
+        const durationMs = Date.now() - start;
+        recordInvocation('success', durationMs / 1000);
+        
+        // Log success with duration
+        logInfo('Invocation completed', {
+            correlation_id: correlationId,
+            event_id: event.id,
+            duration_ms: durationMs,
+            status: 'success'
+        });
+        
+        const resp = HTTP.binary(new CloudEvent({
+            type: 'lambda.execution.success', source: FUNCTION, data: result
+        }));
+        res.set(resp.headers).set('X-Correlation-ID', correlationId).status(200).send(resp.body);
+    } catch (err) {
+        const durationMs = Date.now() - start;
+        recordInvocation('error', durationMs / 1000);
+        recordError(err.name || 'Error');
+        
+        // Log error with full context
+        logError('Invocation failed', {
+            correlation_id: correlationId,
+            duration_ms: durationMs,
+            error_type: err.name || 'Error',
+            error_message: err.message,
+            stack: err.stack
+        });
+        
+        const resp = HTTP.binary(new CloudEvent({
+            type: 'lambda.execution.error', source: FUNCTION,
+            data: { error: err.message, stack: err.stack, correlation_id: correlationId }
+        }));
+        res.set(resp.headers).set('X-Correlation-ID', correlationId).status(500).send(resp.body);
+    }
+});
+
+// Start server and metrics push
+const port = process.env.PORT || 8080;
+app.listen(port, '0.0.0.0', () => {
+    logInfo('Lambda runtime started', {
+        port,
+        remote_write: REMOTE_WRITE_URL || 'disabled',
+        push_interval_ms: PUSH_INTERVAL
+    });
+    if (REMOTE_WRITE_URL) {
+        setInterval(pushMetrics, PUSH_INTERVAL);
+        setTimeout(pushMetrics, 5000); // Initial push after 5s
+    }
+});

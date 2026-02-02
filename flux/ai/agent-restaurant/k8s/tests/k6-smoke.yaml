@@ -1,0 +1,266 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🍽️ K6 SMOKE TEST - AGENT-RESTAURANT
+#
+#  Purpose: Quick validation that restaurant agents are healthy and responding
+#
+#  Agents tested:
+#    🎩 Host (Maximilian) - Guest greeting and seating
+#    👔 Waiter (Pierre) - Dish presentation and orders
+#    🍷 Sommelier (Isabella) - Wine pairing
+#    👨‍🍳 Chef (Marco) - Kitchen management
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-restaurant-smoke
+  namespace: agent-restaurant
+  labels:
+    app.kubernetes.io/name: agent-restaurant
+    app.kubernetes.io/component: testing
+    test-type: smoke
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-restaurant-smoke-test
+      file: smoke-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: NAMESPACE
+        value: "agent-restaurant"
+      - name: HOST_URL
+        value: "http://host-maximilian.agent-restaurant.svc.cluster.local"
+      - name: WAITER_URL
+        value: "http://waiter-pierre.agent-restaurant.svc.cluster.local"
+      - name: SOMMELIER_URL
+        value: "http://sommelier-isabella.agent-restaurant.svc.cluster.local"
+      - name: CHEF_URL
+        value: "http://chef-marco.agent-restaurant.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-restaurant-smoke-test
+  namespace: agent-restaurant
+  labels:
+    app.kubernetes.io/name: agent-restaurant
+    app.kubernetes.io/component: testing
+    test-type: smoke
+data:
+  smoke-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // Custom Metrics
+    const hostSuccess = new Rate('restaurant_host_success');
+    const waiterSuccess = new Rate('restaurant_waiter_success');
+    const sommelierSuccess = new Rate('restaurant_sommelier_success');
+    const chefSuccess = new Rate('restaurant_chef_success');
+    const responseTime = new Trend('restaurant_response_time_ms');
+    const agentErrors = new Counter('restaurant_agent_errors');
+    
+    // Configuration
+    const HOST_URL = __ENV.HOST_URL || 'http://host-maximilian.agent-restaurant.svc.cluster.local';
+    const WAITER_URL = __ENV.WAITER_URL || 'http://waiter-pierre.agent-restaurant.svc.cluster.local';
+    const SOMMELIER_URL = __ENV.SOMMELIER_URL || 'http://sommelier-isabella.agent-restaurant.svc.cluster.local';
+    const CHEF_URL = __ENV.CHEF_URL || 'http://chef-marco.agent-restaurant.svc.cluster.local';
+    
+    export const options = {
+      scenarios: {
+        smoke: {
+          executor: 'constant-vus',
+          vus: 1,
+          duration: '60s',
+        },
+      },
+      thresholds: {
+        // At least 50% success for smoke test (LLM agents can be slow)
+        'restaurant_host_success': ['rate>0.50'],
+        'restaurant_waiter_success': ['rate>0.50'],
+        // LLM responses can take 30-60s, set P95 to 120s to account for cold starts
+        'restaurant_response_time_ms': ['p(95)<120000'],
+        // Allow higher failure rate for LLM timeouts
+        'http_req_failed': ['rate<0.5'],
+      },
+    };
+    
+    // CloudEvent helper
+    function createCloudEvent(type, data, source = 'k6-smoke-test') {
+      return {
+        specversion: '1.0',
+        id: `k6-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        type: type,
+        source: source,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+    
+    function sendCloudEvent(url, event) {
+      return http.post(url, JSON.stringify(event), {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+          'Ce-Specversion': '1.0',
+        },
+        timeout: '120s',  // LLM + cold start can take up to 2 minutes
+      });
+    }
+    
+    export default function() {
+      // Test Host Agent - Guest Arrival
+      group('🎩 Host Agent - Guest Arrival', () => {
+        const event = createCloudEvent('restaurant.guest.arriving', {
+          guestId: `guest-${Date.now()}`,
+          partySize: 2,
+          reservationId: `res-${Date.now()}`,
+          name: 'K6 Test Guest',
+          preferences: ['window seat'],
+        }, '/k6-test/host');
+        
+        const res = sendCloudEvent(HOST_URL, event);
+        responseTime.add(res.timings.duration, { agent: 'host' });
+        
+        const success = check(res, {
+          'host returns 2xx': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        hostSuccess.add(success);
+        if (!success) {
+          agentErrors.add(1, { agent: 'host' });
+          console.error(`Host failed: ${res.status} - ${res.body}`);
+        }
+      });
+      
+      sleep(2);
+      
+      // Test Waiter Agent - Order Request
+      group('👔 Waiter Agent - Present Menu', () => {
+        const event = createCloudEvent('restaurant.guest.seated', {
+          tableId: 'table-1',
+          guestId: `guest-${Date.now()}`,
+          partySize: 2,
+          request: 'Please present the menu and recommend your best dishes',
+        }, '/k6-test/waiter');
+        
+        const res = sendCloudEvent(WAITER_URL, event);
+        responseTime.add(res.timings.duration, { agent: 'waiter' });
+        
+        const success = check(res, {
+          'waiter returns 2xx': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        waiterSuccess.add(success);
+        if (!success) {
+          agentErrors.add(1, { agent: 'waiter' });
+          console.error(`Waiter failed: ${res.status} - ${res.body}`);
+        }
+      });
+      
+      sleep(2);
+      
+      // Test Sommelier Agent - Wine Pairing
+      group('🍷 Sommelier Agent - Wine Pairing', () => {
+        const event = createCloudEvent('restaurant.order.created', {
+          tableId: 'table-1',
+          orderId: `order-${Date.now()}`,
+          items: [
+            { dish: 'Risotto ai Porcini', quantity: 1 },
+            { dish: 'Grilled Salmon', quantity: 1 },
+          ],
+          request: 'Suggest wine pairings for our order',
+        }, '/k6-test/sommelier');
+        
+        const res = sendCloudEvent(SOMMELIER_URL, event);
+        responseTime.add(res.timings.duration, { agent: 'sommelier' });
+        
+        const success = check(res, {
+          'sommelier returns 2xx': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        sommelierSuccess.add(success);
+        if (!success) {
+          agentErrors.add(1, { agent: 'sommelier' });
+          console.error(`Sommelier failed: ${res.status} - ${res.body}`);
+        }
+      });
+      
+      sleep(2);
+      
+      // Test Chef Agent - Kitchen Order
+      group('👨‍🍳 Chef Agent - Kitchen Order', () => {
+        const event = createCloudEvent('restaurant.order.created', {
+          tableId: 'table-1',
+          ticketId: `ticket-${Date.now()}`,
+          items: [
+            { dish: 'Risotto ai Porcini', quantity: 1, notes: 'extra truffle' },
+            { dish: 'Grilled Salmon', quantity: 1, notes: 'medium rare' },
+          ],
+          priority: 'normal',
+        }, '/k6-test/chef');
+        
+        const res = sendCloudEvent(CHEF_URL, event);
+        responseTime.add(res.timings.duration, { agent: 'chef' });
+        
+        const success = check(res, {
+          'chef returns 2xx': (r) => r.status >= 200 && r.status < 300,
+        });
+        
+        chefSuccess.add(success);
+        if (!success) {
+          agentErrors.add(1, { agent: 'chef' });
+          console.error(`Chef failed: ${res.status} - ${res.body}`);
+        }
+      });
+      
+      sleep(3);
+    }
+    
+    export function handleSummary(data) {
+      const hostMetric = data.metrics['restaurant_host_success'];
+      const waiterMetric = data.metrics['restaurant_waiter_success'];
+      const sommelierMetric = data.metrics['restaurant_sommelier_success'];
+      const chefMetric = data.metrics['restaurant_chef_success'];
+      const responseMetric = data.metrics['restaurant_response_time_ms'];
+      
+      const hostRate = hostMetric && hostMetric.values ? hostMetric.values.rate : 0;
+      const waiterRate = waiterMetric && waiterMetric.values ? waiterMetric.values.rate : 0;
+      const sommelierRate = sommelierMetric && sommelierMetric.values ? sommelierMetric.values.rate : 0;
+      const chefRate = chefMetric && chefMetric.values ? chefMetric.values.rate : 0;
+      const p95Response = responseMetric && responseMetric.values ? responseMetric.values['p(95)'] : 0;
+      
+      const avgSuccess = (hostRate + waiterRate + sommelierRate + chefRate) / 4;
+      const passed = avgSuccess >= 0.50;
+      
+      console.log('\n' + '═'.repeat(60));
+      console.log('🍽️ AGENT-RESTAURANT SMOKE TEST RESULTS');
+      console.log('═'.repeat(60));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('─'.repeat(60));
+      console.log('🎩 Host (Maximilian):     ' + (hostRate * 100).toFixed(1) + '%');
+      console.log('👔 Waiter (Pierre):       ' + (waiterRate * 100).toFixed(1) + '%');
+      console.log('🍷 Sommelier (Isabella):  ' + (sommelierRate * 100).toFixed(1) + '%');
+      console.log('👨‍🍳 Chef (Marco):          ' + (chefRate * 100).toFixed(1) + '%');
+      console.log('─'.repeat(60));
+      console.log('P95 Response Time: ' + (p95Response || 0).toFixed(0) + 'ms');
+      console.log('═'.repeat(60) + '\n');
+      
+      return {};
+    }

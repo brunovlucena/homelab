@@ -1,0 +1,15 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 🔄 Flux CD Bootstrap Installation
+# Managed via Job that runs the flux CLI to ensure compatibility
+
+resources:
+  - homelab.yaml
+  - helm.yaml
+  # CDEvents Receivers for Knative Lambda and agent-contracts integration
+  # See: docs/04-architecture/CLOUDEVENTS_SPECIFICATION.md#flux-cd-integration-cdevents
+  - cdevents-receivers.yaml
+  # Expose Flux services via NodePort for Cursor access
+  - flux-services.yaml

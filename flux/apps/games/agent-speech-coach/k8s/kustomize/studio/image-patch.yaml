@@ -1,0 +1,9 @@
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: agent-speech-coach
+  namespace: agent-speech-coach
+spec:
+  image:
+    repository: ghcr.io/brunovlucena/speech-coach-agent
+    tag: "latest"

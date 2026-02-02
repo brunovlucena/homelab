@@ -1,0 +1,14 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: demo-mag7-battle
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - lambdafunction-game-server.yaml
+  - lambdafunction-exploit-spawner.yaml
+  - lambdafunction-blueteam-defender.yaml
+  - lambdafunction-metrics-sync.yaml
+  - configmap-game-ui.yaml

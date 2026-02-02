@@ -1,0 +1,26 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🧪 AGENT-CONTRACTS K6 TESTS KUSTOMIZATION
+#
+#  Purpose: Deploy all k6 test resources for agent-contracts
+#
+#  Tests included:
+#    - k6-smoke.yaml        - Quick health validation
+#    - k6-sre-metrics.yaml  - SRE/SLO validation
+#    - k6-e2e-pipeline.yaml - Full E2E pipeline test
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: agent-contracts
+
+resources:
+  - k6-smoke.yaml
+  - k6-sre-metrics.yaml
+  - k6-e2e-pipeline.yaml
+
+commonLabels:
+  app.kubernetes.io/name: agent-contracts
+  app.kubernetes.io/component: testing
+  app.kubernetes.io/managed-by: kustomize

@@ -1,0 +1,14 @@
+# This kustomization.yaml is kept for backwards compatibility
+# New deployments should use k8s/base or k8s/overlays/studio
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: prometheus
+
+resources:
+- base
+
+# Use studio overlay by default
+# For production, use: kubectl apply -k k8s/overlays/studio
+# For development, use: kubectl apply -k k8s/base
+

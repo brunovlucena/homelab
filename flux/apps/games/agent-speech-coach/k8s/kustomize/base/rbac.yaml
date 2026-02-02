@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-speech-coach-sa
+  namespace: ai
+imagePullSecrets:
+  - name: ghcr-secret
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-speech-coach-role
+  namespace: ai
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["speech-coach-db-credentials"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-speech-coach-binding
+  namespace: ai
+subjects:
+- kind: ServiceAccount
+  name: agent-speech-coach-sa
+  namespace: ai
+roleRef:
+  kind: Role
+  name: agent-speech-coach-role
+  apiGroup: rbac.authorization.k8s.io

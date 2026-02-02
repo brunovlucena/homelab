@@ -1,0 +1,25 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-loki
+  namespace: prometheus
+  labels:
+    grafana_datasource: "1"
+data:
+  loki-datasource.yaml: |-
+    apiVersion: 1
+    datasources:
+    - name: "Loki"
+      type: loki
+      uid: loki
+      access: proxy
+      url: http://loki.loki:3100
+      jsonData:
+        maxLines: 1000
+        derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: "(?:traceID|trace_id)=(\\w+)"
+          name: TraceID
+          url: $${__value.raw}
+      editable: true

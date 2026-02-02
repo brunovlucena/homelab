@@ -1,0 +1,11 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: futboss-ai-sa
+  namespace: futboss-ai
+  labels:
+    app.kubernetes.io/name: futboss-ai
+    app.kubernetes.io/component: api
+imagePullSecrets:
+  - name: ghcr-secret

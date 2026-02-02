@@ -1,0 +1,52 @@
+run:
+  timeout: 5m
+  tests: true
+  issues-exit-code: 1
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - ineffassign
+    - gocritic
+    - misspell
+    - unparam
+    - gocyclo
+    - dupl
+    - gosec
+    - revive
+    - dogsled
+    - nakedret
+    - prealloc
+    - bodyclose
+    - asasalint
+    - forbidigo
+    - funlen
+    - goconst
+    - godot
+    - godox
+    - nolintlint
+
+linters-settings:
+  gocyclo:
+    min-complexity: 20  # Increased from 15 to allow for reasonable complexity in production code
+  funlen:
+    lines: 60
+    statements: 40
+  gosec:
+    excludes:
+      - G104
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    # Exclude cyclomatic complexity and nolint checks for test files
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - funlen
+        - nolintlint  # Don't complain about unused nolint directives in test files 

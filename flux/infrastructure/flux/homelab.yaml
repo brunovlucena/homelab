@@ -1,0 +1,32 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: homelab
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  url: https://github.com/brunovlucena/homelab.git
+  ref:
+    branch: main
+  secretRef:
+    name: github-token
+  timeout: 3m0s
+  ignore: |
+    # Ignore non-essential directories
+    /docs/
+    /tests/
+    /.github/
+    /docker/
+    /scripts/
+    # Ignore compiled binaries and build artifacts
+    /**/bin/
+    /**/service
+    /**/metrics-pusher/service
+    /**/builder/service
+    # Ignore large assets
+    *.png
+    *.jpg
+    *.jpeg
+    # Ignore docs
+    *.md
+    !kustomization.yaml

@@ -1,0 +1,330 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📋 K6 COMPLIANCE TEST - AGENT-DEVSECOPS
+#
+#  Purpose: Test daily/weekly compliance check flows
+#
+#  Scenarios:
+#    📅 Daily compliance checks
+#    📆 Weekly vulnerability scans
+#    🚨 Security alert handling
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-devsecops-compliance
+  namespace: agent-devsecops
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: testing
+    test-type: e2e
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-devsecops-compliance-test
+      file: compliance-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: DEVSECOPS_URL
+        value: "http://agent-devsecops.agent-devsecops.svc.cluster.local"
+      - name: NAMESPACE
+        value: "agent-devsecops"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-devsecops-compliance-test
+  namespace: agent-devsecops
+  labels:
+    app.kubernetes.io/name: agent-devsecops
+    app.kubernetes.io/component: testing
+    test-type: e2e
+data:
+  compliance-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // Custom Metrics
+    const dailyCheckSuccess = new Rate('devsecops_daily_check_success');
+    const weeklyCheckSuccess = new Rate('devsecops_weekly_check_success');
+    const alertHandleSuccess = new Rate('devsecops_alert_handle_success');
+    const complianceDuration = new Trend('devsecops_compliance_duration_ms');
+    const checksPerformed = new Counter('devsecops_checks_performed');
+    const issuesFound = new Counter('devsecops_issues_found');
+    
+    // Configuration
+    const DEVSECOPS_URL = __ENV.DEVSECOPS_URL || 'http://agent-devsecops.agent-devsecops.svc.cluster.local';
+    
+    export const options = {
+      scenarios: {
+        compliance_flow: {
+          executor: 'per-vu-iterations',
+          vus: 1,
+          iterations: 3,
+          maxDuration: '5m',
+        },
+      },
+      thresholds: {
+        'devsecops_daily_check_success': ['rate>0.90'],
+        'devsecops_weekly_check_success': ['rate>0.80'],
+        'devsecops_alert_handle_success': ['rate>0.90'],
+        'devsecops_compliance_duration_ms': ['p(95)<30000'],
+      },
+    };
+    
+    // CloudEvent helper
+    function createCloudEvent(type, data, source = 'k6-compliance-test') {
+      return {
+        specversion: '1.0',
+        id: `k6-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        type: type,
+        source: source,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      };
+    }
+    
+    function sendCloudEvent(url, event, timeout = '30s') {
+      return http.post(url, JSON.stringify(event), {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'Ce-Type': event.type,
+          'Ce-Source': event.source,
+          'Ce-Id': event.id,
+          'Ce-Specversion': '1.0',
+        },
+        timeout: timeout,
+      });
+    }
+    
+    export default function() {
+      // ════════════════════════════════════════════════════════════════
+      // Test 1: Daily Compliance Check
+      // ════════════════════════════════════════════════════════════════
+      group('📅 Daily Compliance Check', () => {
+        console.log('Starting daily compliance check...');
+        
+        const event = createCloudEvent('io.homelab.schedule.daily', {
+          scheduled_time: new Date().toISOString(),
+          check_types: ['rbac_audit', 'network_policy_coverage', 'secret_expiry', 'pod_security_standards'],
+        }, '/k6-test/scheduler');
+        
+        const res = sendCloudEvent(DEVSECOPS_URL, event, '60s');
+        complianceDuration.add(res.timings.duration, { type: 'daily' });
+        checksPerformed.add(1, { type: 'daily' });
+        
+        const success = check(res, {
+          'daily check returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'daily check has results': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.checks_performed !== undefined || body.timestamp !== undefined;
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+        });
+        
+        dailyCheckSuccess.add(success);
+        
+        // Track issues found
+        try {
+          const body = JSON.parse(res.body);
+          if (body.issues_found && Array.isArray(body.issues_found)) {
+            issuesFound.add(body.issues_found.length, { type: 'daily' });
+          }
+        } catch (e) {}
+        
+        if (!success) {
+          console.error(`Daily check failed: ${res.status} - ${res.body}`);
+        } else {
+          console.log('Daily compliance check completed');
+        }
+      });
+      
+      sleep(3);
+      
+      // ════════════════════════════════════════════════════════════════
+      // Test 2: Weekly Vulnerability Scan
+      // ════════════════════════════════════════════════════════════════
+      group('📆 Weekly Vulnerability Scan', () => {
+        console.log('Starting weekly vulnerability scan...');
+        
+        const event = createCloudEvent('io.homelab.schedule.weekly', {
+          scheduled_time: new Date().toISOString(),
+          scan_all_namespaces: true,
+          include_stopped_pods: false,
+        }, '/k6-test/scheduler');
+        
+        const res = sendCloudEvent(DEVSECOPS_URL, event, '120s');
+        complianceDuration.add(res.timings.duration, { type: 'weekly' });
+        checksPerformed.add(1, { type: 'weekly' });
+        
+        const success = check(res, {
+          'weekly scan returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'weekly scan has results': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.images_scanned !== undefined || body.timestamp !== undefined || body.status !== undefined;
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+        });
+        
+        weeklyCheckSuccess.add(success);
+        
+        // Track vulnerabilities
+        try {
+          const body = JSON.parse(res.body);
+          if (body.vulnerabilities_by_severity) {
+            const total = Object.values(body.vulnerabilities_by_severity).reduce((a, b) => a + b, 0);
+            issuesFound.add(total, { type: 'weekly' });
+          }
+        } catch (e) {}
+        
+        if (!success) {
+          console.error(`Weekly scan failed: ${res.status} - ${res.body}`);
+        } else {
+          console.log('Weekly vulnerability scan completed');
+        }
+      });
+      
+      sleep(3);
+      
+      // ════════════════════════════════════════════════════════════════
+      // Test 3: Security Alert Handling (Warning)
+      // ════════════════════════════════════════════════════════════════
+      group('🚨 Security Alert - Warning', () => {
+        console.log('Testing warning alert handling...');
+        
+        const event = createCloudEvent('io.homelab.alert.security', {
+          alertname: 'PodSecurityViolation',
+          severity: 'warning',
+          namespace: 'default',
+          pod: 'test-pod-123',
+          violation: 'Running as root user',
+          labels: {
+            namespace: 'default',
+            pod: 'test-pod-123',
+          },
+        }, '/k6-test/alertmanager');
+        
+        const res = sendCloudEvent(DEVSECOPS_URL, event);
+        complianceDuration.add(res.timings.duration, { type: 'alert_warning' });
+        checksPerformed.add(1, { type: 'alert' });
+        
+        const success = check(res, {
+          'warning alert returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'warning alert handled': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.status !== undefined;
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+        });
+        
+        alertHandleSuccess.add(success);
+        
+        if (!success) {
+          console.error(`Warning alert failed: ${res.status} - ${res.body}`);
+        }
+      });
+      
+      sleep(2);
+      
+      // ════════════════════════════════════════════════════════════════
+      // Test 4: Security Alert Handling (Critical)
+      // ════════════════════════════════════════════════════════════════
+      group('🔴 Security Alert - Critical', () => {
+        console.log('Testing critical alert handling...');
+        
+        const event = createCloudEvent('io.homelab.alert.security', {
+          alertname: 'CriticalCVEDetected',
+          severity: 'critical',
+          namespace: 'production',
+          image: 'vulnerable-image:latest',
+          cve_id: 'CVE-2024-0001',
+          cvss_score: 9.8,
+          labels: {
+            namespace: 'production',
+            deployment: 'critical-app',
+          },
+        }, '/k6-test/alertmanager');
+        
+        const res = sendCloudEvent(DEVSECOPS_URL, event);
+        complianceDuration.add(res.timings.duration, { type: 'alert_critical' });
+        checksPerformed.add(1, { type: 'alert' });
+        
+        const success = check(res, {
+          'critical alert returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'critical alert escalated or logged': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.status !== undefined || body.action_taken !== undefined;
+            } catch (e) {
+              return r.status === 200;
+            }
+          },
+        });
+        
+        alertHandleSuccess.add(success);
+        
+        if (!success) {
+          console.error(`Critical alert failed: ${res.status} - ${res.body}`);
+        }
+      });
+      
+      sleep(5);
+    }
+    
+    export function handleSummary(data) {
+      const dailyMetric = data.metrics['devsecops_daily_check_success'];
+      const weeklyMetric = data.metrics['devsecops_weekly_check_success'];
+      const alertMetric = data.metrics['devsecops_alert_handle_success'];
+      const durationMetric = data.metrics['devsecops_compliance_duration_ms'];
+      const checksMetric = data.metrics['devsecops_checks_performed'];
+      const issuesMetric = data.metrics['devsecops_issues_found'];
+      
+      const dailyRate = dailyMetric && dailyMetric.values ? dailyMetric.values.rate : 0;
+      const weeklyRate = weeklyMetric && weeklyMetric.values ? weeklyMetric.values.rate : 0;
+      const alertRate = alertMetric && alertMetric.values ? alertMetric.values.rate : 0;
+      const p95Duration = durationMetric && durationMetric.values ? durationMetric.values['p(95)'] : 0;
+      const totalChecks = checksMetric && checksMetric.values ? checksMetric.values.count : 0;
+      const totalIssues = issuesMetric && issuesMetric.values ? issuesMetric.values.count : 0;
+      
+      const passed = dailyRate >= 0.90 && weeklyRate >= 0.80 && alertRate >= 0.90;
+      
+      console.log('\n' + '═'.repeat(60));
+      console.log('📋 AGENT-DEVSECOPS COMPLIANCE TEST RESULTS');
+      console.log('═'.repeat(60));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('─'.repeat(60));
+      console.log('📅 Daily Checks:       ' + (dailyRate * 100).toFixed(1) + '%');
+      console.log('📆 Weekly Scans:       ' + (weeklyRate * 100).toFixed(1) + '%');
+      console.log('🚨 Alert Handling:     ' + (alertRate * 100).toFixed(1) + '%');
+      console.log('─'.repeat(60));
+      console.log('Total Checks:          ' + totalChecks);
+      console.log('Issues Found:          ' + totalIssues);
+      console.log('P95 Duration:          ' + (p95Duration || 0).toFixed(0) + 'ms');
+      console.log('═'.repeat(60) + '\n');
+      
+      return {};
+    }

@@ -1,0 +1,345 @@
+{{- /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */ -}}
+{{- /*                                                                          */ -}}
+{{- /*  🌐 KNATIVE TRIGGERS TEMPLATE                                            */ -}}
+{{- /*                                                                          */ -}}
+{{- /*  CloudEvents type format: io.knative.lambda.<category>.<entity>.<action> */ -}}
+{{- /*                                                                          */ -}}
+{{- /*  Categories:                                                             */ -}}
+{{- /*  - command: Requests for actions (present tense)                         */ -}}
+{{- /*  - lifecycle: State changes (past tense)                                 */ -}}
+{{- /*  - invoke: Lambda invocations                                            */ -}}
+{{- /*  - response: Lambda responses                                            */ -}}
+{{- /*                                                                          */ -}}
+{{- /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */ -}}
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  📤 COMMAND: Build Start                                                │
+# │  Trigger that starts a build when command.build.start is received      │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Name }}-command-build-start
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: trigger
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    lambda.knative.io/event-category: command
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+spec:
+  broker: {{ .BrokerName }}
+  filter:
+    attributes:
+      type: "{{ .EventTypes.CommandBuildStart | default "io.knative.lambda.command.build.start" }}"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}
+
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  📊 LIFECYCLE: Build Completed                                          │
+# │  Trigger that notifies when build completes successfully               │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Name }}-lifecycle-build-completed
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: trigger
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    lambda.knative.io/event-category: lifecycle
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+spec:
+  broker: {{ .BrokerName }}
+  filter:
+    attributes:
+      type: "{{ .EventTypes.LifecycleBuildCompleted | default "io.knative.lambda.lifecycle.build.completed" }}"
+      source: "{{ .EventSource | default "io.knative.lambda/operator" }}"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}
+
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  📊 LIFECYCLE: Build Failed                                             │
+# │  Trigger that notifies when build fails                                │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Name }}-lifecycle-build-failed
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: trigger
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    lambda.knative.io/event-category: lifecycle
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+spec:
+  broker: {{ .BrokerName }}
+  filter:
+    attributes:
+      type: "{{ .EventTypes.LifecycleBuildFailed | default "io.knative.lambda.lifecycle.build.failed" }}"
+      source: "{{ .EventSource | default "io.knative.lambda/operator" }}"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}
+
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  📊 LIFECYCLE: Build Timeout                                            │
+# │  Trigger that notifies when build times out                            │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Name }}-lifecycle-build-timeout
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: trigger
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    lambda.knative.io/event-category: lifecycle
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+spec:
+  broker: {{ .BrokerName }}
+  filter:
+    attributes:
+      type: "{{ .EventTypes.LifecycleBuildTimeout | default "io.knative.lambda.lifecycle.build.timeout" }}"
+      source: "{{ .EventSource | default "io.knative.lambda/operator" }}"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}
+
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  📤 COMMAND: Service Delete                                             │
+# │  Trigger that deletes service when command.service.delete is received  │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Name }}-command-service-delete
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: trigger
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    lambda.knative.io/event-category: command
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+spec:
+  broker: {{ .BrokerName }}
+  filter:
+    attributes:
+      type: "{{ .EventTypes.CommandServiceDelete | default "io.knative.lambda.command.service.delete" }}"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}
+
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  🚀 INVOKE: Async Invocation                                            │
+# │  Trigger that invokes lambda asynchronously                            │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Name }}-invoke-async
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: trigger
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    lambda.knative.io/event-category: invoke
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+spec:
+  broker: {{ .BrokerName }}
+  filter:
+    attributes:
+      type: "{{ .EventTypes.InvokeAsync | default "io.knative.lambda.invoke.async" }}"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}
+
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  🚀 INVOKE: Sync Invocation                                             │
+# │  Trigger that invokes lambda synchronously                             │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Name }}-invoke-sync
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: trigger
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    lambda.knative.io/event-category: invoke
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+spec:
+  broker: {{ .BrokerName }}
+  filter:
+    attributes:
+      type: "{{ .EventTypes.InvokeSync | default "io.knative.lambda.invoke.sync" }}"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}
+
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  📨 RESPONSE: Success                                                   │
+# │  Trigger for lambda success responses                                  │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Name }}-response-success
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: trigger
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    lambda.knative.io/event-category: response
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+spec:
+  broker: {{ .BrokerName }}
+  filter:
+    attributes:
+      type: "{{ .EventTypes.ResponseSuccess | default "io.knative.lambda.response.success" }}"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}
+
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  📨 RESPONSE: Error                                                     │
+# │  Trigger for lambda error responses (routes to DLQ if enabled)         │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Name }}-response-error
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: trigger
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    lambda.knative.io/event-category: response
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+spec:
+  broker: {{ .BrokerName }}
+  filter:
+    attributes:
+      type: "{{ .EventTypes.ResponseError | default "io.knative.lambda.response.error" }}"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}
+
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  📤 COMMAND: Build Retry                                                │
+# │  Trigger that retries a failed build                                   │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Name }}-command-build-retry
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: trigger
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    lambda.knative.io/event-category: command
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+spec:
+  broker: {{ .BrokerName }}
+  filter:
+    attributes:
+      type: "{{ .EventTypes.CommandBuildRetry | default "io.knative.lambda.command.build.retry" }}"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}
+
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  📤 COMMAND: Build Cancel                                               │
+# │  Trigger that cancels a running build                                  │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: {{ .Name }}-command-build-cancel
+  namespace: {{ .Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Name }}
+    app.kubernetes.io/component: trigger
+    app.kubernetes.io/managed-by: knative-lambda-operator
+    lambda.knative.io/name: {{ .LambdaName }}
+    lambda.knative.io/event-category: command
+  annotations:
+    rabbitmq.eventing.knative.dev/parallelism: "{{ .RabbitMQ.Parallelism | default 50 }}"
+spec:
+  broker: {{ .BrokerName }}
+  filter:
+    attributes:
+      type: "{{ .EventTypes.CommandBuildCancel | default "io.knative.lambda.command.build.cancel" }}"
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: {{ .SubscriberServiceName }}
+      namespace: {{ .Namespace }}

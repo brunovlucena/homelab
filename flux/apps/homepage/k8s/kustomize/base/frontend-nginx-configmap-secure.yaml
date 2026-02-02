@@ -1,0 +1,222 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homepage-frontend-nginx
+  namespace: homepage
+  labels:
+    app.kubernetes.io/name: homepage
+    app.kubernetes.io/instance: homepage
+    app.kubernetes.io/component: frontend
+data:
+  nginx.conf: |
+    server {
+        listen       8080;
+        listen  [::]:8080;
+        server_name  localhost;
+
+        # ============================================================================
+        # 🔒 SECURITY HEADERS
+        # ============================================================================
+        
+        # Prevent clickjacking
+        add_header X-Frame-Options "DENY" always;
+        
+        # Prevent MIME type sniffing
+        add_header X-Content-Type-Options "nosniff" always;
+        
+        # Enable XSS protection (legacy browsers)
+        add_header X-XSS-Protection "1; mode=block" always;
+        
+        # Referrer policy
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        
+        # Permissions policy (restrict browser features)
+        add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()" always;
+        
+        # Content Security Policy
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https: blob:; connect-src 'self' https://www.google-analytics.com https://storage.googleapis.com https://*.aliyuncs.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+        
+        # HSTS (Cloudflare handles this, but defense in depth)
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+        
+        # Remove server version disclosure
+        server_tokens off;
+        
+        # ============================================================================
+        # 🔒 REQUEST LIMITS
+        # ============================================================================
+        
+        # Limit request body size (prevent DoS)
+        client_max_body_size 10M;
+        
+        # Limit buffer sizes
+        client_body_buffer_size 128k;
+        client_header_buffer_size 1k;
+        large_client_header_buffers 4 16k;
+        
+        # Timeouts
+        client_body_timeout 10s;
+        client_header_timeout 10s;
+        send_timeout 10s;
+        keepalive_timeout 65s;
+        
+        # ============================================================================
+        # 🔒 RATE LIMITING
+        # ============================================================================
+        
+        # Define rate limit zones
+        limit_req_zone $binary_remote_addr zone=general:10m rate=10r/s;
+        limit_req_zone $binary_remote_addr zone=api:10m rate=5r/s;
+        limit_req_zone $binary_remote_addr zone=static:10m rate=50r/s;
+        
+        # Connection limiting
+        limit_conn_zone $binary_remote_addr zone=conn_limit_per_ip:10m;
+        limit_conn conn_limit_per_ip 20;
+        
+        # Health check endpoint
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+
+        location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+            try_files $uri $uri/ /index.html;
+            
+            # Apply rate limiting
+            limit_req zone=general burst=20 nodelay;
+            limit_conn conn_limit_per_ip 10;
+            
+            # Cache static assets
+            location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|webp|woff|woff2|ttf|eot)$ {
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+                
+                # Higher rate limit for static assets
+                limit_req zone=static burst=100 nodelay;
+            }
+        }
+
+        # Handle API requests
+        location /api {
+            # Stricter rate limiting for API
+            limit_req zone=api burst=10 nodelay;
+            limit_conn conn_limit_per_ip 5;
+            
+            proxy_pass http://homepage-api:8080;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Security: Don't pass client body to upstream if too large
+            proxy_request_buffering on;
+            proxy_max_temp_file_size 0;
+            
+            # Proxy buffer limits
+            proxy_buffering on;
+            proxy_buffer_size 4k;
+            proxy_buffers 8 4k;
+            proxy_busy_buffers_size 8k;
+            
+            # Timeouts
+            proxy_connect_timeout 5s;
+            proxy_send_timeout 10s;
+            proxy_read_timeout 10s;
+        }
+
+        # Proxy MinIO storage requests
+        location /storage/ {
+            # Rate limiting
+            limit_req zone=static burst=50 nodelay;
+            
+            proxy_pass http://minio.minio.svc.cluster.local:9000/;
+            proxy_set_header Host minio.minio.svc.cluster.local;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # 🔒 FIX CORS - Restrict to your domain
+            add_header Access-Control-Allow-Origin "https://lucena.cloud" always;
+            add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept" always;
+            add_header Access-Control-Max-Age "3600" always;
+            
+            # Handle OPTIONS preflight
+            if ($request_method = 'OPTIONS') {
+                add_header Access-Control-Allow-Origin "https://lucena.cloud" always;
+                add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+                add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept" always;
+                add_header Access-Control-Max-Age "3600" always;
+                add_header Content-Length 0;
+                add_header Content-Type text/plain;
+                return 204;
+            }
+            
+            # Buffer settings
+            proxy_buffering on;
+            proxy_buffer_size 128k;
+            proxy_buffers 8 128k;
+            proxy_busy_buffers_size 256k;
+            proxy_max_temp_file_size 0;
+            
+            # Timeouts
+            proxy_connect_timeout 300s;
+            proxy_send_timeout 300s;
+            proxy_read_timeout 300s;
+            
+            # Cache control
+            proxy_cache off;
+            add_header Cache-Control "public, max-age=300, must-revalidate";
+            add_header X-Cache-Status "bypass";
+        }
+        
+        # ============================================================================
+        # 🔒 BLOCK COMMON ATTACK PATTERNS
+        # ============================================================================
+        
+        # Block access to hidden files
+        location ~ /\. {
+            deny all;
+            access_log off;
+            log_not_found off;
+        }
+        
+        # Block access to backup files
+        location ~ ~$ {
+            deny all;
+            access_log off;
+            log_not_found off;
+        }
+        
+        # Block common exploit attempts
+        location ~* (\.env|\.git|\.svn|\.htaccess|\.htpasswd|wp-config\.php|\.DS_Store) {
+            deny all;
+            access_log off;
+            log_not_found off;
+        }
+        
+        # Block SQL injection attempts in query strings
+        if ($query_string ~* "union.*select|insert.*into|delete.*from|drop.*table|exec\(|information_schema") {
+            return 403;
+        }
+        
+        # Block XSS attempts
+        if ($query_string ~* "<script|javascript:|onload=|onerror=") {
+            return 403;
+        }
+        
+        # Block path traversal
+        if ($uri ~* "\.\./|\.\.\\|\.\.%2f|\.\.%5c") {
+            return 403;
+        }
+        
+        # Error pages
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+    }

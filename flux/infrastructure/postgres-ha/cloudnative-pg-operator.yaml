@@ -1,0 +1,43 @@
+---
+# CloudNativePG Operator - Runs 100% LOCAL on your Kind cluster
+# This is NOT a cloud service - it's a Kubernetes operator for PostgreSQL HA
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: cloudnative-pg
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: https://cloudnative-pg.github.io/charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cloudnative-pg
+  namespace: postgres-ha
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: cloudnative-pg
+      version: "0.22.0"
+      sourceRef:
+        kind: HelmRepository
+        name: cloudnative-pg
+        namespace: flux-system
+  values:
+    # Run operator locally
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    # Monitoring
+    monitoring:
+      podMonitorEnabled: true
+      grafanaDashboard:
+        create: true
+

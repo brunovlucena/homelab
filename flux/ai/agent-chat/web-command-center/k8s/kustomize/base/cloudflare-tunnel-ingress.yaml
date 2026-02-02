@@ -1,0 +1,29 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Chat Command Center - Cloudflare Tunnel Ingress (STRRL Controller)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Exposes the chat command center via Cloudflare Tunnel at chat.lucena.cloud
+# Uses standard Kubernetes Ingress with cloudflare-tunnel ingress class
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chat-command-center
+  namespace: agent-chat
+  labels:
+    app.kubernetes.io/name: chat-command-center
+    app.kubernetes.io/part-of: agent-chat
+    app.kubernetes.io/component: web
+spec:
+  ingressClassName: cloudflare-tunnel
+  rules:
+    - host: chat.lucena.cloud
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: chat-command-center
+                port:
+                  number: 80

@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: cloudflare-tunnel-ingress-controller
+  namespace: flux-system
+
+resources:
+  - namespace.yaml
+  - secret-sync.yaml
+  - helmrelease.yaml

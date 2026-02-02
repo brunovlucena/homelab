@@ -1,0 +1,1031 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: lambdafunctions.lambda.knative.io
+spec:
+  group: lambda.knative.io
+  names:
+    kind: LambdaFunction
+    listKind: LambdaFunctionList
+    plural: lambdafunctions
+    shortNames:
+    - lf
+    - lfunc
+    singular: lambdafunction
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Current phase
+      jsonPath: .status.phase
+      name: Phase
+      type: string
+    - description: Built image URI
+      jsonPath: .status.buildStatus.imageURI
+      name: Image
+      type: string
+    - description: Service URL
+      jsonPath: .status.serviceStatus.url
+      name: URL
+      type: string
+    - description: Is service ready
+      jsonPath: .status.serviceStatus.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: LambdaFunction is the Schema for the lambdafunctions API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: LambdaFunctionSpec defines the desired state of LambdaFunction
+            properties:
+              build:
+                description: Build configuration
+                properties:
+                  awsRegion:
+                    description: AWS region for ECR (required when registryType=ecr)
+                    type: string
+                  forceRebuild:
+                    default: false
+                    description: Force rebuild even if image exists
+                    type: boolean
+                  imagePullSecret:
+                    description: |-
+                      Kubernetes secret name containing registry credentials
+                      For ECR: not needed if using IRSA/Pod Identity
+                      For GCR: secret with key.json
+                      For DockerHub/GHCR: secret with .dockerconfigjson
+                    type: string
+                  insecure:
+                    default: false
+                    description: Use insecure registry (no TLS verification)
+                    type: boolean
+                  registry:
+                    description: |-
+                      Container registry URL for built images
+                      Examples: localhost:5001, 123456789.dkr.ecr.us-west-2.amazonaws.com, gcr.io/my-project
+                    type: string
+                  registryType:
+                    default: local
+                    description: Registry type for authentication configuration
+                    enum:
+                    - local
+                    - ecr
+                    - gcr
+                    - ghcr
+                    - dockerhub
+                    - generic
+                    type: string
+                  repository:
+                    description: Repository name within the registry (overrides default
+                      namespace/name pattern)
+                    type: string
+                  tag:
+                    description: Image tag (defaults to ResourceVersion)
+                    type: string
+                  timeout:
+                    default: 30m
+                    description: Build timeout duration
+                    type: string
+                type: object
+              env:
+                description: Environment variables
+                items:
+                  description: EnvVar represents an environment variable present in
+                    a Container.
+                  properties:
+                    name:
+                      description: Name of the environment variable. Must be a C_IDENTIFIER.
+                      type: string
+                    value:
+                      description: |-
+                        Variable references $(VAR_NAME) are expanded
+                        using the previously defined environment variables in the container and
+                        any service environment variables. If a variable cannot be resolved,
+                        the reference in the input string will be unchanged. Double $$ are reduced
+                        to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
+                        "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
+                        Escaped references will never be expanded, regardless of whether the variable
+                        exists or not.
+                        Defaults to "".
+                      type: string
+                    valueFrom:
+                      description: Source for the environment variable's value. Cannot
+                        be used if value is not empty.
+                      properties:
+                        configMapKeyRef:
+                          description: Selects a key of a ConfigMap.
+                          properties:
+                            key:
+                              description: The key to select.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the ConfigMap or its key
+                                must be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        fieldRef:
+                          description: |-
+                            Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                            spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                          properties:
+                            apiVersion:
+                              description: Version of the schema the FieldPath is
+                                written in terms of, defaults to "v1".
+                              type: string
+                            fieldPath:
+                              description: Path of the field to select in the specified
+                                API version.
+                              type: string
+                          required:
+                          - fieldPath
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        resourceFieldRef:
+                          description: |-
+                            Selects a resource of the container: only resources limits and requests
+                            (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                          properties:
+                            containerName:
+                              description: 'Container name: required for volumes,
+                                optional for env vars'
+                              type: string
+                            divisor:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: Specifies the output format of the exposed
+                                resources, defaults to "1"
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            resource:
+                              description: 'Required: resource to select'
+                              type: string
+                          required:
+                          - resource
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        secretKeyRef:
+                          description: Selects a key of a secret in the pod's namespace
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                      type: object
+                  required:
+                  - name
+                  type: object
+                type: array
+              eventing:
+                description: Eventing configuration for brokers, triggers, DLQ, and
+                  API sources
+                properties:
+                  apiSource:
+                    description: ApiServerSource configuration
+                    properties:
+                      enabled:
+                        default: false
+                        description: Enable ApiServerSource for watching Kubernetes
+                          resources
+                        type: boolean
+                      mode:
+                        default: Resource
+                        description: Watch mode (Resource or Reference)
+                        enum:
+                        - Resource
+                        - Reference
+                        type: string
+                      resources:
+                        description: Resources to watch
+                        items:
+                          description: ApiSourceResourceSpec defines a Kubernetes
+                            resource to watch
+                          properties:
+                            apiVersion:
+                              description: API version of the resource
+                              type: string
+                            kind:
+                              description: Kind of the resource
+                              type: string
+                            labelSelector:
+                              additionalProperties:
+                                type: string
+                              description: Label selector to filter resources
+                              type: object
+                          required:
+                          - apiVersion
+                          - kind
+                          type: object
+                        type: array
+                    type: object
+                  brokerName:
+                    description: Name of an existing broker to use (skips broker creation)
+                    type: string
+                  dlq:
+                    description: Dead Letter Queue configuration
+                    properties:
+                      cleanup:
+                        description: DLQ cleanup configuration
+                        properties:
+                          enabled:
+                            default: false
+                            description: Enable automatic cleanup
+                            type: boolean
+                          interval:
+                            default: 1h
+                            description: Cleanup interval
+                            type: string
+                          retention:
+                            default: 168h
+                            description: Retention period
+                            type: string
+                        type: object
+                      enabled:
+                        default: true
+                        description: Enable DLQ
+                        type: boolean
+                      exchangeName:
+                        default: lambda-dlq-exchange
+                        description: DLQ exchange name
+                        type: string
+                      maxLength:
+                        default: 50000
+                        description: Maximum number of messages in DLQ
+                        type: integer
+                      messageTTL:
+                        default: 604800000
+                        description: Message TTL in milliseconds (default 7 days)
+                        type: integer
+                      overflowPolicy:
+                        default: reject-publish
+                        description: Overflow policy when queue is full
+                        enum:
+                        - drop-head
+                        - reject-publish
+                        type: string
+                      queueName:
+                        default: lambda-dlq-queue
+                        description: DLQ queue name
+                        type: string
+                      retryBackoffDelay:
+                        default: PT1S
+                        description: Retry backoff delay (ISO 8601 duration)
+                        type: string
+                      retryMaxAttempts:
+                        default: 5
+                        description: Maximum retry attempts before sending to DLQ
+                        minimum: 1
+                        type: integer
+                      routingKeyPrefix:
+                        default: lambda.dlq
+                        description: Routing key prefix for DLQ
+                        type: string
+                    type: object
+                  enabled:
+                    default: true
+                    description: |-
+                      Enable eventing infrastructure (brokers, triggers, DLQ)
+                      Eventing is ENABLED by default - lambdas receive CloudEvents
+                    type: boolean
+                  eventSource:
+                    default: knative-lambda-operator
+                    description: Event source identifier
+                    type: string
+                  eventTypes:
+                    description: Custom event types
+                    properties:
+                      buildComplete:
+                        default: io.knative.lambda.lifecycle.build.completed
+                        description: 'Deprecated: Use LifecycleBuildCompleted. Legacy
+                          event type for build completion'
+                        type: string
+                      buildFailed:
+                        default: io.knative.lambda.lifecycle.build.failed
+                        description: 'Deprecated: Use LifecycleBuildFailed. Legacy
+                          event type for build failure'
+                        type: string
+                      buildStart:
+                        default: io.knative.lambda.command.build.start
+                        description: 'Deprecated: Use CommandBuildStart. Legacy event
+                          type for build start'
+                        type: string
+                      buildTimeout:
+                        default: io.knative.lambda.lifecycle.build.timeout
+                        description: 'Deprecated: Use LifecycleBuildTimeout. Legacy
+                          event type for build timeout'
+                        type: string
+                      commandBuildCancel:
+                        default: io.knative.lambda.command.build.cancel
+                        description: Command event type for build cancel request
+                        type: string
+                      commandBuildRetry:
+                        default: io.knative.lambda.command.build.retry
+                        description: Command event type for build retry request
+                        type: string
+                      commandBuildStart:
+                        default: io.knative.lambda.command.build.start
+                        description: Command event type for build start request
+                        type: string
+                      commandServiceCreate:
+                        default: io.knative.lambda.command.service.create
+                        description: Command event type for service create request
+                        type: string
+                      commandServiceDelete:
+                        default: io.knative.lambda.command.service.delete
+                        description: Command event type for service delete request
+                        type: string
+                      invokeAsync:
+                        default: io.knative.lambda.invoke.async
+                        description: Invoke event type for asynchronous invocation
+                        type: string
+                      invokeScheduled:
+                        default: io.knative.lambda.invoke.scheduled
+                        description: Invoke event type for scheduled invocation
+                        type: string
+                      invokeSync:
+                        default: io.knative.lambda.invoke.sync
+                        description: Invoke event type for synchronous invocation
+                        type: string
+                      lifecycleBuildCancelled:
+                        default: io.knative.lambda.lifecycle.build.cancelled
+                        description: Lifecycle event type for build cancelled
+                        type: string
+                      lifecycleBuildCompleted:
+                        default: io.knative.lambda.lifecycle.build.completed
+                        description: Lifecycle event type for build completed
+                        type: string
+                      lifecycleBuildFailed:
+                        default: io.knative.lambda.lifecycle.build.failed
+                        description: Lifecycle event type for build failed
+                        type: string
+                      lifecycleBuildStarted:
+                        default: io.knative.lambda.lifecycle.build.started
+                        description: Lifecycle event type for build started
+                        type: string
+                      lifecycleBuildTimeout:
+                        default: io.knative.lambda.lifecycle.build.timeout
+                        description: Lifecycle event type for build timeout
+                        type: string
+                      responseError:
+                        default: io.knative.lambda.response.error
+                        description: Response event type for execution error
+                        type: string
+                      responseSuccess:
+                        default: io.knative.lambda.response.success
+                        description: Response event type for successful execution
+                        type: string
+                      responseTimeout:
+                        default: io.knative.lambda.response.timeout
+                        description: Response event type for execution timeout
+                        type: string
+                      serviceDelete:
+                        default: io.knative.lambda.command.service.delete
+                        description: 'Deprecated: Use CommandServiceDelete. Legacy
+                          event type for service deletion'
+                        type: string
+                    type: object
+                  monitoring:
+                    description: Monitoring configuration
+                    properties:
+                      enabled:
+                        default: false
+                        description: Enable ServiceMonitor creation
+                        type: boolean
+                    type: object
+                  rabbitmq:
+                    description: RabbitMQ cluster configuration
+                    properties:
+                      clusterName:
+                        default: rabbitmq
+                        description: Name of the RabbitMQ cluster
+                        type: string
+                      namespace:
+                        default: rabbitmq-system
+                        description: Namespace of the RabbitMQ cluster
+                        type: string
+                      parallelism:
+                        default: 10
+                        description: Parallelism for event processing
+                        minimum: 1
+                        type: integer
+                      queueType:
+                        default: quorum
+                        description: Queue type (classic or quorum)
+                        enum:
+                        - classic
+                        - quorum
+                        type: string
+                    type: object
+                  resourcePrefix:
+                    description: Resource prefix for all eventing resources (defaults
+                      to lambda name)
+                    type: string
+                  subscriberServiceName:
+                    description: Name of the subscriber Knative Service (defaults
+                      to lambda name)
+                    type: string
+                type: object
+              observability:
+                description: Observability configuration (OTEL tracing, metrics with
+                  exemplars, structured logging)
+                properties:
+                  logfire:
+                    description: Logfire configuration (Pydantic Logfire integration)
+                    properties:
+                      directExport:
+                        default: false
+                        description: Send directly to Logfire (bypasses Alloy)
+                        type: boolean
+                      enabled:
+                        default: false
+                        description: Enable Logfire integration
+                        type: boolean
+                      tokenSecretRef:
+                        description: Secret reference containing Logfire token
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    type: object
+                  logging:
+                    description: Logging configuration (structured JSON with trace
+                      context)
+                    properties:
+                      cloudEventMetadata:
+                        default: true
+                        description: Include CloudEvent metadata in logs
+                        type: boolean
+                      format:
+                        default: json
+                        description: Log output format
+                        enum:
+                        - json
+                        - text
+                        type: string
+                      level:
+                        default: info
+                        description: Log level
+                        enum:
+                        - debug
+                        - info
+                        - warn
+                        - error
+                        type: string
+                      traceContext:
+                        default: true
+                        description: Include trace context in logs (trace_id, span_id)
+                        type: boolean
+                    type: object
+                  metrics:
+                    description: Metrics configuration (Prometheus with exemplars)
+                    properties:
+                      enabled:
+                        default: true
+                        description: Enable metrics collection
+                        type: boolean
+                      exemplars:
+                        default: true
+                        description: Enable exemplars (link metrics to traces)
+                        type: boolean
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Custom metric labels (low cardinality only!)
+                        type: object
+                      path:
+                        default: /metrics
+                        description: Metrics endpoint path
+                        type: string
+                      port:
+                        default: 9090
+                        description: Metrics port
+                        format: int32
+                        type: integer
+                    type: object
+                  tracing:
+                    description: Tracing configuration (OpenTelemetry distributed
+                      tracing)
+                    properties:
+                      enabled:
+                        default: true
+                        description: Enable distributed tracing
+                        type: boolean
+                      endpoint:
+                        default: alloy.observability.svc:4317
+                        description: OTLP endpoint for trace export
+                        type: string
+                      propagation:
+                        default: w3c
+                        description: Trace context propagation format
+                        enum:
+                        - w3c
+                        - b3
+                        - jaeger
+                        type: string
+                      resourceAttributes:
+                        additionalProperties:
+                          type: string
+                        description: Additional resource attributes for traces
+                        type: object
+                      samplingRate:
+                        default: "1.0"
+                        description: 'Sampling rate (0.0 - 1.0, default: 1.0 for all
+                          traces)'
+                        pattern: ^(0(\.\d+)?|1(\.0+)?)$
+                        type: string
+                    type: object
+                type: object
+              resources:
+                description: Resource limits and requests
+                properties:
+                  limits:
+                    description: Resource limits
+                    properties:
+                      cpu:
+                        default: 50m
+                        description: CPU requirement
+                        type: string
+                      memory:
+                        default: 64Mi
+                        description: Memory requirement
+                        type: string
+                    type: object
+                  requests:
+                    description: Resource requests
+                    properties:
+                      cpu:
+                        default: 50m
+                        description: CPU requirement
+                        type: string
+                      memory:
+                        default: 64Mi
+                        description: Memory requirement
+                        type: string
+                    type: object
+                type: object
+              runtime:
+                description: Runtime configuration
+                properties:
+                  handler:
+                    default: index.handler
+                    description: Handler function name
+                    type: string
+                  language:
+                    description: Programming language
+                    enum:
+                    - nodejs
+                    - python
+                    - go
+                    type: string
+                  version:
+                    description: Language version
+                    type: string
+                required:
+                - language
+                - version
+                type: object
+              scaling:
+                description: Scaling configuration
+                properties:
+                  maxReplicas:
+                    default: 50
+                    description: Maximum number of replicas
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  minReplicas:
+                    default: 0
+                    description: Minimum number of replicas
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  scaleToZeroGracePeriod:
+                    default: 30s
+                    description: Grace period before scaling to zero
+                    type: string
+                  targetConcurrency:
+                    default: 10
+                    description: Target concurrent requests per instance
+                    format: int32
+                    minimum: 1
+                    type: integer
+                type: object
+              source:
+                description: Source configuration for the Lambda function code
+                properties:
+                  gcs:
+                    description: GCS source configuration
+                    properties:
+                      bucket:
+                        description: GCS bucket name
+                        type: string
+                      key:
+                        description: Object key path
+                        type: string
+                      project:
+                        description: GCP project ID
+                        type: string
+                      secretRef:
+                        description: Secret reference containing GCP credentials
+                        properties:
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    required:
+                    - bucket
+                    - key
+                    type: object
+                  git:
+                    description: Git source configuration
+                    properties:
+                      path:
+                        description: Path within the repository
+                        type: string
+                      ref:
+                        default: main
+                        description: Git reference (branch, tag, or commit)
+                        type: string
+                      secretRef:
+                        description: Secret reference containing Git credentials
+                        properties:
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      url:
+                        description: Git repository URL
+                        type: string
+                    required:
+                    - url
+                    type: object
+                  inline:
+                    description: Inline source configuration
+                    properties:
+                      code:
+                        description: Source code content
+                        type: string
+                      dependencies:
+                        description: Dependencies (e.g., requirements.txt, package.json)
+                        type: string
+                    required:
+                    - code
+                    type: object
+                  minio:
+                    description: MinIO source configuration
+                    properties:
+                      bucket:
+                        description: Bucket name
+                        type: string
+                      endpoint:
+                        default: minio.minio.svc.cluster.local:9000
+                        description: MinIO endpoint URL
+                        type: string
+                      key:
+                        description: Object key path
+                        type: string
+                      secretRef:
+                        description: Secret reference containing access credentials
+                        properties:
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    required:
+                    - bucket
+                    - key
+                    type: object
+                  s3:
+                    description: S3 source configuration
+                    properties:
+                      bucket:
+                        description: S3 bucket name
+                        type: string
+                      key:
+                        description: Object key path
+                        type: string
+                      region:
+                        default: us-east-1
+                        description: AWS region
+                        type: string
+                      secretRef:
+                        description: Secret reference containing AWS credentials
+                        properties:
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    required:
+                    - bucket
+                    - key
+                    type: object
+                  image:
+                    description: Pre-built Docker image configuration (skips build pipeline)
+                    properties:
+                      args:
+                        description: Container arguments
+                        items:
+                          type: string
+                        type: array
+                      command:
+                        description: Container command (overrides ENTRYPOINT)
+                        items:
+                          type: string
+                        type: array
+                      digest:
+                        description: Image digest (takes precedence over tag)
+                        type: string
+                      imagePullSecrets:
+                        description: Image pull secrets
+                        items:
+                          type: string
+                        type: array
+                      port:
+                        default: 8080
+                        description: Container port
+                        format: int32
+                        type: integer
+                      pullPolicy:
+                        default: IfNotPresent
+                        description: Image pull policy
+                        enum:
+                        - Always
+                        - IfNotPresent
+                        - Never
+                        type: string
+                      repository:
+                        description: Docker image repository (e.g., localhost:5001/myapp)
+                        type: string
+                      tag:
+                        default: latest
+                        description: Image tag
+                        type: string
+                    required:
+                    - repository
+                    type: object
+                  type:
+                    description: Type of source storage
+                    enum:
+                    - minio
+                    - s3
+                    - gcs
+                    - git
+                    - inline
+                    - image
+                    type: string
+                required:
+                - type
+                type: object
+              triggers:
+                description: Event triggers configuration (legacy, use Eventing instead)
+                items:
+                  description: TriggerSpec defines event trigger configuration (legacy)
+                  properties:
+                    broker:
+                      description: Name of the Knative Broker
+                      type: string
+                    filter:
+                      additionalProperties:
+                        type: string
+                      description: Event filter attributes
+                      type: object
+                  required:
+                  - broker
+                  type: object
+                type: array
+            required:
+            - runtime
+            - source
+            type: object
+          status:
+            description: LambdaFunctionStatus defines the observed state of LambdaFunction
+            properties:
+              buildStatus:
+                description: Build status information
+                properties:
+                  attempt:
+                    description: Build attempt number
+                    format: int32
+                    type: integer
+                  completedAt:
+                    description: Time when the build completed
+                    format: date-time
+                    type: string
+                  error:
+                    description: Error message if build failed
+                    type: string
+                  imageURI:
+                    description: URI of the built container image
+                    type: string
+                  jobName:
+                    description: Name of the build Job
+                    type: string
+                  startedAt:
+                    description: Time when the build started
+                    format: date-time
+                    type: string
+                type: object
+              conditions:
+                description: Standard Kubernetes conditions
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedGeneration:
+                description: ObservedGeneration is the most recent generation observed
+                format: int64
+                type: integer
+              phase:
+                allOf:
+                - enum:
+                  - Pending
+                  - Building
+                  - Deploying
+                  - Ready
+                  - Failed
+                  - Deleting
+                - enum:
+                  - Pending
+                  - Building
+                  - Deploying
+                  - Ready
+                  - Failed
+                  - Deleting
+                description: Current phase of the LambdaFunction
+                type: string
+              serviceStatus:
+                description: Service status information
+                properties:
+                  latestRevision:
+                    description: Latest revision name
+                    type: string
+                  ready:
+                    description: Whether the service is ready
+                    type: boolean
+                  replicas:
+                    description: Current number of replicas
+                    format: int32
+                    type: integer
+                  serviceName:
+                    description: Name of the Knative Service
+                    type: string
+                  url:
+                    description: External URL of the service
+                    type: string
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

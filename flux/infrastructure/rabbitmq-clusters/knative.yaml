@@ -1,0 +1,61 @@
+---
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: rabbitmq-cluster-knative-lambda
+  namespace: knative-lambda
+  labels:
+    app: rabbitmq
+    app.kubernetes.io/name: knative-lambda
+  annotations:
+    rabbitmq.com/topology-allowed-namespaces: "knative-lambda,ai-agents,agent-bruno,agent-contracts"
+spec:
+  replicas: 1
+  image: localhost:5001/rabbitmq:3.12-management-alpine
+  
+  tolerations:
+    - key: "knative"
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  
+  persistence:
+    storageClassName: "standard"
+    storage: 2Gi
+  
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  
+  rabbitmq:
+    additionalPlugins:
+      - rabbitmq_management
+    additionalConfig: |
+      vm_memory_high_watermark.absolute = 256MiB
+      total_memory_available_override_value = 536870912
+      disk_free_limit.absolute = 200MB
+      heartbeat = 60
+      collect_statistics = none
+      vm_memory_calculation_strategy = allocated
+
+# # RabbitMQ Configuration
+# rabbitmq:
+#   clusterName: "rabbitmq-cluster"  # Will be overridden by environment-specific values
+#   namespace: "rabbitmq"  # Will be overridden by environment-specific values
+#   connectionSecretName: "rabbitmq-connection"
+#   # Eventing configuration
+#   eventing:
+#     parallelism: 50  # Number of parallel consumers for RabbitMQ events
+#   # Queue configuration
+#   queues:
+#     kanikoJobs:
+#       name: "kaniko-jobs"
+#       durable: true
+#       autoDelete: false
+#       messageTtl: 86400000  # 24 hours in milliseconds
+#       maxLength: 10000      # Maximum 10,000 messages
+#       overflow: "drop-head" # Drop oldest messages when full

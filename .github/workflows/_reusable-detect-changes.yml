@@ -1,0 +1,178 @@
+# ============================================================================
+# 🔍 Reusable Workflow: Detect Changes & Extract Version
+# ============================================================================
+# Provides standardized change detection and version extraction for all
+# homelab components.
+#
+# Usage:
+#   jobs:
+#     detect:
+#       uses: ./.github/workflows/_reusable-detect-changes.yml
+#       with:
+#         working-directory: flux/ai/agent-bruno
+#         paths-filter: |
+#           src:
+#             - 'flux/ai/agent-bruno/src/**'
+#           k8s:
+#             - 'flux/ai/agent-bruno/k8s/**'
+# ============================================================================
+
+name: 🔍 Detect Changes
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: 'Working directory containing the component'
+        required: true
+        type: string
+      paths-filter:
+        description: 'YAML paths filter configuration'
+        required: false
+        type: string
+        default: ''
+      default-version:
+        description: 'Default version if VERSION file not found'
+        required: false
+        type: string
+        default: '0.1.0'
+      version-prefix:
+        description: 'Prefix for version tags (e.g., "v")'
+        required: false
+        type: string
+        default: 'v'
+    outputs:
+      should_build:
+        description: 'Whether changes require a build'
+        value: ${{ jobs.detect.outputs.should_build }}
+      should_deploy:
+        description: 'Whether to deploy (push to main/develop)'
+        value: ${{ jobs.detect.outputs.should_deploy }}
+      version:
+        description: 'Extracted version number'
+        value: ${{ jobs.detect.outputs.version }}
+      docker_tag:
+        description: 'Docker tag to use'
+        value: ${{ jobs.detect.outputs.docker_tag }}
+      is_release:
+        description: 'Whether this is a release build'
+        value: ${{ jobs.detect.outputs.is_release }}
+      short_sha:
+        description: 'Short git commit SHA'
+        value: ${{ jobs.detect.outputs.short_sha }}
+      branch:
+        description: 'Current git branch'
+        value: ${{ jobs.detect.outputs.branch }}
+      environment:
+        description: 'Target environment (pro/studio)'
+        value: ${{ jobs.detect.outputs.environment }}
+
+jobs:
+  detect:
+    name: 🔍 Detect Changes
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      should_build: ${{ steps.should_build.outputs.should_build }}
+      should_deploy: ${{ steps.should_deploy.outputs.should_deploy }}
+      version: ${{ steps.version.outputs.version }}
+      docker_tag: ${{ steps.version.outputs.docker_tag }}
+      is_release: ${{ steps.version.outputs.is_release }}
+      short_sha: ${{ steps.version.outputs.short_sha }}
+      branch: ${{ steps.version.outputs.branch }}
+      environment: ${{ steps.env.outputs.environment }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 Detect Changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch' && inputs.paths-filter != ''
+        with:
+          filters: ${{ inputs.paths-filter }}
+
+      - name: 🎯 Set Environment
+        id: env
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "environment=studio" >> $GITHUB_OUTPUT
+          else
+            echo "environment=pro" >> $GITHUB_OUTPUT
+          fi
+
+      - name: ✅ Determine if should build
+        id: should_build
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ steps.filter.outputs.changes }}" != "[]" ]] && [[ "${{ steps.filter.outputs.changes }}" != "" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ inputs.paths-filter }}" == "" ]]; then
+            # No filter specified, always build
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🚀 Determine if should deploy
+        id: should_deploy
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]] && \
+             [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🏷️ Extract Version
+        id: version
+        run: |
+          VERSION_FILE="${{ inputs.working-directory }}/VERSION"
+          if [ -f "$VERSION_FILE" ]; then
+            VERSION=$(cat "$VERSION_FILE" | tr -d '[:space:]')
+          else
+            VERSION="${{ inputs.default-version }}"
+            echo "⚠️ VERSION file not found, using default: $VERSION"
+          fi
+
+          SHORT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+          PREFIX="${{ inputs.version-prefix }}"
+
+          # Generate Docker tag based on branch
+          if [ "$BRANCH" = "main" ]; then
+            DOCKER_TAG="${PREFIX}${VERSION}"
+            IS_RELEASE="true"
+          elif [ "$BRANCH" = "develop" ]; then
+            DOCKER_TAG="${PREFIX}${VERSION}-rc.${SHORT_SHA}"
+            IS_RELEASE="false"
+          else
+            DOCKER_TAG="${PREFIX}${VERSION}-dev.${SHORT_SHA}"
+            IS_RELEASE="false"
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "docker_tag=$DOCKER_TAG"
+            echo "short_sha=$SHORT_SHA"
+            echo "branch=$BRANCH"
+            echo "is_release=$IS_RELEASE"
+          } >> $GITHUB_OUTPUT
+
+          echo "## 📋 Version Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Tag | \`$DOCKER_TAG\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Git SHA | \`$SHORT_SHA\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`$BRANCH\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Is Release | \`$IS_RELEASE\` |" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,52 @@
+# Trigger for message storage service (consumes messaging.message.received)
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: message-storage-trigger
+  namespace: agents-whatsapp-rust
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: messaging.message.received
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: message-storage-service
+
+---
+# Trigger for agent gateway (consumes messaging.message.received)
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: agent-gateway-trigger
+  namespace: agents-whatsapp-rust
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: messaging.message.received
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: agent-gateway
+
+---
+# Trigger for messaging service (consumes agent.response)
+apiVersion: eventing.knative.dev/v1
+kind: Trigger
+metadata:
+  name: messaging-service-agent-responses
+  namespace: agents-whatsapp-rust
+spec:
+  broker: default
+  filter:
+    attributes:
+      type: agent.response
+  subscriber:
+    ref:
+      apiVersion: serving.knative.dev/v1
+      kind: Service
+      name: messaging-service

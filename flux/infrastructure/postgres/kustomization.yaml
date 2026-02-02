@@ -1,0 +1,61 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: postgres
+  namespace: postgres
+
+resources:
+  - namespace.yaml
+  - secret-init-job.yaml
+  - pvc.yaml
+  - service.yaml
+  - deployment.yaml
+  # Homepage database initialization
+  - homepage-db-init-job.yaml
+  # Flyte database initialization
+  - ../flyte/k8s/db-init-job.yaml
+
+# Generate ConfigMap with hash suffix
+configMapGenerator:
+  - name: homepage-migrations
+    namespace: postgres
+    files:
+      - 001_complete_schema.sql=homepage-migrations.sql
+    options:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/instance: postgres
+        app.kubernetes.io/component: migrations
+        app.kubernetes.io/part-of: homepage
+
+# Inject ConfigMap hash into Job annotation - triggers recreation
+replacements:
+  - source:
+      kind: ConfigMap
+      name: homepage-migrations
+      fieldPath: metadata.name
+    targets:
+      - select:
+          kind: Job
+          name: homepage-db-init
+        fieldPaths:
+          - spec.template.metadata.annotations.migrations-configmap
+        options:
+          create: true
+  - source:
+      kind: ConfigMap
+      name: homepage-migrations
+      fieldPath: metadata.name
+    targets:
+      - select:
+          kind: Job
+          name: homepage-db-init
+        fieldPaths:
+          - metadata.annotations.configmap/hash
+        options:
+          create: true
+
+configurations:
+  - kustomize-config.yaml

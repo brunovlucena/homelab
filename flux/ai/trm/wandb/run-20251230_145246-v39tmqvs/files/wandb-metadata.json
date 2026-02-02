@@ -1,0 +1,35 @@
+{
+  "os": "macOS-26.1-arm64-arm-64bit-Mach-O",
+  "python": "CPython 3.13.6",
+  "startedAt": "2025-12-30T17:52:46.044766Z",
+  "args": [
+    "arch=trm",
+    "data_paths=[/Users/brunolucena/workspace/bruno/repos/homelab/flux/ai/trm-finetune/models/trm-runbook-only/trm_data]",
+    "evaluators=[]",
+    "epochs=2",
+    "eval_interval=2",
+    "lr=0.0001",
+    "puzzle_emb_lr=0.0001",
+    "weight_decay=1.0",
+    "puzzle_emb_weight_decay=1.0",
+    "global_batch_size=128",
+    "arch.L_layers=2",
+    "arch.H_cycles=3",
+    "arch.L_cycles=6",
+    "arch.pos_encodings=none",
+    "+run_name=trm-runbook-mac",
+    "ema=True"
+  ],
+  "program": "/Users/brunolucena/workspace/bruno/repos/homelab/flux/ai/trm/../trm/pretrain.py",
+  "codePath": "pretrain.py",
+  "codePathLocal": "pretrain.py",
+  "git": {
+    "remote": "https://github.com/SamsungSAILMontreal/TinyRecursiveModels.git",
+    "commit": "7de0d20c8f26df706e2c7b3a21ceaf0b3542c953"
+  },
+  "email": "bruno@lucena.cloud",
+  "root": "/Users/brunolucena/workspace/bruno/repos/homelab/flux/ai/trm",
+  "host": "studio.local",
+  "executable": "/Users/brunolucena/workspace/bruno/repos/homelab/flux/ai/trm-finetune/.venv/bin/python",
+  "writerId": "ehqpzklaf55v4fdw8zc0dkdpvfdjwj8f"
+}

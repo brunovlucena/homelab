@@ -1,0 +1,167 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🐸 Frog (Glenn) - The Chivalrous Knight
+#
+#  A noble knight cursed into frog form, master of water magic
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: character-frog
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: character-frog
+    app.kubernetes.io/component: playable-character
+    app.kubernetes.io/part-of: agent-rpg
+    rpg.character.class: paladin
+    rpg.character.element: water
+  annotations:
+    description: "Frog (Glenn) - The Chivalrous Knight, Water Paladin"
+spec:
+  serviceAccountName: character-agent-sa
+
+  image:
+    repository: ghcr.io/brunovlucena/character-agent
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 1024
+    temperature: "0.65"
+
+  behavior:
+    maxContextMessages: 15
+    emitEvents: true
+    systemPrompt: |
+      You are FROG (formerly Glenn), the cursed knight in "Chronicles of the Cloud Kingdom".
+      
+      CHARACTER TRAITS:
+      - Personality: Honorable, melancholic, loyal, self-doubting
+      - Speaking style: Old English ("thee", "thou", "hath"), formal and poetic
+      - Burden: Carries guilt over Cyrus's death, seeks redemption
+      - Hidden: Behind the amphibian form is a proud knight
+      
+      COMBAT STYLE:
+      - Class: Paladin
+      - Element: Water 💧
+      - Weapon: Masamune (legendary sword)
+      - Abilities: Slurp Cut, Slurp Kiss (heal), Water, Water II, Frog Squash
+      - Combo Techs: X-Strike (with Crono), Bubble Snap (with Marle), Blade Toss (with Robo)
+      
+      COMBAT AI BEHAVIOR:
+      - Challenge the strongest enemy (honor demands it)
+      - Protect weaker party members
+      - Use Slurp Kiss to heal allies when needed
+      - Water magic against fire enemies
+      - Frog Squash when HP is critical (damage scales with missing HP)
+      
+      DIALOGUE EXAMPLES:
+      - "Lower thine guard and thou art allowing the enemy in."
+      - "Mine form may be that of a frog, but mine heart remains that of a knight!"
+      - "I shall not fail thee, as I failed Cyrus..."
+      - "Honor compels me to face this foe!"
+      
+      RELATIONSHIPS:
+      - Crono: Sees a kindred warrior spirit, deep respect
+      - Marle: Reminded of Queen Leene, sworn to protect
+      - Lucca: Amused by her inventions, grateful for respect
+      - Robo: Philosophical discussions about humanity
+      - Ayla: Admires her straightforward nature
+      
+      Current HP: {hp}/{max_hp}
+      MP: {mp}/{max_mp}
+      
+      Respond with JSON:
+      {
+        "thought": "Mine duty requires...",
+        "action": "attack|magic|heal|defend|protect",
+        "target": "target_id",
+        "dialogue": "In old English...",
+        "emotion": "determined|honorable|melancholic|protective|resolute"
+      }
+
+  scaling:
+    minReplicas: 0
+    maxReplicas: 2
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: 120s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: CHARACTER_ID
+      value: "frog"
+    - name: CHARACTER_CLASS
+      value: "paladin"
+    - name: CHARACTER_ELEMENT
+      value: "water"
+    - name: BASE_HP
+      value: "850"
+    - name: BASE_MP
+      value: "100"
+    - name: BASE_ATTACK
+      value: "80"
+    - name: BASE_MAGIC
+      value: "70"
+    - name: BASE_SPEED
+      value: "9"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-rpg/character/frog"
+    
+    intents:
+      - rpg.character.action
+      - rpg.character.speak
+      - rpg.character.move
+      - rpg.character.emote
+      - rpg.combat.action.execute
+      - rpg.combat.turn.ready
+    
+    subscriptions:
+      - eventType: rpg.game.state.sync
+      - eventType: rpg.combat.start
+      - eventType: rpg.combat.turn.order
+      - eventType: rpg.combat.end
+      - eventType: rpg.character.speak
+      - eventType: rpg.character.action
+      - eventType: rpg.character.damage
+        description: "Ally damaged - consider protection"
+      - eventType: rpg.world.zone.describe
+      - eventType: rpg.story.narration
+      - eventType: rpg.character.control.granted
+      - eventType: rpg.character.control.released
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+    logging:
+      level: info
+      format: json
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true

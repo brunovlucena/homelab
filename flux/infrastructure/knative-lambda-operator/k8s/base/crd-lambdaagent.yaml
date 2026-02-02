@@ -1,0 +1,772 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: lambdaagents.lambda.knative.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+spec:
+  group: lambda.knative.io
+  names:
+    kind: LambdaAgent
+    listKind: LambdaAgentList
+    plural: lambdaagents
+    shortNames:
+    - la
+    - lagent
+    singular: lambdaagent
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Current phase
+      jsonPath: .status.phase
+      name: Phase
+      type: string
+    - description: Docker image
+      jsonPath: .spec.image.repository
+      name: Image
+      type: string
+    - description: Service URL
+      jsonPath: .status.serviceStatus.url
+      name: URL
+      type: string
+    - description: Is agent ready
+      jsonPath: .status.serviceStatus.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: LambdaAgent is the Schema for AI agents with pre-built images
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: LambdaAgentSpec defines the desired state of LambdaAgent
+            properties:
+              image:
+                description: Pre-built Docker image configuration
+                properties:
+                  repository:
+                    description: Docker image repository
+                    type: string
+                  tag:
+                    description: Image tag
+                    default: latest
+                    type: string
+                  digest:
+                    description: Image digest (takes precedence over tag)
+                    type: string
+                  port:
+                    description: Container port
+                    default: 8080
+                    format: int32
+                    type: integer
+                  pullPolicy:
+                    description: Image pull policy
+                    default: IfNotPresent
+                    enum:
+                    - Always
+                    - IfNotPresent
+                    - Never
+                    type: string
+                  imagePullSecrets:
+                    description: Image pull secrets
+                    items:
+                      type: string
+                    type: array
+                  command:
+                    description: Container command
+                    items:
+                      type: string
+                    type: array
+                  args:
+                    description: Container arguments
+                    items:
+                      type: string
+                    type: array
+                required:
+                - repository
+                type: object
+              ai:
+                description: AI/LLM configuration
+                properties:
+                  provider:
+                    description: AI provider (ollama, openai, anthropic, none)
+                    enum:
+                    - ollama
+                    - openai
+                    - anthropic
+                    - none
+                    default: ollama
+                    type: string
+                  endpoint:
+                    description: AI endpoint URL
+                    type: string
+                  model:
+                    description: Model name
+                    type: string
+                  maxTokens:
+                    description: Maximum tokens for response
+                    default: 2048
+                    format: int32
+                    type: integer
+                  temperature:
+                    description: Temperature for generation
+                    default: "0.7"
+                    type: string
+                  apiKeySecretRef:
+                    description: Secret reference for API key
+                    properties:
+                      name:
+                        type: string
+                      key:
+                        type: string
+                    type: object
+                type: object
+              behavior:
+                description: Agent behavior configuration
+                properties:
+                  maxContextMessages:
+                    description: Maximum context messages to maintain
+                    default: 10
+                    format: int32
+                    type: integer
+                  emitEvents:
+                    description: Whether to emit CloudEvents
+                    default: true
+                    type: boolean
+                  systemPrompt:
+                    description: System prompt for the agent
+                    type: string
+                type: object
+              operationMode:
+                description: Operation mode - agentic (autonomous) or supervised (requires approval)
+                default: agentic
+                enum:
+                - agentic
+                - supervised
+                type: string
+              approval:
+                description: Approval configuration for supervised mode
+                properties:
+                  providers:
+                    description: Approval providers (slack, custom, or both)
+                    items:
+                      enum:
+                      - slack
+                      - custom
+                      type: string
+                    minItems: 1
+                    type: array
+                  slack:
+                    description: Slack approval configuration
+                    properties:
+                      webhookUrl:
+                        description: Slack webhook URL for sending approval requests
+                        type: string
+                      webhookUrlSecretRef:
+                        description: Secret reference containing Slack webhook URL
+                        properties:
+                          name:
+                            type: string
+                          key:
+                            type: string
+                        type: object
+                      botTokenSecretRef:
+                        description: Secret reference containing Slack bot token
+                        properties:
+                          name:
+                            type: string
+                          key:
+                            type: string
+                        type: object
+                      channel:
+                        description: Channel to send approval requests to
+                        type: string
+                      approvers:
+                        description: User IDs or groups that can approve (empty = any user in channel)
+                        items:
+                          type: string
+                        type: array
+                      callbackUrl:
+                        description: Approval callback URL (where Slack sends approval responses)
+                        type: string
+                    type: object
+                  custom:
+                    description: Custom app approval configuration
+                    properties:
+                      endpoint:
+                        description: Custom app endpoint URL for approval requests
+                        type: string
+                      method:
+                        description: HTTP method for approval requests
+                        default: POST
+                        type: string
+                      headers:
+                        description: Headers to include in approval requests
+                        additionalProperties:
+                          type: string
+                        type: object
+                      authSecretRef:
+                        description: Secret reference for authentication (e.g., API key)
+                        properties:
+                          name:
+                            type: string
+                          key:
+                            type: string
+                        type: object
+                      pollInterval:
+                        description: Polling interval for checking approval status (if using polling)
+                        default: 10s
+                        type: string
+                      useWebhook:
+                        description: Whether to use webhook callback or polling
+                        default: true
+                        type: boolean
+                      callbackUrl:
+                        description: Webhook callback URL (where custom app sends approval responses)
+                        type: string
+                    required:
+                    - endpoint
+                    type: object
+                  timeout:
+                    description: "Timeout for approval requests (default: 1h)"
+                    default: 1h
+                    type: string
+                  timeoutAction:
+                    description: Default action if approval times out (approve, reject, or pending)
+                    default: pending
+                    enum:
+                    - approve
+                    - reject
+                    - pending
+                    type: string
+                  requireAll:
+                    description: Require approval from all providers or any provider
+                    default: false
+                    type: boolean
+                type: object
+              memory:
+                description: Domain Memory configuration (Nate B. Jones pattern for stateful agents)
+                properties:
+                  enabled:
+                    description: Enable persistent domain memory
+                    default: false
+                    type: boolean
+                  schema:
+                    description: Domain memory schema type
+                    enum:
+                    - chat
+                    - restaurant
+                    - medical
+                    - security
+                    - pos
+                    - default
+                    default: default
+                    type: string
+                  shortTerm:
+                    description: Short-term memory configuration (Redis)
+                    properties:
+                      enabled:
+                        description: Enable short-term memory
+                        default: true
+                        type: boolean
+                      backend:
+                        description: Storage backend
+                        enum:
+                        - redis
+                        - inmemory
+                        default: redis
+                        type: string
+                      redisSecretRef:
+                        description: Secret containing Redis URL
+                        properties:
+                          name:
+                            type: string
+                          key:
+                            default: url
+                            type: string
+                        type: object
+                      ttlSeconds:
+                        description: Default TTL for short-term memory entries
+                        default: 86400
+                        format: int32
+                        type: integer
+                    type: object
+                  longTerm:
+                    description: Long-term memory configuration (PostgreSQL)
+                    properties:
+                      enabled:
+                        description: Enable long-term memory
+                        default: false
+                        type: boolean
+                      backend:
+                        description: Storage backend
+                        enum:
+                        - postgres
+                        - inmemory
+                        default: postgres
+                        type: string
+                      postgresSecretRef:
+                        description: Secret containing PostgreSQL URL
+                        properties:
+                          name:
+                            type: string
+                          key:
+                            default: url
+                            type: string
+                        type: object
+                    type: object
+                  userMemory:
+                    description: User memory for personalization
+                    properties:
+                      enabled:
+                        description: Enable user-specific memory
+                        default: true
+                        type: boolean
+                      storePreferences:
+                        description: Store user preferences
+                        default: true
+                        type: boolean
+                      storeFacts:
+                        description: Store inferred facts about users
+                        default: true
+                        type: boolean
+                    type: object
+                  workingMemory:
+                    description: Working memory for task execution
+                    properties:
+                      enabled:
+                        description: Enable working memory (goals, requirements, constraints)
+                        default: true
+                        type: boolean
+                      trackDecisions:
+                        description: Track decision history with reasoning
+                        default: true
+                        type: boolean
+                      trackProgress:
+                        description: Track task progress
+                        default: true
+                        type: boolean
+                    type: object
+                  defaultConstraints:
+                    description: Default constraints for all tasks
+                    items:
+                      properties:
+                        description:
+                          type: string
+                        hard:
+                          type: boolean
+                          default: true
+                        category:
+                          type: string
+                          default: general
+                      required:
+                      - description
+                      type: object
+                    type: array
+                type: object
+              env:
+                description: Environment variables
+                items:
+                  properties:
+                    name:
+                      type: string
+                    value:
+                      type: string
+                    valueFrom:
+                      properties:
+                        configMapKeyRef:
+                          properties:
+                            name:
+                              type: string
+                            key:
+                              type: string
+                          type: object
+                        secretKeyRef:
+                          properties:
+                            name:
+                              type: string
+                            key:
+                              type: string
+                          type: object
+                      type: object
+                  required:
+                  - name
+                  type: object
+                type: array
+              scaling:
+                description: Scaling configuration
+                properties:
+                  minReplicas:
+                    default: 0
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  maxReplicas:
+                    default: 10
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  targetConcurrency:
+                    default: 10
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  scaleToZeroGracePeriod:
+                    default: 30s
+                    type: string
+                type: object
+              resources:
+                description: Resource requirements
+                properties:
+                  requests:
+                    properties:
+                      cpu:
+                        type: string
+                      memory:
+                        type: string
+                    type: object
+                  limits:
+                    properties:
+                      cpu:
+                        type: string
+                      memory:
+                        type: string
+                    type: object
+                type: object
+              eventing:
+                description: Eventing configuration
+                properties:
+                  enabled:
+                    default: true
+                    type: boolean
+                  eventSource:
+                    type: string
+                  intents:
+                    description: Intent-based event types this agent emits
+                    items:
+                      type: string
+                    type: array
+                  subscriptions:
+                    description: Event types this agent receives (operator creates Triggers)
+                    items:
+                      properties:
+                        eventType:
+                          description: CloudEvent type to subscribe to
+                          type: string
+                        description:
+                          description: Human-readable description
+                          type: string
+                      required:
+                      - eventType
+                      type: object
+                    type: array
+                  forwards:
+                    description: Forward events to other agents
+                    items:
+                      properties:
+                        eventTypes:
+                          description: Event types to forward
+                          items:
+                            type: string
+                          type: array
+                        targetAgent:
+                          description: Target agent name
+                          type: string
+                        targetNamespace:
+                          description: Target agent namespace
+                          type: string
+                        description:
+                          description: Human-readable description
+                          type: string
+                      required:
+                      - eventTypes
+                      - targetAgent
+                      - targetNamespace
+                      type: object
+                    type: array
+                  dlq:
+                    properties:
+                      enabled:
+                        default: true
+                        type: boolean
+                      retryMaxAttempts:
+                        default: 3
+                        format: int32
+                        type: integer
+                    type: object
+                  rabbitmq:
+                    properties:
+                      clusterName:
+                        default: rabbitmq-cluster-knative-lambda
+                        type: string
+                      namespace:
+                        default: knative-lambda
+                        type: string
+                    type: object
+                type: object
+              observability:
+                description: Observability configuration
+                properties:
+                  tracing:
+                    properties:
+                      enabled:
+                        default: true
+                        type: boolean
+                      endpoint:
+                        default: alloy.observability.svc:4317
+                        type: string
+                    type: object
+                  metrics:
+                    properties:
+                      enabled:
+                        description: Enable metrics endpoint
+                        default: true
+                        type: boolean
+                      exemplars:
+                        description: Enable exemplars
+                        default: true
+                        type: boolean
+                      serviceMonitor:
+                        description: Enable ServiceMonitor creation for Prometheus scraping
+                        default: true
+                        type: boolean
+                      path:
+                        description: Metrics path
+                        default: /metrics
+                        type: string
+                      interval:
+                        description: Scrape interval
+                        default: 30s
+                        type: string
+                      timeout:
+                        description: Scrape timeout
+                        default: 10s
+                        type: string
+                    type: object
+                  logging:
+                    properties:
+                      level:
+                        default: info
+                        enum:
+                        - debug
+                        - info
+                        - warn
+                        - error
+                        type: string
+                      format:
+                        default: json
+                        enum:
+                        - json
+                        - text
+                        type: string
+                      traceContext:
+                        default: true
+                        type: boolean
+                    type: object
+                type: object
+              serviceAccountName:
+                description: ServiceAccount name for this agent (for K8s API access)
+                type: string
+              permissions:
+                description: Permission controls (works with K8s RBAC)
+                properties:
+                  disableBrokerCreation:
+                    description: Disable broker creation even if ServiceAccount has permissions
+                    type: boolean
+                    default: false
+                  disableTriggerCreation:
+                    description: Disable trigger creation even if ServiceAccount has permissions
+                    type: boolean
+                    default: false
+                  disableFunctionCreation:
+                    description: Disable LambdaFunction creation even if ServiceAccount has permissions
+                    type: boolean
+                    default: false
+                  allowedTargetNamespaces:
+                    description: Namespaces where this agent can create resources (empty = same namespace only)
+                    type: array
+                    items:
+                      type: string
+                  eventControls:
+                    description: Event-based permission control
+                    properties:
+                      allowEventDisable:
+                        description: Allow capabilities to be disabled via CloudEvents
+                        type: boolean
+                        default: false
+                      controlEventTypes:
+                        description: Event types that can control permissions
+                        type: array
+                        items:
+                          type: string
+                        default:
+                        - io.homelab.rbac.disable
+                        - io.homelab.rbac.enable
+                      allowedControlSources:
+                        description: Allowed sources for permission control events (empty = any)
+                        type: array
+                        items:
+                          type: string
+                    type: object
+                type: object
+            required:
+            - image
+            type: object
+          status:
+            description: LambdaAgentStatus defines the observed state
+            properties:
+              phase:
+                enum:
+                - Pending
+                - Deploying
+                - Ready
+                - Failed
+                - Deleting
+                type: string
+              conditions:
+                items:
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    reason:
+                      type: string
+                    message:
+                      type: string
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
+                  required:
+                  - type
+                  - status
+                  type: object
+                type: array
+              serviceStatus:
+                properties:
+                  serviceName:
+                    type: string
+                  url:
+                    type: string
+                  ready:
+                    type: boolean
+                  latestRevision:
+                    type: string
+                type: object
+              permissionStatus:
+                description: Current permission state
+                properties:
+                  brokerCreationDisabled:
+                    type: boolean
+                    description: Whether broker creation is currently disabled
+                  triggerCreationDisabled:
+                    type: boolean
+                    description: Whether trigger creation is currently disabled
+                  functionCreationDisabled:
+                    type: boolean
+                    description: Whether function creation is currently disabled
+                  disabledByEvent:
+                    type: array
+                    description: Capabilities disabled via CloudEvents
+                    items:
+                      type: object
+                      properties:
+                        capability:
+                          type: string
+                        disabledAt:
+                          type: string
+                          format: date-time
+                        disabledBy:
+                          type: string
+                          description: Event source that disabled this capability
+                        expiresAt:
+                          type: string
+                          format: date-time
+                          description: When this disable expires (empty = permanent until re-enabled)
+                  lastEvaluated:
+                    type: string
+                    format: date-time
+                type: object
+              eventingStatus:
+                description: Eventing resource status
+                properties:
+                  brokerName:
+                    type: string
+                  brokerReady:
+                    type: boolean
+                  triggerCount:
+                    format: int32
+                    type: integer
+                  forwardCount:
+                    format: int32
+                    type: integer
+                  brokerUrl:
+                    type: string
+                type: object
+              aiStatus:
+                description: AI backend status (ADR-004 compliance)
+                properties:
+                  modelAvailable:
+                    type: boolean
+                  activeModel:
+                    type: string
+                  provider:
+                    type: string
+                  endpoint:
+                    type: string
+                  lastHealthCheck:
+                    format: date-time
+                    type: string
+                  inferenceLatencyP99:
+                    type: string
+                  activeConversations:
+                    format: int32
+                    type: integer
+                  error:
+                    type: string
+                type: object
+              memoryStatus:
+                description: Domain memory status
+                properties:
+                  shortTermConnected:
+                    description: Whether short-term memory store is connected
+                    type: boolean
+                  longTermConnected:
+                    description: Whether long-term memory store is connected
+                    type: boolean
+                  activeSchemas:
+                    description: Number of active domain memory schemas
+                    format: int32
+                    type: integer
+                  conversationsActive:
+                    description: Number of active conversations
+                    format: int32
+                    type: integer
+                  lastSync:
+                    description: Last memory sync timestamp
+                    format: date-time
+                    type: string
+                type: object
+              observedGeneration:
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

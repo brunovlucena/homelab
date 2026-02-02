@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+metadata:
+  name: grafana-dashboards
+  namespace: prometheus
+# Dashboard ConfigMaps are managed in k8s/dashboards/ folder
+resources: []

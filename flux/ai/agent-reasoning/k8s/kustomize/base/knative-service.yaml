@@ -1,0 +1,59 @@
+---
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: agent-reasoning
+  namespace: ai-agents
+  labels:
+    app: agent-reasoning
+    bruno.dev/cluster: air
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "3"
+        autoscaling.knative.dev/target: "1"
+    spec:
+      containerConcurrency: 10
+      timeoutSeconds: 300
+      containers:
+      - image: localhost:5001/agent-reasoning:latest
+        name: agent-reasoning
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        env:
+        - name: MODEL_PATH
+          value: "/models/trm-checkpoint.pth"
+        - name: DEVICE
+          value: "cpu"  # Use CPU for air cluster (no GPU)
+        - name: H_CYCLES
+          value: "3"
+        - name: L_CYCLES
+          value: "6"
+        - name: VERSION
+          value: "0.1.0"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3

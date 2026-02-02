@@ -1,0 +1,13 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: cloudflare-exporter
+  namespace: flux-system
+
+resources:
+  - namespace.yaml
+  - helmrelease.yaml
+  # ServiceMonitor is in prometheus-operator/k8s/servicemonitors/
+  # (requires ServiceMonitor CRD from kube-prometheus-stack)

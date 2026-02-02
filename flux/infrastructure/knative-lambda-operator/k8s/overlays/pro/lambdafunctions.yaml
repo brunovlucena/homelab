@@ -1,0 +1,100 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📦 SAMPLE LAMBDAFUNCTIONS - Pro
+#
+#  Purpose: Example Lambda functions for development/testing
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+# ============================================================================
+# hello-python: Python Lambda loaded from MinIO bucket
+# ============================================================================
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: hello-python
+  namespace: knative-lambda
+  labels:
+    environment: pro
+spec:
+  source:
+    type: minio
+    minio:
+      endpoint: minio.minio.svc.cluster.local:9000
+      bucket: lambda-functions
+      key: hello-python/
+      secretRef:
+        name: minio-credentials
+  runtime:
+    language: python
+    version: "3.11"
+    handler: main.handler
+  scaling:
+    minReplicas: 0
+    maxReplicas: 10
+    targetConcurrency: 5
+    scaleToZeroGracePeriod: "30s"
+  resources:
+    limits:
+      memory: "128Mi"
+      # cpu: "100m"
+  env:
+    - name: LOG_LEVEL
+      value: debug
+    - name: ENVIRONMENT
+      value: pro
+  build:
+    timeout: "15m"
+    registry: kind-registry:5000
+  eventing:
+    enabled: true
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+---
+# ============================================================================
+# hello-nodejs: Node.js Lambda loaded from MinIO bucket
+# ============================================================================
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaFunction
+metadata:
+  name: hello-nodejs
+  namespace: knative-lambda
+  labels:
+    environment: pro
+spec:
+  source:
+    type: minio
+    minio:
+      endpoint: minio.minio.svc.cluster.local:9000
+      bucket: lambda-functions
+      key: hello-nodejs/
+      secretRef:
+        name: minio-credentials
+  runtime:
+    language: nodejs
+    version: "20"
+    handler: index.handler
+  scaling:
+    minReplicas: 0
+    maxReplicas: 5
+    targetConcurrency: 10
+    scaleToZeroGracePeriod: "30s"
+  resources:
+    limits:
+      memory: "128Mi"
+      # cpu: "100m"
+  env:
+    - name: LOG_LEVEL
+      value: debug
+    - name: ENVIRONMENT
+      value: pro
+  build:
+    timeout: "10m"
+    registry: kind-registry:5000
+  eventing:
+    enabled: true
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+

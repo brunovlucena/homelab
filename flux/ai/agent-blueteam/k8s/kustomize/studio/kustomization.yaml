@@ -1,0 +1,28 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+resources:
+  - ../base
+
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+patches:
+  - target:
+      kind: LambdaAgent
+      name: agent-blueteam
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: ghcr.io/brunovlucena/security-defender
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.2.0"
+      - op: replace
+        path: /spec/scaling/minReplicas
+        value: 0
+      - op: replace
+        path: /spec/scaling/maxReplicas
+        value: 2

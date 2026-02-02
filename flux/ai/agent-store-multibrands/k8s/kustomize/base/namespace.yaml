@@ -1,0 +1,9 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai
+  labels:
+    app.kubernetes.io/name: agent-store-multibrands
+    app.kubernetes.io/part-of: homelab-ai
+    knative.dev/eventing-injection: enabled

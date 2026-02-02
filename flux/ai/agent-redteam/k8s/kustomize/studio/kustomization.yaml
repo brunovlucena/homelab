@@ -1,0 +1,31 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+namespace: ai
+
+kind: Kustomization
+
+resources:
+  - ../base
+
+# Studio environment - using ghcr.io for pre-built images
+# Note: LambdaAgent CRD uses spec.image.repository + tag (not container image),
+# so we use patches instead of kustomize images: section
+patches:
+  - target:
+      kind: LambdaAgent
+      name: agent-redteam
+    patch: |-
+      - op: replace
+        path: /spec/image/repository
+        value: ghcr.io/brunovlucena/exploit-runner
+      - op: replace
+        path: /spec/image/tag
+        value: "v1.2.0"
+      # Enable dry-run mode in studio
+      - op: replace
+        path: /spec/env/1/value
+        value: "true"
+
+# 📝 Studio-specific labels
+commonLabels:
+  environment: studio

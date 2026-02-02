@@ -1,0 +1,31 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knative-serving
+  labels:
+    name: knative-serving
+    knative-serving-injection: enabled
+    app.kubernetes.io/name: knative-serving
+    app.kubernetes.io/part-of: knative
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knative-eventing
+  labels:
+    name: knative-eventing
+    app.kubernetes.io/name: knative-eventing
+    app.kubernetes.io/part-of: knative
+---
+# knative-lambda namespace needed for RabbitmqCluster in 03-knative-deps
+# before knative-lambda workloads are deployed in 04-knative-instances
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: knative-lambda
+  labels:
+    name: knative-lambda
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/part-of: knative-lambda-platform
+

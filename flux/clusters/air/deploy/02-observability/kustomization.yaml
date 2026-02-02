@@ -1,0 +1,11 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 📊 Air Cluster - Observability (Minimal)
+# Only Prometheus for metrics collection
+# Agent-Reasoning exposes Prometheus metrics at /metrics
+
+resources:
+  - ../../../../infrastructure/prometheus-operator
+  - ../../../../infrastructure/linkerd-viz

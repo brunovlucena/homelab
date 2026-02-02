@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+
+# 🏷️ Image override for studio (GHCR Registry)
+images:
+  - name: localhost:5001/homepage-api
+    newName: ghcr.io/brunovlucena/homepage-api
+    newTag: v0.1.27
+  - name: localhost:5001/homepage-frontend
+    newName: ghcr.io/brunovlucena/homepage-frontend
+    newTag: v0.1.27
+
+# 📝 Studio-specific labels
+commonLabels:
+  environment: studio

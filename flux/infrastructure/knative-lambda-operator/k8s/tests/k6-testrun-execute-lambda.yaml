@@ -1,0 +1,131 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 K6 TESTS - Lambda Execution Tests (Consolidated)
+#
+#  Purpose: All lambda execution tests (smoke, load, stress, basic)
+#  Usage: kubectl apply -f k6-testrun-execute-lambda.yaml
+#         Or apply individual tests: kubectl apply -f k6-testrun-execute-lambda.yaml -l test-variant=smoke
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+---
+# 🔥 SMOKE TEST - Quick validation
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: knative-lambda-execute-smoke
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: testing
+    test-type: execute-lambda
+    test-variant: smoke
+spec:
+  parallelism: 1
+  script:
+    configMap:
+      name: knative-lambda-k6-tests
+      file: smoke.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: BASE_URL
+        value: "http://knative-lambda-operator.knative-lambda.svc.cluster.local:8080"
+    resources:
+      limits:
+        # cpu: 100m
+        memory: 128Mi
+
+---
+# 📈 LOAD TEST - Normal production traffic simulation
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: knative-lambda-execute-load
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: testing
+    test-type: execute-lambda
+    test-variant: load
+spec:
+  parallelism: 2
+  script:
+    configMap:
+      name: knative-lambda-k6-tests
+      file: load.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: BASE_URL
+        value: "http://knative-lambda-operator.knative-lambda.svc.cluster.local:8080"
+      - name: LAMBDA_URL
+        value: "http://hello-python.knative-lambda.svc.cluster.local"
+    resources:
+      limits:
+        # cpu: 200m
+        memory: 256Mi
+
+---
+# 💪 STRESS TEST - Find system breaking points
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: knative-lambda-execute-stress
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: testing
+    test-type: execute-lambda
+    test-variant: stress
+spec:
+  parallelism: 4
+  script:
+    configMap:
+      name: knative-lambda-k6-tests
+      file: stress.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: BASE_URL
+        value: "http://knative-lambda-operator.knative-lambda.svc.cluster.local:8080"
+      - name: OPERATOR_HEALTH_URL
+        value: "http://knative-lambda-operator.knative-lambda.svc.cluster.local:8081"
+      - name: LAMBDA_URL
+        value: "http://hello-python.knative-lambda.svc.cluster.local"
+    resources:
+      limits:
+        # cpu: 500m
+        memory: 512Mi
+
+---
+# 🚀 AUTOSCALE EXECUTE TEST - Execute k6-created lambdas with load to trigger autoscaling
+# Phases: 1) Warmup (wake lambdas) 2) High load (trigger scale 1→N pods)
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: knative-lambda-execute-lambda
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: testing
+    test-type: execute-lambda
+    test-variant: autoscale
+spec:
+  parallelism: 2
+  script:
+    configMap:
+      name: knative-lambda-k6-tests
+      file: execute-lambda.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    serviceAccountName: knative-lambda-operator
+    env:
+      - name: NAMESPACE
+        value: "knative-lambda"
+      - name: LAMBDA_COUNT
+        value: "7"
+    resources:
+      limits:
+        memory: 512Mi
+

@@ -1,0 +1,458 @@
+name: 📱 Agent Auditor - Mobile Development Tracker (Week 7-12)
+
+on:
+  issues:
+    types: [opened, labeled, closed, reopened]
+  pull_request:
+    types: [opened, labeled, review_requested, closed, ready_for_review]
+    paths:
+      - 'flux/clusters/homelab/infrastructure/agent-auditor/**'
+      - '.github/workflows/agent-auditor-mobile-dev.yml'
+    # Only run for PRs with mobile development-related labels
+  issue_comment:
+    types: [created]
+
+env:
+  PROJECT_NUMBER: 1  # Update with your actual project number
+  ORG: brunovlucena
+
+jobs:
+  track-mobile-tasks:
+    name: 📱 Track Mobile Development Tasks
+    runs-on: [self-hosted]
+    if: |
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'mobile')) ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'mobile') ||
+        contains(github.event.pull_request.labels.*.name, 'ios') ||
+        contains(github.event.pull_request.labels.*.name, 'android') ||
+        contains(github.event.pull_request.labels.*.name, 'week-7-12') ||
+        contains(github.event.pull_request.labels.*.name, 'week-13-18')
+      ))
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    steps:
+      - name: 📊 Add to Mobile Development Project
+        uses: actions/add-to-project@v0.5.0
+        with:
+          project-url: https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 🏷️ Categorize Mobile Task
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue || context.payload.pull_request;
+            const title = issue.title.toLowerCase();
+            const body = (issue.body || '').toLowerCase();
+            
+            let platform = 'cross-platform';
+            let category = 'general';
+            let additionalLabels = ['week-7-12'];
+            
+            // Detect platform
+            if (title.includes('ios') || body.includes('swift') || body.includes('xcode')) {
+              platform = 'ios';
+              additionalLabels.push('ios', 'phase-1');
+            } else if (title.includes('android') || body.includes('kotlin') || body.includes('jetpack')) {
+              platform = 'android';
+              additionalLabels.push('android', 'phase-2', 'week-13-18');
+            }
+            
+            // Categorize by feature
+            if (title.includes('notification') || title.includes('push')) {
+              category = 'notifications';
+              additionalLabels.push('push-notifications', 'apns');
+            } else if (title.includes('file') || title.includes('upload')) {
+              category = 'file-management';
+              additionalLabels.push('file-upload', 'minio');
+            } else if (title.includes('ui') || title.includes('screen')) {
+              category = 'ui-implementation';
+              additionalLabels.push('ui', 'design');
+            } else if (title.includes('api') || title.includes('backend')) {
+              category = 'backend-integration';
+              additionalLabels.push('api-client', 'networking');
+            } else if (title.includes('test') || title.includes('e2e')) {
+              category = 'testing';
+              additionalLabels.push('testing', 'qa');
+            }
+            
+            // Add labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: additionalLabels
+            });
+            
+            // Determine phase and timeline
+            const isIOS = platform === 'ios' || additionalLabels.includes('ios');
+            const phase = isIOS ? 'Phase 1 (iOS)' : 'Phase 2 (Android)';
+            const timeline = isIOS ? 'Week 7-12 (Dec 13, 2025 - Jan 17, 2026)' : 'Week 13-18 (Jan 20 - Feb 21, 2026)';
+            const budget = isIOS ? '$30K' : '$30K (Android)';
+            
+            const comment = `📱 **Mobile Development Task Tracked**
+            
+            - **Platform**: ${platform.toUpperCase()}
+            - **Category**: ${category}
+            - **Phase**: ${phase}
+            - **Timeline**: ${timeline}
+            - **Budget**: ${budget}
+            
+            **📋 ${isIOS ? 'Week 12' : 'Week 18'} Checkpoint Criteria**:
+            ${category === 'notifications' ? `- [ ] Push notifications functional on test devices
+            - [ ] APNs integration complete
+            - [ ] Notification tapped → incident details flow working
+            - [ ] Background notification handling` : ''}
+            ${category === 'file-management' ? `- [ ] File upload (PDF 50MB, MD/TXT 10MB, YAML 5MB)
+            - [ ] Progress indicator during upload
+            - [ ] Upload success/failure handling
+            - [ ] MinIO backend integration` : ''}
+            ${category === 'ui-implementation' ? `- [ ] iOS design guidelines followed
+            - [ ] Responsive layouts for iPhone/iPad
+            - [ ] Accessibility (VoiceOver) support
+            - [ ] Dark mode support` : ''}
+            ${category === 'backend-integration' ? `- [ ] OpenAPI client generated
+            - [ ] Authentication token management
+            - [ ] Error handling and retry logic
+            - [ ] Offline capability (where applicable)` : ''}
+            ${category === 'testing' ? `- [ ] Unit tests for critical paths
+            - [ ] UI tests for core flows
+            - [ ] E2E test: notification → tap → incident
+            - [ ] Performance testing (p95 < 2s)` : ''}
+            
+            **Blockers/Dependencies**:
+            ${isIOS ? '- ✅ Week 6 requirements sprint complete\n- ⚠️ Backend API contract must be ready' : '- ⚠️ iOS Phase 1 must be complete\n- ⚠️ Android-specific backend changes'}
+            
+            ---
+            🔗 [Mobile Development Tracker](https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }})
+            📖 [Mobile Requirements](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/mobile/REQUIREMENTS.md)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: comment
+            });
+
+  backend-api-readiness:
+    name: 🔌 Backend API Readiness Check
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'backend-api') ||
+        contains(github.event.pull_request.labels.*.name, 'mobile') ||
+        contains(github.event.pull_request.labels.*.name, 'ios') ||
+        contains(github.event.pull_request.labels.*.name, 'android')
+      )
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: 📋 Validate OpenAPI Spec
+        id: validate-api
+        run: |
+          # Check if OpenAPI spec exists
+          if [ -f "flux/clusters/homelab/infrastructure/agent-auditor/docs/openapi.yaml" ]; then
+            echo "✅ OpenAPI spec found"
+            echo "spec_found=true" >> $GITHUB_OUTPUT
+            
+            # Validate spec (requires openapi-generator or similar)
+            # docker run --rm -v ${PWD}:/local openapitools/openapi-generator-cli validate \
+            #   -i /local/flux/clusters/homelab/infrastructure/agent-auditor/docs/openapi.yaml
+          else
+            echo "⚠️ OpenAPI spec not found"
+            echo "spec_found=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🔔 Notify Mobile Team
+        if: steps.validate-api.outputs.spec_found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Find mobile dependency issues
+            const { data: mobileIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'mobile,backend-dependency',
+              state: 'open'
+            });
+            
+            const comment = `🔌 **Backend API Update Available**
+            
+            A new backend API version is ready for mobile integration.
+            
+            **📋 Changes in this PR**:
+            - Review the updated OpenAPI spec
+            - Check for breaking changes
+            - Update mobile client code if needed
+            
+            **📱 Mobile Team**: Please review and test against this API version.
+            
+            **Related Mobile Issues**:
+            ${mobileIssues.map(i => `- #${i.number}: ${i.title}`).join('\n') || 'None found'}
+            
+            ---
+            📖 [OpenAPI Spec](https://github.com/${{ github.repository }}/blob/${{ github.event.pull_request.head.ref }}/flux/clusters/homelab/infrastructure/agent-auditor/docs/openapi.yaml)
+            📖 [API Client Guide](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/mobile/API_CLIENT.md)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: comment
+            });
+            
+            // Update mobile dependency issues
+            for (const issue of mobileIssues) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `✅ Backend API ready! Review PR #${context.payload.pull_request.number}`
+              });
+            }
+
+  testflight-deployment:
+    name: 🚀 TestFlight Deployment Tracking
+    runs-on: [self-hosted]
+    if: |
+      github.event_name == 'issues' &&
+      contains(github.event.issue.labels.*.name, 'testflight')
+    permissions:
+      issues: write
+    steps:
+      - name: 📱 Track TestFlight Build
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            
+            // Extract build number if present
+            const buildMatch = body.match(/Build[:\s]+(\d+)/i);
+            const buildNumber = buildMatch ? buildMatch[1] : 'Unknown';
+            
+            const comment = `🚀 **TestFlight Deployment Tracked**
+            
+            - **Build**: ${buildNumber}
+            - **Platform**: iOS
+            - **Phase**: Week 7-12 (Phase 1)
+            
+            **📋 Pre-Deployment Checklist**:
+            - [ ] All Week 12 acceptance criteria met
+            - [ ] Push notifications tested on test devices
+            - [ ] File upload tested (50MB PDF)
+            - [ ] Performance benchmarks passed (p95 < 2s)
+            - [ ] Accessibility audit complete
+            - [ ] App Store compliance review done
+            
+            **📱 Test Devices**:
+            - iPhone SE 2022
+            - iPhone 13
+            - iPhone 14 Pro
+            - iPad Air 5
+            
+            **👥 Beta Testers**: Invite internal team first, then select users
+            
+            **⚠️ Known Issues**: Document any known issues for testers
+            
+            ---
+            📖 [TestFlight Guide](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/mobile/CI_CD.md#testflight-deployment)
+            📖 [App Store Compliance](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/mobile/APP_STORE_COMPLIANCE.md)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: comment
+            });
+            
+            // Add to Week 12 milestone
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              milestone: 3 // Week 12 milestone
+            });
+
+  week12-ios-checkpoint:
+    name: ✅ Week 12 iOS MVP Checkpoint
+    runs-on: [self-hosted]
+    if: |
+      (github.event_name == 'issues' &&
+       github.event.action == 'closed' &&
+       contains(github.event.issue.labels.*.name, 'week-12-checkpoint')) ||
+      (github.event_name == 'pull_request' && (
+        contains(github.event.pull_request.labels.*.name, 'mobile') ||
+        contains(github.event.pull_request.labels.*.name, 'ios') ||
+        contains(github.event.pull_request.labels.*.name, 'week-7-12')
+      ))
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: 📋 Validate iOS MVP Checkpoint
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Query iOS Phase 1 tasks
+            const { data: iosTasks } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'ios,phase-1',
+              milestone: 3, // Week 12 milestone
+              state: 'all'
+            });
+            
+            const totalTasks = iosTasks.length;
+            const completedTasks = iosTasks.filter(i => i.state === 'closed').length;
+            
+            // Check critical features
+            const features = {
+              notifications: iosTasks.some(t => t.labels.some(l => l.name === 'push-notifications') && t.state === 'closed'),
+              fileUpload: iosTasks.some(t => t.labels.some(l => l.name === 'file-upload') && t.state === 'closed'),
+              ui: iosTasks.some(t => t.labels.some(l => l.name === 'ui') && t.state === 'closed'),
+              api: iosTasks.some(t => t.labels.some(l => l.name === 'api-client') && t.state === 'closed'),
+              testing: iosTasks.some(t => t.labels.some(l => l.name === 'testing') && t.state === 'closed')
+            };
+            
+            // Check TestFlight deployment
+            const { data: testflightIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'testflight',
+              state: 'closed'
+            });
+            
+            const testflightReady = testflightIssues.length > 0;
+            
+            const checkpointPassed = 
+              Object.values(features).every(v => v === true) &&
+              testflightReady &&
+              (completedTasks / totalTasks) >= 0.90; // 90% completion
+            
+            const statusEmoji = checkpointPassed ? '✅' : '❌';
+            const statusText = checkpointPassed ? 'PASSED' : 'NOT PASSED';
+            
+            const checkpointReport = `## ${statusEmoji} Week 12 iOS MVP Checkpoint: ${statusText}
+            
+            **Date**: ${new Date().toISOString().split('T')[0]}
+            **Target Date**: January 17, 2026 (Friday)
+            **Phase**: iOS-Only MVP (Phase 1)
+            
+            ### 📊 Feature Completion Status
+            
+            | Feature | Status |
+            |---------|--------|
+            | Push Notifications | ${features.notifications ? '✅' : '❌'} |
+            | File Upload | ${features.fileUpload ? '✅' : '❌'} |
+            | UI Implementation | ${features.ui ? '✅' : '❌'} |
+            | Backend API Integration | ${features.api ? '✅' : '❌'} |
+            | Testing & QA | ${features.testing ? '✅' : '❌'} |
+            | TestFlight Deployment | ${testflightReady ? '✅' : '❌'} |
+            
+            **Tasks Completed**: ${completedTasks} / ${totalTasks} (${Math.round((completedTasks / totalTasks) * 100)}%)
+            
+            ### 🎯 Overall Status
+            
+            ${checkpointPassed ? `
+            ✅ **iOS MVP READY FOR LAUNCH!**
+            
+            **🎉 MILESTONE ACHIEVED!**
+            
+            **Next Steps**:
+            1. 📱 Submit iOS app to App Store
+            2. 📣 Announce iOS launch to users
+            3. 📊 Monitor production metrics (first 48 hours critical)
+            4. 🔄 Begin Android Phase 2 (Week 13-18)
+            5. 📝 Conduct iOS launch retrospective
+            6. 🎯 Plan post-launch feature iterations
+            
+            **Android Timeline**: Week 13-18 (Jan 20 - Feb 21, 2026)
+            
+            🎊 **CONGRATULATIONS TO THE ENTIRE TEAM!**
+            ` : `
+            ❌ **iOS MVP NOT READY**
+            
+            **Blocking Items**:
+            ${!features.notifications ? '- 🔴 Push notifications not complete' : ''}
+            ${!features.fileUpload ? '- 🔴 File upload not complete' : ''}
+            ${!features.ui ? '- 🔴 UI implementation not complete' : ''}
+            ${!features.api ? '- 🔴 Backend API integration not complete' : ''}
+            ${!features.testing ? '- 🔴 Testing & QA not complete' : ''}
+            ${!testflightReady ? '- 🔴 TestFlight deployment not done' : ''}
+            
+            **Completion**: ${Math.round((completedTasks / totalTasks) * 100)}% (need >= 90%)
+            
+            **⚠️ Timeline Impact**: 
+            - iOS launch will be delayed
+            - Android Phase 2 may need to be rescheduled
+            - Executive stakeholders need to be informed
+            
+            **Required Actions**:
+            1. Prioritize blocking features
+            2. Consider extending timeline by 1-2 weeks
+            3. Daily standup until launch ready
+            4. Reassess resource allocation
+            5. Update stakeholder communications
+            `}
+            
+            ---
+            
+            📊 [View Mobile Development Board](https://github.com/users/${{ env.ORG }}/projects/${{ env.PROJECT_NUMBER }})
+            📖 [Mobile Requirements](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/mobile/REQUIREMENTS.md)
+            📱 [TestFlight Guide](https://github.com/${{ github.repository }}/blob/main/flux/clusters/homelab/infrastructure/agent-auditor/docs/03-for-engineers/mobile/CI_CD.md)`;
+            
+            // Post checkpoint report
+            const { data: checkpointIssues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'week-12-checkpoint',
+              state: 'open'
+            });
+            
+            if (checkpointIssues.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: checkpointIssues[0].number,
+                body: checkpointReport
+              });
+              
+              if (checkpointPassed) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: checkpointIssues[0].number,
+                  state: 'closed',
+                  labels: ['week-12-checkpoint', 'checkpoint-passed', 'ios-launch-ready']
+                });
+                
+                // Create Android Phase 2 kickoff issue
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title: '🤖 Android Phase 2 Kickoff (Week 13-18)',
+                  body: `**iOS launch successful! Time to start Android development.**
+                  
+                  **Timeline**: Week 13-18 (Jan 20 - Feb 21, 2026)
+                  **Budget**: $30K
+                  
+                  **Checklist**:
+                  - [ ] Android team kickoff meeting
+                  - [ ] Review iOS learnings and feedback
+                  - [ ] Setup Android dev environment
+                  - [ ] Define Android-specific requirements
+                  - [ ] Create Android development tasks`,
+                  labels: ['android', 'phase-2', 'week-13-18', 'kickoff'],
+                  milestone: 4 // Week 18 milestone
+                });
+              }
+            }
+

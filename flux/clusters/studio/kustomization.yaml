@@ -1,0 +1,18 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 🚀 Studio Cluster - Deploy Root
+# References all phase Kustomizations
+
+resources:
+  - deploy/01-core-kustomization.yaml
+  - deploy/02-observability-kustomization.yaml
+  - deploy/02b-observability-extras-kustomization.yaml
+  - deploy/03-knative-deps-kustomization.yaml
+  - deploy/04-knative-instances-kustomization.yaml
+  - deploy/05-testing-kustomization.yaml
+  - deploy/06-ci-kustomization.yaml
+  - deploy/07-apps-kustomization.yaml
+  - deploy/08-ai-kustomization.yaml
+  - deploy/09-extra-kustomization.yaml

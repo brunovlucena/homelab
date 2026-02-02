@@ -1,0 +1,164 @@
+---
+# k6 Smoke Test for agent-blueteam
+# Tests basic defense endpoints and MAG7 boss mechanics
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-blueteam-smoke
+  namespace: agent-blueteam
+  labels:
+    app.kubernetes.io/name: agent-blueteam
+    app.kubernetes.io/component: testing
+    test-type: smoke
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-blueteam-smoke-script
+      file: script.js
+  runner:
+    image: grafana/k6:0.47.0
+    env:
+      - name: TARGET_URL
+        value: "http://agent-blueteam.agent-blueteam.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: "256Mi"
+        cpu: "200m"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-blueteam-smoke-script
+  namespace: agent-blueteam
+data:
+  script.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { Counter, Trend } from 'k6/metrics';
+    
+    // Custom metrics
+    const threatsAnalyzed = new Counter('threats_analyzed');
+    const defensesActivated = new Counter('defenses_activated');
+    const mag7DamageDealt = new Counter('mag7_damage_dealt');
+    const responseTime = new Trend('response_time_ms');
+    
+    export const options = {
+      stages: [
+        { duration: '10s', target: 2 },   // Ramp up
+        { duration: '30s', target: 2 },   // Hold
+        { duration: '10s', target: 0 },   // Ramp down
+      ],
+      thresholds: {
+        http_req_duration: ['p(95)<1000'],
+        http_req_failed: ['rate<0.1'],
+      },
+    };
+    
+    const BASE_URL = __ENV.TARGET_URL || 'http://localhost';
+    
+    // Exploit event types for testing
+    const EXPLOIT_EVENTS = [
+      {
+        type: 'io.homelab.exploit.executed',
+        exploit_id: 'blue-001',
+        payload: { name: 'SSRF Attack', severity: 'critical' }
+      },
+      {
+        type: 'io.homelab.exploit.success',
+        exploit_id: 'vuln-001',
+        payload: { name: 'Command Injection', severity: 'critical' }
+      },
+      {
+        type: 'io.homelab.exploit.blocked',
+        exploit_id: 'vuln-003',
+        payload: { name: 'Code Execution', severity: 'high' }
+      },
+    ];
+    
+    export function setup() {
+      // Reset MAG7 for clean test
+      const resetRes = http.post(`${BASE_URL}/mag7/reset`);
+      console.log(`MAG7 Reset: ${resetRes.status}`);
+      return { startTime: Date.now() };
+    }
+    
+    export default function() {
+      // Test 1: Health check
+      let res = http.get(`${BASE_URL}/health`);
+      check(res, {
+        'health check status is 200': (r) => r.status === 200,
+        'health check returns healthy': (r) => r.json().status === 'healthy',
+      });
+      responseTime.add(res.timings.duration);
+      
+      // Test 2: Readiness check
+      res = http.get(`${BASE_URL}/ready`);
+      check(res, {
+        'ready check status is 200': (r) => r.status === 200,
+      });
+      
+      // Test 3: MAG7 status
+      res = http.get(`${BASE_URL}/mag7/status`);
+      check(res, {
+        'mag7 status is 200': (r) => r.status === 200,
+        'mag7 has health': (r) => r.json().health !== undefined,
+        'mag7 has heads': (r) => r.json().heads_remaining !== undefined,
+      });
+      
+      // Test 4: Send exploit event (CloudEvent)
+      const exploit = EXPLOIT_EVENTS[Math.floor(Math.random() * EXPLOIT_EVENTS.length)];
+      const headers = {
+        'Content-Type': 'application/json',
+        'ce-type': exploit.type,
+        'ce-source': '/k6-test/smoke',
+        'ce-id': `k6-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        'ce-specversion': '1.0',
+      };
+      
+      res = http.post(`${BASE_URL}/`, JSON.stringify(exploit.payload), { headers });
+      check(res, {
+        'cloudevent accepted': (r) => r.status === 200,
+        'response has status': (r) => r.json().status !== undefined,
+      });
+      threatsAnalyzed.add(1);
+      
+      if (res.json().status === 'defended') {
+        defensesActivated.add(1);
+      }
+      
+      // Test 5: Attack MAG7
+      res = http.post(`${BASE_URL}/mag7/attack`, JSON.stringify({
+        damage: 25,
+        attack_type: 'exploit_blocked'
+      }), { headers: { 'Content-Type': 'application/json' } });
+      
+      check(res, {
+        'mag7 attack accepted': (r) => r.status === 200,
+        'mag7 took damage': (r) => r.json().status === 'damaged' || r.json().status === 'defeated',
+      });
+      
+      if (res.status === 200) {
+        mag7DamageDealt.add(25);
+      }
+      
+      sleep(1);
+    }
+    
+    export function teardown(data) {
+      const duration = (Date.now() - data.startTime) / 1000;
+      console.log(`Test completed in ${duration}s`);
+      
+      // Get final MAG7 status
+      const res = http.get(`${BASE_URL}/mag7/status`);
+      if (res.status === 200) {
+        const status = res.json();
+        console.log(`Final MAG7 Health: ${status.health}/1000`);
+        console.log(`Heads Remaining: ${(status.heads_remaining && status.heads_remaining.length) || 0}`);
+      }
+    }

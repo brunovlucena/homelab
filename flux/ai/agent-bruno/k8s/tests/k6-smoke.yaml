@@ -1,0 +1,165 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔥 K6 SMOKE TEST - AGENT-BRUNO
+#
+#  Purpose: Quick validation that the chatbot is healthy and responding
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-bruno-smoke
+  namespace: agent-bruno
+  labels:
+    app.kubernetes.io/name: agent-bruno
+    app.kubernetes.io/component: testing
+    test-type: smoke
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-bruno-smoke-test
+      file: smoke-test.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: AGENT_BRUNO_URL
+        value: "http://agent-bruno.agent-bruno.svc.cluster.local"
+      - name: NAMESPACE
+        value: "agent-bruno"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+        cpu: 200m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-bruno-smoke-test
+  namespace: agent-bruno
+  labels:
+    app.kubernetes.io/name: agent-bruno
+    app.kubernetes.io/component: testing
+    test-type: smoke
+data:
+  smoke-test.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    
+    // Custom Metrics
+    const healthCheckSuccess = new Rate('smoke_health_check_success');
+    const chatSuccess = new Rate('smoke_chat_success');
+    const responseTime = new Trend('smoke_response_time_ms');
+    const chatErrors = new Counter('smoke_chat_errors');
+    
+    // Configuration
+    const AGENT_URL = __ENV.AGENT_BRUNO_URL || 'http://agent-bruno.agent-bruno.svc.cluster.local';
+    
+    export const options = {
+      scenarios: {
+        smoke: {
+          executor: 'constant-vus',
+          vus: 1,
+          duration: '30s',
+        },
+      },
+      thresholds: {
+        // Health checks should be fast
+        'smoke_health_check_success': ['rate>0.95'],
+        // LLM chat can be slow - allow 50% success for smoke test
+        'smoke_chat_success': ['rate>0.50'],
+        // LLM responses can take 30-60s, set P95 to 90s to account for cold starts
+        'smoke_response_time_ms': ['p(95)<90000'],
+        // Allow higher failure rate for LLM timeouts
+        'http_req_failed': ['rate<0.5'],
+      },
+    };
+    
+    export default function() {
+      // Health Check
+      group('Health Check', () => {
+        const healthRes = http.get(`${AGENT_URL}/health`, { timeout: '10s' });
+        
+        const healthy = check(healthRes, {
+          'health check passes': (r) => r.status === 200,
+        });
+        
+        healthCheckSuccess.add(healthy);
+        responseTime.add(healthRes.timings.duration, { endpoint: 'health' });
+      });
+      
+      sleep(1);
+      
+      // Readiness Check
+      group('Readiness Check', () => {
+        const readyRes = http.get(`${AGENT_URL}/ready`, { timeout: '10s' });
+        
+        check(readyRes, {
+          'readiness check passes': (r) => r.status === 200,
+        });
+      });
+      
+      sleep(1);
+      
+      // Chat Test (LLM responses can be slow, especially with cold starts)
+      group('Chat Test', () => {
+        const chatRes = http.post(`${AGENT_URL}/chat`, JSON.stringify({
+          message: 'Hello! What can you help me with?',
+        }), {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: '120s',  // LLM + cold start can take up to 2 minutes
+        });
+        
+        responseTime.add(chatRes.timings.duration, { endpoint: 'chat' });
+        
+        const success = check(chatRes, {
+          'chat returns 2xx': (r) => r.status >= 200 && r.status < 300,
+          'chat returns response': (r) => {
+            try {
+              const body = JSON.parse(r.body);
+              return body.response && body.response.length > 0;
+            } catch (e) {
+              return false;
+            }
+          },
+        });
+        
+        chatSuccess.add(success);
+        if (!success) {
+          chatErrors.add(1);
+          console.error(`Chat failed: ${chatRes.status} - ${chatRes.body}`);
+        }
+      });
+      
+      sleep(2);
+    }
+    
+    export function handleSummary(data) {
+      const healthMetric = data.metrics['smoke_health_check_success'];
+      const chatMetric = data.metrics['smoke_chat_success'];
+      const responseMetric = data.metrics['smoke_response_time_ms'];
+      
+      const healthRate = healthMetric && healthMetric.values ? healthMetric.values.rate : 0;
+      const chatRate = chatMetric && chatMetric.values ? chatMetric.values.rate : 0;
+      const p95Response = responseMetric && responseMetric.values ? responseMetric.values['p(95)'] : 0;
+      
+      const passed = healthRate >= 0.95;
+      
+      console.log('\n' + '═'.repeat(60));
+      console.log('🤖 AGENT-BRUNO SMOKE TEST RESULTS');
+      console.log('═'.repeat(60));
+      console.log('Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('Health Check Rate: ' + (healthRate * 100).toFixed(1) + '%');
+      console.log('Chat Success Rate: ' + (chatRate * 100).toFixed(1) + '%');
+      console.log('P95 Response Time: ' + (p95Response || 0).toFixed(0) + 'ms');
+      console.log('═'.repeat(60) + '\n');
+      
+      return {};
+    }

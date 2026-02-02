@@ -1,0 +1,16 @@
+# Agent Restaurant - Dependencies
+fastapi>=0.115.6  # Fixed CVE-2024-24762
+uvicorn[standard]>=0.32.1
+httpx>=0.28.1
+cloudevents>=1.12.0  # Latest secure version
+pydantic>=2.12.5  # Latest stable
+python-json-logger>=2.0.7
+opentelemetry-api>=1.30.0
+opentelemetry-sdk>=1.30.0
+opentelemetry-instrumentation-fastapi>=0.47b0
+opentelemetry-exporter-otlp>=1.30.0
+structlog>=24.4.0
+
+# === Agent Optimization (Queueing, Game, Control Theory) ===
+# Installed from local shared-lib during Docker build
+# -e /app/shared-lib

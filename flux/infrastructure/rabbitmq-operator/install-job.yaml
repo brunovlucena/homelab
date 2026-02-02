@@ -1,0 +1,36 @@
+---
+# 🐰 Job to install RabbitMQ Cluster Operator using kubectl krew plugin
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rabbitmq-operator-install
+  namespace: rabbitmq-system
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
+spec:
+  template:
+    metadata:
+      labels:
+        app: rabbitmq-operator-install
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: rabbitmq-installer
+      containers:
+      - name: install-operator
+        image: localhost:5001/kubectl:v1.34.0
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          echo "🐰 Installing RabbitMQ Cluster Operator..."
+          kubectl rabbitmq install-cluster-operator
+          echo "✅ RabbitMQ Cluster Operator installed successfully"
+        volumeMounts:
+        - name: kubeconfig
+          mountPath: /root/.kube
+          readOnly: true
+      volumes:
+      - name: kubeconfig
+        emptyDir: {}
+

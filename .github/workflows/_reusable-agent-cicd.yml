@@ -1,0 +1,514 @@
+# ============================================================================
+# 🤖 Reusable Workflow: AI Agent CI/CD
+# ============================================================================
+# Complete CI/CD pipeline for Python-based AI agents in the homelab.
+# Combines change detection, linting, testing, building, and security scanning.
+#
+# Usage:
+#   jobs:
+#     agent-ci:
+#       uses: ./.github/workflows/_reusable-agent-cicd.yml
+#       with:
+#         agent-name: agent-bruno
+#         working-directory: flux/ai/agent-bruno
+#         image-name: agent-bruno/chatbot
+#         dockerfile: src/chatbot/Dockerfile
+# ============================================================================
+
+name: 🤖 Reusable Agent CI/CD
+
+on:
+  workflow_call:
+    inputs:
+      # Required inputs
+      agent-name:
+        description: 'Name of the agent (e.g., agent-bruno)'
+        required: true
+        type: string
+      working-directory:
+        description: 'Working directory containing the agent'
+        required: true
+        type: string
+      image-name:
+        description: 'Docker image name (e.g., agent-bruno/chatbot)'
+        required: true
+        type: string
+      dockerfile:
+        description: 'Path to Dockerfile relative to working-directory'
+        required: true
+        type: string
+
+      # Optional inputs - Python
+      python-version:
+        description: 'Python version to use'
+        required: false
+        type: string
+        default: '3.12'
+      src-directory:
+        description: 'Source directory relative to working-directory'
+        required: false
+        type: string
+        default: 'src'
+
+      # Optional inputs - Testing
+      run-tests:
+        description: 'Whether to run tests'
+        required: false
+        type: boolean
+        default: true
+      run-lint:
+        description: 'Whether to run linting'
+        required: false
+        type: boolean
+        default: true
+      fail-on-lint-error:
+        description: 'Fail on lint errors'
+        required: false
+        type: boolean
+        default: false
+
+      # Optional inputs - Build
+      copy-shared-lib:
+        description: 'Copy shared-lib to build context'
+        required: false
+        type: boolean
+        default: true
+      platforms:
+        description: 'Docker build platforms'
+        required: false
+        type: string
+        default: 'linux/amd64,linux/arm64'
+      build-context:
+        description: 'Docker build context relative to working-directory'
+        required: false
+        type: string
+        default: 'src'
+
+      # Optional inputs - Security
+      run-security-scan:
+        description: 'Run security scanning'
+        required: false
+        type: boolean
+        default: true
+
+      # Optional inputs - Local Registry (kind at localhost:5001)
+      push-to-local:
+        description: 'Also push to local kind registry'
+        required: false
+        type: boolean
+        default: true
+      local-registry:
+        description: 'Local registry address (default: localhost:5001 for kind)'
+        required: false
+        type: string
+        default: 'localhost:5001'
+
+    outputs:
+      version:
+        description: 'Extracted version'
+        value: ${{ jobs.detect.outputs.version }}
+      docker_tag:
+        description: 'Docker tag used'
+        value: ${{ jobs.detect.outputs.docker_tag }}
+      image_digest:
+        description: 'Built image digest'
+        value: ${{ jobs.build.outputs.digest }}
+      should_build:
+        description: 'Whether build was triggered'
+        value: ${{ jobs.detect.outputs.should_build }}
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Detect Changes
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  detect:
+    name: 🔍 Detect Changes
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      should_build: ${{ steps.should_build.outputs.should_build }}
+      should_deploy: ${{ steps.should_deploy.outputs.should_deploy }}
+      version: ${{ steps.version.outputs.version }}
+      docker_tag: ${{ steps.version.outputs.docker_tag }}
+      is_release: ${{ steps.version.outputs.is_release }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔍 Detect Changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            src:
+              - '${{ inputs.working-directory }}/${{ inputs.src-directory }}/**'
+            k8s:
+              - '${{ inputs.working-directory }}/k8s/**'
+            tests:
+              - '${{ inputs.working-directory }}/tests/**'
+            build:
+              - '${{ inputs.working-directory }}/Dockerfile'
+              - '${{ inputs.working-directory }}/Dockerfile.*'
+              - '${{ inputs.working-directory }}/VERSION'
+              - '${{ inputs.working-directory }}/requirements.txt'
+              - '${{ inputs.working-directory }}/pyproject.toml'
+              - '${{ inputs.working-directory }}/setup.py'
+              - '${{ inputs.working-directory }}/Makefile'
+
+      - name: ✅ Determine if should build
+        id: should_build
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]] || \
+             [[ "${{ steps.filter.outputs.src }}" == "true" ]] || \
+             [[ "${{ steps.filter.outputs.k8s }}" == "true" ]] || \
+             [[ "${{ steps.filter.outputs.build }}" == "true" ]]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🚀 Determine if should deploy
+        id: should_deploy
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]] && \
+             [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 🏷️ Extract Version
+        id: version
+        run: |
+          VERSION_FILE="${{ inputs.working-directory }}/VERSION"
+          if [ -f "$VERSION_FILE" ]; then
+            VERSION=$(cat "$VERSION_FILE" | tr -d '[:space:]')
+          else
+            VERSION="0.1.0"
+          fi
+
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+          if [ "$BRANCH" = "main" ]; then
+            DOCKER_TAG="v$VERSION"
+            IS_RELEASE="true"
+          else
+            DOCKER_TAG="v$VERSION-dev.$SHORT_SHA"
+            IS_RELEASE="false"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "docker_tag=$DOCKER_TAG" >> $GITHUB_OUTPUT
+          echo "is_release=$IS_RELEASE" >> $GITHUB_OUTPUT
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Lint
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  lint:
+    name: 🔍 Lint
+    runs-on: [self-hosted]
+    timeout-minutes: 10
+    if: inputs.run-lint
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}/${{ inputs.src-directory }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: 'pip'
+          cache-dependency-path: ${{ inputs.working-directory }}/${{ inputs.src-directory }}/requirements.txt
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: 🔍 Run Ruff
+        continue-on-error: ${{ !inputs.fail-on-lint-error }}
+        run: ruff check . --output-format=github
+
+      - name: 📐 Check formatting
+        continue-on-error: true
+        run: ruff format --check .
+
+      - name: 🔎 Run MyPy
+        continue-on-error: true
+        run: mypy . --ignore-missing-imports --no-strict-optional
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Test
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  test:
+    name: 🧪 Test
+    runs-on: [self-hosted]
+    timeout-minutes: 15
+    if: inputs.run-tests
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: 'pip'
+          cache-dependency-path: |
+            ${{ inputs.working-directory }}/${{ inputs.src-directory }}/requirements.txt
+            ${{ inputs.working-directory }}/tests/requirements.txt
+
+      - name: 📦 Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio pytest-cov pytest-timeout
+          if [ -f ${{ inputs.src-directory }}/requirements.txt ]; then
+            pip install -r ${{ inputs.src-directory }}/requirements.txt
+          fi
+          if [ -f tests/requirements.txt ]; then
+            pip install -r tests/requirements.txt
+          fi
+
+      - name: 🧪 Run tests
+        continue-on-error: true
+        run: |
+          PYTHONPATH=${{ inputs.src-directory }} pytest tests/ \
+            -v \
+            --tb=short \
+            --timeout=60 \
+            --cov=${{ inputs.src-directory }} \
+            --cov-report=xml \
+            --cov-report=term-missing
+
+      - name: 📤 Upload coverage
+        uses: codecov/codecov-action@v5
+        continue-on-error: true
+        with:
+          files: ${{ inputs.working-directory }}/coverage.xml
+          flags: ${{ inputs.agent-name }}
+          fail_ci_if_error: false
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Build
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  build:
+    name: 🏗️ Build & Push
+    runs-on: [self-hosted]
+    timeout-minutes: 30
+    needs: [detect, lint, test]
+    if: |
+      always() &&
+      needs.detect.outputs.should_build == 'true' &&
+      needs.detect.outputs.should_deploy == 'true' &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Copy shared-lib to build context
+        if: inputs.copy-shared-lib
+        run: |
+          if [ -d "flux/ai/shared-lib" ]; then
+            cp -r flux/ai/shared-lib ${{ inputs.working-directory }}/${{ inputs.build-context }}/shared-lib
+            echo "✅ Copied shared-lib to build context"
+          else
+            echo "⚠️ shared-lib not found, skipping"
+          fi
+
+      - name: 🔧 Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: 🐳 Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: 🔐 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏠 Ensure Kind Registry is Running
+        if: inputs.push-to-local
+        run: |
+          # Check if kind-registry container exists and is running
+          if ! docker ps --format '{{.Names}}' | grep -q '^kind-registry$'; then
+            echo "🔄 Starting Kind registry at ${{ inputs.local-registry }}..."
+            
+            # Remove old container if exists but not running
+            docker rm -f kind-registry 2>/dev/null || true
+            
+            # Start registry container
+            docker run -d \
+              --restart=always \
+              -p 5001:5000 \
+              --name kind-registry \
+              registry:2
+            
+            # Wait for registry to be ready
+            echo "⏳ Waiting for registry to be ready..."
+            for i in {1..30}; do
+              if curl -s http://localhost:5001/v2/ > /dev/null 2>&1; then
+                echo "✅ Kind registry is ready at localhost:5001"
+                break
+              fi
+              sleep 1
+            done
+          else
+            echo "✅ Kind registry is already running"
+          fi
+          
+          # Verify registry is accessible
+          if ! curl -s http://localhost:5001/v2/ > /dev/null 2>&1; then
+            echo "⚠️ Warning: Registry at localhost:5001 is not responding"
+            echo "LOCAL_REGISTRY_AVAILABLE=false" >> $GITHUB_ENV
+          else
+            echo "LOCAL_REGISTRY_AVAILABLE=true" >> $GITHUB_ENV
+          fi
+
+      - name: 🏷️ Extract metadata (GHCR)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ inputs.image-name }}
+          tags: |
+            type=raw,value=${{ needs.detect.outputs.docker_tag }}
+            type=raw,value=latest,enable=${{ needs.detect.outputs.is_release == 'true' }}
+            type=sha,prefix=sha-,format=short
+          labels: |
+            org.opencontainers.image.title=${{ inputs.agent-name }}
+            org.opencontainers.image.description=AI Agent from homelab
+
+      - name: 🏷️ Extract metadata (Local Registry)
+        id: local-meta
+        if: inputs.push-to-local
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ inputs.local-registry }}/${{ inputs.image-name }}
+          tags: |
+            type=raw,value=${{ needs.detect.outputs.docker_tag }}
+            type=raw,value=latest,enable=${{ needs.detect.outputs.is_release == 'true' }}
+            type=sha,prefix=sha-,format=short
+
+      - name: 🏗️ Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.working-directory }}/${{ inputs.build-context }}
+          file: ${{ inputs.working-directory }}/${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ inputs.push-to-local && env.LOCAL_REGISTRY_AVAILABLE == 'true' && steps.local-meta.outputs.tags || '' }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ inputs.agent-name }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.agent-name }}
+          provenance: true
+          sbom: true
+
+      - name: 📋 Build Summary
+        run: |
+          echo "## 🏗️ Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Agent | \`${{ inputs.agent-name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| GHCR Image | \`${{ env.REGISTRY }}/${{ inputs.image-name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Local Image | \`${{ inputs.push-to-local && env.LOCAL_REGISTRY_AVAILABLE == 'true' && format('{0}/{1}', inputs.local-registry, inputs.image-name) || 'N/A' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | \`${{ needs.detect.outputs.docker_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Digest | \`${{ steps.build.outputs.digest }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pushed to GHCR | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pushed to Local | ${{ inputs.push-to-local && env.LOCAL_REGISTRY_AVAILABLE == 'true' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Security Scan
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  security:
+    name: 🔒 Security Scan
+    runs-on: [self-hosted]
+    timeout-minutes: 15
+    needs: [detect, build]
+    if: inputs.run-security-scan && needs.build.result == 'success'
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🛡️ Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: ${{ inputs.working-directory }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: 📤 Upload Trivy SARIF results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Summary
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  summary:
+    name: 📋 Summary
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    needs: [detect, lint, test, build, security]
+    if: always()
+    steps:
+      - name: 📊 Generate Summary
+        run: |
+          echo "## 🤖 ${{ inputs.agent-name }} CI/CD Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pipeline Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Detect | ${{ needs.detect.result == 'success' && '✅' || needs.detect.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ${{ needs.lint.result == 'success' && '✅' || needs.lint.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test | ${{ needs.test.result == 'success' && '✅' || needs.test.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result == 'success' && '✅' || needs.build.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | ${{ needs.security.result == 'success' && '✅' || needs.security.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ needs.detect.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag | \`${{ needs.detect.outputs.docker_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release | \`${{ needs.detect.outputs.is_release }}\` |" >> $GITHUB_STEP_SUMMARY

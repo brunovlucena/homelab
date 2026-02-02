@@ -1,0 +1,127 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📍 Location Agent - Proximity & Geofencing
+#
+#  Tracks user locations and sends proximity alerts to contacts
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: location-agent
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: location-agent
+    app.kubernetes.io/component: location
+    app.kubernetes.io/part-of: agent-chat
+    agentchat.role: capability
+  annotations:
+    description: "Location tracking and proximity alert agent"
+spec:
+  serviceAccountName: location-agent-sa
+
+  image:
+    repository: localhost:5001/location-agent
+    tag: "v1.2.0"
+    port: 8080
+
+  ai:
+    provider: none  # Pure geo-processing, no LLM needed
+
+  behavior:
+    maxContextMessages: 0
+    emitEvents: true
+    systemPrompt: ""
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 10
+    targetConcurrency: 50
+    scaleToZeroGracePeriod: 60s
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  env:
+    - name: AGENT_ROLE
+      value: "location-agent"
+    - name: REDIS_URL
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: REDIS_URL
+    - name: DEFAULT_PROXIMITY_RADIUS_KM
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: DEFAULT_PROXIMITY_RADIUS_KM
+    - name: LOCATION_UPDATE_INTERVAL
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: LOCATION_UPDATE_INTERVAL_SECONDS
+    - name: LOCATION_HISTORY_RETENTION_HOURS
+      valueFrom:
+        configMapKeyRef:
+          name: agentchat-config
+          key: LOCATION_HISTORY_RETENTION_HOURS
+    - name: GEOFENCE_CHECK_ENABLED
+      value: "true"
+    - name: REVERSE_GEOCODE_ENABLED
+      value: "true"
+
+  eventing:
+    enabled: true
+    eventSource: "/agent-chat/location-agent"
+    
+    intents:
+      - io.agentchat.location.proximity.alert
+      - io.agentchat.location.geofence.enter
+      - io.agentchat.location.geofence.exit
+      - io.agentchat.location.city.detected
+    
+    subscriptions:
+      # User location updates
+      - eventType: io.agentchat.location.updated
+        description: "User location update from mobile app"
+      # Geofence management
+      - eventType: io.agentchat.location.geofence.create
+        description: "Create a new geofence"
+      - eventType: io.agentchat.location.geofence.delete
+        description: "Delete a geofence"
+      # Contact location queries
+      - eventType: io.agentchat.location.contacts.query
+        description: "Query contacts' locations"
+
+    dlq:
+      enabled: true
+      retryMaxAttempts: 3
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: true
+    disableFunctionCreation: true
+    allowedTargetNamespaces:
+      - agent-chat

@@ -1,0 +1,915 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📊 K6 SRE METRICS VALIDATION TEST
+#
+#  Purpose: Validate SLOs and metrics from SRE_LAMBDA_METRICS_REPORT.md
+#  Coverage:
+#    - Function error rates < 5%
+#    - Build duration P95 < 120s
+#    - Reconcile duration P95 < 100ms
+#    - Workqueue depth < 10
+#    - Cold start rate < 20%
+#    - Function latency P95 < 5s
+#
+#  Based on: docs/reports/SRE_LAMBDA_METRICS_REPORT.md
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  🔍 SRE METRICS VALIDATION TEST                                        │
+# │  Validates all SLOs defined in SRE_LAMBDA_METRICS_REPORT.md            │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: knative-lambda-sre-metrics
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: testing
+    test-type: sre-validation
+    test-variant: metrics
+spec:
+  # parallelism: 1 ensures operator health checks run on a single pod
+  # (Gauge metrics with 'value' threshold need consistent evaluation)
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: knative-lambda-sre-metrics
+      file: sre-metrics-validation.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: BROKER_URL
+        value: "http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local"
+      - name: OPERATOR_METRICS_URL
+        value: "http://knative-lambda-operator.knative-lambda.svc.cluster.local:8080"
+      - name: OPERATOR_HEALTH_URL
+        value: "http://knative-lambda-operator.knative-lambda.svc.cluster.local:8081"
+      - name: PROMETHEUS_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090"
+      - name: NAMESPACE
+        value: "knative-lambda"
+      # Prometheus Remote Write Configuration
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "false"
+      - name: K6_PROMETHEUS_RW_STALE_MARKERS
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  📈 SRE SLO COMPLIANCE TEST                                            │
+# │  Verifies SLOs are met during sustained load                           │
+# └─────────────────────────────────────────────────────────────────────────┘
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: knative-lambda-sre-slo
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: testing
+    test-type: sre-validation
+    test-variant: slo
+spec:
+  parallelism: 3
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: knative-lambda-sre-metrics
+      file: sre-slo-compliance.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: BROKER_URL
+        value: "http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local"
+      - name: NAMESPACE
+        value: "knative-lambda"
+      - name: LAMBDA_COUNT
+        value: "10"
+      # SLO Thresholds (from SRE report)
+      - name: SLO_ERROR_RATE_PERCENT
+        value: "5"
+      - name: SLO_LATENCY_P95_MS
+        value: "5000"
+      - name: SLO_BUILD_DURATION_P95_S
+        value: "120"
+      - name: SLO_COLD_START_RATE_PERCENT
+        value: "20"
+      # Prometheus Remote Write Configuration
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "false"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: knative-lambda-sre-metrics
+  namespace: knative-lambda
+  labels:
+    app.kubernetes.io/name: knative-lambda
+    app.kubernetes.io/component: testing
+    test-type: sre-validation
+data:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 🔍 SRE METRICS VALIDATION TEST
+  # Validates metrics collection and SLO thresholds
+  # Based on: SRE_LAMBDA_METRICS_REPORT.md
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  sre-metrics-validation.js: |
+    import http from 'k6/http';
+    import { check, fail, group, sleep } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+    import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Custom Metrics for SRE Validation
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    // SLO Validation Metrics
+    const sloErrorRate = new Rate('sre_slo_error_rate_violation');
+    const sloLatencyViolation = new Rate('sre_slo_latency_violation');
+    const sloColdStartViolation = new Rate('sre_slo_coldstart_violation');
+    
+    // Operator Metrics
+    const operatorHealthy = new Gauge('sre_operator_healthy');
+    const operatorMetricsAccessible = new Gauge('sre_operator_metrics_accessible');
+    const workqueueDepth = new Gauge('sre_workqueue_depth');
+    const reconcileDurationP95 = new Gauge('sre_reconcile_duration_p95_ms');
+    
+    // Function Metrics
+    const functionInvocations = new Counter('sre_function_invocations_total');
+    const functionErrors = new Counter('sre_function_errors_total');
+    const functionDuration = new Trend('sre_function_duration_ms');
+    const coldStartCounter = new Counter('sre_cold_starts_total');
+    
+    // Prometheus Query Metrics
+    const prometheusQueryDuration = new Trend('sre_prometheus_query_duration_ms');
+    const prometheusQueryErrors = new Counter('sre_prometheus_query_errors');
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Configuration
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const BROKER_URL = __ENV.BROKER_URL || 'http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local';
+    const OPERATOR_METRICS_URL = __ENV.OPERATOR_METRICS_URL || 'http://knative-lambda-operator.knative-lambda.svc.cluster.local:8080';
+    const OPERATOR_HEALTH_URL = __ENV.OPERATOR_HEALTH_URL || 'http://knative-lambda-operator.knative-lambda.svc.cluster.local:8081';
+    const PROMETHEUS_URL = __ENV.PROMETHEUS_URL || 'http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090';
+    const NAMESPACE = __ENV.NAMESPACE || 'knative-lambda';
+    
+    // SLO Thresholds (from SRE_LAMBDA_METRICS_REPORT.md)
+    const SLO = {
+      ERROR_RATE_PERCENT: 5,           // Error rate < 5%
+      LATENCY_P95_MS: 5000,            // P95 < 5s (5000ms)
+      BUILD_DURATION_P95_S: 120,       // Build P95 < 120s
+      RECONCILE_DURATION_P95_MS: 100,  // Reconcile P95 < 100ms (report shows 45.8ms)
+      WORKQUEUE_DEPTH_MAX: 10,         // Workqueue < 10
+      COLD_START_RATE_PERCENT: 20,     // Cold starts < 20%
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test Options
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export const options = {
+      scenarios: {
+        // Phase 1: Validate operator metrics collection
+        operator_metrics: {
+          executor: 'constant-vus',
+          vus: 1,
+          duration: '30s',
+          tags: { phase: 'operator_metrics' },
+          exec: 'validateOperatorMetrics',
+        },
+        // Phase 2: Validate function invocations and SLOs
+        function_slo: {
+          executor: 'ramping-arrival-rate',
+          startRate: 5,
+          stages: [
+            { duration: '20s', target: 20 },
+            { duration: '30s', target: 30 },
+            { duration: '20s', target: 10 },
+          ],
+          preAllocatedVUs: 20,
+          maxVUs: 50,
+          startTime: '30s',
+          tags: { phase: 'function_slo' },
+          exec: 'validateFunctionSLO',
+        },
+        // Phase 3: Query Prometheus for historical metrics
+        prometheus_validation: {
+          executor: 'constant-vus',
+          vus: 1,
+          duration: '30s',
+          startTime: '100s',
+          tags: { phase: 'prometheus_validation' },
+          exec: 'validatePrometheusMetrics',
+        },
+      },
+      thresholds: {
+        // SLO Thresholds (must be met)
+        'sre_slo_error_rate_violation': ['rate<0.05'],           // Error rate SLO
+        'sre_slo_latency_violation': ['rate<0.05'],              // Latency SLO
+        'sre_function_duration_ms': ['p(95)<5000'],              // P95 < 5s
+        
+        // Operator health (parallelism=1 ensures these run on single pod)
+        'sre_operator_healthy': ['value>=1'],
+        'sre_operator_metrics_accessible': ['value>=1'],
+        
+        // Functional thresholds
+        'http_req_duration': ['p(95)<5000'],
+        'http_req_failed': ['rate<0.10'],
+        
+        // Must have some successful invocations
+        'sre_function_invocations_total': ['count>50'],
+      },
+      tags: {
+        test_type: 'sre_metrics_validation',
+        environment: 'knative-lambda',
+      },
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Setup
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function setup() {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🔍 SRE METRICS VALIDATION TEST');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📊 SLO Thresholds (from SRE_LAMBDA_METRICS_REPORT.md):');
+      console.log(`   • Error Rate: < ${SLO.ERROR_RATE_PERCENT}%`);
+      console.log(`   • Latency P95: < ${SLO.LATENCY_P95_MS}ms`);
+      console.log(`   • Build Duration P95: < ${SLO.BUILD_DURATION_P95_S}s`);
+      console.log(`   • Reconcile P95: < ${SLO.RECONCILE_DURATION_P95_MS}ms`);
+      console.log(`   • Workqueue Depth: < ${SLO.WORKQUEUE_DEPTH_MAX}`);
+      console.log(`   • Cold Start Rate: < ${SLO.COLD_START_RATE_PERCENT}%`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      // Verify prerequisites
+      const healthCheck = http.get(`${OPERATOR_HEALTH_URL}/healthz`, { timeout: '10s' });
+      if (healthCheck.status !== 200) {
+        console.error('❌ Operator health check failed. Ensure operator is running.');
+      } else {
+        console.log('✅ Operator is healthy');
+      }
+      
+      const metricsCheck = http.get(`${OPERATOR_METRICS_URL}/metrics`, { timeout: '10s' });
+      if (metricsCheck.status !== 200) {
+        console.error('❌ Operator metrics endpoint not accessible');
+      } else {
+        console.log('✅ Metrics endpoint accessible');
+      }
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      
+      return {
+        startTime: new Date().toISOString(),
+        slo: SLO,
+      };
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Phase 1: Validate Operator Metrics
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function validateOperatorMetrics(data) {
+      // Skip if setup failed
+      if (!data || !data.ready) {
+        console.log('⏭️  Skipping validateOperatorMetrics - services not ready');
+        sleep(1);
+        return;
+      }
+      
+      group('Operator Health Validation', () => {
+        // Health endpoint
+        const healthRes = http.get(`${OPERATOR_HEALTH_URL}/healthz`);
+        const healthy = check(healthRes, {
+          'operator healthz returns 200': (r) => r.status === 200,
+        });
+        operatorHealthy.add(healthy ? 1 : 0);
+        
+        // Readiness endpoint
+        const readyRes = http.get(`${OPERATOR_HEALTH_URL}/readyz`);
+        check(readyRes, {
+          'operator readyz returns 200': (r) => r.status === 200,
+        });
+      });
+      
+      group('Metrics Endpoint Validation', () => {
+        const metricsRes = http.get(`${OPERATOR_METRICS_URL}/metrics`);
+        const accessible = check(metricsRes, {
+          'metrics endpoint returns 200': (r) => r.status === 200,
+          'metrics contains knative_lambda': (r) => r.body.includes('knative_lambda'),
+        });
+        operatorMetricsAccessible.add(accessible ? 1 : 0);
+        
+        // Parse metrics for SRE-relevant values
+        if (metricsRes.status === 200) {
+          const metricsBody = metricsRes.body;
+          
+          // Check for workqueue depth metric
+          const wqMatch = metricsBody.match(/knative_lambda_operator_workqueue_depth\s+(\d+(?:\.\d+)?)/);
+          if (wqMatch) {
+            const depth = parseFloat(wqMatch[1]);
+            workqueueDepth.add(depth);
+            
+            check(null, {
+              'workqueue depth < 10 (SLO)': () => depth < SLO.WORKQUEUE_DEPTH_MAX,
+            });
+          }
+          
+          // Check for reconcile duration
+          check(metricsBody, {
+            'metrics has reconcile_duration': (m) => m.includes('knative_lambda_operator_reconcile_duration_seconds'),
+            'metrics has build_duration': (m) => m.includes('knative_lambda_operator_build_duration_seconds'),
+            'metrics has lambdafunctions_total': (m) => m.includes('knative_lambda_operator_lambdafunctions_total'),
+            'metrics has errors_total': (m) => m.includes('knative_lambda_operator_errors_total'),
+          });
+          
+          // Check for function metrics
+          check(metricsBody, {
+            'metrics has function_invocations': (m) => m.includes('knative_lambda_function_invocations_total'),
+            'metrics has function_duration': (m) => m.includes('knative_lambda_function_duration_seconds'),
+            'metrics has function_errors': (m) => m.includes('knative_lambda_function_errors_total'),
+            'metrics has cold_starts': (m) => m.includes('knative_lambda_function_cold_starts_total'),
+          });
+        }
+      });
+      
+      sleep(2);
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Phase 2: Validate Function SLOs
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function validateFunctionSLO(data) {
+      // Skip if setup failed
+      if (!data || !data.ready) {
+        console.log('⏭️  Skipping validateFunctionSLO - services not ready');
+        sleep(1);
+        return;
+      }
+      
+      // Target k6-lambda-{0-9} functions (from SRE report)
+      const lambdaIndex = __ITER % 10;
+      const lambdaName = `k6-lambda-${lambdaIndex}`;
+      const lambdaUrl = `http://${lambdaName}.${NAMESPACE}.svc.cluster.local`;
+      
+      const payload = JSON.stringify({
+        message: `SRE validation test #${__ITER}`,
+        timestamp: new Date().toISOString(),
+        vu: __VU,
+        iteration: __ITER,
+      });
+      
+      const params = {
+        headers: {
+          'Content-Type': 'application/json',
+          'Ce-Type': 'io.knative.lambda.invoke.sync',
+          'Ce-Source': 'k6-sre-validation',
+          'Ce-Id': `sre-${__VU}-${__ITER}-${Date.now()}`,
+          'Ce-Specversion': '1.0',
+          'Ce-Subject': lambdaName,
+        },
+        timeout: '30s',
+      };
+      
+      const startTime = Date.now();
+      const response = http.post(lambdaUrl, payload, params);
+      const duration = Date.now() - startTime;
+      
+      functionInvocations.add(1, { lambda: lambdaName });
+      functionDuration.add(duration);
+      
+      // Detect cold starts (>5s on success)
+      const isColdStart = duration > 5000 && response.status >= 200 && response.status < 300;
+      if (isColdStart) {
+        coldStartCounter.add(1);
+        sloColdStartViolation.add(1);
+      } else {
+        sloColdStartViolation.add(0);
+      }
+      
+      // Check SLO compliance
+      const success = response.status >= 200 && response.status < 300;
+      
+      if (!success) {
+        functionErrors.add(1, { lambda: lambdaName });
+        sloErrorRate.add(1);
+      } else {
+        sloErrorRate.add(0);
+      }
+      
+      // Latency SLO
+      if (duration > SLO.LATENCY_P95_MS) {
+        sloLatencyViolation.add(1);
+      } else {
+        sloLatencyViolation.add(0);
+      }
+      
+      check(response, {
+        'function returns 2xx': (r) => r.status >= 200 && r.status < 300,
+        'function latency < 5s (SLO)': () => duration < SLO.LATENCY_P95_MS,
+      });
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Phase 3: Validate Prometheus Metrics
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function validatePrometheusMetrics(data) {
+      // Skip if setup failed
+      if (!data || !data.ready) {
+        console.log('⏭️  Skipping validatePrometheusMetrics - services not ready');
+        sleep(1);
+        return;
+      }
+      
+      group('Prometheus Query Validation', () => {
+        // Query error rate
+        const errorRateQuery = encodeURIComponent(
+          `sum(rate(knative_lambda_function_invocations_total{status="error",namespace="${NAMESPACE}"}[5m])) / sum(rate(knative_lambda_function_invocations_total{namespace="${NAMESPACE}"}[5m])) * 100`
+        );
+        
+        const startTime = Date.now();
+        const errorRateRes = http.get(`${PROMETHEUS_URL}/api/v1/query?query=${errorRateQuery}`);
+        prometheusQueryDuration.add(Date.now() - startTime);
+        
+        if (errorRateRes.status === 200) {
+          const result = JSON.parse(errorRateRes.body);
+          if (result.data && result.data.result && result.data.result.length > 0) {
+            const errorRate = parseFloat(result.data.result[0].value[1]);
+            check(null, {
+              'error rate < 5% (SLO)': () => !isNaN(errorRate) && errorRate < SLO.ERROR_RATE_PERCENT,
+            });
+            console.log(`📊 Current error rate: ${errorRate.toFixed(2)}%`);
+          }
+        } else {
+          prometheusQueryErrors.add(1);
+        }
+        
+        // Query build duration P95
+        const buildP95Query = encodeURIComponent(
+          `histogram_quantile(0.95, sum(rate(knative_lambda_operator_build_duration_seconds_bucket{namespace="${NAMESPACE}"}[15m])) by (le))`
+        );
+        
+        const buildP95Res = http.get(`${PROMETHEUS_URL}/api/v1/query?query=${buildP95Query}`);
+        
+        if (buildP95Res.status === 200) {
+          const result = JSON.parse(buildP95Res.body);
+          if (result.data && result.data.result && result.data.result.length > 0) {
+            const buildP95 = parseFloat(result.data.result[0].value[1]);
+            check(null, {
+              'build duration P95 < 120s (SLO)': () => !isNaN(buildP95) && buildP95 < SLO.BUILD_DURATION_P95_S,
+            });
+            console.log(`📊 Build P95: ${buildP95.toFixed(1)}s`);
+          }
+        }
+        
+        // Query reconcile duration P95
+        const reconcileP95Query = encodeURIComponent(
+          `histogram_quantile(0.95, sum(rate(knative_lambda_operator_reconcile_duration_seconds_bucket{namespace="${NAMESPACE}"}[5m])) by (le)) * 1000`
+        );
+        
+        const reconcileP95Res = http.get(`${PROMETHEUS_URL}/api/v1/query?query=${reconcileP95Query}`);
+        
+        if (reconcileP95Res.status === 200) {
+          const result = JSON.parse(reconcileP95Res.body);
+          if (result.data && result.data.result && result.data.result.length > 0) {
+            const reconcileP95 = parseFloat(result.data.result[0].value[1]);
+            reconcileDurationP95.add(reconcileP95);
+            check(null, {
+              'reconcile P95 < 100ms (SLO)': () => !isNaN(reconcileP95) && reconcileP95 < SLO.RECONCILE_DURATION_P95_MS,
+            });
+            console.log(`📊 Reconcile P95: ${reconcileP95.toFixed(2)}ms`);
+          }
+        }
+        
+        // Query workqueue depth
+        const wqDepthQuery = encodeURIComponent(
+          `knative_lambda_operator_workqueue_depth`
+        );
+        
+        const wqDepthRes = http.get(`${PROMETHEUS_URL}/api/v1/query?query=${wqDepthQuery}`);
+        
+        if (wqDepthRes.status === 200) {
+          const result = JSON.parse(wqDepthRes.body);
+          if (result.data && result.data.result && result.data.result.length > 0) {
+            const depth = parseFloat(result.data.result[0].value[1]);
+            check(null, {
+              'workqueue depth < 10 (SLO)': () => !isNaN(depth) && depth < SLO.WORKQUEUE_DEPTH_MAX,
+            });
+            console.log(`📊 Workqueue depth: ${depth}`);
+          }
+        }
+        
+        // Query lambda function count
+        const lambdaCountQuery = encodeURIComponent(
+          `sum(knative_lambda_operator_lambdafunctions_total{namespace="${NAMESPACE}",phase="Ready"})`
+        );
+        
+        const lambdaCountRes = http.get(`${PROMETHEUS_URL}/api/v1/query?query=${lambdaCountQuery}`);
+        
+        if (lambdaCountRes.status === 200) {
+          const result = JSON.parse(lambdaCountRes.body);
+          if (result.data && result.data.result && result.data.result.length > 0) {
+            const count = parseFloat(result.data.result[0].value[1]);
+            check(null, {
+              'has ready lambda functions': () => count > 0,
+            });
+            console.log(`📊 Ready lambda functions: ${count}`);
+          }
+        }
+      });
+      
+      sleep(5);
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Default export (not used due to exec functions)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export default function() {
+      // Scenarios use exec functions
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Teardown
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function teardown(data) {
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🧹 SRE METRICS VALIDATION TEARDOWN');
+      console.log(`   Started: ${data.startTime}`);
+      console.log(`   Ended:   ${new Date().toISOString()}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Summary
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function handleSummary(data) {
+      const timestamp = new Date().toISOString();
+      
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📊 SRE METRICS VALIDATION REPORT');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`Timestamp: ${timestamp}`);
+      console.log('');
+      
+      // SLO Status
+      console.log('📋 SLO Compliance:');
+      
+      if (data.metrics.sre_slo_error_rate_violation) {
+        const errorViolation = data.metrics.sre_slo_error_rate_violation.values.rate * 100;
+        const errorStatus = errorViolation < 5 ? '✅' : '❌';
+        console.log(`   ${errorStatus} Error Rate: ${errorViolation.toFixed(2)}% violations (SLO: <5%)`);
+      }
+      
+      if (data.metrics.sre_slo_latency_violation) {
+        const latencyViolation = data.metrics.sre_slo_latency_violation.values.rate * 100;
+        const latencyStatus = latencyViolation < 5 ? '✅' : '❌';
+        console.log(`   ${latencyStatus} Latency: ${latencyViolation.toFixed(2)}% violations (SLO: P95 <5s)`);
+      }
+      
+      if (data.metrics.sre_function_duration_ms && data.metrics.sre_function_duration_ms.values) {
+        const p95 = data.metrics.sre_function_duration_ms.values['p(95)'];
+        const p95Status = p95 < 5000 ? '✅' : '❌';
+        console.log(`   ${p95Status} Duration P95: ${p95 ? p95.toFixed(2) : 'N/A'}ms (SLO: <5000ms)`);
+      }
+      
+      if (data.metrics.sre_workqueue_depth) {
+        const depth = data.metrics.sre_workqueue_depth.values.value;
+        const depthStatus = depth < 10 ? '✅' : '❌';
+        console.log(`   ${depthStatus} Workqueue Depth: ${depth} (SLO: <10)`);
+      }
+      
+      console.log('');
+      console.log('📈 Test Statistics:');
+      
+      if (data.metrics.sre_function_invocations_total) {
+        console.log(`   Total Invocations: ${data.metrics.sre_function_invocations_total.values.count}`);
+      }
+      if (data.metrics.sre_function_errors_total) {
+        console.log(`   Total Errors: ${data.metrics.sre_function_errors_total.values.count}`);
+      }
+      if (data.metrics.sre_cold_starts_total) {
+        console.log(`   Cold Starts: ${data.metrics.sre_cold_starts_total.values.count}`);
+      }
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      
+      return {
+        'stdout': textSummary(data, { indent: ' ', enableColors: true }),
+        [`/tmp/k6-sre-metrics-${Date.now()}.json`]: JSON.stringify(data),
+      };
+    }
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # 📈 SRE SLO COMPLIANCE TEST
+  # Extended test for sustained SLO compliance
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  sre-slo-compliance.js: |
+    import http from 'k6/http';
+    import { check, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+    import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // SLO Metrics
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    // Error Budget Tracking
+    const errorBudgetRemaining = new Gauge('sre_error_budget_remaining_percent');
+    const errorRateRolling = new Rate('sre_error_rate_rolling');
+    
+    // Function SLOs
+    const functionSuccess = new Counter('sre_slo_function_success_total');
+    const functionFailure = new Counter('sre_slo_function_failure_total');
+    const functionDuration = new Trend('sre_slo_function_duration_ms');
+    const functionLatencyP95 = new Gauge('sre_slo_function_latency_p95_ms');
+    
+    // Cold Start Tracking
+    const coldStarts = new Counter('sre_slo_cold_starts_total');
+    const warmStarts = new Counter('sre_slo_warm_starts_total');
+    const coldStartRate = new Rate('sre_slo_cold_start_rate');
+    
+    // Per-Function Metrics
+    const functionByName = new Counter('sre_slo_function_by_name');
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Configuration from Environment
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const BROKER_URL = __ENV.BROKER_URL || 'http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local';
+    const NAMESPACE = __ENV.NAMESPACE || 'knative-lambda';
+    const LAMBDA_COUNT = parseInt(__ENV.LAMBDA_COUNT || '10');
+    
+    // SLO Thresholds from environment (defaults from SRE report)
+    const SLO = {
+      ERROR_RATE_PERCENT: parseFloat(__ENV.SLO_ERROR_RATE_PERCENT || '5'),
+      LATENCY_P95_MS: parseFloat(__ENV.SLO_LATENCY_P95_MS || '5000'),
+      BUILD_DURATION_P95_S: parseFloat(__ENV.SLO_BUILD_DURATION_P95_S || '120'),
+      COLD_START_RATE_PERCENT: parseFloat(__ENV.SLO_COLD_START_RATE_PERCENT || '20'),
+    };
+    
+    // Tracking for error budget calculation
+    let totalRequests = 0;
+    let totalErrors = 0;
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Test Options
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export const options = {
+      scenarios: {
+        // Sustained load for SLO compliance
+        sustained_slo: {
+          executor: 'ramping-arrival-rate',
+          startRate: 5,
+          stages: [
+            { duration: '30s', target: 20 },    // Ramp up
+            { duration: '2m', target: 30 },     // Sustained load
+            { duration: '30s', target: 50 },    // Peak
+            { duration: '1m', target: 30 },     // Return to baseline
+            { duration: '30s', target: 10 },    // Ramp down
+          ],
+          preAllocatedVUs: 30,
+          maxVUs: 80,
+        },
+      },
+      thresholds: {
+        // SLO Compliance (hard requirements)
+        'sre_error_rate_rolling': [`rate<${SLO.ERROR_RATE_PERCENT / 100}`],
+        'sre_slo_function_duration_ms': [`p(95)<${SLO.LATENCY_P95_MS}`],
+        'sre_slo_cold_start_rate': [`rate<${SLO.COLD_START_RATE_PERCENT / 100}`],
+        
+        // HTTP Level
+        'http_req_duration': [`p(95)<${SLO.LATENCY_P95_MS}`],
+        'http_req_failed': [`rate<${SLO.ERROR_RATE_PERCENT / 100}`],
+        
+        // Minimum activity
+        'sre_slo_function_success_total': ['count>100'],
+      },
+      tags: {
+        test_type: 'sre_slo_compliance',
+        environment: 'knative-lambda',
+      },
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Setup
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function setup() {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📈 SRE SLO COMPLIANCE TEST');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📊 Testing SLO Compliance with sustained load');
+      console.log('📋 SLO Thresholds:');
+      console.log(`   • Error Rate: < ${SLO.ERROR_RATE_PERCENT}%`);
+      console.log(`   • Latency P95: < ${SLO.LATENCY_P95_MS}ms`);
+      console.log(`   • Cold Start Rate: < ${SLO.COLD_START_RATE_PERCENT}%`);
+      console.log(`📌 Target Functions: k6-lambda-0 to k6-lambda-${LAMBDA_COUNT - 1}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      // Verify broker is accessible
+      const brokerCheck = http.get(BROKER_URL, { timeout: '10s' });
+      if (brokerCheck.status !== 405 && brokerCheck.status !== 200) {
+        console.error('❌ Broker not accessible. Test may fail.');
+      } else {
+        console.log('✅ Broker accessible');
+      }
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      
+      return {
+        startTime: new Date().toISOString(),
+        slo: SLO,
+      };
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Main Test
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export default function() {
+      // Round-robin through lambda functions
+      const lambdaIndex = __ITER % LAMBDA_COUNT;
+      const lambdaName = `k6-lambda-${lambdaIndex}`;
+      const lambdaUrl = `http://${lambdaName}.${NAMESPACE}.svc.cluster.local`;
+      
+      const payload = JSON.stringify({
+        message: `SLO compliance test`,
+        timestamp: new Date().toISOString(),
+        iteration: __ITER,
+        vu: __VU,
+        correlationId: `slo-${randomString(16)}`,
+      });
+      
+      const params = {
+        headers: {
+          'Content-Type': 'application/json',
+          'Ce-Type': 'io.knative.lambda.invoke.sync',
+          'Ce-Source': 'k6-slo-compliance',
+          'Ce-Id': `slo-${__VU}-${__ITER}-${Date.now()}`,
+          'Ce-Specversion': '1.0',
+          'Ce-Subject': lambdaName,
+        },
+        timeout: '30s',
+      };
+      
+      const startTime = Date.now();
+      const response = http.post(lambdaUrl, payload, params);
+      const duration = Date.now() - startTime;
+      
+      totalRequests++;
+      functionDuration.add(duration);
+      functionByName.add(1, { function: lambdaName });
+      
+      // Success/Failure tracking
+      const success = response.status >= 200 && response.status < 300;
+      
+      if (success) {
+        functionSuccess.add(1);
+        errorRateRolling.add(0);
+      } else {
+        functionFailure.add(1);
+        errorRateRolling.add(1);
+        totalErrors++;
+      }
+      
+      // Calculate and update error budget
+      // Error budget = 100% - (SLO target) = 5% for 95% availability
+      // Remaining = (allowed errors - actual errors) / total * 100
+      const allowedErrors = totalRequests * (SLO.ERROR_RATE_PERCENT / 100);
+      const errorBudget = ((allowedErrors - totalErrors) / Math.max(totalRequests, 1)) * 100;
+      errorBudgetRemaining.add(Math.max(0, errorBudget));
+      
+      // Cold start detection (>5s response on success)
+      const isColdStart = duration > 5000 && success;
+      
+      if (isColdStart) {
+        coldStarts.add(1);
+        coldStartRate.add(1);
+      } else if (success) {
+        warmStarts.add(1);
+        coldStartRate.add(0);
+      }
+      
+      // SLO checks
+      check(response, {
+        'status is 2xx': (r) => r.status >= 200 && r.status < 300,
+        'latency < SLO threshold': () => duration < SLO.LATENCY_P95_MS,
+      });
+      
+      // Log high latency for debugging
+      if (duration > SLO.LATENCY_P95_MS && success) {
+        console.log(`⚠️ High latency: ${lambdaName} took ${duration}ms`);
+      }
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Teardown
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function teardown(data) {
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🧹 SLO COMPLIANCE TEST TEARDOWN');
+      console.log(`   Started: ${data.startTime}`);
+      console.log(`   Ended:   ${new Date().toISOString()}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Summary
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    export function handleSummary(data) {
+      const timestamp = new Date().toISOString();
+      
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📊 SRE SLO COMPLIANCE REPORT');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`Timestamp: ${timestamp}`);
+      console.log('');
+      
+      // SLO Compliance Summary
+      console.log('📋 SLO Compliance Summary:');
+      
+      const errorRate = data.metrics.sre_error_rate_rolling ? 
+        data.metrics.sre_error_rate_rolling.values.rate * 100 : 0;
+      const errorStatus = errorRate < SLO.ERROR_RATE_PERCENT ? '✅ PASS' : '❌ FAIL';
+      console.log(`   ${errorStatus} Error Rate: ${errorRate.toFixed(2)}% (SLO: <${SLO.ERROR_RATE_PERCENT}%)`);
+      
+      const p95 = (data.metrics.sre_slo_function_duration_ms && data.metrics.sre_slo_function_duration_ms.values && data.metrics.sre_slo_function_duration_ms.values['p(95)']) || 0;
+      const latencyStatus = p95 < SLO.LATENCY_P95_MS ? '✅ PASS' : '❌ FAIL';
+      console.log(`   ${latencyStatus} Latency P95: ${p95.toFixed(2)}ms (SLO: <${SLO.LATENCY_P95_MS}ms)`);
+      
+      const coldStartRateVal = data.metrics.sre_slo_cold_start_rate ?
+        data.metrics.sre_slo_cold_start_rate.values.rate * 100 : 0;
+      const coldStatus = coldStartRateVal < SLO.COLD_START_RATE_PERCENT ? '✅ PASS' : '❌ FAIL';
+      console.log(`   ${coldStatus} Cold Start Rate: ${coldStartRateVal.toFixed(2)}% (SLO: <${SLO.COLD_START_RATE_PERCENT}%)`);
+      
+      console.log('');
+      console.log('📈 Statistics:');
+      
+      const totalSuccess = (data.metrics.sre_slo_function_success_total && data.metrics.sre_slo_function_success_total.values && data.metrics.sre_slo_function_success_total.values.count) || 0;
+      const totalFailure = (data.metrics.sre_slo_function_failure_total && data.metrics.sre_slo_function_failure_total.values && data.metrics.sre_slo_function_failure_total.values.count) || 0;
+      const total = totalSuccess + totalFailure;
+      
+      console.log(`   Total Requests: ${total}`);
+      console.log(`   Successful: ${totalSuccess} (${(totalSuccess/total*100).toFixed(2)}%)`);
+      console.log(`   Failed: ${totalFailure} (${(totalFailure/total*100).toFixed(2)}%)`);
+      
+      const coldStartCount = (data.metrics.sre_slo_cold_starts_total && data.metrics.sre_slo_cold_starts_total.values && data.metrics.sre_slo_cold_starts_total.values.count) || 0;
+      const warmStartCount = (data.metrics.sre_slo_warm_starts_total && data.metrics.sre_slo_warm_starts_total.values && data.metrics.sre_slo_warm_starts_total.values.count) || 0;
+      console.log(`   Cold Starts: ${coldStartCount}`);
+      console.log(`   Warm Starts: ${warmStartCount}`);
+      
+      const errorBudget = (data.metrics.sre_error_budget_remaining_percent && data.metrics.sre_error_budget_remaining_percent.values && data.metrics.sre_error_budget_remaining_percent.values.value) || 0;
+      console.log(`   Error Budget Remaining: ${errorBudget.toFixed(2)}%`);
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      
+      // Determine overall pass/fail
+      const overallPass = 
+        errorRate < SLO.ERROR_RATE_PERCENT &&
+        p95 < SLO.LATENCY_P95_MS &&
+        coldStartRateVal < SLO.COLD_START_RATE_PERCENT;
+      
+      console.log(overallPass ? 
+        '✅ ALL SLOs PASSED' : 
+        '❌ SLO VIOLATIONS DETECTED');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      
+      return {
+        'stdout': textSummary(data, { indent: ' ', enableColors: true }),
+        [`/tmp/k6-sre-slo-${Date.now()}.json`]: JSON.stringify({
+          timestamp,
+          slo: SLO,
+          results: {
+            errorRate,
+            latencyP95: p95,
+            coldStartRate: coldStartRateVal,
+            overallPass,
+          },
+          metrics: data,
+        }),
+      };
+    }

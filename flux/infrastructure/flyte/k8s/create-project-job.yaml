@@ -1,0 +1,100 @@
+---
+# Job to create Flyte project before workflow registration
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flyte-create-project
+  namespace: flyte
+  labels:
+    app: flyte
+    component: project-init
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: "enabled"
+    kustomize.toolkit.fluxcd.io/prune: "enabled"
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: flyte
+        component: project-init
+    spec:
+      restartPolicy: OnFailure
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: create-project
+          image: ghcr.io/brunovlucena/flyte-workflow-registry:latest
+          imagePullPolicy: Always
+          env:
+            - name: FLYTE_CREDENTIALS_CLIENT_ID
+              value: "flyteadmin"
+            - name: FLYTE_CREDENTIALS_CLIENT_SECRET
+              value: "flyteadmin"
+            - name: FLYTE_PLATFORM_URL
+              value: "flyteadmin.flyte.svc.cluster.local:81"
+            - name: FLYTE_PLATFORM_INSECURE
+              value: "true"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "🔧 Creating Flyte project 'homelab'..."
+              
+              # Configure Flyte endpoint
+              mkdir -p ~/.flyte
+              cat > ~/.flyte/config.yaml <<EOF
+              admin:
+                endpoint: flyteadmin.flyte.svc.cluster.local:81
+                insecure: true
+              EOF
+              
+              # Use flytectl to create project (KISS principle)
+              # flytectl should be in /usr/local/bin from Dockerfile
+              if ! command -v flytectl &> /dev/null; then
+                echo "❌ flytectl not found in PATH"
+                echo "PATH: $PATH"
+                find / -name flytectl -type f 2>/dev/null | head -5 || echo "flytectl not found anywhere"
+                exit 1
+              fi
+              
+              echo "✅ flytectl found: $(which flytectl)"
+              flytectl version || true
+              
+                  # Check if project already exists first
+                  if flytectl get project --config ~/.flyte/config.yaml 2>&1 | grep -q "homelab"; then
+                    echo "✅ Project 'homelab' already exists"
+                    exit 0
+                  fi
+                  
+                  # Create project
+                  flytectl create project \
+                    --id homelab \
+                    --name homelab \
+                    --description "Homelab infrastructure workflows" \
+                    --config ~/.flyte/config.yaml 2>&1 || {
+                    EXIT_CODE=$?
+                    # Check error message for "AlreadyExists" or "duplicate key"
+                    if echo "$EXIT_CODE" | grep -q "AlreadyExists\|duplicate key\|already exists"; then
+                      echo "✅ Project 'homelab' already exists (detected from error)"
+                      exit 0
+                    else
+                      echo "⚠️  Project creation returned exit code: $EXIT_CODE"
+                      # Check again if it exists now
+                      if flytectl get project --config ~/.flyte/config.yaml 2>&1 | grep -q "homelab"; then
+                        echo "✅ Project 'homelab' exists after creation attempt"
+                        exit 0
+                      else
+                        echo "❌ Failed to create or verify project"
+                        exit 1
+                      fi
+                    fi
+                  }
+                  
+                  echo "✅ Project 'homelab' created successfully"
+              
+              echo "✅ Project setup complete!"
+

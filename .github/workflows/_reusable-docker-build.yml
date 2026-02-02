@@ -1,0 +1,222 @@
+# ============================================================================
+# 🐳 Reusable Docker Build Workflow
+# ============================================================================
+# This workflow provides reusable Docker build and push jobs.
+# Supports pushing to both GHCR and a local registry (e.g., kind registry).
+#
+# Usage:
+#   jobs:
+#     build:
+#       uses: ./.github/workflows/_reusable-docker-build.yml
+#       with:
+#         image-name: my-app
+#         context: ./src
+#         dockerfile: ./src/Dockerfile
+#         push-to-local: true  # Also push to local registry
+# ============================================================================
+
+name: 🐳 Reusable Docker Build
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: 'Docker image name (without registry)'
+        required: true
+        type: string
+      context:
+        description: 'Docker build context'
+        required: true
+        type: string
+      dockerfile:
+        description: 'Path to Dockerfile'
+        required: true
+        type: string
+      version:
+        description: 'Version tag for the image'
+        required: false
+        type: string
+        default: 'latest'
+      docker-tag:
+        description: 'Full Docker tag (e.g., v1.0.0)'
+        required: false
+        type: string
+        default: ''
+      platforms:
+        description: 'Target platforms'
+        required: false
+        type: string
+        default: 'linux/amd64,linux/arm64'
+      push:
+        description: 'Push image to registry'
+        required: false
+        type: boolean
+        default: true
+      registry:
+        description: 'Container registry'
+        required: false
+        type: string
+        default: 'ghcr.io'
+      # Local registry support (kind registry at localhost:5001)
+      push-to-local:
+        description: 'Also push to local kind registry'
+        required: false
+        type: boolean
+        default: true
+      local-registry:
+        description: 'Local registry address (default: localhost:5001 for kind)'
+        required: false
+        type: string
+        default: 'localhost:5001'
+      build-args:
+        description: 'Build arguments (multiline)'
+        required: false
+        type: string
+        default: ''
+      cache-scope:
+        description: 'Cache scope for GHA cache'
+        required: false
+        type: string
+        default: ''
+      scan-image:
+        description: 'Run security scan on image'
+        required: false
+        type: boolean
+        default: true
+      attest:
+        description: 'Generate SBOM and provenance attestations'
+        required: false
+        type: boolean
+        default: true
+    outputs:
+      image:
+        description: 'Full image reference'
+        value: ${{ jobs.build.outputs.image }}
+      digest:
+        description: 'Image digest'
+        value: ${{ jobs.build.outputs.digest }}
+      tags:
+        description: 'Image tags'
+        value: ${{ jobs.build.outputs.tags }}
+      local-image:
+        description: 'Local registry image reference'
+        value: ${{ jobs.build.outputs.local-image }}
+
+jobs:
+  build:
+    name: 🏗️ Build & Push
+    runs-on: [self-hosted]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.build.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+      local-image: ${{ steps.local-meta.outputs.tags }}
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
+            image=moby/buildkit:v0.17.0
+
+      - name: 🔐 Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Extract metadata (GHCR)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image-name }}
+          tags: |
+            type=raw,value=${{ inputs.docker-tag || inputs.version }},enable=${{ inputs.docker-tag != '' || inputs.version != 'latest' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch,prefix=branch-
+            type=ref,event=pr,prefix=pr-
+          labels: |
+            org.opencontainers.image.title=${{ inputs.image-name }}
+            org.opencontainers.image.description=Built from ${{ github.repository }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: 🏷️ Extract metadata (Local Registry)
+        id: local-meta
+        if: inputs.push-to-local
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ inputs.local-registry }}/${{ inputs.image-name }}
+          tags: |
+            type=raw,value=${{ inputs.docker-tag || inputs.version }},enable=${{ inputs.docker-tag != '' || inputs.version != 'latest' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-,format=short
+
+      - name: 🏗️ Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: ${{ inputs.push }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ inputs.push-to-local && steps.local-meta.outputs.tags || '' }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ inputs.cache-scope || inputs.image-name }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope || inputs.image-name }}
+          build-args: |
+            VERSION=${{ inputs.version }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.event.repository.pushed_at }}
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
+            ${{ inputs.build-args }}
+          provenance: ${{ inputs.attest }}
+          sbom: ${{ inputs.attest }}
+
+      - name: 🛡️ Run Trivy vulnerability scanner
+        if: inputs.scan-image && inputs.push
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image-name }}:${{ inputs.docker-tag || inputs.version }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+        continue-on-error: true
+
+      - name: 📤 Upload Trivy scan results
+        if: inputs.scan-image && inputs.push
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+      - name: 📋 Build Summary
+        run: |
+          echo "## 🐳 Docker Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| GHCR Image | \`${{ inputs.registry }}/${{ github.repository_owner }}/${{ inputs.image-name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Local Image | \`${{ inputs.push-to-local && format('{0}/{1}', inputs.local-registry, inputs.image-name) || 'N/A' }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tags | \`${{ inputs.docker-tag || inputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Platforms | \`${{ inputs.platforms }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Digest | \`${{ steps.build.outputs.digest }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pushed to GHCR | ${{ inputs.push && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pushed to Local | ${{ inputs.push-to-local && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY

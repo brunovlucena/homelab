@@ -1,0 +1,321 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 K6 AGENT-SRE CREATE TEST - Create agent-sre LambdaFunctions via CloudEvents
+#
+#  Purpose: Send io.knative.lambda.command.function.deploy CloudEvents to create lambdas
+#  Functions: All 7 agent-sre remediation LambdaFunctions
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-sre-lambdas-create
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-sre
+    app.kubernetes.io/component: testing
+    test-type: create
+    test-variant: cloudevents
+spec:
+  parallelism: 1
+  arguments: -o experimental-prometheus-rw --tag test_type=create_cloudevents
+  script:
+    configMap:
+      name: agent-sre-k6-tests
+      file: lambdas-create.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: BROKER_URL
+        value: "http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local"
+      - name: NAMESPACE
+        value: "ai"
+      - name: MINIO_ENDPOINT
+        value: "minio.minio.svc.cluster.local:9000"
+      # Prometheus Remote Write Configuration
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+      - name: K6_PROMETHEUS_RW_STALE_MARKERS
+        value: "true"
+    resources:
+      limits:
+        memory: 256Mi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-sre-k6-tests
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-sre
+    app.kubernetes.io/component: testing
+data:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 🚀 LAMBDAS CREATE - Create agent-sre LambdaFunctions via CloudEvents
+  # ────────────────────────────────────────────────────────────────────────────
+  lambdas-create.js: |
+    import http from 'k6/http';
+    import { check, sleep, fail } from 'k6';
+    import { Rate, Counter, Trend } from 'k6/metrics';
+    import { randomString } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+    import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 📊 CUSTOM METRICS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const errorRate = new Rate('agent_sre_create_error_rate');
+    const createCounter = new Counter('agent_sre_creates_total');
+    const createDuration = new Trend('agent_sre_create_duration');
+    const successCounter = new Counter('agent_sre_creates_success');
+    const functionCounter = new Counter('agent_sre_creates_by_function');
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ⚙️ CONFIGURATION
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    const BROKER_URL = __ENV.BROKER_URL || 'http://lambda-broker-broker-ingress.knative-lambda.svc.cluster.local';
+    const NAMESPACE = __ENV.NAMESPACE || 'ai';
+    const MINIO_ENDPOINT = __ENV.MINIO_ENDPOINT || 'minio.minio.svc.cluster.local:9000';
+    
+    // All 7 agent-sre LambdaFunction configurations
+    const FUNCTIONS = [
+      {
+        name: 'flux-reconcile-kustomization',
+        description: 'Reconcile Flux Kustomization'
+      },
+      {
+        name: 'pod-restart',
+        description: 'Restart pods or deployments'
+      },
+      {
+        name: 'pod-check-status',
+        description: 'Check pod status'
+      },
+      {
+        name: 'scale-deployment',
+        description: 'Scale deployments'
+      },
+      {
+        name: 'check-pvc-status',
+        description: 'Check PVC status'
+      },
+      {
+        name: 'flux-reconcile-gitrepository',
+        description: 'Reconcile Flux GitRepository'
+      },
+      {
+        name: 'flux-reconcile-helmrelease',
+        description: 'Reconcile Flux HelmRelease'
+      },
+    ];
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // ⚙️ TEST OPTIONS
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export const options = {
+      scenarios: {
+        create_functions: {
+          executor: 'shared-iterations',
+          vus: 1,
+          iterations: FUNCTIONS.length,  // Create all LambdaFunctions
+          maxDuration: '10m',
+        },
+      },
+      thresholds: {
+        'http_req_duration': ['p(95)<10000'],
+        'http_req_failed': ['rate<0.30'],
+        'agent_sre_create_error_rate': ['rate<0.10'],
+        'agent_sre_creates_success': [`count>=${FUNCTIONS.length}`], // All functions must succeed
+      },
+    };
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔧 SETUP - Pre-test health check
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export function setup() {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🔧 SETUP: Pre-test validation');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      // Health check - verify broker is accessible
+      const healthCheck = http.get(BROKER_URL, { timeout: '10s' });
+      
+      // Broker returns 405 for GET (only accepts POST), but that proves it's alive
+      const brokerAlive = healthCheck.status === 405 || healthCheck.status === 200;
+      
+      if (!brokerAlive) {
+        console.error(`❌ Broker health check failed: ${healthCheck.status}`);
+        console.error(`   URL: ${BROKER_URL}`);
+        fail('Broker is not accessible. Aborting test.');
+      }
+      
+      console.log(`✅ Broker is accessible: ${BROKER_URL}`);
+      console.log(`📋 Functions to create: ${FUNCTIONS.length}`);
+      FUNCTIONS.forEach((f, i) => console.log(`   ${i+1}. ${f.name} - ${f.description}`));
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      
+      return {
+        startTime: new Date().toISOString(),
+        brokerUrl: BROKER_URL,
+        functions: FUNCTIONS,
+      };
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🏭 EVENT FACTORY
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    function createFunctionDeployCloudEvent(func) {
+      const correlationId = `k6-create-${func.name}-${Date.now()}-${randomString(8)}`;
+      
+      return {
+        specversion: '1.0',
+        type: 'io.knative.lambda.command.function.deploy',
+        source: `k6-agent-sre-test/${__VU}`,
+        id: correlationId,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: {
+          metadata: {
+            name: func.name,
+            namespace: NAMESPACE,
+            labels: {
+              'test': 'k6-agent-sre-test',
+              'app.kubernetes.io/name': func.name,
+              'app.kubernetes.io/component': 'remediation',
+              'app.kubernetes.io/part-of': 'agent-sre',
+              'source.type': 'minio',
+              'correlation-id': correlationId,
+            },
+          },
+          spec: {
+            source: {
+              type: 'minio',
+              minio: {
+                endpoint: MINIO_ENDPOINT,
+                bucket: 'lambda-functions',
+                key: `agent-sre/${func.name}/main.py`,
+                secretRef: {
+                  name: 'minio-credentials',
+                },
+              },
+            },
+            runtime: {
+              language: 'python',
+              version: '3.11',
+              handler: 'handler',
+            },
+            scaling: {
+              minReplicas: 0,
+              maxReplicas: 10,
+              targetConcurrency: 5,
+              scaleToZeroGracePeriod: '30s',
+            },
+            resources: {
+              limits: { memory: '256Mi', cpu: '500m' },
+              requests: { memory: '128Mi', cpu: '100m' },
+            },
+            build: {
+              timeout: '10m',
+              registry: 'localhost:5001',
+              insecure: true,
+              forceRebuild: true,
+            },
+            env: [
+              { name: 'FLUX_NAMESPACE', value: 'flux-system' },
+            ],
+            eventing: {
+              enabled: false,  // Called directly by agent-sre
+            },
+          },
+        },
+      };
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🚀 MAIN TEST
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export default function (data) {
+      const func = FUNCTIONS[__ITER % FUNCTIONS.length];
+      const cloudEvent = createFunctionDeployCloudEvent(func);
+      
+      const startTime = Date.now();
+      
+      // Use structured CloudEvents format (application/cloudevents+json)
+      const params = {
+        headers: {
+          'Content-Type': 'application/cloudevents+json',
+          'X-Correlation-ID': cloudEvent.id,
+        },
+        timeout: '30s',
+      };
+      
+      const response = http.post(
+        BROKER_URL,
+        JSON.stringify(cloudEvent),
+        params
+      );
+      const duration = Date.now() - startTime;
+      
+      createDuration.add(duration);
+      createCounter.add(1);
+      functionCounter.add(1, { function: func.name });
+      
+      // Enhanced validation with response body check
+      const success = check(response, {
+        'deploy event accepted (2xx)': (r) => r.status === 202 || r.status === 200,
+        'response time < 10s': (r) => r.timings.duration < 10000,
+        'response has body or empty (expected)': (r) => r.body !== null,
+        'no server error': (r) => r.status < 500,
+      });
+      
+      if (success) {
+        successCounter.add(1);
+        console.log(`✅ [${cloudEvent.id}] Created LambdaFunction: ${func.name}`);
+      } else {
+        errorRate.add(1);
+        console.error(`❌ [${cloudEvent.id}] Failed to create ${func.name}: HTTP ${response.status}`);
+        if (response.body) {
+          console.error(`   Response: ${response.body.substring(0, 200)}`);
+        }
+      }
+      
+      sleep(1);
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🧹 TEARDOWN
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export function teardown(data) {
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🧹 TEARDOWN: Post-test cleanup');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`   Test started: ${data.startTime}`);
+      console.log(`   Test ended:   ${new Date().toISOString()}`);
+      console.log(`   Broker URL:   ${data.brokerUrl}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    }
+    
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 📊 SUMMARY
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    export function handleSummary(data) {
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📊 Agent-SRE LambdaFunction Creation Summary');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      if (data.metrics.agent_sre_creates_total) {
+        console.log(`Total Creates: ${data.metrics.agent_sre_creates_total.values.count}`);
+      }
+      if (data.metrics.agent_sre_creates_success) {
+        console.log(`Successful: ${data.metrics.agent_sre_creates_success.values.count}`);
+      }
+      if (data.metrics.agent_sre_create_error_rate) {
+        console.log(`Error Rate: ${(data.metrics.agent_sre_create_error_rate.values.rate * 100).toFixed(2)}%`);
+      }
+      console.log(`Functions: ${FUNCTIONS.map(f => f.name).join(', ')}`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+      return {
+        'stdout': textSummary(data, { indent: ' ', enableColors: true }),
+      };
+    }
+

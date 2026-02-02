@@ -1,0 +1,162 @@
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  💬 Message Processor Agent - Agents WhatsApp Rust
+#
+#  Processes incoming messages and routes them to appropriate AI agents
+#  via CloudEvents, then forwards agent responses back to messaging service
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: lambda.knative.io/v1alpha1
+kind: LambdaAgent
+metadata:
+  name: message-processor
+  namespace: homelab-services
+  labels:
+    app.kubernetes.io/name: message-processor
+    app.kubernetes.io/component: agent
+    app.kubernetes.io/part-of: agents-whatsapp-rust
+  annotations:
+    description: "Message processor agent that routes messages to AI agents via CloudEvents"
+spec:
+  serviceAccountName: agents-whatsapp-rust-agent-sa
+
+  image:
+    repository: localhost:5001/agents-whatsapp-rust-message-processor
+    tag: "v1.0.4"
+    port: 8080
+
+  ai:
+    provider: ollama
+    endpoint: "http://ollama-native.ollama.svc.cluster.local:11434"
+    model: "llama3.2:3b"
+    maxTokens: 2048
+    temperature: "0.7"
+
+  behavior:
+    maxContextMessages: 10
+    emitEvents: true
+    systemPrompt: "You are a helpful message routing assistant. Process incoming messages and route them to appropriate AI agents."
+
+  scaling:
+    minReplicas: 1
+    maxReplicas: 10
+    targetConcurrency: 50
+    scaleToZeroGracePeriod: 30s
+
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "512Mi"
+
+  env:
+    - name: AGENT_NAME
+      value: "message-processor"
+    - name: MONGODB_URI
+      valueFrom:
+        secretKeyRef:
+          name: homelab-services-secrets
+          key: mongodb-uri
+    - name: MONGODB_DATABASE
+      value: "messaging_app"
+    - name: REDIS_URI
+      value: "redis://redis.homelab-services.svc.cluster.local:6379"
+    - name: BROKER_URL
+      value: "http://default-broker.homelab-services.svc.cluster.local"
+
+  eventing:
+    enabled: true
+    eventSource: "/agents-whatsapp-rust/message-processor"
+    
+    # Events this agent EMITS
+    intents:
+      - agent.response
+      - agent.message.routed
+      - agent.message.failed
+      # Forward to agent-medical
+      - io.homelab.medical.query
+      - io.homelab.medical.lab.request
+      - io.homelab.medical.prescription.request
+      - io.homelab.medical.history.request
+      - io.homelab.medical.analyze.request
+      # Forward to agent-restaurant
+      - restaurant.guest.seated
+      - restaurant.order.created
+      - restaurant.kitchen.dish.ready
+      - restaurant.sommelier.pairing
+      - restaurant.order.modified
+      - restaurant.reservation.request
+      - restaurant.guest.arriving
+    
+    # Events this agent RECEIVES (from agent-gateway)
+    subscriptions:
+      - eventType: agent.message
+        description: "Incoming message from agent-gateway to process and route to AI agents"
+      - eventType: messaging.message.received
+        description: "Direct message received events"
+      # Receive responses from other agents
+      - eventType: io.homelab.medical.query
+        description: "Medical agent responses"
+      - eventType: restaurant.service.presentation
+        description: "Restaurant agent responses"
+      - eventType: restaurant.order.created
+        description: "Chef agent responses"
+    
+    # Forward messages to appropriate agents based on routing
+    forwards:
+      # Forward medical queries to agent-medical
+      - eventTypes:
+          - io.homelab.medical.query
+          - io.homelab.medical.lab.request
+          - io.homelab.medical.prescription.request
+          - io.homelab.medical.history.request
+          - io.homelab.medical.analyze.request
+        targetAgent: agent-medical
+        targetNamespace: agent-medical
+        description: "Forward medical queries to agent-medical"
+      # Forward restaurant events to agent-restaurant
+      - eventTypes:
+          - restaurant.guest.seated
+          - restaurant.order.created
+          - restaurant.kitchen.dish.ready
+          - restaurant.sommelier.pairing
+          - restaurant.order.modified
+        targetAgent: waiter-pierre
+        targetNamespace: agent-restaurant
+        description: "Forward restaurant events to agent-restaurant"
+    
+    dlq:
+      enabled: true
+      retryMaxAttempts: 5
+
+    rabbitmq:
+      clusterName: rabbitmq-cluster-knative-lambda
+      namespace: knative-lambda
+
+  observability:
+    tracing:
+      enabled: true
+      endpoint: alloy.observability.svc:4317
+    metrics:
+      enabled: true
+      exemplars: true
+    logging:
+      level: info
+      format: json
+      traceContext: true
+
+  permissions:
+    disableBrokerCreation: true
+    disableTriggerCreation: false
+    disableFunctionCreation: false
+    allowedTargetNamespaces:
+      - homelab-services
+      - agent-bruno
+      - agent-chat
+      - agent-medical
+      - agent-restaurant
+    eventControls:
+      allowEventDisable: true

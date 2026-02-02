@@ -1,0 +1,43 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  📱 AgentChat - Kustomization Base
+#
+#  GitOps configuration for AgentChat platform
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: agent-chat
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
+
+resources:
+  # Core
+  - rbac.yaml
+  - secrets.yaml
+  - configmap-system.yaml
+  
+  # Web Command Center
+  - ../../../web-command-center/k8s/kustomize/base
+  
+  # LambdaAgents
+  - lambdaagent-messaging-hub.yaml
+  - lambdaagent-voice.yaml
+  - lambdaagent-media.yaml
+  - lambdaagent-location.yaml
+  - lambdaagent-command-center.yaml
+  # Note: agent-assistant instances are deployed dynamically by command-center
+  # Template: lambdaagent-assistant-template.yaml
+
+commonLabels:
+  app.kubernetes.io/version: "1.0.0"
+
+commonAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"

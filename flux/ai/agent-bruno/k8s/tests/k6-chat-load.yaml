@@ -1,0 +1,223 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  💬 K6 CHAT LOAD TEST - AGENT-BRUNO
+#
+#  Purpose: Load test the chatbot with realistic conversation patterns
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: agent-bruno-chat-load
+  namespace: agent-bruno
+  labels:
+    app.kubernetes.io/name: agent-bruno
+    app.kubernetes.io/component: testing
+    test-type: load
+spec:
+  parallelism: 2
+  arguments: -o experimental-prometheus-rw
+  script:
+    configMap:
+      name: agent-bruno-chat-load
+      file: chat-load.js
+  runner:
+    image: localhost:5001/k6:0.47.0
+    env:
+      - name: AGENT_BRUNO_URL
+        value: "http://agent-bruno.agent-bruno.svc.cluster.local"
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: "http://kube-prometheus-stack-prometheus.prometheus.svc.cluster.local:9090/api/v1/write"
+      - name: K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM
+        value: "true"
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-bruno-chat-load
+  namespace: agent-bruno
+  labels:
+    app.kubernetes.io/name: agent-bruno
+    app.kubernetes.io/component: testing
+    test-type: load
+data:
+  chat-load.js: |
+    import http from 'k6/http';
+    import { check, group, sleep } from 'k6';
+    import { Rate, Counter, Trend, Gauge } from 'k6/metrics';
+    
+    // Custom Metrics
+    const chatSuccess = new Rate('load_chat_success');
+    const chatLatency = new Trend('load_chat_latency_ms');
+    const chatErrors = new Counter('load_chat_errors');
+    const conversationsCompleted = new Counter('load_conversations_completed');
+    const tokensGenerated = new Counter('load_tokens_generated');
+    const coldStarts = new Counter('load_cold_starts');
+    
+    // Configuration
+    const AGENT_URL = __ENV.AGENT_BRUNO_URL || 'http://agent-bruno.agent-bruno.svc.cluster.local';
+    
+    // Sample conversations
+    const CONVERSATIONS = [
+      [
+        "Hello! Who are you?",
+        "What projects have you worked on?",
+        "Tell me about your Kubernetes experience",
+      ],
+      [
+        "Hi Bruno! What skills do you have?",
+        "Do you know about smart contracts?",
+        "What's your experience with observability?",
+      ],
+      [
+        "What can you help me with?",
+        "Tell me about your homelab setup",
+        "How do you handle monitoring?",
+      ],
+      [
+        "What technologies do you use?",
+        "Can you explain your AI experience?",
+        "What about security?",
+      ],
+    ];
+    
+    export const options = {
+      scenarios: {
+        // Ramp up load
+        ramping_load: {
+          executor: 'ramping-arrival-rate',
+          startRate: 1,
+          stages: [
+            { duration: '30s', target: 5 },
+            { duration: '1m', target: 10 },
+            { duration: '30s', target: 5 },
+            { duration: '20s', target: 1 },
+          ],
+          preAllocatedVUs: 10,
+          maxVUs: 20,
+        },
+      },
+      thresholds: {
+        // LLM chat success rate - allow for some timeouts
+        'load_chat_success': ['rate>0.70'],
+        // LLM responses can take 30-60s, cold starts add more - P95 at 90s
+        'load_chat_latency_ms': ['p(95)<90000'],
+        // Allow higher failure rate for LLM timeouts
+        'http_req_failed': ['rate<0.3'],
+      },
+    };
+    
+    function sendChat(message, sessionId) {
+      const startTime = Date.now();
+      
+      const res = http.post(`${AGENT_URL}/chat`, JSON.stringify({
+        message: message,
+        session_id: sessionId,
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: '120s',  // LLM + cold start can take up to 2 minutes
+      });
+      
+      const duration = Date.now() - startTime;
+      chatLatency.add(duration);
+      
+      // Detect cold start (> 3s for first request)
+      if (duration > 3000) {
+        coldStarts.add(1);
+      }
+      
+      const success = check(res, {
+        'chat returns 2xx': (r) => r.status >= 200 && r.status < 300,
+      });
+      
+      chatSuccess.add(success);
+      
+      if (!success) {
+        chatErrors.add(1);
+        console.error('Chat failed: ' + res.status + ' - ' + (res.body ? res.body.substring(0, 200) : ''));
+        return null;
+      }
+      
+      try {
+        const body = JSON.parse(res.body);
+        if (body.response) {
+          // Estimate tokens (rough: ~4 chars per token)
+          tokensGenerated.add(Math.ceil(body.response.length / 4));
+        }
+        return body;
+      } catch (e) {
+        return null;
+      }
+    }
+    
+    export default function() {
+      const sessionId = `load-test-${__VU}-${__ITER}-${Date.now()}`;
+      const conversation = CONVERSATIONS[Math.floor(Math.random() * CONVERSATIONS.length)];
+      
+      group('Conversation', () => {
+        for (const message of conversation) {
+          const response = sendChat(message, sessionId);
+          
+          if (response) {
+            // Simulate reading time
+            sleep(Math.random() * 2 + 1);
+          } else {
+            // On error, shorter wait before retry
+            sleep(0.5);
+          }
+        }
+        
+        conversationsCompleted.add(1);
+      });
+      
+      sleep(1);
+    }
+    
+    export function handleSummary(data) {
+      const chatSuccessMetric = data.metrics['load_chat_success'];
+      const chatLatencyMetric = data.metrics['load_chat_latency_ms'];
+      const conversationsMetric = data.metrics['load_conversations_completed'];
+      const tokensMetric = data.metrics['load_tokens_generated'];
+      const coldStartsMetric = data.metrics['load_cold_starts'];
+      const errorsMetric = data.metrics['load_chat_errors'];
+      
+      const successRate = chatSuccessMetric && chatSuccessMetric.values ? chatSuccessMetric.values.rate : 0;
+      const p95Latency = chatLatencyMetric && chatLatencyMetric.values ? chatLatencyMetric.values['p(95)'] : 0;
+      const avgLatency = chatLatencyMetric && chatLatencyMetric.values ? chatLatencyMetric.values.avg : 0;
+      const totalConversations = conversationsMetric && conversationsMetric.values ? conversationsMetric.values.count : 0;
+      const totalTokens = tokensMetric && tokensMetric.values ? tokensMetric.values.count : 0;
+      const totalColdStarts = coldStartsMetric && coldStartsMetric.values ? coldStartsMetric.values.count : 0;
+      const totalErrors = errorsMetric && errorsMetric.values ? errorsMetric.values.count : 0;
+      
+      const passed = successRate >= 0.80;
+      
+      console.log('\n' + '═'.repeat(70));
+      console.log('💬 AGENT-BRUNO CHAT LOAD TEST RESULTS');
+      console.log('═'.repeat(70));
+      console.log('Overall Status: ' + (passed ? '✅ PASSED' : '❌ FAILED'));
+      console.log('');
+      console.log('┌─────────────────────────────────────────────────────────────────────┐');
+      console.log('│  PERFORMANCE METRICS                                                │');
+      console.log('├─────────────────────────────────────────────────────────────────────┤');
+      console.log('│  Chat Success Rate:   ' + (successRate * 100).toFixed(1) + '%                                       │');
+      console.log('│  Average Latency:     ' + avgLatency.toFixed(0) + 'ms                                       │');
+      console.log('│  P95 Latency:         ' + p95Latency.toFixed(0) + 'ms                                       │');
+      console.log('│  Cold Starts:         ' + totalColdStarts + '                                             │');
+      console.log('└─────────────────────────────────────────────────────────────────────┘');
+      console.log('');
+      console.log('┌─────────────────────────────────────────────────────────────────────┐');
+      console.log('│  THROUGHPUT METRICS                                                 │');
+      console.log('├─────────────────────────────────────────────────────────────────────┤');
+      console.log('│  Conversations:       ' + totalConversations + '                                             │');
+      console.log('│  Tokens Generated:    ~' + totalTokens + '                                           │');
+      console.log('│  Errors:              ' + totalErrors + '                                             │');
+      console.log('└─────────────────────────────────────────────────────────────────────┘');
+      console.log('═'.repeat(70) + '\n');
+      
+      return {};
+    }

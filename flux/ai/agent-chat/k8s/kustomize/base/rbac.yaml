@@ -1,0 +1,212 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🔐 RBAC Configuration for AgentChat
+#
+#  Defines roles and bindings for agent service accounts
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+# ServiceAccount for Messaging Hub
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: messaging-hub-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: messaging-hub
+    app.kubernetes.io/component: messaging
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# ServiceAccount for Voice Agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: voice-agent-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: voice-agent
+    app.kubernetes.io/component: voice
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# ServiceAccount for Media Agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: media-agent-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: media-agent
+    app.kubernetes.io/component: media
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# ServiceAccount for Location Agent
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: location-agent-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: location-agent
+    app.kubernetes.io/component: location
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# ServiceAccount for Agent Assistants (template)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agent-assistant-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-assistant
+    app.kubernetes.io/component: assistant
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# ServiceAccount for Command & Control Center
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: command-center-sa
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: command-center
+    app.kubernetes.io/component: admin
+imagePullSecrets:
+  - name: ghcr-secret
+---
+# Role for messaging agents (basic agent permissions)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-chat-agent-role
+  namespace: ai
+rules:
+  # Read ConfigMaps and Secrets for configuration
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch"]
+  # Manage own events
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  # Read LambdaAgents for self-awareness
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdaagents"]
+    verbs: ["get", "list", "watch"]
+---
+# Role for Command Center (admin permissions)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-chat-admin-role
+  namespace: ai
+rules:
+  # Full access to ConfigMaps and Secrets
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Manage LambdaAgents (create user assistants)
+  - apiGroups: ["lambda.knative.io"]
+    resources: ["lambdaagents", "lambdafunctions"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # View pods for monitoring
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  # Manage Knative resources
+  - apiGroups: ["serving.knative.dev"]
+    resources: ["services", "revisions", "routes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Manage Eventing
+  - apiGroups: ["eventing.knative.dev"]
+    resources: ["brokers", "triggers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# RoleBindings
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: messaging-hub-binding
+  namespace: ai
+subjects:
+  - kind: ServiceAccount
+    name: messaging-hub-sa
+    namespace: ai
+roleRef:
+  kind: Role
+  name: agent-chat-agent-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: voice-agent-binding
+  namespace: ai
+subjects:
+  - kind: ServiceAccount
+    name: voice-agent-sa
+    namespace: ai
+roleRef:
+  kind: Role
+  name: agent-chat-agent-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: media-agent-binding
+  namespace: ai
+subjects:
+  - kind: ServiceAccount
+    name: media-agent-sa
+    namespace: ai
+roleRef:
+  kind: Role
+  name: agent-chat-agent-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: location-agent-binding
+  namespace: ai
+subjects:
+  - kind: ServiceAccount
+    name: location-agent-sa
+    namespace: ai
+roleRef:
+  kind: Role
+  name: agent-chat-agent-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-assistant-binding
+  namespace: ai
+subjects:
+  - kind: ServiceAccount
+    name: agent-assistant-sa
+    namespace: ai
+roleRef:
+  kind: Role
+  name: agent-chat-agent-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: command-center-binding
+  namespace: ai
+subjects:
+  - kind: ServiceAccount
+    name: command-center-sa
+    namespace: ai
+roleRef:
+  kind: Role
+  name: agent-chat-admin-role
+  apiGroup: rbac.authorization.k8s.io

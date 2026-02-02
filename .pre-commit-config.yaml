@@ -1,0 +1,285 @@
+# Pre-commit hooks configuration
+# See https://pre-commit.com for more information
+#
+# Run `pre-commit install` to set up git hooks
+# Run `pre-commit run --all-files` to run on all files
+# Run `pre-commit autoupdate` to update hook versions
+
+default_stages: [pre-commit]
+fail_fast: false
+
+repos:
+  # ============================================================================
+  # General Hooks
+  # ============================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+        exclude: ^(.*\.snap|.*\.lock|.*\.xcworkspacedata)$
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: ^(flux/.*kustomization\.yaml|.*template.*\.yaml)$
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-symlinks
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: no-commit-to-branch
+        args: [--branch, main, --branch, master]
+
+  # ============================================================================
+  # Security - Secrets Detection
+  # ============================================================================
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        name: Detect secrets with gitleaks
+
+  # ============================================================================
+  # YAML Linting
+  # ============================================================================
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args:
+          - -d
+          - |
+            extends: default
+            rules:
+              line-length:
+                max: 200
+                level: warning
+              document-start: disable
+              truthy:
+                check-keys: false
+              comments:
+                min-spaces-from-content: 1
+              indentation:
+                spaces: 2
+                indent-sequences: consistent
+              brackets:
+                max-spaces-inside: 1
+        exclude: ^(\.github/workflows/|.*template.*\.yaml|AgentApp/)
+
+  # ============================================================================
+  # Kubernetes Manifest Validation
+  # ============================================================================
+  - repo: https://github.com/yannh/kubeconform
+    rev: v0.6.7
+    hooks:
+      - id: kubeconform
+        name: Validate Kubernetes manifests
+        args:
+          - -strict
+          - -ignore-missing-schemas
+          - -summary
+          - -skip=Secret,SealedSecret,LambdaFunction,LambdaAgent,CloudflareTunnelIngress
+        files: ^flux/.*\.(yaml|yml)$
+        exclude: ^(flux/clusters/.*/kind\.yaml|.*kustomization\.yaml|.*values\.yaml|.*template.*\.yaml)$
+
+  # ============================================================================
+  # Go Linting
+  # ============================================================================
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.62.2
+    hooks:
+      - id: golangci-lint
+        name: Go linting with golangci-lint
+        args:
+          - --config
+          - flux/infrastructure/knative-lambda-operator/src/.golangci.yml
+        files: \.go$
+        exclude: ^(.*zz_generated.*\.go|.*_test\.go)$
+
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+        name: Go format check
+        files: \.go$
+        exclude: ^(.*zz_generated.*\.go)$
+
+  # ============================================================================
+  # Python Linting & Formatting
+  # ============================================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.2
+    hooks:
+      - id: ruff
+        name: Python linting with Ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: Python formatting with Ruff
+        types_or: [python, pyi]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        name: Python type checking with mypy
+        args:
+          - --ignore-missing-imports
+          - --no-strict-optional
+          - --warn-return-any
+        files: ^flux/ai/.*\.py$
+        exclude: ^(.*test.*\.py|.*conftest\.py|.*__init__\.py)$
+        additional_dependencies:
+          - types-requests
+          - types-redis
+
+  # ============================================================================
+  # Shell Script Linting
+  # ============================================================================
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        name: Shell script linting
+        args: [--severity=warning, --external-sources]
+        files: \.(sh|bash)$
+
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.10.0-1
+    hooks:
+      - id: shfmt
+        name: Shell script formatting
+        args: [-i, '2', -ci, -bn]
+        files: \.(sh|bash)$
+
+  # ============================================================================
+  # Dockerfile Linting
+  # ============================================================================
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        name: Dockerfile linting
+        args:
+          - --ignore=DL3008  # Pin versions in apt-get
+          - --ignore=DL3013  # Pin pip versions
+          - --ignore=DL3018  # Pin apk versions
+
+  # ============================================================================
+  # Markdown Linting
+  # ============================================================================
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.43.0
+    hooks:
+      - id: markdownlint
+        name: Markdown linting
+        args:
+          - --config
+          - .markdownlint.json
+          - --fix
+        exclude: ^(CHANGELOG\.md|node_modules/)
+
+  # ============================================================================
+  # TypeScript/JavaScript (Prettier)
+  # ============================================================================
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        name: Prettier formatting
+        types_or: [javascript, jsx, ts, tsx, json, css, scss, markdown]
+        files: ^(flux/ai/.*web.*|flux/infrastructure/homepage/src/frontend)/
+        exclude: ^(node_modules/|.*\.min\.|package-lock\.json|.*\.snap)$
+        additional_dependencies:
+          - prettier@3.4.2
+          - prettier-plugin-tailwindcss@0.6.9
+
+  # ============================================================================
+  # Commit Message Linting (Conventional Commits)
+  # ============================================================================
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
+    hooks:
+      - id: conventional-pre-commit
+        name: Conventional commit message
+        stages: [commit-msg]
+        args:
+          - feat
+          - fix
+          - docs
+          - style
+          - refactor
+          - perf
+          - test
+          - build
+          - ci
+          - chore
+          - revert
+
+  # ============================================================================
+  # Local Hooks - Agent Validation
+  # ============================================================================
+  - repo: local
+    hooks:
+      # Agent version validation
+      - id: agent-version-check
+        name: Agent Version Consistency Check
+        entry: bash -c 'cd flux/ai && ./scripts/check-compliance.sh'
+        language: system
+        pass_filenames: false
+        always_run: false
+        files: ^flux/ai/agent-.*/(Makefile|VERSION|k8s/kustomize/.*/kustomization\.yaml)$
+
+      # Agent Makefile validation
+      - id: agent-makefile-check
+        name: Agent Makefile Best Practices
+        entry: bash -c 'cd flux/ai && ./scripts/validate-makefile.sh'
+        language: system
+        pass_filenames: true
+        files: ^flux/ai/agent-.*/Makefile$
+
+      # Kustomize build validation
+      - id: kustomize-build-check
+        name: Kustomize Build Validation
+        entry: bash -c 'for f in "$@"; do dir=$(dirname "$f"); kustomize build "$dir" > /dev/null || exit 1; done'
+        language: system
+        files: ^flux/.*/kustomization\.yaml$
+        pass_filenames: true
+        require_serial: true
+
+      # Go mod tidy check
+      - id: go-mod-tidy
+        name: Go mod tidy check
+        entry: bash -c 'for dir in $(find . -name "go.mod" -exec dirname {} \; | sort -u); do (cd "$dir" && go mod tidy -diff) || exit 1; done'
+        language: system
+        files: (go\.mod|go\.sum)$
+        pass_filenames: false
+
+      # Python requirements check
+      - id: python-requirements-check
+        name: Python requirements.txt consistency
+        entry: bash -c 'for f in "$@"; do dir=$(dirname "$f"); if [ -f "$dir/pyproject.toml" ] && [ -f "$dir/requirements.txt" ]; then echo "Warning: Both pyproject.toml and requirements.txt exist in $dir"; fi; done'
+        language: system
+        files: (requirements\.txt|pyproject\.toml)$
+        pass_filenames: true
+
+# ============================================================================
+# CI-specific configuration
+# ============================================================================
+ci:
+  autofix_prs: true
+  autoupdate_schedule: weekly
+  skip:
+    - golangci-lint  # Too slow for CI
+    - hadolint-docker  # Requires Docker
+    - kubeconform  # May not have schemas
+    - mypy  # Can be slow
+    - kustomize-build-check  # Requires kustomize CLI
+    - go-mod-tidy  # Requires Go

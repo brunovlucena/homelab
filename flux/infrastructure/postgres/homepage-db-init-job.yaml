@@ -1,0 +1,109 @@
+---
+# Database Migration Job
+# Automatically recreated when homepage-migrations.sql changes
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: homepage-db-init
+  namespace: postgres
+  labels:
+    app: postgres
+    component: db-init
+    app.kubernetes.io/part-of: homepage
+  annotations:
+    # Flux: Force replace (delete + create) instead of patch
+    # This is required because Jobs are immutable
+    kustomize.toolkit.fluxcd.io/force: "enabled"
+    kustomize.toolkit.fluxcd.io/prune: "enabled"
+    # This annotation will be replaced with ConfigMap hash by Kustomize
+    # When SQL changes -> hash changes -> annotation changes -> Flux recreates Job
+    configmap/hash: "placeholder"
+    # Force job recreation when SQL changes - updated timestamp
+    force-recreate: "2026-01-12T21:20:00Z"
+spec:
+  backoffLimit: 30
+  ttlSecondsAfterFinished: 300  # Auto-cleanup completed jobs after 5 min
+  template:
+    metadata:
+      labels:
+        app: postgres
+        component: db-init
+      annotations:
+        # This will be replaced with ConfigMap hash - triggers Pod recreation
+        migrations-configmap: "placeholder"
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-postgres
+          image: localhost:5001/postgres:16-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              MAX_ATTEMPTS=60
+              SLEEP_SECONDS=5
+              attempt=0
+              
+              echo "⏳ Waiting for PostgreSQL to be ready..."
+              
+              while [ $attempt -lt $MAX_ATTEMPTS ]; do
+                attempt=$((attempt + 1))
+                echo "🔄 Attempt $attempt/$MAX_ATTEMPTS..."
+                
+                if ! nslookup postgres.postgres.svc.cluster.local > /dev/null 2>&1; then
+                  echo "   ❌ DNS not ready"
+                  sleep $SLEEP_SECONDS
+                  continue
+                fi
+                
+                if pg_isready -h postgres.postgres.svc.cluster.local -p 5432 -U postgres; then
+                  echo "✅ PostgreSQL is ready!"
+                  exit 0
+                fi
+                
+                echo "   ❌ PostgreSQL not ready yet"
+                sleep $SLEEP_SECONDS
+              done
+              
+              echo "💀 FATAL: PostgreSQL did not become ready"
+              exit 1
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: password
+      containers:
+        - name: db-init
+          image: localhost:5001/postgres:16-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+              
+              echo "🔍 Checking if homepage database exists..."
+              if psql -h postgres.postgres -p 5432 -U postgres -d template1 -tc "SELECT 1 FROM pg_database WHERE datname='homepage';" | grep -q 1; then
+                echo "✅ Database homepage exists"
+              else
+                echo "📦 Creating database homepage..."
+                psql -h postgres.postgres -p 5432 -U postgres -d template1 -c "CREATE DATABASE homepage;"
+              fi
+              
+              echo "🔄 Running migrations..."
+              psql -h postgres.postgres -p 5432 -U postgres -d homepage -f /migrations/001_complete_schema.sql
+              echo "✅ Migration completed!"
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: password
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+      volumes:
+        - name: migrations
+          configMap:
+            name: homepage-migrations

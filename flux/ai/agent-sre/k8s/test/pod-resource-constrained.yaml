@@ -1,0 +1,26 @@
+---
+# Test Pod: Resource Constraints
+# Purpose: Test pod-check-status LambdaFunction
+# Expected: LambdaFunction should check pod status and identify resource issues
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-resource-constrained
+  namespace: ai
+  labels:
+    app: test-resource-constrained
+    test.agent-sre.io/scenario: resource-constrained
+    test.agent-sre.io/lambda-function: pod-check-status
+spec:
+  containers:
+  - name: test-container
+    image: busybox:latest
+    command: ["/bin/sh", "-c", "while true; do sleep 1; done"]
+    resources:
+      requests:
+        cpu: "1000"  # Requesting 1000 CPU (unrealistic, will be pending)
+        memory: "10Gi"  # Requesting 10Gi memory (may be pending)
+      limits:
+        cpu: "2000"
+        memory: "20Gi"
+

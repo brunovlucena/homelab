@@ -1,0 +1,168 @@
+# ============================================================================
+# 💬 Agent-Chat - Multi-Service CI/CD
+# ============================================================================
+# Builds multiple microservices: messaging-hub, command-center, voice-agent,
+# media-agent, and location-agent.
+# ============================================================================
+
+name: 💬 Agent-Chat - CI/CD
+
+permissions:
+  contents: write
+  packages: write
+  attestations: write
+  id-token: write
+  security-events: write
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agent-chat/**'
+      - '.github/workflows/agent-chat-ci-cd.yml'
+  push:
+    branches: [main, feature/*, bugfix/*]
+    paths:
+      - 'flux/ai/agent-chat/**'
+      - '.github/workflows/agent-chat-ci-cd.yml'
+    tags:
+      - 'agent-chat-v*.*.*'
+
+env:
+  WORKING_DIR: flux/ai/agent-chat
+
+jobs:
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Detect Changes
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  detect:
+    name: 🔍 Detect Changes
+    uses: ./.github/workflows/_reusable-detect-changes.yml
+    with:
+      working-directory: flux/ai/agent-chat
+      paths-filter: |
+        messaging_hub:
+          - 'flux/ai/agent-chat/src/messaging-hub/**'
+          - 'flux/ai/agent-chat/src/shared/**'
+        command_center:
+          - 'flux/ai/agent-chat/src/command-center/**'
+          - 'flux/ai/agent-chat/src/shared/**'
+        voice_agent:
+          - 'flux/ai/agent-chat/src/voice-agent/**'
+          - 'flux/ai/agent-chat/src/shared/**'
+        media_agent:
+          - 'flux/ai/agent-chat/src/media-agent/**'
+          - 'flux/ai/agent-chat/src/shared/**'
+        location_agent:
+          - 'flux/ai/agent-chat/src/location-agent/**'
+          - 'flux/ai/agent-chat/src/shared/**'
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Build Services
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  build-messaging-hub:
+    name: 🏗️ Messaging Hub
+    needs: [detect]
+    if: needs.detect.outputs.should_build == 'true'
+    uses: ./.github/workflows/_reusable-multi-service.yml
+    with:
+      working-directory: flux/ai/agent-chat
+      service-name: messaging-hub
+      service-path: src/messaging-hub
+      image-prefix: agent-chat
+      docker-tag: ${{ needs.detect.outputs.docker_tag }}
+    secrets: inherit
+
+  build-command-center:
+    name: 🏗️ Command Center
+    needs: [detect]
+    if: needs.detect.outputs.should_build == 'true'
+    uses: ./.github/workflows/_reusable-multi-service.yml
+    with:
+      working-directory: flux/ai/agent-chat
+      service-name: command-center
+      service-path: src/command-center
+      image-prefix: agent-chat
+      docker-tag: ${{ needs.detect.outputs.docker_tag }}
+    secrets: inherit
+
+  build-voice-agent:
+    name: 🏗️ Voice Agent
+    needs: [detect]
+    if: needs.detect.outputs.should_build == 'true'
+    uses: ./.github/workflows/_reusable-multi-service.yml
+    with:
+      working-directory: flux/ai/agent-chat
+      service-name: voice-agent
+      service-path: src/voice-agent
+      image-prefix: agent-chat
+      docker-tag: ${{ needs.detect.outputs.docker_tag }}
+    secrets: inherit
+
+  build-media-agent:
+    name: 🏗️ Media Agent
+    needs: [detect]
+    if: needs.detect.outputs.should_build == 'true'
+    uses: ./.github/workflows/_reusable-multi-service.yml
+    with:
+      working-directory: flux/ai/agent-chat
+      service-name: media-agent
+      service-path: src/media-agent
+      image-prefix: agent-chat
+      docker-tag: ${{ needs.detect.outputs.docker_tag }}
+    secrets: inherit
+
+  build-location-agent:
+    name: 🏗️ Location Agent
+    needs: [detect]
+    if: needs.detect.outputs.should_build == 'true'
+    uses: ./.github/workflows/_reusable-multi-service.yml
+    with:
+      working-directory: flux/ai/agent-chat
+      service-name: location-agent
+      service-path: src/location-agent
+      image-prefix: agent-chat
+      docker-tag: ${{ needs.detect.outputs.docker_tag }}
+    secrets: inherit
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Security Scan
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  security:
+    name: 🔒 Security
+    needs: [detect]
+    if: needs.detect.outputs.should_build == 'true'
+    uses: ./.github/workflows/_reusable-security-scan.yml
+    with:
+      scan-path: flux/ai/agent-chat
+      scan-type: fs
+    secrets: inherit
+
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # Summary
+  # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  summary:
+    name: 📋 Summary
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    needs: [detect, build-messaging-hub, build-command-center, build-voice-agent, build-media-agent, build-location-agent, security]
+    if: always()
+    steps:
+      - name: 📊 Generate Summary
+        run: |
+          echo "## 💬 Agent-Chat CI/CD Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Messaging Hub | ${{ needs.build-messaging-hub.result == 'success' && '✅' || needs.build-messaging-hub.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Command Center | ${{ needs.build-command-center.result == 'success' && '✅' || needs.build-command-center.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Voice Agent | ${{ needs.build-voice-agent.result == 'success' && '✅' || needs.build-voice-agent.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Media Agent | ${{ needs.build-media-agent.result == 'success' && '✅' || needs.build-media-agent.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Location Agent | ${{ needs.build-location-agent.result == 'success' && '✅' || needs.build-location-agent.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security | ${{ needs.security.result == 'success' && '✅' || needs.security.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** \`${{ needs.detect.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag:** \`${{ needs.detect.outputs.docker_tag }}\`" >> $GITHUB_STEP_SUMMARY

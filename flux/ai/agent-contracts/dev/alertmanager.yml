@@ -1,0 +1,61 @@
+# Alertmanager configuration for local development
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'chain', 'contract_address']
+  group_wait: 10s
+  group_interval: 5m
+  repeat_interval: 1h
+  receiver: 'notifi-adapter'
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'notifi-adapter'
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 30m
+      continue: true
+    
+    # High alerts
+    - match:
+        severity: high
+      receiver: 'notifi-adapter'
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 1h
+    
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'notifi-adapter'
+      group_wait: 1m
+      group_interval: 10m
+      repeat_interval: 2h
+    
+    # Info alerts - low priority
+    - match:
+        severity: info
+      receiver: 'null'
+      group_wait: 5m
+
+receivers:
+  - name: 'notifi-adapter'
+    webhook_configs:
+      - url: 'http://notifi-adapter:8080/webhook/alertmanager'
+        send_resolved: true
+        http_config:
+          follow_redirects: true
+
+  - name: 'null'
+    # Blackhole receiver for info alerts in dev
+
+inhibit_rules:
+  # Don't alert for high if critical is already firing for same contract
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'high'
+    equal: ['chain', 'contract_address']
+

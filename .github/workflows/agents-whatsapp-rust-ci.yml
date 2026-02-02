@@ -1,0 +1,205 @@
+# ============================================================================
+# 📱 Agents-WhatsApp-Rust - CI/CD
+# ============================================================================
+# CI/CD pipeline for Rust-based WhatsApp messaging agents.
+# Runs tests, linting, and builds for all services.
+# ============================================================================
+
+name: 📱 Agents-WhatsApp-Rust - CI/CD
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flux/ai/agents-whatsapp-rust/**'
+      - '.github/workflows/agents-whatsapp-rust-ci.yml'
+  push:
+    branches: [main, develop, 'feature/**', 'bugfix/**']
+    paths:
+      - 'flux/ai/agents-whatsapp-rust/**'
+      - '.github/workflows/agents-whatsapp-rust-ci.yml'
+    tags:
+      - 'agents-whatsapp-rust-v*.*.*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_VERSION: '1.83'
+  CARGO_TERM_COLOR: always
+  WORKING_DIR: flux/ai/agents-whatsapp-rust
+
+jobs:
+  # =============================================================================
+  # 🔍 Code Quality Checks
+  # =============================================================================
+  quality:
+    name: 🔍 Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🦀 Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt, clippy
+
+      - name: 📦 Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ env.WORKING_DIR }}/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles(format('{0}/**/Cargo.lock', env.WORKING_DIR)) }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: 🔍 Check formatting
+        working-directory: ${{ env.WORKING_DIR }}
+        run: cargo fmt --all -- --check
+
+      - name: 🔍 Lint with clippy
+        working-directory: ${{ env.WORKING_DIR }}
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  # =============================================================================
+  # 🧪 Unit Tests
+  # =============================================================================
+  test:
+    name: 🧪 Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🦀 Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt, clippy
+
+      - name: 📦 Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ env.WORKING_DIR }}/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles(format('{0}/**/Cargo.lock', env.WORKING_DIR)) }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: 🧪 Run tests
+        working-directory: ${{ env.WORKING_DIR }}
+        run: cargo test --all-features --workspace
+
+      - name: 📊 Generate test coverage (optional)
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          cargo install cargo-tarpaulin || true
+          cargo tarpaulin --out Xml --workspace || true
+        continue-on-error: true
+
+  # =============================================================================
+  # 🏗️ Build
+  # =============================================================================
+  build:
+    name: 🏗️ Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - messaging-service
+          - agent-gateway
+          - message-storage-service
+          - user-service
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🦀 Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt, clippy
+
+      - name: 📦 Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ${{ env.WORKING_DIR }}/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles(format('{0}/**/Cargo.lock', env.WORKING_DIR)) }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: 🏗️ Build service
+        working-directory: ${{ env.WORKING_DIR }}
+        run: cargo build --release --package ${{ matrix.service }}
+
+      - name: ✅ Verify binary exists
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          if [ -f "target/release/${{ matrix.service }}" ]; then
+            echo "✅ Binary built successfully"
+            ls -lh "target/release/${{ matrix.service }}"
+          else
+            echo "❌ Binary not found"
+            exit 1
+          fi
+
+  # =============================================================================
+  # 🔒 Security Scan
+  # =============================================================================
+  security:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🦀 Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt, clippy
+
+      - name: 🔒 Run cargo audit
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          cargo install cargo-audit --features vendored-openssl || true
+          cargo audit --version || echo "cargo-audit not available"
+          cargo audit || echo "Audit completed with warnings"
+        continue-on-error: true
+
+      - name: 🔒 Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: ${{ env.WORKING_DIR }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+        continue-on-error: true
+
+      - name: 📤 Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true

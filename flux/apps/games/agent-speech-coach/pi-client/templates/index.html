@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech Coach - Treino de Fala</title>
+    <link rel="stylesheet" href="/static/css/themes/{{ theme }}.css">
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>🎯 Speech Coach</h1>
+            <div class="theme-selector">
+                <select id="themeSelect">
+                    <option value="default">Padrão</option>
+                    <option value="ocean">Oceano</option>
+                    <option value="forest">Floresta</option>
+                    <option value="sunset">Pôr do Sol</option>
+                    <option value="space">Espaço</option>
+                </select>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Camera View (opcional) -->
+            <div class="camera-section" id="cameraSection" style="display: none;">
+                <video id="videoElement" autoplay playsinline></video>
+                <canvas id="canvasElement" style="display: none;"></canvas>
+                <button id="toggleCamera" class="btn btn-secondary">📸 Ligar Câmera</button>
+            </div>
+
+            <!-- Chat Section -->
+            <div class="chat-section">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="welcome-message">
+                        <h2>Olá! 👋</h2>
+                        <p>Eu sou seu Speech Coach! Vamos praticar juntos?</p>
+                        <p>Digite uma mensagem ou escolha um exercício:</p>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="quick-actions">
+                    <button class="btn-action" data-exercise="word_repetition">
+                        🔁 Repetir Palavras
+                    </button>
+                    <button class="btn-action" data-exercise="phrase_completion">
+                        💬 Completar Frases
+                    </button>
+                    <button class="btn-action" data-exercise="story_telling">
+                        📖 Contar História
+                    </button>
+                    <button class="btn-action" data-exercise="conversation">
+                        🗣️ Conversar
+                    </button>
+                </div>
+
+                <!-- Input Section -->
+                <div class="input-section">
+                    <div class="input-container">
+                        <input 
+                            type="text" 
+                            id="messageInput" 
+                            placeholder="Digite sua mensagem ou fale..."
+                            autocomplete="off"
+                        >
+                        <button id="micButton" class="btn btn-mic" title="Falar">
+                            🎤
+                        </button>
+                        <button id="sendButton" class="btn btn-primary">
+                            Enviar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progress Section -->
+            <div class="progress-section">
+                <h3>Seu Progresso</h3>
+                <div id="progressDisplay">
+                    <p>Carregando progresso...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div id="loadingIndicator" class="loading" style="display: none;">
+        <div class="spinner"></div>
+        <p>Pensando...</p>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

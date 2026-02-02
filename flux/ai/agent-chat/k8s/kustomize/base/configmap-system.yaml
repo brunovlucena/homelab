@@ -1,0 +1,127 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  ⚙️ System Configuration for AgentChat
+#
+#  Global settings and feature flags
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentchat-config
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-chat
+    app.kubernetes.io/component: config
+data:
+  # Feature flags
+  VOICE_CLONING_ENABLED: "true"
+  IMAGE_GENERATION_ENABLED: "true"
+  VIDEO_GENERATION_ENABLED: "false"
+  LOCATION_TRACKING_ENABLED: "true"
+  END_TO_END_ENCRYPTION: "true"
+  
+  # Location settings
+  DEFAULT_PROXIMITY_RADIUS_KM: "5"
+  LOCATION_UPDATE_INTERVAL_SECONDS: "60"
+  LOCATION_HISTORY_RETENTION_HOURS: "24"
+  
+  # Voice settings
+  VOICE_SAMPLE_MIN_DURATION_SECONDS: "30"
+  VOICE_SAMPLE_MAX_DURATION_SECONDS: "180"
+  VOICE_CLONE_MODEL: "xtts_v2"
+  
+  # Media settings
+  IMAGE_MAX_RESOLUTION: "1024x1024"
+  IMAGE_MODEL: "stable-diffusion-xl"
+  VIDEO_MAX_DURATION_SECONDS: "30"
+  
+  # Messaging settings
+  MAX_MESSAGE_LENGTH: "4096"
+  MAX_ATTACHMENTS_PER_MESSAGE: "10"
+  MESSAGE_HISTORY_RETENTION_DAYS: "365"
+  
+  # Rate limits
+  MESSAGES_PER_MINUTE: "60"
+  VOICE_CLONES_PER_DAY: "3"
+  IMAGES_PER_HOUR: "20"
+  LOCATION_UPDATES_PER_MINUTE: "1"
+  
+  # AI settings
+  LLM_PROVIDER: "ollama"
+  LLM_MODEL: "llama3.2:3b"
+  LLM_MAX_TOKENS: "4096"
+  LLM_TEMPERATURE: "0.7"
+  
+  # External services
+  OLLAMA_URL: "http://ollama-native.ollama.svc.cluster.local:11434"
+  MINIO_URL: "http://minio.minio.svc.cluster.local:9000"
+  REDIS_URL: "redis://redis.agent-chat.svc.cluster.local:6379"
+  POSTGRES_HOST: "postgresql.postgres.svc.cluster.local"
+  
+  # CloudEvents settings
+  RABBITMQ_CLUSTER: "rabbitmq-cluster-knative-lambda"
+  RABBITMQ_NAMESPACE: "knative-lambda"
+  EVENT_SOURCE_PREFIX: "/agent-chat"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentchat-prompts
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: agent-chat
+    app.kubernetes.io/component: prompts
+data:
+  assistant-base-prompt.txt: |
+    You are a personal AI assistant in AgentChat, a private messaging platform.
+    
+    YOUR CAPABILITIES:
+    - Engage in natural, helpful conversations
+    - Generate images on user's behalf using AI (say "generate image: [description]")
+    - Send voice messages in the user's cloned voice
+    - Alert contacts when the user is nearby their location
+    - Manage user's schedule and reminders
+    - Summarize conversations and provide insights
+    
+    IMPORTANT RULES:
+    1. Always be respectful, helpful, and maintain user privacy
+    2. Ask for explicit confirmation before:
+       - Sending messages on user's behalf
+       - Sharing user's location
+       - Generating content
+    3. Keep conversations contextual - remember previous messages
+    4. Adapt to user's communication style over time
+    5. Never share sensitive information with other users
+    6. Report any suspicious or harmful requests
+    
+    RESPONSE FORMAT:
+    - Keep responses concise unless asked for detail
+    - Use emojis sparingly and appropriately
+    - Format code, lists, and structured data clearly
+    - Provide actionable suggestions when relevant
+  
+  voice-clone-consent.txt: |
+    To create a voice clone for your agent assistant, I need to record your voice.
+    
+    This voice clone will ONLY be used to:
+    - Generate voice messages on your behalf (with your permission each time)
+    - Make your agent assistant sound like you
+    
+    Your voice data:
+    - Is stored securely and encrypted
+    - Is never shared with other users
+    - Can be deleted at any time from Settings
+    
+    Do you consent to creating a voice clone?
+    
+  location-alert-template.txt: |
+    Hey! 👋 {user_name} is in your area ({city_name}).
+    
+    You're about {distance_km} km apart.
+    
+    Would you like to:
+    - Send them a message?
+    - Share your location too?
+    - Ignore this notification?

@@ -1,0 +1,41 @@
+
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: metrics-server
+  namespace: metrics-server
+spec:
+  interval: 5m
+  timeout: 10m
+  chart:
+    spec:
+      chart: metrics-server
+      version: 3.12.2
+      sourceRef:
+        kind: HelmRepository
+        name: metrics-server
+        namespace: flux-system
+  values:
+    # Use local registry
+    image:
+      repository: localhost:5001/metrics-server
+      tag: v0.7.2
+    
+    service:
+      type: ClusterIP
+    resources:
+      # requests:
+      #   cpu: 100m
+      #   memory: 128Mi
+      limits:
+        # cpu: 200m
+        memory: 256Mi
+    # Configure for Kind clusters
+    args:
+      - --cert-dir=/tmp
+      - --secure-port=10250
+      - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+      - --kubelet-use-node-status-port
+      - --metric-resolution=15s
+      - --kubelet-insecure-tls
+

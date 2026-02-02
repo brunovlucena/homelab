@@ -1,0 +1,58 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: prometheus-operator
+  namespace: prometheus
+
+resources:
+  - namespace.yaml
+  - helmrelease.yaml
+  - pushgateway
+  - metrics-server
+  - secrets-job.yaml
+  # Grafana Service Accounts (BVL-319)
+  - grafana-service-accounts
+  # Cloudflare Tunnel Ingresses (managed by cloudflare-tunnel-operator)
+  - k8s/cloudflare-tunnel-ingress.yaml
+  # Grafana Dashboards (auto-provisioned via ConfigMaps)
+  - k8s/dashboards/knative-lambda-operator-configmap.yaml
+  - k8s/dashboards/knative-lambda-metrics-configmap.yaml
+  - k8s/dashboards/knative-lambda-eventing-dashboard-configmap.yaml
+  - k8s/dashboards/knative-lambda-sre-dashboard-configmap.yaml
+  - k8s/dashboards/k6-knative-lambda-dashboard-configmap.yaml
+  - k8s/dashboards/k6-medical-test-dashboard-configmap.yaml
+  - k8s/dashboards/k6-restaurant-test-dashboard-configmap.yaml
+  - k8s/dashboards/demo-notifi-dashboard-configmap.yaml
+  # Agent Dashboards
+  - k8s/dashboards/agent-bruno-dashboard-configmap.yaml
+  - k8s/dashboards/agent-contracts-dashboard-configmap.yaml
+  - k8s/dashboards/agent-redteam-attacks-dashboard-configmap.yaml
+  - k8s/dashboards/agent-redteam-health-dashboard-configmap.yaml
+  - k8s/dashboards/agent-battle-arena-dashboard-configmap.yaml
+  - k8s/dashboards/agent-blueteam-dashboard-configmap.yaml
+  - k8s/dashboards/agent-pos-edge-dashboard-configmap.yaml
+  - k8s/dashboards/agent-tools-dashboard-configmap.yaml
+  - k8s/dashboards/agent-restaurant-dashboard-configmap.yaml
+  - k8s/dashboards/agent-medical-dashboard-configmap.yaml
+  - k8s/dashboards/agent-sre-dashboard-configmap.yaml
+  # Homepage Dashboards
+  - k8s/dashboards/homepage-metrics-dashboard-configmap.yaml
+  - k8s/dashboards/homepage-security-dashboard-configmap.yaml  # SEC-013: Security monitoring dashboard
+  - k8s/dashboards/google-analytics-dashboard-configmap.yaml
+  - dashboards
+  # Grafana Datasources (auto-provisioned via ConfigMaps)
+  - k8s/datasources/loki-datasource.yaml
+  - k8s/datasources/tempo-datasource.yaml
+  - k8s/datasources/google-analytics-datasource.yaml
+  # PrometheusRules moved to 02b-observability-extras (requires CRD from kube-prometheus-stack)
+  # ⚠️ NOTE: These files are processed by KUSTOMIZE, NOT HELM!
+  # DO NOT use Helm template syntax ({{ .Release.Namespace }}, etc.)
+  # See k8s/prometheusrules/README.md for details
+  # AlertmanagerConfig moved to 02b-observability-extras (requires CRD from kube-prometheus-stack)
+  # ServiceMonitors moved to 02b-observability-extras (requires CRD from kube-prometheus-stack)
+  # ⚠️ NOTE: ServiceMonitors MUST be deployed AFTER Prometheus Operator CRDs exist
+  # DO NOT add ServiceMonitors to level 1 components - add them to 02b-observability-extras instead
+  # See k8s/servicemonitors/README.md for details
+

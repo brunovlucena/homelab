@@ -1,0 +1,171 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+#  🚀 K6 Load Test - Agent-POS-Edge
+#
+#  Simulates multiple locations with transactions
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-pos-load-test
+  namespace: agent-pos-edge
+data:
+  load-test.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    import { randomString, randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.2.0/index.js';
+
+    const COMMAND_CENTER_URL = __ENV.COMMAND_CENTER_URL || 'http://command-center.agent-pos-edge.svc.cluster.local';
+
+    // Simulate different location types
+    const LOCATIONS = [
+      { id: 'gas-station-001', type: 'gas_station', pumps: 8 },
+      { id: 'gas-station-002', type: 'gas_station', pumps: 6 },
+      { id: 'mcdonalds-001', type: 'fast_food', pumps: 0 },
+      { id: 'mcdonalds-002', type: 'fast_food', pumps: 0 },
+      { id: 'retail-001', type: 'retail', pumps: 0 },
+    ];
+
+    export const options = {
+      scenarios: {
+        heartbeats: {
+          executor: 'constant-vus',
+          vus: 5,  // One per location
+          duration: '5m',
+          exec: 'sendHeartbeats',
+        },
+        transactions: {
+          executor: 'ramping-arrival-rate',
+          startRate: 10,
+          timeUnit: '1s',
+          preAllocatedVUs: 50,
+          maxVUs: 100,
+          stages: [
+            { duration: '1m', target: 50 },   // Ramp up
+            { duration: '3m', target: 100 },  // Peak load
+            { duration: '1m', target: 10 },   // Ramp down
+          ],
+          exec: 'sendTransactions',
+        },
+        kitchen_orders: {
+          executor: 'constant-arrival-rate',
+          rate: 20,
+          timeUnit: '1s',
+          duration: '5m',
+          preAllocatedVUs: 30,
+          exec: 'sendKitchenEvents',
+        },
+      },
+      thresholds: {
+        http_req_duration: ['p(95)<1000'],
+        http_req_failed: ['rate<0.05'],
+        'http_req_duration{scenario:heartbeats}': ['p(95)<200'],
+        'http_req_duration{scenario:transactions}': ['p(95)<500'],
+      },
+    };
+
+    function sendCloudEvent(eventType, data) {
+      const payload = JSON.stringify({
+        specversion: '1.0',
+        type: eventType,
+        source: `/k6-load-test/${data.location_id || 'unknown'}`,
+        id: `load-${randomString(12)}`,
+        time: new Date().toISOString(),
+        datacontenttype: 'application/json',
+        data: data,
+      });
+
+      return http.post(`${COMMAND_CENTER_URL}/`, payload, {
+        headers: { 'Content-Type': 'application/cloudevents+json' },
+        tags: { event_type: eventType },
+      });
+    }
+
+    export function sendHeartbeats() {
+      const location = LOCATIONS[__VU % LOCATIONS.length];
+      
+      const res = sendCloudEvent('pos.location.heartbeat', {
+        location_id: location.id,
+        location_type: location.type,
+        status: 'healthy',
+        pos_count: randomIntBetween(1, 4),
+        pump_count: location.pumps,
+        timestamp: new Date().toISOString(),
+      });
+
+      check(res, { 'heartbeat OK': (r) => r.status === 200 });
+      sleep(30);  // Heartbeat every 30s
+    }
+
+    export function sendTransactions() {
+      const location = LOCATIONS[randomIntBetween(0, LOCATIONS.length - 1)];
+      const isFuel = location.type === 'gas_station' && Math.random() > 0.3;
+      
+      let items = [];
+      let total = 0;
+
+      if (isFuel) {
+        const liters = randomIntBetween(10, 60);
+        const pricePerLiter = 5.5;
+        total = liters * pricePerLiter;
+        items = [{ name: 'Fuel - Regular', quantity: liters, unit: 'liters', price: total }];
+      } else {
+        const itemCount = randomIntBetween(1, 5);
+        for (let i = 0; i < itemCount; i++) {
+          const price = randomIntBetween(5, 50);
+          items.push({ name: `Item ${i+1}`, quantity: 1, unit: 'unit', price: price });
+          total += price;
+        }
+      }
+
+      const res = sendCloudEvent('pos.transaction.completed', {
+        transaction_id: `TXN-${Date.now()}-${randomString(6)}`,
+        pos_id: `pos-${randomIntBetween(1, 4)}`,
+        location_id: location.id,
+        total: total,
+        payment_type: Math.random() > 0.3 ? 'card' : 'cash',
+        items: items,
+        started_at: new Date(Date.now() - randomIntBetween(30, 120) * 1000).toISOString(),
+        completed_at: new Date().toISOString(),
+      });
+
+      check(res, { 'transaction OK': (r) => r.status === 200 });
+    }
+
+    export function sendKitchenEvents() {
+      // Only for fast-food locations
+      const fastFoodLocations = LOCATIONS.filter(l => l.type === 'fast_food');
+      const location = fastFoodLocations[randomIntBetween(0, fastFoodLocations.length - 1)];
+
+      const queueDepth = randomIntBetween(1, 15);
+      const avgWait = randomIntBetween(60, 400);
+
+      const res = sendCloudEvent('pos.kitchen.queue.status', {
+        location_id: location.id,
+        queue_depth: queueDepth,
+        avg_wait_seconds: avgWait,
+        orders_in_progress: randomIntBetween(1, 5),
+        timestamp: new Date().toISOString(),
+      });
+
+      check(res, { 'kitchen status OK': (r) => r.status === 200 });
+    }
+---
+apiVersion: k6.io/v1alpha1
+kind: TestRun
+metadata:
+  name: pos-edge-load-test
+  namespace: agent-pos-edge
+spec:
+  parallelism: 4
+  script:
+    configMap:
+      name: k6-pos-load-test
+      file: load-test.js
+  arguments: --out experimental-prometheus-rw
+  runner:
+    env:
+      - name: K6_PROMETHEUS_RW_SERVER_URL
+        value: http://prometheus-k8s.observability.svc:9090/api/v1/write
