@@ -801,6 +801,213 @@ func TestBackend002_BoolPtr(t *testing.T) {
 }
 
 // =============================================================================
+// Missing Coverage Tests - S3Store
+// =============================================================================
+
+func TestBackend002_S3Store_Save(t *testing.T) {
+	// Note: This tests the structure but can't actually save without a real S3/MinIO
+	// In a real environment, use testcontainers or LocalStack
+	config := &S3Config{
+		Bucket:          "test-bucket",
+		Endpoint:        "localhost:9000",
+		Region:          "us-east-1",
+		AccessKeyID:     "test",
+		SecretAccessKey: "test",
+		PathPrefix:      "build-context",
+	}
+
+	store, err := NewS3Store(config)
+	require.NoError(t, err)
+	require.NotNil(t, store)
+
+	// Verify store configuration
+	assert.Equal(t, "test-bucket", store.GetBucket())
+	assert.Equal(t, "localhost:9000", store.endpoint)
+	assert.Equal(t, "build-context", store.pathPrefix)
+}
+
+func TestBackend002_S3Store_PathPrefix(t *testing.T) {
+	tests := []struct {
+		name           string
+		pathPrefix     string
+		expectedPrefix string
+	}{
+		{"No prefix", "", ""},
+		{"Simple prefix", "build-context", "build-context"},
+		{"Prefix with trailing slash", "build-context/", "build-context/"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := &S3Config{
+				Bucket:          "test-bucket",
+				Endpoint:        "localhost:9000",
+				Region:          "us-east-1",
+				AccessKeyID:     "test",
+				SecretAccessKey: "test",
+				PathPrefix:      tt.pathPrefix,
+			}
+
+			store, err := NewS3Store(config)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedPrefix, store.pathPrefix)
+		})
+	}
+}
+
+// =============================================================================
+// Missing Coverage Tests - Error Cases
+// =============================================================================
+
+func TestBackend002_ConfigMapStore_Save_ContextDeadlineExceeded(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	store := NewConfigMapStore(fakeClient, scheme)
+
+	// Note: The fake client doesn't respect context cancellation
+	// In a real scenario with a real K8s client, this would fail
+	// This test documents that the fake client doesn't propagate cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	meta := BuildContextMeta{
+		LambdaName:      "test-lambda",
+		LambdaNamespace: "default",
+		ContentHash:     "abc123def456789012",
+		CreatedAt:       time.Now(),
+	}
+
+	// Fake client ignores context cancellation, so this succeeds
+	// In production with real K8s client, this would error
+	location, err := store.Save(ctx, "key", []byte("data"), meta)
+	// Document actual behavior: fake client doesn't propagate context
+	require.NoError(t, err)
+	require.NotNil(t, location)
+}
+
+func TestBackend002_StorageSelector_NilLambda(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = lambdav1alpha1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	selector := NewStorageSelector(fakeClient, scheme, nil, nil)
+	defer selector.Close()
+
+	// Test with nil lambda - should panic or handle gracefully
+	// This documents the expected behavior
+	assert.Panics(t, func() {
+		_, _ = selector.SelectStore(nil, 100)
+	})
+}
+
+func TestBackend002_StorageSelector_NegativeSize(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = lambdav1alpha1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	selector := NewStorageSelector(fakeClient, scheme, nil, nil)
+	defer selector.Close()
+
+	lambda := &lambdav1alpha1.LambdaFunction{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-lambda",
+			Namespace: "default",
+		},
+	}
+
+	// Negative size should default to ConfigMap (no error)
+	store, err := selector.SelectStore(lambda, -1)
+	require.NoError(t, err)
+	assert.Equal(t, StorageBackendConfigMap, store.Name())
+}
+
+func TestBackend002_ConfigMapStore_Save_VerifyContent(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+	store := NewConfigMapStore(fakeClient, scheme)
+
+	testData := []byte("test build context data")
+	meta := BuildContextMeta{
+		LambdaName:      "verify-lambda",
+		LambdaNamespace: "default",
+		ContentHash:     "abc123def456789012345678901234567890",
+		CreatedAt:       time.Now(),
+	}
+
+	location, err := store.Save(context.Background(), "key", testData, meta)
+	require.NoError(t, err)
+
+	// Verify the ConfigMap was created with correct content
+	cm := &corev1.ConfigMap{}
+	err = fakeClient.Get(context.Background(), types.NamespacedName{
+		Name:      location.ConfigMapName,
+		Namespace: "default",
+	}, cm)
+	require.NoError(t, err)
+
+	// Verify data
+	assert.Equal(t, testData, cm.BinaryData["context.tar.gz"])
+
+	// Verify labels
+	assert.Equal(t, "knative-lambda-operator", cm.Labels["app.kubernetes.io/managed-by"])
+	assert.Equal(t, "verify-lambda", cm.Labels["lambda.knative.io/name"])
+	assert.Equal(t, "build-context", cm.Labels["lambda.knative.io/component"])
+
+	// Verify annotations
+	assert.Equal(t, meta.ContentHash, cm.Annotations["lambda.knative.io/content-hash"])
+	assert.NotEmpty(t, cm.Annotations["lambda.knative.io/created-at"])
+}
+
+// =============================================================================
+// Missing Coverage Tests - GCSStore Download
+// =============================================================================
+
+func TestBackend002_GCSStore_GetBucket(t *testing.T) {
+	store := &GCSStore{bucket: "my-test-bucket"}
+	assert.Equal(t, "my-test-bucket", store.GetBucket())
+}
+
+func TestBackend002_GCSStore_GetClient_Nil(t *testing.T) {
+	store := &GCSStore{client: nil, bucket: "test"}
+	assert.Nil(t, store.GetClient())
+}
+
+// =============================================================================
+// Missing Coverage Tests - RecordMetrics Functions
+// =============================================================================
+
+func TestBackend002_RecordSourceFetch(t *testing.T) {
+	// These don't return errors, just verify they don't panic
+	assert.NotPanics(t, func() {
+		RecordSourceFetch("github", "success")
+	})
+	assert.NotPanics(t, func() {
+		RecordSourceFetch("gcs", "validation_error")
+	})
+	assert.NotPanics(t, func() {
+		RecordSourceFetch("unknown", "unknown_error")
+	})
+}
+
+func TestBackend002_RecordStorageSave(t *testing.T) {
+	assert.NotPanics(t, func() {
+		RecordStorageSave("configmap", "inline")
+	})
+	assert.NotPanics(t, func() {
+		RecordStorageSave("s3", "github")
+	})
+	assert.NotPanics(t, func() {
+		RecordStorageSave("gcs", "git")
+	})
+}
+
+// =============================================================================
 // Benchmark Tests
 // =============================================================================
 

@@ -592,11 +592,21 @@ func getSourceFilename(language string) string {
 
 // truncateList truncates a list to the specified maximum length
 func truncateList(list []string, max int) []string {
+	// Handle nil list
+	if list == nil {
+		return nil
+	}
+	// Handle invalid max
+	if max < 0 {
+		max = 0
+	}
 	if len(list) <= max {
 		return list
 	}
 	result := make([]string, max+1)
-	copy(result, list[:max])
+	if max > 0 {
+		copy(result, list[:max])
+	}
 	result[max] = fmt.Sprintf("... and %d more", len(list)-max)
 	return result
 }
