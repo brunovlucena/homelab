@@ -516,10 +516,10 @@ func (m *Manager) CreateKanikoJob(ctx context.Context, lambda *lambdav1alpha1.La
 				"lambda.knative.io/build":      "true",
 			},
 			Annotations: map[string]string{
-				"lambda.knative.io/image-uri":        imageURI,
-				"lambda.knative.io/content-hash":     buildCtx.ContentHash,
-				"lambda.knative.io/pull-registry":    m.pullRegistry,
-				"lambda.knative.io/storage-backend":  backend,
+				"lambda.knative.io/image-uri":       imageURI,
+				"lambda.knative.io/content-hash":    buildCtx.ContentHash,
+				"lambda.knative.io/pull-registry":   m.pullRegistry,
+				"lambda.knative.io/storage-backend": backend,
 			},
 		},
 		Spec: batchv1.JobSpec{

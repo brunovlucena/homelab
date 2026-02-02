@@ -608,7 +608,7 @@ func NewGCSStore(ctx context.Context, config *GCSConfig) (*GCSStore, error) {
 
 	if len(config.CredentialsJSON) > 0 {
 		// Use provided credentials
-		client, err = storage.NewClient(ctx, 
+		client, err = storage.NewClient(ctx,
 			storage.WithJSONReads())
 	} else {
 		// Use default credentials (workload identity, etc.)

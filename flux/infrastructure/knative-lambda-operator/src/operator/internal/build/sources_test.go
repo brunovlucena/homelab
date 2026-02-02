@@ -256,18 +256,18 @@ func TestBackend002_GitHubFetcher_ExtractFromArchive(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		archiveFiles   map[string]string
-		path           string
-		language       string
-		expectedCode   string
-		expectError    bool
-		errorContains  string
+		name          string
+		archiveFiles  map[string]string
+		path          string
+		language      string
+		expectedCode  string
+		expectError   bool
+		errorContains string
 	}{
 		{
 			name: "Extract Python file from root",
 			archiveFiles: map[string]string{
-				"owner-repo-abc123/main.py": "def handler(): pass",
+				"owner-repo-abc123/main.py":   "def handler(): pass",
 				"owner-repo-abc123/README.md": "# Test",
 			},
 			language:     "python",

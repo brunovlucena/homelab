@@ -24,14 +24,14 @@ import (
 
 func TestBackend002_StorageSelector_SelectStore(t *testing.T) {
 	tests := []struct {
-		name           string
-		annotation     string
-		contextSize    int
-		s3Configured   bool
-		gcsConfigured  bool
-		expectedStore  string
-		expectError    bool
-		errorContains  string
+		name          string
+		annotation    string
+		contextSize   int
+		s3Configured  bool
+		gcsConfigured bool
+		expectedStore string
+		expectError   bool
+		errorContains string
 	}{
 		{
 			name:          "Default to ConfigMap for small context",
