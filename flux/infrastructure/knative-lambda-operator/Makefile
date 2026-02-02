@@ -431,7 +431,7 @@ setup: ## 🔧 Setup development environment
 # │  🧪 TESTING TARGETS                                                     │
 # └─────────────────────────────────────────────────────────────────────────┘
 
-.PHONY: test test-all test-unit test-security test-backend test-sre test-devops test-integration test-e2e test-load test-chaos
+.PHONY: test test-all test-unit test-security test-backend test-sre test-devops test-integration test-e2e test-load
 .PHONY: trigger-lambda trigger-build trigger-delete
 
 trigger-lambda: ## 🚀 Trigger lambda parser event (use ENV=pro|studio)
@@ -535,13 +535,6 @@ pro-dev: pro-build ## 🐳 Build, push, then reconcile pro (kubectl context = pr
 	flux reconcile source git $(FLUX_REPO) --with-source && flux reconcile kustomization pro-04-knative-instances --with-source; \
 	$(call print_success,Pro updated with new image)
 
-.PHONY: kustomize-build-pro kustomize-build-studio
-kustomize-build-pro: ## 🔨 Build kustomize for pro (development)
-	@kubectl kustomize $(K8S_DIR)/overlays/pro
-
-kustomize-build-studio: ## 🔨 Build kustomize for studio (production)
-	@kubectl kustomize $(K8S_DIR)/overlays/studio
-
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  🐦 FLAGGER CANARY TARGETS                                              │
 # └─────────────────────────────────────────────────────────────────────────┘
@@ -567,43 +560,17 @@ canary-describe: ## 📋 Describe canary in detail
 	@kubectl describe canary knative-lambda-operator -n $(NAMESPACE)
 
 # ┌─────────────────────────────────────────────────────────────────────────┐
-# │  🔗 LINKERD TARGETS                                                     │
-# └─────────────────────────────────────────────────────────────────────────┘
-
-.PHONY: linkerd-check linkerd-stats linkerd-routes
-linkerd-check: ## 🔗 Check Linkerd status for namespace
-	$(call print_status,🔗 Checking Linkerd status...)
-	@linkerd check --proxy -n $(NAMESPACE) 2>/dev/null || echo "$(COLOR_YELLOW)⚠️ Linkerd check failed or not installed$(COLOR_RESET)"
-
-linkerd-stats: ## 📊 Show Linkerd traffic stats
-	@linkerd stat deploy -n $(NAMESPACE) 2>/dev/null || echo "$(COLOR_YELLOW)⚠️ Linkerd stats unavailable$(COLOR_RESET)"
-
-linkerd-routes: ## 🛣️ Show Linkerd routes
-	@linkerd routes deploy/knative-lambda-operator -n $(NAMESPACE) 2>/dev/null || echo "$(COLOR_YELLOW)⚠️ Linkerd routes unavailable$(COLOR_RESET)"
-
-# ┌─────────────────────────────────────────────────────────────────────────┐
 # │  📊 K6 LOAD TESTING TARGETS                                             │
 # └─────────────────────────────────────────────────────────────────────────┘
 
-.PHONY: k6-smoke k6-load k6-stress k6-status k6-clean k6-apply-tests
-k6-apply-tests: ## 📊 Apply k6 test ConfigMaps
-	$(call print_status,📊 Applying k6 test resources...)
-	@kubectl apply -k $(K8S_DIR)/tests
-	$(call print_success,k6 test resources applied)
-
-k6-smoke: k6-apply-tests ## 🔥 Run k6 smoke test
-	$(call print_status,🔥 Running k6 smoke test...)
-	@kubectl delete testrun knative-lambda-execute-smoke -n $(NAMESPACE) 2>/dev/null || true
-	@kubectl apply -f $(K8S_DIR)/tests/k6-testrun-execute-lambda.yaml -l test-variant=smoke
-	$(call print_success,Smoke test started - check status with: make k6-status)
-
-k6-load: k6-apply-tests ## 📈 Run k6 load test
+.PHONY: k6-load k6-stress k6-status k6-clean
+k6-load: ## 📈 Run k6 load test
 	$(call print_status,📈 Running k6 load test...)
 	@kubectl delete testrun knative-lambda-execute-load -n $(NAMESPACE) 2>/dev/null || true
 	@kubectl apply -f $(K8S_DIR)/tests/k6-testrun-execute-lambda.yaml -l test-variant=load
 	$(call print_success,Load test started - check status with: make k6-status)
 
-k6-stress: k6-apply-tests ## 💪 Run k6 stress test
+k6-stress: ## 💪 Run k6 stress test
 	$(call print_status,💪 Running k6 stress test...)
 	@kubectl delete testrun knative-lambda-execute-stress -n $(NAMESPACE) 2>/dev/null || true
 	@kubectl apply -f $(K8S_DIR)/tests/k6-testrun-execute-lambda.yaml -l test-variant=stress
@@ -619,62 +586,6 @@ k6-clean: ## 🧹 Clean up k6 test runs
 	$(call print_status,🧹 Cleaning k6 test runs...)
 	@kubectl delete testrun --all -n $(NAMESPACE) 2>/dev/null || true
 	$(call print_success,k6 test runs cleaned)
-
-# ┌─────────────────────────────────────────────────────────────────────────┐
-# │  🔥 K6 CHAOS ENGINEERING TESTS                                          │
-# └─────────────────────────────────────────────────────────────────────────┘
-
-.PHONY: k6-chaos k6-chaos-combined k6-chaos-timeout k6-chaos-coldstart k6-chaos-status test-chaos
-k6-chaos: k6-chaos-combined ## 🔥 Run k6 chaos engineering test (alias for combined)
-
-k6-chaos-combined: k6-apply-tests ## 🔥 Run combined chaos test (error injection, latency, burst)
-	$(call print_status,🔥 Running combined chaos engineering test...)
-	@kubectl delete testrun knative-lambda-notifi-chaos -n $(NAMESPACE) 2>/dev/null || true
-	@kubectl apply -f $(K8S_DIR)/tests/k6-notifi-chaos.yaml -l test-variant=chaos
-	$(call print_success,Chaos test started - check status with: make k6-chaos-status)
-	@echo ""
-	@echo "$(COLOR_BOLD)🔥 Chaos Phases:$(COLOR_RESET)"
-	@echo "   1. Baseline (20s) - Establish normal behavior"
-	@echo "   2. Error Injection (30s) - Inject failures"
-	@echo "   3. Recovery Check (20s) - Verify recovery"
-	@echo "   4. Latency Injection (25s) - Add delays"
-	@echo "   5. Burst Chaos (20s) - Spike + failures"
-	@echo "   6. Final Recovery (15s) - Validate stability"
-
-k6-chaos-timeout: k6-apply-tests ## ⏱️ Run timeout chaos test (retry behavior)
-	$(call print_status,⏱️ Running timeout chaos test...)
-	@kubectl delete testrun knative-lambda-notifi-chaos-timeout -n $(NAMESPACE) 2>/dev/null || true
-	@kubectl apply -f $(K8S_DIR)/tests/k6-notifi-chaos.yaml -l test-variant=chaos-timeout
-	$(call print_success,Timeout chaos test started - check status with: make k6-chaos-status)
-
-k6-chaos-coldstart: k6-apply-tests ## ❄️ Run cold start chaos test (scale-to-zero resilience)
-	$(call print_status,❄️ Running cold start chaos test...)
-	@kubectl delete testrun knative-lambda-notifi-chaos-coldstart -n $(NAMESPACE) 2>/dev/null || true
-	@kubectl apply -f $(K8S_DIR)/tests/k6-notifi-chaos.yaml -l test-variant=chaos-coldstart
-	$(call print_success,Cold start chaos test started - check status with: make k6-chaos-status)
-
-k6-chaos-status: ## 📊 Show chaos test status and results
-	@echo "$(COLOR_BOLD)$(COLOR_BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_BLUE)  🔥 CHAOS TEST STATUS$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_BOLD)🧪 Chaos TestRuns:$(COLOR_RESET)"
-	@kubectl get testrun -n $(NAMESPACE) -l test-type=notifi,test-variant=chaos -o wide 2>/dev/null || echo "  No chaos tests running"
-	@kubectl get testrun -n $(NAMESPACE) -l test-type=notifi,test-variant=chaos-timeout -o wide 2>/dev/null || true
-	@kubectl get testrun -n $(NAMESPACE) -l test-type=notifi,test-variant=chaos-coldstart -o wide 2>/dev/null || true
-	@echo ""
-	@echo "$(COLOR_BOLD)🐳 Chaos Test Pods:$(COLOR_RESET)"
-	@kubectl get pods -n $(NAMESPACE) -l app=k6 --sort-by=.metadata.creationTimestamp 2>/dev/null | tail -10 || echo "  No k6 pods"
-	@echo ""
-	@echo "$(COLOR_BOLD)📜 Recent Chaos Test Logs:$(COLOR_RESET)"
-	@kubectl logs -n $(NAMESPACE) -l app=k6 --tail=20 2>/dev/null | grep -E "(CHAOS|Recovery|Error|✅|❌|⚠️)" | tail -10 || echo "  No logs available"
-
-test-chaos: ## 🔥 Run Go chaos engineering integration tests
-	@echo "$(COLOR_BOLD)$(COLOR_BLUE)Running chaos engineering integration tests...$(COLOR_RESET)"
-	@cd $(SRC_DIR) && go test -v -race ./tests/integration/sre/sre_015_chaos_engineering_test.go ./tests/integration/sre/... 2>&1 | grep -E "(PASS|FAIL|---)" || echo "$(COLOR_YELLOW)⚠️ Some chaos tests may require cluster access$(COLOR_RESET)"
-
-k6-chaos-all: k6-chaos-combined k6-chaos-timeout k6-chaos-coldstart ## 🔥 Run all chaos tests sequentially
-	$(call print_success,All chaos tests started! Monitor with: make k6-chaos-status)
 
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  🔀 A/B TESTING TARGETS                                                 │
@@ -694,174 +605,6 @@ ab-test-primary: ## 🔀 Send request to primary (A/B test)
 ab-split-status: ## 📊 Show traffic split status
 	$(call print_status,📊 Traffic Split Status...)
 	@kubectl get trafficsplit -n $(NAMESPACE) -o wide 2>/dev/null || echo "No TrafficSplit found"
-
-# ┌─────────────────────────────────────────────────────────────────────────┐
-# │  📊 SRE STATUS DASHBOARD                                                │
-# └─────────────────────────────────────────────────────────────────────────┘
-
-.PHONY: status status-quick status-lambdas status-brokers status-triggers status-services status-rabbitmq status-builds status-operator
-
-status: ## 📊 Show full knative-lambda system status (SRE dashboard)
-	@echo "$(COLOR_BOLD)$(COLOR_BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_BLUE)  📊 KNATIVE-LAMBDA SRE STATUS DASHBOARD - ENV: $(ENV)$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(COLOR_RESET)"
-	@echo ""
-	@$(MAKE) --no-print-directory status-operator
-	@echo ""
-	@$(MAKE) --no-print-directory status-lambdas
-	@echo ""
-	@$(MAKE) --no-print-directory status-brokers
-	@echo ""
-	@$(MAKE) --no-print-directory status-triggers
-	@echo ""
-	@$(MAKE) --no-print-directory status-services
-	@echo ""
-	@$(MAKE) --no-print-directory status-builds
-	@echo ""
-	@$(MAKE) --no-print-directory status-rabbitmq
-	@echo ""
-	@echo "$(COLOR_BOLD)$(COLOR_BLUE)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_GREEN)✅ Status check complete$(COLOR_RESET)"
-
-status-quick: ## ⚡ Quick status overview (compact view)
-	@echo "$(COLOR_BOLD)$(COLOR_BLUE)⚡ KNATIVE-LAMBDA QUICK STATUS - ENV: $(ENV)$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_BOLD)🎛️ Operator:$(COLOR_RESET)"
-	@kubectl get deployment knative-lambda-operator -n $(NAMESPACE) --no-headers 2>/dev/null | awk '{printf "   %s - Ready: %s\n", $$1, $$2}' || echo "   ⚠️ Not found"
-	@echo ""
-	@echo "$(COLOR_BOLD)🐑 LambdaFunctions:$(COLOR_RESET)"
-	@LAMBDA_COUNT=$$(kubectl get lambdafunctions -n $(NAMESPACE) --no-headers 2>/dev/null | wc -l | tr -d ' '); \
-	READY=$$(kubectl get lambdafunctions -n $(NAMESPACE) -o jsonpath='{.items[?(@.status.phase=="Running")].metadata.name}' 2>/dev/null | wc -w | tr -d ' '); \
-	echo "   Total: $$LAMBDA_COUNT | Ready: $$READY"
-	@echo ""
-	@echo "$(COLOR_BOLD)📬 Brokers:$(COLOR_RESET)"
-	@kubectl get brokers.eventing.knative.dev -n $(NAMESPACE) --no-headers 2>/dev/null | awk '{printf "   %s - Ready: %s\n", $$1, $$2}' || echo "   (none)"
-	@echo ""
-	@echo "$(COLOR_BOLD)🎯 Triggers:$(COLOR_RESET)"
-	@TRIGGER_COUNT=$$(kubectl get triggers.eventing.knative.dev -n $(NAMESPACE) --no-headers 2>/dev/null | wc -l | tr -d ' '); \
-	READY=$$(kubectl get triggers.eventing.knative.dev -n $(NAMESPACE) -o jsonpath='{.items[?(@.status.conditions[?(@.type=="Ready")].status=="True")].metadata.name}' 2>/dev/null | wc -w | tr -d ' '); \
-	echo "   Total: $$TRIGGER_COUNT | Ready: $$READY"
-	@echo ""
-	@echo "$(COLOR_BOLD)🚀 Knative Services:$(COLOR_RESET)"
-	@KSVC_COUNT=$$(kubectl get ksvc -n $(NAMESPACE) --no-headers 2>/dev/null | wc -l | tr -d ' '); \
-	echo "   Total: $$KSVC_COUNT"
-	@echo ""
-	@echo "$(COLOR_BOLD)🐰 RabbitMQ Queues:$(COLOR_RESET)"
-	@RABBITMQ_POD=$$(kubectl get pods -n $(NAMESPACE) -l app.kubernetes.io/component=rabbitmq -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
-	if [ -n "$$RABBITMQ_POD" ]; then \
-		QUEUE_COUNT=$$(kubectl exec -n $(NAMESPACE) $$RABBITMQ_POD -- rabbitmqctl list_queues 2>/dev/null | tail -n +2 | wc -l | tr -d ' '); \
-		TOTAL_MSG=$$(kubectl exec -n $(NAMESPACE) $$RABBITMQ_POD -- rabbitmqctl list_queues messages 2>/dev/null | tail -n +2 | awk '{sum+=$$1} END {print sum+0}'); \
-		echo "   Queues: $$QUEUE_COUNT | Pending Messages: $$TOTAL_MSG"; \
-	else \
-		echo "   ⚠️ RabbitMQ not found in $(NAMESPACE)"; \
-	fi
-	@echo ""
-	@echo "$(COLOR_BOLD)🔨 Builds:$(COLOR_RESET)"
-	@RUNNING=$$(kubectl get jobs -n $(NAMESPACE) -l app.kubernetes.io/component=builder --no-headers 2>/dev/null | awk '$$2 == "0/1" {count++} END {print count+0}'); \
-	echo "   Running: $$RUNNING"
-	@echo ""
-	@echo "$(COLOR_GREEN)─────────────────────────────────────$(COLOR_RESET)"
-	@echo "💡 Run $(COLOR_BOLD)make status$(COLOR_RESET) for detailed view"
-
-status-operator: ## 🎛️ Show operator deployment status
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)┌─────────────────────────────────────────────────────────────────────────┐$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)│  🎛️  OPERATOR STATUS                                                    │$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)└─────────────────────────────────────────────────────────────────────────┘$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_BOLD)📦 Deployment:$(COLOR_RESET)"
-	@kubectl get deployment knative-lambda-operator -n $(NAMESPACE) -o wide 2>/dev/null || echo "$(COLOR_YELLOW)  ⚠️ Operator deployment not found$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_BOLD)🐳 Pods:$(COLOR_RESET)"
-	@kubectl get pods -n $(NAMESPACE) -l app.kubernetes.io/name=knative-lambda-operator -o wide 2>/dev/null || echo "$(COLOR_YELLOW)  ⚠️ No operator pods found$(COLOR_RESET)"
-
-status-lambdas: ## 🐑 Show LambdaFunction CRD instances
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)┌─────────────────────────────────────────────────────────────────────────┐$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)│  🐑 LAMBDA FUNCTIONS (CRD)                                              │$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)└─────────────────────────────────────────────────────────────────────────┘$(COLOR_RESET)"
-	@echo ""
-	@kubectl get lambdafunctions -n $(NAMESPACE) -o wide 2>/dev/null || echo "$(COLOR_YELLOW)  ⚠️ No LambdaFunctions found or CRD not installed$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_BOLD)📋 Lambda Status Summary:$(COLOR_RESET)"
-	@kubectl get lambdafunctions -n $(NAMESPACE) -o jsonpath='{range .items[*]}  • {.metadata.name}: {.status.phase} ({.status.buildStatus}){"\n"}{end}' 2>/dev/null || echo "  (no lambdas)"
-
-status-brokers: ## 📬 Show Knative Brokers and RabbitMQ Broker Configs
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)┌─────────────────────────────────────────────────────────────────────────┐$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)│  📬 KNATIVE BROKERS                                                     │$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)└─────────────────────────────────────────────────────────────────────────┘$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_BOLD)🔗 Brokers:$(COLOR_RESET)"
-	@kubectl get brokers.eventing.knative.dev -n $(NAMESPACE) -o wide 2>/dev/null || echo "$(COLOR_YELLOW)  ⚠️ No Brokers found$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_BOLD)⚙️ RabbitMQ Broker Configs:$(COLOR_RESET)"
-	@kubectl get rabbitmqbrokerconfigs.eventing.knative.dev -n $(NAMESPACE) -o wide 2>/dev/null || echo "$(COLOR_YELLOW)  ⚠️ No RabbitMQ Broker Configs found$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_BOLD)🩺 Broker Readiness:$(COLOR_RESET)"
-	@kubectl get brokers.eventing.knative.dev -n $(NAMESPACE) -o jsonpath='{range .items[*]}  • {.metadata.name}: {.status.conditions[?(@.type=="Ready")].status} ({.status.conditions[?(@.type=="Ready")].reason}){"\n"}{end}' 2>/dev/null || echo "  (no brokers)"
-
-status-triggers: ## 🎯 Show Knative Triggers
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)┌─────────────────────────────────────────────────────────────────────────┐$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)│  🎯 KNATIVE TRIGGERS                                                    │$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)└─────────────────────────────────────────────────────────────────────────┘$(COLOR_RESET)"
-	@echo ""
-	@kubectl get triggers.eventing.knative.dev -n $(NAMESPACE) -o wide 2>/dev/null || echo "$(COLOR_YELLOW)  ⚠️ No Triggers found$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_BOLD)🩺 Trigger Readiness:$(COLOR_RESET)"
-	@kubectl get triggers.eventing.knative.dev -n $(NAMESPACE) -o jsonpath='{range .items[*]}  • {.metadata.name} → {.spec.subscriber.ref.name}: {.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' 2>/dev/null || echo "  (no triggers)"
-
-status-services: ## 🚀 Show Knative Services
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)┌─────────────────────────────────────────────────────────────────────────┐$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)│  🚀 KNATIVE SERVICES                                                    │$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)└─────────────────────────────────────────────────────────────────────────┘$(COLOR_RESET)"
-	@echo ""
-	@kubectl get ksvc -n $(NAMESPACE) -o wide 2>/dev/null || echo "$(COLOR_YELLOW)  ⚠️ No Knative Services found$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_BOLD)📊 Revisions:$(COLOR_RESET)"
-	@kubectl get revisions.serving.knative.dev -n $(NAMESPACE) --sort-by=.metadata.creationTimestamp 2>/dev/null | tail -10 || echo "  (no revisions)"
-	@echo ""
-	@echo "$(COLOR_BOLD)📈 Pod Autoscalers:$(COLOR_RESET)"
-	@kubectl get kpa -n $(NAMESPACE) 2>/dev/null || echo "  (no pod autoscalers)"
-
-status-builds: ## 🔨 Show build jobs status
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)┌─────────────────────────────────────────────────────────────────────────┐$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)│  🔨 BUILD JOBS (Kaniko)                                                 │$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)└─────────────────────────────────────────────────────────────────────────┘$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_BOLD)📋 Recent Build Jobs:$(COLOR_RESET)"
-	@kubectl get jobs -n $(NAMESPACE) -l app.kubernetes.io/component=builder --sort-by=.metadata.creationTimestamp 2>/dev/null | tail -10 || echo "  (no build jobs)"
-	@echo ""
-	@echo "$(COLOR_BOLD)📊 Build Job Summary:$(COLOR_RESET)"
-	@TOTAL=$$(kubectl get jobs -n $(NAMESPACE) -l app.kubernetes.io/component=builder --no-headers 2>/dev/null | wc -l | tr -d ' '); \
-	SUCCEEDED=$$(kubectl get jobs -n $(NAMESPACE) -l app.kubernetes.io/component=builder --field-selector status.successful=1 --no-headers 2>/dev/null | wc -l | tr -d ' '); \
-	FAILED=$$(kubectl get jobs -n $(NAMESPACE) -l app.kubernetes.io/component=builder --no-headers 2>/dev/null | awk '$$3 == "0" && $$4 != "0" {count++} END {print count+0}'); \
-	RUNNING=$$(kubectl get jobs -n $(NAMESPACE) -l app.kubernetes.io/component=builder --no-headers 2>/dev/null | awk '$$2 == "0/1" {count++} END {print count+0}'); \
-	echo "  Total: $$TOTAL | $(COLOR_GREEN)Succeeded: $$SUCCEEDED$(COLOR_RESET) | $(COLOR_RED)Failed: $$FAILED$(COLOR_RESET) | $(COLOR_YELLOW)Running: $$RUNNING$(COLOR_RESET)"
-
-status-rabbitmq: ## 🐰 Show RabbitMQ exchanges, queues, and bindings
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)┌─────────────────────────────────────────────────────────────────────────┐$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)│  🐰 RABBITMQ STATUS                                                     │$(COLOR_RESET)"
-	@echo "$(COLOR_BOLD)$(COLOR_YELLOW)└─────────────────────────────────────────────────────────────────────────┘$(COLOR_RESET)"
-	@echo ""
-	@RABBITMQ_POD=$$(kubectl get pods -n $(NAMESPACE) -l app.kubernetes.io/component=rabbitmq -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
-	if [ -n "$$RABBITMQ_POD" ]; then \
-		echo "$(COLOR_GREEN)✅ RabbitMQ Pod: $$RABBITMQ_POD (namespace: $(NAMESPACE))$(COLOR_RESET)"; \
-		echo ""; \
-		echo "$(COLOR_BOLD)📤 Exchanges (knative-related):$(COLOR_RESET)"; \
-		kubectl exec -n $(NAMESPACE) $$RABBITMQ_POD -- rabbitmqctl list_exchanges name type durable 2>/dev/null | grep -E "(knative|lambda|broker)" || echo "  (no knative exchanges)"; \
-		echo ""; \
-		echo "$(COLOR_BOLD)📥 Queues:$(COLOR_RESET)"; \
-		kubectl exec -n $(NAMESPACE) $$RABBITMQ_POD -- rabbitmqctl list_queues name messages_ready messages_unacknowledged consumers state 2>/dev/null || echo "$(COLOR_YELLOW)  ⚠️ Could not list queues$(COLOR_RESET)"; \
-		echo ""; \
-		echo "$(COLOR_BOLD)🔗 Bindings (knative-related):$(COLOR_RESET)"; \
-		kubectl exec -n $(NAMESPACE) $$RABBITMQ_POD -- rabbitmqctl list_bindings source_name destination_name routing_key 2>/dev/null | grep -E "(knative|lambda|broker)" | head -20 || echo "  (no knative bindings)"; \
-		echo ""; \
-		echo "$(COLOR_BOLD)📊 Queue Summary:$(COLOR_RESET)"; \
-		TOTAL_MSG=$$(kubectl exec -n $(NAMESPACE) $$RABBITMQ_POD -- rabbitmqctl list_queues messages 2>/dev/null | tail -n +2 | awk '{sum+=$$1} END {print sum+0}'); \
-		TOTAL_CONSUMERS=$$(kubectl exec -n $(NAMESPACE) $$RABBITMQ_POD -- rabbitmqctl list_queues consumers 2>/dev/null | tail -n +2 | awk '{sum+=$$1} END {print sum+0}'); \
-		QUEUE_COUNT=$$(kubectl exec -n $(NAMESPACE) $$RABBITMQ_POD -- rabbitmqctl list_queues 2>/dev/null | tail -n +2 | wc -l | tr -d ' '); \
-		echo "  Queues: $$QUEUE_COUNT | Total Messages: $$TOTAL_MSG | Total Consumers: $$TOTAL_CONSUMERS"; \
-	else \
-		echo "$(COLOR_YELLOW)⚠️ No RabbitMQ pods found in $(NAMESPACE) namespace$(COLOR_RESET)"; \
-	fi
 
 # ┌─────────────────────────────────────────────────────────────────────────┐
 # │  🔍 OBSERVABILITY TARGETS                                               │
