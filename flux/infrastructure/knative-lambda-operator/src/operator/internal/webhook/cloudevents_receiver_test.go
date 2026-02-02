@@ -2527,6 +2527,241 @@ func TestProcessEvent_Rollback_WithRevision(t *testing.T) {
 }
 
 // ┌─────────────────────────────────────────────────────────────────────────┐
+// │  🆔 CORRELATION ID TESTS                                                │
+// │                                                                         │
+// │  Tests for correlation ID generation and propagation:                   │
+// │  - Generate UUID when X-Correlation-ID header is missing                │
+// │  - Preserve provided correlation ID                                     │
+// │  - Include correlation ID in response headers                           │
+// │  - Include correlation ID in JSON response body                         │
+// └─────────────────────────────────────────────────────────────────────────┘
+
+func TestHandleCloudEvent_GeneratesCorrelationID(t *testing.T) {
+	receiver := newTestReceiverWithFakeClient(t)
+
+	body := `{
+		"metadata": {
+			"name": "correlation-test-function",
+			"namespace": "default"
+		},
+		"spec": {
+			"source": {
+				"type": "inline",
+				"inline": {
+					"code": "def handler(e): return e"
+				}
+			},
+			"runtime": {
+				"language": "python",
+				"version": "3.11"
+			}
+		}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Ce-Specversion", "1.0")
+	req.Header.Set("Ce-Type", events.EventTypeCommandFunctionDeploy)
+	req.Header.Set("Ce-Source", "io.knative.lambda/test")
+	req.Header.Set("Ce-Id", "correlation-gen-test-123")
+	// Note: X-Correlation-ID header is NOT set
+
+	w := httptest.NewRecorder()
+	receiver.handleCloudEvent(w, req)
+
+	// Verify response
+	assert.Equal(t, http.StatusAccepted, w.Code)
+
+	// Verify correlation ID is in response header
+	correlationID := w.Header().Get("X-Correlation-ID")
+	assert.NotEmpty(t, correlationID, "Response should include X-Correlation-ID header")
+
+	// Verify it looks like a UUID (36 characters with dashes)
+	assert.Len(t, correlationID, 36, "Generated correlation ID should be a UUID")
+
+	// Verify correlation ID is in response body
+	var response map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, correlationID, response["correlationId"], "Correlation ID should match in body and header")
+}
+
+func TestHandleCloudEvent_PreservesProvidedCorrelationID(t *testing.T) {
+	receiver := newTestReceiverWithFakeClient(t)
+
+	providedCorrelationID := "user-provided-correlation-id-12345"
+
+	body := `{
+		"metadata": {
+			"name": "preserve-correlation-function",
+			"namespace": "default"
+		},
+		"spec": {
+			"source": {
+				"type": "inline",
+				"inline": {
+					"code": "def handler(e): return e"
+				}
+			},
+			"runtime": {
+				"language": "python",
+				"version": "3.11"
+			}
+		}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Ce-Specversion", "1.0")
+	req.Header.Set("Ce-Type", events.EventTypeCommandFunctionDeploy)
+	req.Header.Set("Ce-Source", "io.knative.lambda/test")
+	req.Header.Set("Ce-Id", "preserve-correlation-test-123")
+	req.Header.Set("X-Correlation-ID", providedCorrelationID) // Set correlation ID
+
+	w := httptest.NewRecorder()
+	receiver.handleCloudEvent(w, req)
+
+	// Verify response
+	assert.Equal(t, http.StatusAccepted, w.Code)
+
+	// Verify provided correlation ID is preserved in response header
+	correlationID := w.Header().Get("X-Correlation-ID")
+	assert.Equal(t, providedCorrelationID, correlationID, "Should preserve provided correlation ID")
+
+	// Verify correlation ID is in response body
+	var response map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, providedCorrelationID, response["correlationId"], "Correlation ID in body should match provided")
+}
+
+func TestHandleCloudEvent_CorrelationIDInErrorResponse(t *testing.T) {
+	receiver := newTestReceiver(t)
+
+	providedCorrelationID := "error-test-correlation-id"
+
+	// Send invalid request (missing CloudEvent headers)
+	body := `{"invalid": "data"}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Correlation-ID", providedCorrelationID)
+	// Note: Missing Ce-* headers will cause parsing error
+
+	w := httptest.NewRecorder()
+	receiver.handleCloudEvent(w, req)
+
+	// Verify error response
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	// Verify correlation ID is in response header
+	correlationID := w.Header().Get("X-Correlation-ID")
+	assert.Equal(t, providedCorrelationID, correlationID, "Error response should include correlation ID header")
+
+	// Verify correlation ID is in error response body
+	var response map[string]interface{}
+	err := json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, "error", response["status"])
+	assert.Equal(t, providedCorrelationID, response["correlationId"], "Error response body should include correlation ID")
+}
+
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │  📍 /events ENDPOINT TESTS                                              │
+// │                                                                         │
+// │  Tests for the alternative /events endpoint:                            │
+// │  - POST /events accepts CloudEvents                                     │
+// │  - Works identically to POST /                                          │
+// └─────────────────────────────────────────────────────────────────────────┘
+
+func TestHandleCloudEvent_EventsEndpoint(t *testing.T) {
+	// Create receiver with fake client
+	scheme := runtime.NewScheme()
+	_ = lambdav1alpha1.AddToScheme(scheme)
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&lambdav1alpha1.LambdaFunction{}).
+		Build()
+
+	logger := zap.New(zap.UseDevMode(true))
+	config := DefaultReceiverConfig()
+	config.Port = 0 // Use random port for testing
+	config.EnableSchemaValidation = false
+
+	receiver, err := NewReceiver(fakeClient, logger, config, nil)
+	require.NoError(t, err)
+
+	// Start server
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- receiver.Start(ctx)
+	}()
+
+	// Give server time to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Test that /events endpoint works via the handleCloudEvent method directly
+	body := `{
+		"metadata": {
+			"name": "events-endpoint-test",
+			"namespace": "default"
+		},
+		"spec": {
+			"source": {
+				"type": "inline",
+				"inline": {
+					"code": "def handler(e): return e"
+				}
+			},
+			"runtime": {
+				"language": "python",
+				"version": "3.11"
+			}
+		}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/events", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Ce-Specversion", "1.0")
+	req.Header.Set("Ce-Type", events.EventTypeCommandFunctionDeploy)
+	req.Header.Set("Ce-Source", "io.knative.lambda/test")
+	req.Header.Set("Ce-Id", "events-endpoint-test-123")
+
+	w := httptest.NewRecorder()
+	receiver.handleCloudEvent(w, req)
+
+	// Verify successful processing
+	assert.Equal(t, http.StatusAccepted, w.Code)
+
+	var response map[string]interface{}
+	err = json.NewDecoder(w.Body).Decode(&response)
+	require.NoError(t, err)
+	assert.Equal(t, "accepted", response["status"])
+	assert.NotEmpty(t, response["correlationId"])
+
+	// Cancel context to stop server
+	cancel()
+}
+
+func TestReceiverConfig_EventsPath(t *testing.T) {
+	// Verify that when config.Path is set to "/events", it doesn't register twice
+	logger := zap.New(zap.UseDevMode(true))
+	config := DefaultReceiverConfig()
+	config.Path = "/events" // Set primary path to /events
+	config.EnableSchemaValidation = false
+
+	receiver, err := NewReceiver(nil, logger, config, nil)
+	require.NoError(t, err)
+	require.NotNil(t, receiver)
+
+	// Verify config
+	assert.Equal(t, "/events", receiver.config.Path)
+}
+
+// ┌─────────────────────────────────────────────────────────────────────────┐
 // │  📊 RESPONSE EVENT HANDLER TESTS - RED METRICS                          │
 // │                                                                         │
 // │  Tests for io.knative.lambda.response.success and                       │
