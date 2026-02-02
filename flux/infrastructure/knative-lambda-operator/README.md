@@ -167,25 +167,20 @@ make deploy-diff ENV=studio
 
 ## 🧪 Testing in pro before merging to main
 
-To validate changes (e.g. on branch `cursor/BVL-205-generic-build-context-backends-6f2b`) on the **pro** cluster before merging to **main** (and then having **studio** get them from main), use one of these approaches.
+Validate changes on **pro** (from your branch) before merging to **main**; **studio** stays on main until you merge.
 
-### Option A – Pro syncs from your branch (Flux)
-
-Pro’s Flux temporarily uses your feature branch for the whole repo; studio stays on `main`.
-
-1. **Point pro’s GitRepository at your branch** (run against the pro cluster):
+1. **Point pro at your branch** (pro context):
 
    ```bash
-   kubectl config use-context pro   # or your pro context name
-
-   kubectl patch gitrepository homelab -n flux-system --type=merge -p '{"spec":{"ref":{"branch":"cursor/BVL-205-generic-build-context-backends-6f2b"}}}'
-   flux reconcile source git homelab
-   flux reconcile kustomization pro-04-knative-instances --with-source
+   kubectl config use-context pro
+   make flux-test-branch
    ```
 
-2. **Ensure the operator image exists** for that branch (e.g. push to the branch so the [Knative Lambda CI workflow](.github/workflows/operator-knative-lambda.yml) runs and builds/pushes the image, or run the workflow manually and pick the tag used by the pro overlay).
+2. **Ensure the operator image exists** for that branch (push so [CI](.github/workflows/operator-knative-lambda.yml) builds/pushes, or run the workflow manually).
 
-3. **Test** on pro. When done, **point pro back at main**:
+3. **Test** on pro.
+
+4. **Point pro back at main** when done:
 
    ```bash
    kubectl patch gitrepository homelab -n flux-system --type=merge -p '{"spec":{"ref":{"branch":"main"}}}'
@@ -193,24 +188,7 @@ Pro’s Flux temporarily uses your feature branch for the whole repo; studio sta
    flux reconcile kustomization pro-04-knative-instances --with-source
    ```
 
-4. **Merge** your branch to `main` so studio gets the operator from main.
-
-### Option B – Manual apply from branch (no Flux change)
-
-Apply only the operator overlay from your branch to pro; after merge, Flux on main will manage it.
-
-1. **Checkout** your branch and **build/push** the operator image (workflow on that branch or local build; ensure the image tag matches what the pro overlay uses, or override the image in the overlay).
-
-2. **Apply** against the pro cluster:
-
-   ```bash
-   kubectl config use-context pro
-   kubectl apply -k flux/infrastructure/knative-lambda-operator/k8s/overlays/pro
-   ```
-
-3. **Test** on pro.
-
-4. **Merge** to main. Flux will reconcile and keep managing the same manifests (from main); update the overlay’s image tag if main uses a different tag.
+5. **Merge** to main so studio gets the operator from main.
 
 ---
 

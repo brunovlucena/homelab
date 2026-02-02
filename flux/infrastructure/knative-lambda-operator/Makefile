@@ -510,6 +510,20 @@ deploy-diff: ## 🔍 Show diff for deployment (use ENV=pro|studio)
 	$(call print_status,🔍 Showing deployment diff for $(ENV)...)
 	@kubectl diff -k $(K8S_DIR)/overlays/$(ENV) || true
 
+# Flux GitRepository (pro cluster): patch to current branch and reconcile
+FLUX_NS ?= flux-system
+FLUX_REPO ?= homelab
+
+.PHONY: flux-test-branch
+flux-test-branch: ## 🔀 Point Flux at current branch and reconcile (use from pro context)
+	@BRANCH=$$(git branch --show-current 2>/dev/null); \
+	if [ -z "$$BRANCH" ]; then echo "$(COLOR_RED)❌ Not a git repo or detached HEAD$(COLOR_RESET)"; exit 1; fi; \
+	$(call print_status,🔀 Patching GitRepository $(FLUX_REPO) to branch $$BRANCH...); \
+	kubectl patch gitrepository $(FLUX_REPO) -n $(FLUX_NS) --type=merge -p "{\"spec\":{\"ref\":{\"branch\":\"$$BRANCH\"}}}"; \
+	$(call print_status,🔄 Reconciling source and pro-04-knative-instances...); \
+	flux reconcile source git $(FLUX_REPO) --with-source && flux reconcile kustomization pro-04-knative-instances --with-source; \
+	$(call print_success,Flux now tracking branch $$BRANCH)
+
 .PHONY: kustomize-build-pro kustomize-build-studio
 kustomize-build-pro: ## 🔨 Build kustomize for pro (development)
 	@kubectl kustomize $(K8S_DIR)/overlays/pro
