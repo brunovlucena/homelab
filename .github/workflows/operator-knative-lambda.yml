@@ -51,6 +51,14 @@ on:
       - 'flux/infrastructure/knative-lambda-operator/**'
       - '.github/workflows/operator-knative-lambda.yml'
 
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'flux/infrastructure/knative-lambda-operator/**'
+      - '.github/workflows/operator-knative-lambda.yml'
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/knative-lambda-operator
