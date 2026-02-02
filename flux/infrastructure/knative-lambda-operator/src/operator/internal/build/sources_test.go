@@ -1040,7 +1040,7 @@ func TestBackend002_CreateTarGzFromDirectory_SymlinkHandling(t *testing.T) {
 	// tries to read the file content. This is a known limitation.
 	// In production, symlinks in build contexts are rare.
 	archive, err := CreateTarGzFromDirectory(tmpDir)
-	
+
 	// Document expected behavior: symlinks cause errors
 	// This could be fixed by detecting symlinks and handling them specially
 	if err != nil {
@@ -1136,7 +1136,7 @@ func TestBackend002_GitHubFetcher_Fetch_MockServer(t *testing.T) {
 	// Test the downloadArchive function directly instead
 	data, err := fetcher.downloadArchive(context.Background(), server.URL, "")
 	require.NoError(t, err)
-	
+
 	// Extract and verify
 	code, filename, err := fetcher.extractFromArchive(data, "", "python")
 	require.NoError(t, err)
