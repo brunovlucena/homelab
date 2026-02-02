@@ -21,10 +21,10 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/minio/minio-go/v7"
-	"google.golang.org/api/iterator"
-	"google.golang.org/api/option"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
