@@ -76,11 +76,14 @@ type Manager struct {
 	pythonBaseImage string
 	goBaseImage     string
 	alpineRuntime   string
+
+	// Storage selector for generic build context storage
+	storageSelector *StorageSelector
 }
 
 // BuildContext contains the context for a build
 type BuildContext struct {
-	// ConfigMapName is the name of the ConfigMap containing build context
+	// ConfigMapName is the name of the ConfigMap containing build context (for ConfigMap backend)
 	ConfigMapName string
 
 	// ContentHash is the SHA-256 hash of the source content
@@ -88,6 +91,9 @@ type BuildContext struct {
 
 	// ImageTag is the computed image tag
 	ImageTag string
+
+	// Location contains the full storage location details (for generic storage)
+	Location *BuildContextLocation
 }
 
 // BuildStatus represents the status of a build job
@@ -119,6 +125,34 @@ func NewManager(client client.Client, scheme *runtime.Scheme) (*Manager, error) 
 	m.pythonBaseImage = getEnvOrDefault("BUILD_PYTHON_BASE_IMAGE", DefaultPythonBaseImage)
 	m.goBaseImage = getEnvOrDefault("BUILD_GO_BASE_IMAGE", DefaultGoBaseImage)
 	m.alpineRuntime = getEnvOrDefault("BUILD_ALPINE_RUNTIME_IMAGE", DefaultAlpineRuntime)
+
+	// Initialize storage selector with optional S3/GCS backends from environment
+	var s3Config *S3Config
+	var gcsConfig *GCSConfig
+
+	// S3/MinIO storage configuration
+	if bucket := os.Getenv("BUILD_CONTEXT_S3_BUCKET"); bucket != "" {
+		s3Config = &S3Config{
+			Bucket:          bucket,
+			Endpoint:        getEnvOrDefault("BUILD_CONTEXT_S3_ENDPOINT", ""),
+			Region:          getEnvOrDefault("BUILD_CONTEXT_S3_REGION", "us-east-1"),
+			AccessKeyID:     os.Getenv("BUILD_CONTEXT_S3_ACCESS_KEY"),
+			SecretAccessKey: os.Getenv("BUILD_CONTEXT_S3_SECRET_KEY"),
+			UseSSL:          getEnvOrDefault("BUILD_CONTEXT_S3_USE_SSL", "true") == "true",
+			PathPrefix:      getEnvOrDefault("BUILD_CONTEXT_S3_PATH_PREFIX", "build-context"),
+		}
+	}
+
+	// GCS storage configuration
+	if bucket := os.Getenv("BUILD_CONTEXT_GCS_BUCKET"); bucket != "" {
+		gcsConfig = &GCSConfig{
+			Bucket:     bucket,
+			Project:    os.Getenv("BUILD_CONTEXT_GCS_PROJECT"),
+			PathPrefix: getEnvOrDefault("BUILD_CONTEXT_GCS_PATH_PREFIX", "build-context"),
+		}
+	}
+
+	m.storageSelector = NewStorageSelector(client, scheme, s3Config, gcsConfig)
 
 	return m, nil
 }
@@ -240,6 +274,8 @@ func (m *Manager) ensureBuildRBAC(ctx context.Context, lambda *lambdav1alpha1.La
 }
 
 // CreateBuildContext creates the build context for a Lambda function
+// Uses the generic storage abstraction to select the appropriate backend
+// (ConfigMap, S3, or GCS) based on annotations and context size.
 func (m *Manager) CreateBuildContext(ctx context.Context, lambda *lambdav1alpha1.LambdaFunction) (*BuildContext, error) {
 	// Get source code
 	sourceCode, sourceFilename, err := m.getSourceCode(ctx, lambda)
@@ -268,56 +304,50 @@ func (m *Manager) CreateBuildContext(ctx context.Context, lambda *lambdav1alpha1
 		return nil, fmt.Errorf("failed to create build archive: %w", err)
 	}
 
-	// Create ConfigMap with build context
-	configMapName := lambda.Name + BuildContextConfigMapSuffix
-	configMap := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      configMapName,
-			Namespace: lambda.Namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "knative-lambda-operator",
-				"lambda.knative.io/name":       lambda.Name,
-			},
-		},
-		BinaryData: map[string][]byte{
-			"context.tar.gz": archive,
-		},
-	}
-
-	// Set owner reference
-	if err := controllerutil.SetControllerReference(lambda, configMap, m.scheme); err != nil {
-		return nil, fmt.Errorf("failed to set owner reference: %w", err)
-	}
-
-	// Create or update ConfigMap
-	existing := &corev1.ConfigMap{}
-	err = m.client.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: lambda.Namespace}, existing)
+	// Select storage backend based on annotation and size
+	store, err := m.storageSelector.SelectStore(lambda, len(archive))
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			if err := m.client.Create(ctx, configMap); err != nil {
-				return nil, fmt.Errorf("failed to create build context ConfigMap: %w", err)
-			}
-		} else {
-			return nil, fmt.Errorf("failed to check existing ConfigMap: %w", err)
-		}
-	} else {
-		existing.BinaryData = configMap.BinaryData
-		if err := m.client.Update(ctx, existing); err != nil {
-			return nil, fmt.Errorf("failed to update build context ConfigMap: %w", err)
-		}
+		return nil, fmt.Errorf("failed to select storage backend: %w", err)
 	}
 
-	// Compute image tag (first 12 chars of hash + timestamp for uniqueness)
-	imageTag := contentHash[:12]
+	// Build storage key
+	storageKey := fmt.Sprintf("%s/%s/context.tar.gz", lambda.Namespace, lambda.Name)
+
+	// Save to selected storage
+	meta := BuildContextMeta{
+		LambdaName:      lambda.Name,
+		LambdaNamespace: lambda.Namespace,
+		ContentHash:     contentHash,
+		CreatedAt:       time.Now(),
+	}
+
+	location, err := store.Save(ctx, storageKey, archive, meta)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save build context to %s: %w", store.Name(), err)
+	}
+
+	// Record metrics
+	RecordStorageSave(store.Name(), lambda.Spec.Source.Type)
+
+	// If using ConfigMap, set owner reference for GC
+	if location.Backend == StorageBackendConfigMap {
+		configMapStore := m.storageSelector.GetConfigMapStore()
+		if err := configMapStore.SetOwnerReference(ctx, lambda, location.ConfigMapName, m.scheme); err != nil {
+			// Log but don't fail - owner ref is for cleanup, not critical
+			_ = err
+		}
+	}
 
 	return &BuildContext{
-		ConfigMapName: configMapName,
+		ConfigMapName: location.ConfigMapName, // Set for backwards compatibility
 		ContentHash:   contentHash,
-		ImageTag:      imageTag,
+		ImageTag:      location.ImageTag,
+		Location:      location,
 	}, nil
 }
 
 // CreateKanikoJob creates a Kaniko build job for the Lambda function
+// Supports multiple storage backends: ConfigMap (volume), S3 (s3://), GCS (gs://)
 func (m *Manager) CreateKanikoJob(ctx context.Context, lambda *lambdav1alpha1.LambdaFunction, buildCtx *BuildContext) (*batchv1.Job, error) {
 	// Ensure RBAC exists before creating the job
 	if err := m.ensureBuildRBAC(ctx, lambda); err != nil {
@@ -333,6 +363,149 @@ func (m *Manager) CreateKanikoJob(ctx context.Context, lambda *lambdav1alpha1.La
 	backoffLimit := int32(0)
 	ttlSeconds := JobTTLAfterFinished
 
+	// Determine storage backend and build job spec accordingly
+	var initContainers []corev1.Container
+	var volumes []corev1.Volume
+	var kanikoArgs []string
+	var envVars []corev1.EnvVar
+
+	// Get storage backend from location or fall back to ConfigMap
+	backend := StorageBackendConfigMap
+	if buildCtx.Location != nil {
+		backend = buildCtx.Location.Backend
+	}
+
+	switch backend {
+	case StorageBackendS3:
+		// S3/MinIO storage: use Kaniko's built-in S3 context support
+		// Kaniko can fetch directly from s3://bucket/path
+		s3ContextURL := fmt.Sprintf("s3://%s/%s", buildCtx.Location.Bucket, buildCtx.Location.Key)
+		kanikoArgs = []string{
+			"--dockerfile=Dockerfile",
+			fmt.Sprintf("--context=%s", s3ContextURL),
+			fmt.Sprintf("--destination=%s", imageURI),
+			"--insecure",
+			"--insecure-pull",
+			"--skip-tls-verify",
+			"--cache=false",
+		}
+		// S3 credentials from environment (passed via secret)
+		envVars = []corev1.EnvVar{
+			{Name: "AWS_REGION", Value: buildCtx.Location.Region},
+		}
+		// Add S3 endpoint for MinIO
+		if buildCtx.Location.Endpoint != "" && !strings.Contains(buildCtx.Location.Endpoint, "amazonaws.com") {
+			envVars = append(envVars, corev1.EnvVar{
+				Name:  "S3_ENDPOINT",
+				Value: "http://" + buildCtx.Location.Endpoint,
+			})
+		}
+		volumes = []corev1.Volume{
+			{
+				Name: "workspace",
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
+			},
+		}
+
+	case StorageBackendGCS:
+		// GCS storage: use Kaniko's built-in GCS context support
+		// Kaniko can fetch directly from gs://bucket/path
+		gcsContextURL := fmt.Sprintf("gs://%s/%s", buildCtx.Location.Bucket, buildCtx.Location.Key)
+		kanikoArgs = []string{
+			"--dockerfile=Dockerfile",
+			fmt.Sprintf("--context=%s", gcsContextURL),
+			fmt.Sprintf("--destination=%s", imageURI),
+			"--insecure",
+			"--insecure-pull",
+			"--skip-tls-verify",
+			"--cache=false",
+		}
+		volumes = []corev1.Volume{
+			{
+				Name: "workspace",
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
+			},
+		}
+
+	default:
+		// ConfigMap storage: use init container to extract tar.gz
+		configMapName := buildCtx.ConfigMapName
+		if buildCtx.Location != nil && buildCtx.Location.ConfigMapName != "" {
+			configMapName = buildCtx.Location.ConfigMapName
+		}
+
+		initContainers = []corev1.Container{
+			{
+				Name:    "extract-context",
+				Image:   m.alpineInitImage,
+				Command: []string{"/bin/sh", "-c"},
+				Args: []string{
+					"cp /build-context/context.tar.gz /workspace/ && cd /workspace && tar -xzf context.tar.gz && rm context.tar.gz && ls -la",
+				},
+				// Security Fix: BLUE-007 - Add resource limits to init container
+				Resources: corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("100m"),
+						corev1.ResourceMemory: resource.MustParse("128Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("500m"),
+						corev1.ResourceMemory: resource.MustParse("256Mi"),
+					},
+				},
+				VolumeMounts: []corev1.VolumeMount{
+					{
+						Name:      "build-context",
+						MountPath: "/build-context",
+					},
+					{
+						Name:      "workspace",
+						MountPath: "/workspace",
+					},
+				},
+			},
+		}
+		kanikoArgs = []string{
+			"--dockerfile=/workspace/Dockerfile",
+			"--context=dir:///workspace",
+			fmt.Sprintf("--destination=%s", imageURI),
+			"--insecure",
+			"--insecure-pull",
+			"--skip-tls-verify",
+			"--cache=false",
+		}
+		volumes = []corev1.Volume{
+			{
+				Name: "build-context",
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: configMapName,
+						},
+					},
+				},
+			},
+			{
+				Name: "workspace",
+				VolumeSource: corev1.VolumeSource{
+					EmptyDir: &corev1.EmptyDirVolumeSource{},
+				},
+			},
+		}
+	}
+
+	// Build volume mounts for kaniko container
+	kanikoVolumeMounts := []corev1.VolumeMount{
+		{
+			Name:      "workspace",
+			MountPath: "/workspace",
+		},
+	}
+
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
@@ -343,9 +516,10 @@ func (m *Manager) CreateKanikoJob(ctx context.Context, lambda *lambdav1alpha1.La
 				"lambda.knative.io/build":      "true",
 			},
 			Annotations: map[string]string{
-				"lambda.knative.io/image-uri":     imageURI,
-				"lambda.knative.io/content-hash":  buildCtx.ContentHash,
-				"lambda.knative.io/pull-registry": m.pullRegistry,
+				"lambda.knative.io/image-uri":       imageURI,
+				"lambda.knative.io/content-hash":    buildCtx.ContentHash,
+				"lambda.knative.io/pull-registry":   m.pullRegistry,
+				"lambda.knative.io/storage-backend": backend,
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -365,50 +539,13 @@ func (m *Manager) CreateKanikoJob(ctx context.Context, lambda *lambdav1alpha1.La
 					AutomountServiceAccountToken: ptr.To(false),
 					// Use the build service account (created automatically by ensureBuildRBAC)
 					ServiceAccountName: BuildServiceAccountName,
-					InitContainers: []corev1.Container{
-						{
-							Name:    "extract-context",
-							Image:   m.alpineInitImage,
-							Command: []string{"/bin/sh", "-c"},
-							Args: []string{
-								"cp /build-context/context.tar.gz /workspace/ && cd /workspace && tar -xzf context.tar.gz && rm context.tar.gz && ls -la",
-							},
-							// Security Fix: BLUE-007 - Add resource limits to init container
-							Resources: corev1.ResourceRequirements{
-								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("100m"),
-									corev1.ResourceMemory: resource.MustParse("128Mi"),
-								},
-								Limits: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("500m"),
-									corev1.ResourceMemory: resource.MustParse("256Mi"),
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "build-context",
-									MountPath: "/build-context",
-								},
-								{
-									Name:      "workspace",
-									MountPath: "/workspace",
-								},
-							},
-						},
-					},
+					InitContainers:     initContainers,
 					Containers: []corev1.Container{
 						{
 							Name:  "kaniko",
 							Image: m.kanikoImage,
-							Args: []string{
-								"--dockerfile=/workspace/Dockerfile",
-								"--context=dir:///workspace",
-								fmt.Sprintf("--destination=%s", imageURI),
-								"--insecure",
-								"--insecure-pull",
-								"--skip-tls-verify",
-								"--cache=false",
-							},
+							Args:  kanikoArgs,
+							Env:   envVars,
 							// Security Fix: BLUE-007 - Add resource limits to Kaniko container
 							// Prevents resource exhaustion DoS attacks via malicious builds
 							Resources: corev1.ResourceRequirements{
@@ -421,32 +558,10 @@ func (m *Manager) CreateKanikoJob(ctx context.Context, lambda *lambdav1alpha1.La
 									corev1.ResourceMemory: resource.MustParse("4Gi"),
 								},
 							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "workspace",
-									MountPath: "/workspace",
-								},
-							},
+							VolumeMounts: kanikoVolumeMounts,
 						},
 					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "build-context",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: buildCtx.ConfigMapName,
-									},
-								},
-							},
-						},
-						{
-							Name: "workspace",
-							VolumeSource: corev1.VolumeSource{
-								EmptyDir: &corev1.EmptyDirVolumeSource{},
-							},
-						},
-					},
+					Volumes: volumes,
 				},
 			},
 		},
@@ -528,6 +643,7 @@ func (m *Manager) DeleteJob(ctx context.Context, namespace, jobName string) erro
 }
 
 // getSourceCode retrieves the source code for a Lambda function
+// Supports multiple source backends: inline, minio, s3, git, github, gcs
 func (m *Manager) getSourceCode(ctx context.Context, lambda *lambdav1alpha1.LambdaFunction) ([]byte, string, error) {
 	switch lambda.Spec.Source.Type {
 	case "inline":
@@ -535,6 +651,7 @@ func (m *Manager) getSourceCode(ctx context.Context, lambda *lambdav1alpha1.Lamb
 			return nil, "", fmt.Errorf("inline source configuration is required")
 		}
 		filename := m.getSourceFilename(lambda.Spec.Runtime.Language)
+		RecordSourceFetch("inline", "success")
 		return []byte(lambda.Spec.Source.Inline.Code), filename, nil
 
 	case "minio":
@@ -546,9 +663,108 @@ func (m *Manager) getSourceCode(ctx context.Context, lambda *lambdav1alpha1.Lamb
 	case "git":
 		return m.getGitSourceCode(ctx, lambda)
 
+	case "github":
+		return m.getGitHubSourceCode(ctx, lambda)
+
+	case "gcs":
+		return m.getGCSSourceCode(ctx, lambda)
+
 	default:
-		return nil, "", fmt.Errorf("unsupported source type: %s", lambda.Spec.Source.Type)
+		return nil, "", fmt.Errorf("unsupported source type: %s (supported: inline, minio, s3, git, github, gcs)", lambda.Spec.Source.Type)
 	}
+}
+
+// getGitHubSourceCode downloads source code from GitHub
+func (m *Manager) getGitHubSourceCode(ctx context.Context, lambda *lambdav1alpha1.LambdaFunction) ([]byte, string, error) {
+	// GitHub source can be configured through Git source spec with a GitHub URL
+	// or through custom annotations
+	gitSpec := lambda.Spec.Source.Git
+	if gitSpec == nil {
+		return nil, "", fmt.Errorf("git source configuration is required for github source type")
+	}
+
+	// Validate GitHub URL
+	if err := validation.ValidateGitURL(gitSpec.URL); err != nil {
+		RecordSourceFetch(SourceTypeGitHub, "validation_error")
+		return nil, "", fmt.Errorf("invalid GitHub URL: %w", err)
+	}
+
+	// Parse GitHub owner/repo from URL
+	owner, repo := parseGitHubURL(gitSpec.URL)
+	if owner == "" || repo == "" {
+		RecordSourceFetch(SourceTypeGitHub, "parse_error")
+		return nil, "", fmt.Errorf("failed to parse GitHub owner/repo from URL: %s", gitSpec.URL)
+	}
+
+	// Create GitHub source spec
+	githubSpec := &GitHubSource{
+		Owner: owner,
+		Repo:  repo,
+		Ref:   gitSpec.Ref,
+		Path:  gitSpec.Path,
+	}
+
+	if gitSpec.SecretRef != nil {
+		githubSpec.SecretRef = gitSpec.SecretRef
+	}
+
+	// Use GitHub fetcher
+	fetcher := NewGitHubFetcher(m.client, lambda.Namespace)
+	return fetcher.Fetch(ctx, githubSpec, lambda.Spec.Runtime.Language)
+}
+
+// getGCSSourceCode downloads source code from Google Cloud Storage
+func (m *Manager) getGCSSourceCode(ctx context.Context, lambda *lambdav1alpha1.LambdaFunction) ([]byte, string, error) {
+	if lambda.Spec.Source.GCS == nil {
+		return nil, "", fmt.Errorf("gcs source configuration is required")
+	}
+
+	gcsSpec := lambda.Spec.Source.GCS
+
+	// Validate GCS source configuration
+	if err := validation.ValidateGCSSource(gcsSpec.Bucket, gcsSpec.Key, gcsSpec.Project); err != nil {
+		RecordSourceFetch(SourceTypeGCS, "validation_error")
+		return nil, "", fmt.Errorf("security validation failed for GCS source: %w", err)
+	}
+
+	// Use GCS fetcher
+	fetcher := NewGCSFetcher(m.client, lambda.Namespace)
+	return fetcher.Fetch(ctx, gcsSpec, lambda.Spec.Runtime.Language)
+}
+
+// parseGitHubURL extracts owner and repo from a GitHub URL
+func parseGitHubURL(url string) (owner, repo string) {
+	// Handle various GitHub URL formats:
+	// https://github.com/owner/repo
+	// https://github.com/owner/repo.git
+	// git@github.com:owner/repo.git
+	// github.com/owner/repo
+
+	url = strings.TrimSuffix(url, ".git")
+
+	// Handle SSH format
+	if strings.HasPrefix(url, "git@github.com:") {
+		path := strings.TrimPrefix(url, "git@github.com:")
+		parts := strings.Split(path, "/")
+		if len(parts) >= 2 {
+			return parts[0], parts[1]
+		}
+		return "", ""
+	}
+
+	// Handle HTTPS format
+	for _, prefix := range []string{"https://github.com/", "http://github.com/", "github.com/"} {
+		if strings.HasPrefix(url, prefix) {
+			path := strings.TrimPrefix(url, prefix)
+			parts := strings.Split(path, "/")
+			if len(parts) >= 2 {
+				return parts[0], parts[1]
+			}
+			return "", ""
+		}
+	}
+
+	return "", ""
 }
 
 // getMinioSourceCode downloads source code from MinIO
