@@ -4,6 +4,19 @@ kind: Kustomization
 resources:
   - ../base
 
+# Pro has no cloudflare-tunnel operator
+patches:
+  - patch: |-
+      $patch: delete
+      apiVersion: tunnel.cloudflare.io/v1alpha1
+      kind: CloudflareTunnelIngress
+      metadata:
+        name: homepage-frontend
+        namespace: homepage
+    target:
+      kind: CloudflareTunnelIngress
+      name: homepage-frontend
+
 # 🏷️ Image override for pro (local registry)
 images:
   - name: localhost:5001/homepage-api
